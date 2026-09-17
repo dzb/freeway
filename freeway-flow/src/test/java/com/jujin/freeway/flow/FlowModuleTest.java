@@ -1,116 +1,111 @@
 package com.jujin.freeway.flow;
 
-import com.jujin.freeway.ioc.Container;
+import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Freeway;
-import com.jujin.freeway.ioc.MissingBindingException;
+import com.jujin.freeway.ioc.ModuleEx;
+import com.jujin.freeway.ioc.Container;
 import org.junit.jupiter.api.Test;
 
-import java.lang.reflect.Proxy;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * The FlowModule wiring: a container-assembled engine, contributed
+ * drivers overriding the built-in default, and contributed interceptors
+ * chained into every eval — all decided at load, none mutable after.
+ */
 class FlowModuleTest {
 
-    @Test
-    void iocAdapterReturnsNullForMissingBeanButPropagatesRealFailures() {
-        Container container = mockContainer(null);
-        FlowModule.IocContainerAdapter adapter = new FlowModule.IocContainerAdapter(container);
-        assertNull(adapter.component("missing"));
-        assertThrows(RuntimeException.class, () -> adapter.component("boom"));
-    }
-
-    @Test
-    void iocAdapterResolvesConditionComponent() {
-        // A @beanName condition reference must resolve components bound as
-        // ConditionComponent — the adapter falls back after a TaskComponent miss.
-        ConditionComponent condition = ctx -> true;
-        Container container = mockContainer(condition);
-        FlowModule.IocContainerAdapter adapter = new FlowModule.IocContainerAdapter(container);
-
-        Object component = adapter.component("isReady");
-        assertTrue(component instanceof ConditionComponent);
-        assertSame(condition, component);
-    }
-
-    @Test
-    void iocAdapterPropagatesAmbiguousBindingAsRealError() {
-        // A genuine container failure (two services match the same type+id)
-        // throws IllegalArgumentException with a non-"no service registered"
-        // message — the adapter must surface it, not convert it to null.
-        Container container = Freeway.create(binder -> {
-            binder.bind(AmbiguousA.class).id("dup").to(AmbiguousA.class);
-            binder.bind(AmbiguousB.class).id("dup").to(AmbiguousB.class);
-        });
-        try {
-            FlowModule.IocContainerAdapter adapter = new FlowModule.IocContainerAdapter(container);
-            IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
-                () -> adapter.component("dup"));
-            assertTrue(ex.getMessage().contains("Multiple services match type"),
-                "got: " + ex.getMessage());
-        } finally {
-            container.close();
+    /** A task component the driver resolves via {@code @worker}. */
+    public static final class WorkerTask implements TaskComponent {
+        @Override
+        public void run(FlowContext context, Node node) {
+            context.put("worked", true);
         }
     }
 
+    /** A driver that stamps the context with its own label. */
+    public static final class LabelDriver implements FlowDriver {
+        @Override
+        public boolean handleCondition(FlowExchanger exchanger, ConditionDesc condition) {
+            return true;
+        }
+
+        @Override
+        public void handleTask(FlowExchanger exchanger, TaskDesc task) {
+            if (!task.isEmpty()) exchanger.context().put("driver", "label");
+        }
+    }
+
+    private static Graph simpleGraph(String task, String driver) {
+        return GraphSpec.create("g", "", driver, s -> {
+            s.entry("s");
+            s.addStart("s").linkAdd("a");
+            s.addActivity("a").task(task).linkAdd("e");
+            s.addEnd("e");
+        }).create();
+    }
+
     @Test
-    void iocAdapterPropagatesNonMissingIllegalArgumentFromMock() {
-        // Any IllegalArgumentException that is NOT a MissingBindingException
-        // is a real container failure and must surface, not become a null.
-        Container container = mockContainer(null);
-        FlowModule.IocContainerAdapter adapter = new FlowModule.IocContainerAdapter(container);
-        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
-            () -> adapter.component("ambiguous"));
-        assertTrue(ex.getMessage().contains("Multiple services match type"));
+    void contributedTaskResolvesByNameThroughContainer() {
+        Container container = Freeway.create(new FlowModule(), binder ->
+            binder.bind(WorkerTask.class).id("worker").to(WorkerTask.class));
+
+        FlowEngine engine = container.get(FlowEngine.class);
+        engine.load(simpleGraph("@worker", null));
+        FlowContext ctx = FlowContext.of();
+        engine.eval("g", ctx);
+        assertEquals(Boolean.TRUE, ctx.get("worked"));
     }
 
-    private static Container mockContainer(ConditionComponent condition) {
-        return (Container) Proxy.newProxyInstance(
-            Container.class.getClassLoader(),
-            new Class<?>[] { Container.class },
-            (proxy, method, args) -> {
-                if ("get".equals(method.getName())
-                        && args != null
-                        && args.length == 2) {
-                    Class<?> type = (Class<?>) args[0];
-                    String id = (String) args[1];
-                    if (type == TaskComponent.class && "boom".equals(id)) {
-                        throw new RuntimeException("boom");
-                    }
-                    if (type == TaskComponent.class && "isReady".equals(id)) {
-                        throw missingBinding(type, id);
-                    }
-                    if (type == ConditionComponent.class
-                            && "isReady".equals(id)
-                            && condition != null) {
-                        return condition;
-                    }
-                    if ("missing".equals(id)) {
-                        throw missingBinding(type, id);
-                    }
-                    if ("ambiguous".equals(id)) {
-                        throw new IllegalArgumentException(
-                            "Multiple services match type " + type.getName() + " and id " + id);
-                    }
+    @Test
+    void contributedDriverOverridesTheBuiltInDefault() {
+        Container container = Freeway.create(new FlowModule(), binder ->
+            binder.contribute(FlowDriver.class).add("default", new LabelDriver()));
+
+        FlowEngine engine = container.get(FlowEngine.class);
+        engine.load(simpleGraph("@anything", null));
+        FlowContext ctx = FlowContext.of();
+        engine.eval("g", ctx);
+        assertEquals("label", ctx.get("driver"),
+            "the contributed default must replace FlowDriverDefault (warn-override contract)");
+    }
+
+    @Test
+    void contributedInterceptorChainsIntoEveryEval() {
+        AtomicInteger starts = new AtomicInteger(0);
+        Container container = Freeway.create(new FlowModule(), binder -> {
+            binder.bind(TaskComponent.class).to(c -> new WorkerTask()).id("anything");
+            binder.contribute(FlowInterceptor.class).add("counter", new FlowInterceptor() {
+                @Override
+                public void onNodeStart(FlowContext ctx, Node node) {
+                    starts.incrementAndGet();
                 }
-                throw new UnsupportedOperationException(method.getName());
-            }
-        );
+            });
+        });
+
+        FlowEngine engine = container.get(FlowEngine.class);
+        engine.load(simpleGraph("@anything", null));
+        engine.eval("g", FlowContext.of());
+
+        // s, a, e each get a node-start: three visits for the simple graph.
+        assertEquals(3, starts.get(),
+            "the contributed interceptor must observe every node");
     }
 
-    /** Simulates the real container's missing-binding failure. */
-    private static IllegalArgumentException missingBinding(Class<?> type, String id) {
-        return new MissingBindingException(
-            "No service registered for type " + type.getName() + " and id " + id);
-    }
-
-    static class AmbiguousA implements TaskComponent {
-        @Override public void run(FlowContext ctx, Node node) { }
-    }
-
-    static class AmbiguousB implements TaskComponent {
-        @Override public void run(FlowContext ctx, Node node) { }
+    @Test
+    void engineSingletonIsSharedAndIoCFreeInternally() {
+        Container container = Freeway.create(new FlowModule());
+        FlowEngine first = container.get(FlowEngine.class);
+        FlowEngine second = container.get(FlowEngine.class);
+        assertSame(first, second, "the engine is a container singleton");
+        assertNotNull(first.driver(simpleGraph("@x", null)),
+            "the default driver resolves against the container");
     }
 }

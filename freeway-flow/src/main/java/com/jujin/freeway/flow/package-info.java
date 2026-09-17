@@ -1,60 +1,54 @@
 /**
- * Lightweight graph orchestration engine, ported from solon-flow 4.0.2.
+ * Freeway's in-JVM graph orchestration engine: evaluate a DAG of tasks with
+ * gateways, forks and loops, with conditions written as a small expression
+ * language and tasks referenced against the container.
  *
- * <p>Source project: <a href="https://github.com/opensolon/solon-flow">opensolon/solon-flow</a>
- * <br>Original author: noear (Xidong)
- * <br>Original license: Apache License 2.0</p>
+ * <p>The graph schema (the {@code version: 3} JSON document shape parsed by
+ * {@link com.jujin.freeway.flow.GraphSpec}) is freeway-native: closed node
+ * vocabulary, build-time validation (cycles, entry, expressions, references,
+ * join declarations all fail the build, never the run), and a PARALLEL model
+ * with declared write isolation. This is an orchestrator, not a durable
+ * workflow engine — a context cannot be persisted and resumed in another
+ * process; evaluation is synchronous in this JVM.</p>
  *
- * <p>Ported and adapted as a freeway framework module, keeping the core orchestration capabilities while adding zero new third-party dependencies.
- * See {@code README.md} in the module root for details. A few classes are
- * freeway-specific and noted as such in their javadoc: {@code ExecState},
- * {@code ExprEvaluator}, {@code FlowEventBus}, {@code FlowMarker}/
- * {@code FlowMarkerIndex} (the {@code !marker} task syntax), and
- * {@code FlowModule}.</p>
+ * <p>Zero dependencies beyond the framework modules it consumes
+ * (ioc, commons).</p>
  *
- * <p><b>Naming:</b> property accessors follow Freeway's bare-property
- * convention ({@code graph.nodes()}, {@code spec.title()}) instead of the
- * upstream JavaBean {@code getX()} style — a deliberate divergence from
- * solon-flow so the module reads like every other Freeway module. Keyed
- * lookups on the map-shaped {@link com.jujin.freeway.flow.FlowContext} keep
- * the JDK {@code Map} vocabulary
- * ({@code get} / {@code getAs} / {@code getOrDefault}).</p>
+ * <p><b>Provenance.</b> The engine's lineage is
+ * <a href="https://github.com/opensolon/solon-flow">solon-flow 4.0.2</a>
+ * (Apache License 2.0). What survives that lineage is the node taxonomy and
+ * a few traversal invariants; the graph schema, the vocabulary, the
+ * execution model, the join/loop semantics and the validation stance are
+ * freeway-native rework, not upstream compatibility. See
+ * {@code README.md} for the dependency-removal table and
+ * {@code docs/graph-v3.md} for the schema.</p>
  *
  * <h3>Core entry points</h3>
  * <ul>
- *   <li>{@link com.jujin.freeway.flow.FlowEngine} — the engine; create an instance and execute graphs</li>
- *   <li>{@link com.jujin.freeway.flow.Graph} — the graph; parsed from JSON or built programmatically</li>
- *   <li>{@link com.jujin.freeway.flow.FlowContext} — the context; carries execution variables</li>
- *   <li>{@link com.jujin.freeway.flow.FlowDriverDefault} — the default driver</li>
- *   <li>{@link com.jujin.freeway.flow.FlowModule} — the Freeway IoC module entry point</li>
+ *   <li>{@link com.jujin.freeway.flow.FlowEngine} — create an instance,
+ *       load graphs, {@code eval}</li>
+ *   <li>{@link com.jujin.freeway.flow.Graph} / {@link com.jujin.freeway.flow.GraphSpec}
+ *       — the immutable runtime model and its validating blueprint</li>
+ *   <li>{@link com.jujin.freeway.flow.FlowContext} — the run's data map,
+ *       event bus and stop signal</li>
+ *   <li>{@link com.jujin.freeway.flow.FlowDriverDefault} — resolves the task
+ *       vocabulary: inline components, {@code @name} (container), and
+ *       {@code #graphId} (sub-graph); nodes may also carry {@code data}</li>
+ *   <li>{@link com.jujin.freeway.flow.FlowModule} — the IoC assembly</li>
  * </ul>
  *
- * <h3>Interceptors and event</h3>
+ * <h3>Cross-cutting</h3>
  * <ul>
- *   <li>{@link com.jujin.freeway.flow.FlowInterceptor} / {@link com.jujin.freeway.flow.FlowInvocation} — the interceptor chain</li>
- *   <li>{@link com.jujin.freeway.flow.FlowEventBus} — the execution-level event bus</li>
+ *   <li>{@link com.jujin.freeway.flow.FlowInterceptor} — contributed chain
+ *       (flow-level and node-level), fixed at load</li>
+ *   <li>{@link com.jujin.freeway.flow.ExecState} — per-evaluation join
+ *       counters and dead-end marks, engine-owned</li>
+ *   <li>{@link com.jujin.freeway.flow.FlowEventBus} — topic pub/sub scoped
+ *       to one execution</li>
+ *   <li>{@link com.jujin.freeway.flow.ExprEvaluator} — the condition
+ *       expression language</li>
+ *   <li>{@link com.jujin.freeway.flow.PlantUmlOptions} — diagram rendering
+ *       of a graph</li>
  * </ul>
- *
- * <h3>Expressions</h3>
- * <ul>
- *   <li>{@link com.jujin.freeway.flow.ExprEvaluator} — the minimal conditional expression evaluator</li>
- * </ul>
- *
- * <h3>PlantUML export</h3>
- * <ul>
- *   <li>{@link com.jujin.freeway.flow.Graph#toPlantUml()} — generates PlantUML state diagram text</li>
- *   <li>{@link com.jujin.freeway.flow.PlantUmlOptions} / {@link com.jujin.freeway.flow.PlantUmlDisplayContext} / {@link com.jujin.freeway.flow.PlantUmlDisplayResult}</li>
- * </ul>
- *
- * <h3>Stability</h3>
- * <p>The types listed above (plus the model/spec types and
- * {@code FlowModule}) form the module's stable surface. Everything else in
- * this package is engine machinery that rides on those signatures — no
- * stability promise. The same applies to the classes in
- * {@code com.jujin.freeway.flow.internal} ({@code Stepper},
- * {@code FlowContextImpl}), which exist for root-package assembly only.</p>
- *
- * @see <a href="https://github.com/opensolon/solon-flow">solon-flow</a>
- * @since 1.2.2
  */
 package com.jujin.freeway.flow;

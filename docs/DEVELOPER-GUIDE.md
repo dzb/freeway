@@ -83,7 +83,7 @@ freeway-http             HTTP/WebSocket: routing, filters, static, multipart, SS
   └ engine adapters       Undertow, Jetty → see freeway-ext
 freeway-db               JDBC: ORM, pooling, transactions, SQL builder, migrations
   └ connection pool       HikariCP adapter → see freeway-ext
-freeway-flow             Graph workflow engine — 7 node types, JSON graphs, tracing
+freeway-flow             Graph workflow engine — 7 node types, v3 JSON graphs, branch isolation
 freeway-cloud            Cloud-native foundation: discovery, remote RPC, observability,
                          resilience, health, secrets, object storage
 freeway-mq-kafka         Kafka adapter for EventBus → see freeway-ext
@@ -2025,22 +2025,22 @@ Lightweight graph-based workflow engine. Graphs are defined by the canonical `Gr
 
 | Node | Purpose |
 |------|---------|
-| `START` | Graph entry point |
-| `END` | Graph termination |
-| `ACTIVITY` | Executes a task |
-| `EXCLUSIVE` | Exclusive gateway — single path |
-| `INCLUSIVE` | Inclusive gateway — multiple paths |
-| `PARALLEL` | Parallel fork |
-| `LOOP` | Loop until condition |
+| `START` | Graph entry point; advances along matched links |
+| `END` | Marks the graph completed; a run that never reaches it fails |
+| `ACTIVITY` | Writes its `data`, then executes a task, then and-fans out |
+| `EXCLUSIVE` | Xor gateway — first matching `when`, else default link, else a dead end |
+| `INCLUSIVE` | Inclusive gateway — joins (activates once all arrivals counted), then runs, then fans |
+| `PARALLEL` | Parallel fork/join, with declared write isolation (see *Branch isolation*) |
+| `LOOP` | Sequential `$in` iteration over its body (no link back-edges) |
 
-**Graph definition:**
+**Graph definition** (`version=3`; full field reference in `freeway-flow/docs/graph-v3.md`):
 
 ```java
 // Programmatic
 GraphSpec bp = GraphSpec.create("orderFlow", spec -> {
     spec.entry("start");
     spec.addStart("start").linkAdd("approve");
-    spec.addActivity("approve").task("!channel:order").linkAdd("end");
+    spec.addActivity("approve").task("@orderService").linkAdd("end");
     spec.addEnd("end");
 });
 Graph graph = bp.create();
@@ -2048,10 +2048,10 @@ Graph graph = bp.create();
 // JSON — canonical nodes+links format
 Graph graph = Graph.fromText("""
 {
-    "id": "orderFlow", "version": 2, "entry": "start",
+    "id": "orderFlow", "version": 3, "entry": "start",
     "nodes": [
         {"id": "start", "type": "start"},
-        {"id": "approve", "type": "activity", "task": "!channel:order"},
+        {"id": "approve", "type": "activity", "task": "@orderService"},
         {"id": "end", "type": "end"}
     ],
     "links": [
@@ -2062,25 +2062,29 @@ Graph graph = Graph.fromText("""
 """);
 ```
 
-`Graph.fromText()` accepts **only** the canonical v2 format above — a document
-must carry `"version": 2` plus `nodes` and `links`; anything else (including
-the legacy solon-flow `layout` format, or a missing/other version field) is
-rejected with an `IllegalArgumentException`. `GraphSpec.normalize()`
-validates link references, requires exactly one entry, checks BFS reachability
-at `create()` time, rejects cycles (LOOP iteration is driven by `$in`, never
-by link back-edges), and rejects duplicate unconditional links between the
-same pair of nodes (multi-edges must carry distinct `when` conditions).
+`Graph.fromText()` accepts **only** the canonical v3 format — a document must
+carry `"version": 3` plus `nodes` and `links`; anything else (v1 `layout`, v2,
+or a missing/other version) is rejected with an `IllegalArgumentException`.
+`GraphSpec.create()` is the boot-time gate and fails on anything the run would
+otherwise discover late: unknown node type, link references to undeclared
+nodes, cycles (LOOP is driven by `$in`, never back-edges), duplicate
+unconditional links, a missing/ambiguous entry, a `when` expression that does
+not compile, a task descriptor outside the vocabulary (with a hint for the
+removed v2 `$meta`/`!marker` forms), a misplaced or unknown `join`, or a blank
+`data` key.
 
-**Task resolution** — nodes use prefix syntax to specify what to execute. Each prefix has different resolution logic:
+**Task vocabulary** — closed; a string the builder does not recognize is a
+build error, never a runtime guess:
 
-| Prefix | Syntax | Resolves to |
-|--------|--------|-------------|
-| `!` (marker) | `!channel:order !priority:high` | `TaskComponent` by `@FlowMarker` intersection — most markers wins |
-| `@` (bean) | `@orderService` | `TaskComponent` from IoC by binding id. Also works for conditions — `@validator` resolves to `ConditionComponent` |
-| `#` (sub-graph) | `#approvalFlow` | Another loaded graph, executed as a nested subflow |
-| `$` (meta) | `$app.name` | Reads graph metadata into execution context — no component is resolved |
+| Syntax | Resolves to |
+|--------|-------------|
+| `@name` | `TaskComponent` (or `ConditionComponent`, in a `when`) bound in the container with id `name` |
+| `#graphId` | Another loaded graph, run as a sub-graph sharing the evaluation's join state; a child that never reaches its END fails at the calling node |
+| (inline) | A `TaskComponent`/`ConditionComponent` supplied programmatically |
+| `data` field | Static values written into the context before the task runs — the replacement for v2's `$meta` task |
 
-`@FlowMarker("channel:order")` on a `TaskComponent` implementation auto-registers it in the marker index.
+Markers (`!marker`) are gone: contribute the component with an id and reference
+it as `@name`, which the container resolves like any other binding.
 
 **Execution:**
 
@@ -2090,36 +2094,58 @@ engine.load(graph);
 engine.eval("orderFlow", FlowContext.of());
 ```
 
+The walk is iterative: a chain of any length costs constant JVM stack, and
+sub-graph/loop/parallel nesting is bounded only by how the graphs are written.
+A top-level `eval` reuses a `FlowContext` safely: it resets the stop flag and
+starts from a clean event bus. `ctx.stop()` ends the run early and is an
+intentional, legal completion; `ctx.isStopped()` observes it.
+
 **Gateway dead ends fail loudly:** a run that finishes without reaching the
 END node throws a `FlowException` — e.g. an `EXCLUSIVE` node whose conditions
 all evaluated false and that has no default link, or a join gateway that never
 received all its incoming branches (including a `PARALLEL` fork where a branch
 died). The exception names the dead-end node and its graph. Explicitly
-stopped runs and interceptor-blocked runs are exempt.
+stopped runs and interceptor vetoes (an `interceptFlow` that does not proceed)
+are exempt.
 
-**Condition expressions** (`when` on nodes/links) are evaluated by
+**Condition expressions** (`when` on nodes/links) are compiled at build by
 `ExprEvaluator`: `&&`/`||` (and `and`/`or`) **short-circuit** — the right
 operand is only evaluated when it can affect the result — and unary `-` (plus
 `+`, `!`/`not`) is supported with type-preserving negation. Mixed
 number/string comparisons are numeric when the string parses (`"10" > 9` is
 true; `"10" == 10` is true), otherwise lexicographic; `"true"`/`"1"` are
-truthy and `"false"`/`"0"` falsy in boolean contexts.
+truthy and `"false"`/`"0"` falsy in boolean contexts. A `when` may also be a
+`@name` component reference.
+
+**Branch isolation:** a `PARALLEL` fork defaults to `join: "merge"` — each
+branch runs over a thread-local write buffer and merges into the context on
+clean completion; two branches that write different values to the same key
+fail the run with a conflict error naming the key (not a silent winner).
+Declare `{"type":"parallel","meta":{"join":"shared"}}` to opt the fork back
+into shared writes (single-writer discipline is then the graph's job). The
+join counter re-arms each LOOP iteration for a fork-join inside a loop body.
 
 **Key types:**
 
 | Type | Purpose |
 |------|---------|
 | `Graph` | Immutable runtime model — built from `GraphSpec` blueprints |
-| `GraphSpec` | Canonical DAG authoring surface with explicit `entry` and separated `nodes`/`links` |
-| `FlowEngine` | Graph executor: load, eval, pause, resume |
-| `FlowDriver` | Pluggable task executor — contributed via `binder.contribute(FlowDriver.class)` |
-| `FlowDriverDefault` | Built-in driver: resolves `@beanName` via IoC container, `!markerName` via `FlowMarkerIndex` |
-| `@FlowMarker` | String-based marker annotation for `TaskComponent` resolution |
-| `FlowMarkerIndex` | Reverse index from marker names to handlers with `containsAll` matching |
-| `FlowEventBus` | Node lifecycle events (enter, exit, error) |
+| `GraphSpec` | Canonical DAG authoring surface with explicit `entry`, separated `nodes`/`links`, and the boot-time validation gate |
+| `FlowEngine` | Graph executor: `load`/`unload`/`graphs`, `eval` (fresh top-level run, or continuation via an exchanger for sub-graphs) |
+| `FlowDriver` | Pluggable task/condition executor + optional `PARALLEL` executor — contributed via `binder.contribute(FlowDriver.class)` |
+| `FlowDriverDefault` | Built-in driver: resolves `@name` against the container, `#graphId` via sub-graph runs; standalone with inline components when container is null |
+| `FlowInterceptor` | Contributed chain (flow-level `interceptFlow` + node `onNodeStart`/`onNodeEnd`); fixed at load, cannot change while running |
+| `ExecState` | Per-evaluation join counters, loop iterators and dead-end marks — engine-owned, no shared string bag |
+| `FlowEventBus` | Topic pub/sub scoped to one execution (cleared at run boundaries) |
 | `ExprEvaluator` | Self-written recursive descent expression evaluator (~600 lines) |
 
-**Driver:** Graphs select their driver via the `"driver"` field (null/"" → `"default"`). `FlowModule` binds `FlowContainer` (for `@beanName` resolution), creates `FlowDriverDefault` with id `"default"`, and merges contributed drivers from `Extension<FlowDriver>.asMap()`. Register a custom driver by contributing to the same extension point:
+**Driver & interceptor assembly:** graphs select a driver via `"driver"`
+(null/""/`"default"` → the default). `FlowModule` binds `FlowEngine` as a
+singleton: it puts a `FlowDriverDefault` (resolving `@name` against the
+container) under `"default"`, then merges `Extension<FlowDriver>.asMap()` (a
+contributed `"default"` overrides the built-in, with a warning), and freezes
+`Extension<FlowInterceptor>.all()` as the chain. Register a custom driver by
+contributing to the same extension point:
 
 ```java
 binder.contribute(FlowDriver.class)
@@ -2132,7 +2158,12 @@ binder.contribute(FlowDriver.class)
 
 Graph definition: `{ "driver": "custom", ... }`
 
-Supports PlantUML export, execution tracing with pause/resume, subgraph calls, and interceptor chains. **Sub-graph calls inherit the caller's per-eval interceptors**: the parent evaluation's `FlowOptions` (interceptors added via `interceptorAdd`, covering `interceptFlow`/`onNodeStart`/`onNodeEnd`) are propagated into `#subGraph` evals, so per-eval interceptors cover sub-graph nodes too (the engine-level interceptor list is merged exactly once per eval).
+PlantUML export (`Graph.toPlantUml`), subgraph calls, and the interceptor chain
+are supported. **Sub-graph calls share the one engine-level chain** — the same
+interceptors wrap the child eval and fire exactly once per child node (there is
+no per-eval interceptor list to propagate, so the v2 double-merge hazard is
+structurally impossible).
+
 
 ---
 

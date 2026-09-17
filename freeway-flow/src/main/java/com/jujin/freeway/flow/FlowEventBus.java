@@ -69,8 +69,9 @@ public class FlowEventBus {
     /**
      * Clears subscriptions of all topics.
      *
-     * <p>Called when a flow execution ends and the {@link FlowContext} will be reused
-     * (pause/resume, multiple evals), preventing subscribers from accumulating across runs.</p>
+     * <p>Called by the engine when a top-level eval begins and when it
+     * completes, so a reused {@link FlowContext} cannot carry one run's
+     * subscribers into the next.</p>
      */
     public void clear() {
         topicSubs.clear();

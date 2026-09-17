@@ -6,7 +6,13 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 
 /**
- * Flow context, representing the context data of a flow instance
+ * The data of one flow execution: the key/value map tasks read and write,
+ * the run's event bus, and the stop signal.
+ *
+ * <p>This is execution state, not a persistence document: the engine runs
+ * in-JVM and a context cannot be paused and resumed in another process.
+ * {@link #toJson()} exists for logging and debugging (and for handing the
+ * data to a future run explicitly), never for silent resume.</p>
  */
 public interface FlowContext {
 
@@ -18,68 +24,44 @@ public interface FlowContext {
         return new FlowContextImpl(instanceId);
     }
 
-    // --- serialization ---
-
-    /** Converts to JSON (for persistence) */
-    String toJson();
-
     // --- flow control ---
 
-    /**
-     * Interrupts this execution (global semantics): once the flag is set, all parallel
-     * branches stop advancing at their next node boundary; the flag lasts until this eval
-     * ends (never cleared midway, so every branch observes it). Not branch-local — the whole run stops after this call.
-     */
-    void interrupt();
-
-    /** Stops execution (i.e. ends the run) */
+    /** Ends the run at the next node boundary (all branches observe it). */
     void stop();
 
-    /** Whether execution is stopped */
+    /** Whether the run was stopped. */
     boolean isStopped();
-
-    // --- trace ---
-
-    FlowTrace trace();
-
-    FlowContext enableTrace(boolean enable);
-
-    NodeRecord lastRecord();
-
-    String lastNodeId();
 
     // --- event bus ---
 
-    /** Gets the event bus (topic-based pub/sub, scoped to this execution) */
+    /** The topic-based pub/sub bus scoped to this execution. */
     FlowEventBus eventBus();
 
     // --- data ---
 
-    /** Data */
+    /** The data map (a live view; branch-local writes are seen through it). */
     Map<String, Object> data();
 
-    /** Gets the flow instance id */
+    /** The flow instance id, or empty when none was set. */
     default String instanceId() {
         return getAs("instanceId");
     }
 
-    // --- data access ---
+    // --- data access (Map vocabulary) ---
 
+    /** Stores the value — including {@code null} (a null clears the read). */
     default FlowContext put(String key, Object value) {
-        if (value != null) data().put(key, value);
+        data().put(key, value);
         return this;
     }
 
     default FlowContext putIfAbsent(String key, Object value) {
-        if (value != null) data().putIfAbsent(key, value);
+        data().putIfAbsent(key, value);
         return this;
     }
 
     default FlowContext putAll(Map<String, Object> model) {
-        // Consistent with put(): null values are not stored.
-        model.forEach((k, v) -> {
-            if (v != null) data().put(k, v);
-        });
+        data().putAll(model);
         return this;
     }
 
@@ -117,14 +99,22 @@ public interface FlowContext {
         return this;
     }
 
-    // --- internal (package-private usage by engine) ---
+    // --- serialization (diagnostic; not a resume mechanism) ---
 
-    /** @hidden used internally by the engine */
-    FlowExchanger exchanger();
+    /** The data map as JSON. */
+    String toJson();
 
-    /** @hidden used internally by the engine */
-    void exchanger(FlowExchanger exchanger);
+    // --- engine-internal ---
 
-    /** @hidden used internally by the engine */
+    /** @hidden sets the stop signal (the engine and {@link FlowExchanger#stop()}). */
     void stopped(boolean stopped);
+
+    /**
+     * @hidden Opens a branch-local write buffer on the calling thread: every
+     *  write until the returned merger runs lands in the buffer, reads see
+     *  buffer-then-parent. The PARALLEL dispatcher wraps each branch with
+     *  this; calling the merger folds the buffer into the parent (conflict
+     *  if a key this branch wrote was written differently meanwhile).
+     */
+    Runnable beginBranch();
 }

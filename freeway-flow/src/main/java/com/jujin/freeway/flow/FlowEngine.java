@@ -1,66 +1,56 @@
 package com.jujin.freeway.flow;
 
-
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Flow engine (general-purpose graph orchestration engine)
+ * The graph execution engine: load graphs, evaluate them against a
+ * {@link FlowContext}, and resolve each graph's driver by name.
  *
  * <pre>{@code
  * FlowEngine engine = FlowEngine.create();
  * engine.load(Graph.fromText(json));
  * engine.eval("graphId", FlowContext.of());
  * }</pre>
+ *
+ * <p>The engine is IoC-free: {@code FlowModule} assembles the driver map and
+ * the interceptor list from container contributions and hands them to
+ * {@link #create(Map, List)}. Nothing here can be mutated after
+ * construction — what an evaluation runs is decided once, at startup.</p>
  */
 public interface FlowEngine {
 
     /**
      * Creates an engine with only the built-in default driver. Suitable for
-     * simple standalone use where {@code @beanName} task resolution is not
-     * needed (the default driver has no {@link FlowContainer}). For IoC-based
-     * applications, let {@code FlowModule} build the engine with a proper
-     * container and contributed drivers.
+     * standalone use where {@code @beanName} resolution is not needed (the
+     * default driver has no container). For IoC-based applications, let
+     * {@code FlowModule} build the engine.
      */
     static FlowEngine create() {
-        return new FlowEngineDefault(Map.of("default", FlowDriverDefault.instance()));
+        return new FlowEngineDefault(Map.of("default", FlowDriverDefault.instance()), List.of());
+    }
+
+    static FlowEngine create(Map<String, FlowDriver> drivers) {
+        return create(drivers, List.of());
     }
 
     /**
-     * Creates an engine with the given driver map. Id {@code "default"}
-     * (or a contributed override) is used when a graph has no explicit
-     * driver or {@code driver=""}. {@code FlowModule} uses this entry
-     * point after assembling drivers from contributions.
+     * Creates an engine with the given drivers and interceptors. The id
+     * {@code "default"} (or a contributed override) serves graphs without an
+     * explicit driver. Interceptors run in list order (the extension chain
+     * of the same name is topologically ordered by the container) and wrap
+     * every {@code eval} — including sub-graph calls, which share the run.
      */
-    static FlowEngine create(Map<String, FlowDriver> drivers) {
-        return new FlowEngineDefault(drivers);
+    static FlowEngine create(Map<String, FlowDriver> drivers, List<FlowInterceptor> interceptors) {
+        return new FlowEngineDefault(drivers, interceptors);
     }
 
     // --- driver ---
 
     FlowDriver driver(Graph graph);
 
-    // --- task component ---
-
-    /**
-     * Register a task handler in the marker index for {@code !markerName} resolution.
-     */
-    void register(TaskComponent handler);
-
-    // --- interceptor ---
-
-    void addInterceptor(FlowInterceptor interceptor, int index);
-
-    default void addInterceptor(FlowInterceptor interceptor) {
-        addInterceptor(interceptor, 0);
-    }
-
-    void removeInterceptor(FlowInterceptor interceptor);
-
     // --- graph management ---
-    // GraphSpec is the canonical authoring surface. These overloads let
-    // callers load/eval blueprints directly.
 
     void load(Graph graph);
 
@@ -82,67 +72,48 @@ public interface FlowEngine {
         return graph;
     }
 
-    // --- eval by graphId ---
+    // --- eval ---
 
-    /**
-     * Evaluates a loaded graph.
-     *
-     * @throws FlowException runtime execution errors
-     * @throws IllegalArgumentException configuration errors (e.g. an
-     *         ambiguous {@code !marker} resolution or an unknown driver) —
-     *         intentionally propagated with their original type so callers
-     *         can distinguish misconfiguration from execution failure
-     */
     default void eval(String graphId) throws FlowException {
-        eval(graphId, -1, FlowContext.of());
+        eval(graphOrThrow(graphId), FlowContext.of());
     }
 
     default void eval(String graphId, FlowContext context) throws FlowException {
-        eval(graphId, -1, context);
+        eval(graphOrThrow(graphId), context);
     }
-
-    default void eval(String graphId, int steps, FlowContext context) throws FlowException {
-        Graph graph = graphOrThrow(graphId);
-        eval(graph, steps, context);
-    }
-
-    // --- eval by graph ---
 
     default void eval(Graph graph) throws FlowException {
         eval(graph, FlowContext.of());
     }
 
-    default void eval(Graph graph, FlowContext context) throws FlowException {
-        eval(graph, -1, context);
-    }
-
-    default void eval(Graph graph, int steps, FlowContext context) throws FlowException {
-        // steps: -1 = unlimited (default), 0 = stop before the first node,
-        // n = run at most n nodes.
-        FlowDriver driver = driver(graph);
-        eval(graph, new FlowExchanger(graph, this, driver, context, steps, new AtomicInteger(0)), null);
+    /** Evaluates the graph against a fresh context and returns its data. */
+    default Map<String, Object> evalAndGet(Graph graph) {
+        FlowContext context = FlowContext.of();
+        eval(graph, context);
+        return context.data();
     }
 
     default void eval(GraphSpec blueprint) throws FlowException {
-        eval(blueprint, FlowContext.of());
+        eval(blueprint.create());
     }
 
     default void eval(GraphSpec blueprint, FlowContext context) throws FlowException {
-        eval(blueprint, -1, context);
-    }
-
-    default void eval(GraphSpec blueprint, int steps, FlowContext context) throws FlowException {
-        eval(blueprint.create(), steps, context);
+        eval(blueprint.create(), context);
     }
 
     /**
-     * Returns the marker index for resolving tasks by {@code !markerName}
-     * references. Populated automatically when modules contribute
-     * {@link TaskComponent} instances annotated with {@link FlowMarker}.
+     * Evaluates a loaded graph. A fresh evaluation reaches the graph's END
+     * node or fails: an EXCLUSIVE gateway that matches nothing or a join that
+     * never assembles throws instead of completing silently. A run stopped
+     * on purpose (by a task or interceptor calling {@link FlowContext#stop()})
+     * is a legal early end.
      */
-    FlowMarkerIndex markerIndex();
+    void eval(Graph graph, FlowContext context) throws FlowException;
 
-    // --- internal ---
-
-    void eval(Graph graph, FlowExchanger exchanger, FlowOptions options) throws FlowException;
+    /**
+     * @hidden Continues an in-flight evaluation on another graph — the entry
+     *  {@link FlowExchanger#runGraph} uses so the sub-run shares the parent's
+     *  join state. Applications call {@link #eval(Graph, FlowContext)}.
+     */
+    void eval(Graph graph, FlowExchanger exchanger) throws FlowException;
 }

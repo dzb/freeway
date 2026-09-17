@@ -3,216 +3,123 @@ package com.jujin.freeway.flow;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Per-execution flow exchanger.
+ * The state of one evaluation in flight: which graph and context are being
+ * run, which driver resolves their tasks, and the {@link ExecState} joining
+ * them. Custom drivers and {@code #subgraph} calls receive one of these;
+ * everything on it is the current run, never the definition.
  *
- * <p>Migration notes:
- * <ul>
- *   <li>The execution state, context and step counter shared across sub-graph calls are consolidated into one runtime object instead of being scattered through the graph structure itself.</li>
- *   <li>{@code reverting}, {@code stopped} and {@code interrupted} are only control signals of the current execution; they are not written into the graph definition.</li>
- *   <li>{@code copy()} is provided to reuse the same execution state when switching sub-graphs, but with a different {@link Graph} or {@link FlowContext}.</li>
- * </ul>
- * This keeps the execution state controllable and replayable, and avoids polluting the model layer with runtime control flags.</p>
+ * <p>A {@link #copy(Graph)} switches the graph (and optionally the context)
+ * while keeping the evaluation alive — that is how a sub-graph call joins
+ * the parent's counters and dead-end reporting.</p>
  */
-public class FlowExchanger {
+public final class FlowExchanger {
     private final Graph graph;
     private final FlowEngine engine;
     private final FlowDriver driver;
-    private FlowContext context;
-    private final int steps;
-    private final AtomicInteger stepCount;
-
-    private final ExecState execState;
-    /** Shared recursion depth guard — see {@link FlowEngineDefault#MAX_EXECUTION_DEPTH}. */
-    private final AtomicInteger depth;
-    /** Graphs whose END node was reached in this evaluation. */
-    private final Set<String> graphEnded = ConcurrentHashMap.newKeySet();
-    private volatile boolean interrupted = false;
-    private volatile boolean stopped = false;
-    private volatile boolean reverting = true;
-
-    /**
-     * The raw per-eval {@link FlowOptions} of the current evaluation, set by
-     * {@link FlowEngineDefault#eval}. {@link #runGraph} re-passes it to the
-     * sub-graph eval so per-eval interceptors cover sub-graph nodes too; only
-     * the raw options are stored so the engine-level interceptor list is not
-     * merged twice on nested evals.
-     */
-    private volatile FlowOptions evalOptions;
-
+    private final FlowContext context;
+    final ExecState execState;
     /** True when this exchanger runs a sub-graph (created by {@link #runGraph}). */
     private volatile boolean subgraphEval = false;
+    /** Graphs whose END node was reached in this evaluation. */
+    private final Set<String> graphEnded = ConcurrentHashMap.newKeySet();
 
-    public FlowExchanger(Graph graph, FlowEngine engine, FlowDriver driver, FlowContext context, int steps, AtomicInteger stepCount) {
-        this(graph, engine, driver, context, steps, stepCount, new ExecState(), new AtomicInteger());
+    public FlowExchanger(Graph graph, FlowEngine engine, FlowDriver driver,
+            FlowContext context) {
+        this(graph, engine, driver, context, new ExecState());
     }
 
-    private FlowExchanger(Graph graph, FlowEngine engine, FlowDriver driver, FlowContext context, int steps, AtomicInteger stepCount, ExecState execState, AtomicInteger depth) {
-        Objects.requireNonNull(engine, "engine");
-        Objects.requireNonNull(driver, "driver");
-        Objects.requireNonNull(context, "context");
-        Objects.requireNonNull(execState, "execState");
-
-        this.graph = graph;
-        this.engine = engine;
-        this.driver = driver;
-        this.context = context;
-        this.steps = steps;
-        this.stepCount = stepCount;
-        this.execState = execState;
-        this.depth = depth;
+    FlowExchanger(Graph graph, FlowEngine engine, FlowDriver driver,
+            FlowContext context, ExecState execState) {
+        this.graph = Objects.requireNonNull(graph, "graph");
+        this.engine = Objects.requireNonNull(engine, "engine");
+        this.driver = Objects.requireNonNull(driver, "driver");
+        this.context = Objects.requireNonNull(context, "context");
+        this.execState = Objects.requireNonNull(execState, "execState");
     }
 
+    /** The same evaluation continued on another graph, sharing the run state. */
     public FlowExchanger copy(Graph graphNew) {
-        return new FlowExchanger(graphNew, engine, driver, context, steps, stepCount, execState, depth);
+        return new FlowExchanger(graphNew, engine, driver, context, execState);
     }
 
-    /** Copies this exchanger onto a new graph and a new context (e.g. for a
-     *  sub-graph run with isolated variables), sharing steps, counters and
-     *  recursion depth. */
+    /** The same evaluation continued on another graph and context (e.g. a
+     *  sub-graph run with isolated variables). */
     public FlowExchanger copy(Graph graphNew, FlowContext contextNew) {
-        return new FlowExchanger(graphNew, engine, driver, contextNew, steps, stepCount, execState, depth);
-    }
-
-    /** Enters a node — returns the current recursion depth. */
-    int enterNode() {
-        return depth.incrementAndGet();
-    }
-
-    /** Leaves a node. */
-    void exitNode() {
-        depth.decrementAndGet();
+        return new FlowExchanger(graphNew, engine, driver, contextNew, execState);
     }
 
     public Graph graph() { return graph; }
     public FlowEngine engine() { return engine; }
     public FlowDriver driver() { return driver; }
     public FlowContext context() { return context; }
-    public ExecState execState() { return execState; }
-
-    /** The raw per-eval options of the current evaluation (see {@link FlowEngineDefault#eval}). */
-    public FlowOptions evalOptions() { return evalOptions; }
-
-    /** Sets the raw per-eval options; called by {@link FlowEngineDefault#eval}. */
-    void evalOptions(FlowOptions options) { this.evalOptions = options; }
-
-    /** True when this exchanger runs a sub-graph (created by {@link #runGraph}). */
-    public boolean isSubgraphEval() { return subgraphEval; }
-
-    /** Marks this exchanger as a sub-graph evaluation. */
-    void markSubgraphEval() { this.subgraphEval = true; }
-
-    // --- trace ---
-
-    public void recordNode(Graph graph, Node node) {
-        context.trace().recordNode(graph, node);
-    }
-
-    /** Clears the trace for the current evaluation. */
-    public void recordClear() {
-        context.trace().clear();
-    }
-
-    /** Returns the step budget of this evaluation (-1 = unlimited). */
-    public int steps() {
-        return steps;
-    }
 
     // --- sub-graph ---
 
+    /**
+     * Runs a sub-graph as part of this evaluation: the sub-graph resolves
+     * its own driver, shares this run's join counters and dead-end
+     * reporting, and must reach its END — a sub-graph that stops early is a
+     * {@link FlowException} at the calling node, not a silent success.
+     */
     public void runGraph(Graph graph) {
-        prevStep(); // roll back the step count (sub-graph calls do not count as steps)
-        // Reset the subgraph's trace entry BEFORE evaluation: eval resumes
-        // from the traced node, so a second invocation of the same subgraph
-        // would otherwise replay from its recorded END and silently skip the
-        // body.
-        context.trace().recordNode(graph, null);
-        // Resolve the sub-graph's own driver — don't blindly reuse the parent's driver
-        FlowExchanger subEx = new FlowExchanger(graph, engine,
-            engine.driver(graph), context, steps, stepCount, execState, depth);
-        // Sub-graph evals share the live event bus and trace — mark them so
-        // eval() neither clears the parent's subscriptions nor treats the
-        // (record-reset) subgraph as a fresh run.
+        FlowExchanger subEx = new FlowExchanger(
+            graph, engine, engine.driver(graph), context, execState);
         subEx.markSubgraphEval();
-        // Propagate the parent eval's per-eval options (interceptors) so
-        // sub-graph nodes are covered too; the sub-eval re-merges the
-        // engine-level list exactly once (see FlowEngineDefault.eval).
-        engine.eval(graph, subEx, evalOptions);
-
-        if (!isStopped()) {
-            // Completion is tracked on the exchanger (markEnded), not the
-            // trace: trace may be disabled, and is reset per invocation.
-            if (!subEx.isGraphEnded(graph.id())) {
-                interrupt(); // sub-graph did not end, interrupt the current branch
-            }
+        engine.eval(graph, subEx);
+        if (!isStopped() && !subEx.isGraphEnded(graph.id())) {
+            throw new FlowException(
+                "Sub-graph '" + graph.id() + "' did not reach its END node "
+                    + "(a gateway took no branch, or an interceptor stopped "
+                    + "the sub-run) — the calling flow cannot continue");
         }
-    }
-
-    /** Marks a graph as having reached its END node (see {@link FlowEngineDefault#end_run}). */
-    void markEnded(Graph graph) {
-        graphEnded.add(graph.id());
     }
 
     /**
      * Runs the given node's task through its graph's driver, wrapping any
      * non-{@link FlowException} failure as {@code TASK_FAILED}. Entry point
-     * for custom drivers and node implementations that execute tasks
-     * outside the normal engine dispatch.
+     * for custom drivers that execute tasks outside the normal dispatch.
      */
     public void runTask(Node node, String description) throws FlowException {
         Objects.requireNonNull(node, "node");
         try {
-            engine.driver(node.graph()).handleTask(this, new TaskDesc(node, description));
+            engine.driver(node.graph())
+                .handleTask(this, new TaskDesc(node, description));
         } catch (FlowException e) {
             throw e;
         } catch (Throwable e) {
-            throw new FlowException(FlowException.TASK_FAILED + ": " + node.graph().id() + " / " + node.id(), e);
+            throw new FlowException(
+                FlowException.TASK_FAILED + ": " + node.graph().id() + " / " + node.id(), e);
         }
     }
 
-    /**
-     * True when this evaluation reached the graph's END node. Used instead of
-     * the trace for subgraph completion — the trace may be disabled and is
-     * reset between subgraph invocations.
-     */
-    boolean isGraphEnded(String graphId) {
-        return graphEnded.contains(graphId);
-    }
+    // --- run control ---
 
-    // --- step control ---
-
-    public void prevStep() {
-        if (steps >= 0) stepCount.decrementAndGet();
-    }
-
-    public boolean nextStep(Node node) {
-        if (steps < 0) return true;
-        return stepCount.incrementAndGet() <= steps;
-    }
-
-    // --- stop / interrupt ---
-
-    public boolean isStopped() {
-        return stopped || context.isStopped();
-    }
-
+    /** Ends the run at the next node boundary (intentional early completion). */
     public void stop() {
-        stopped = true;
         context.stopped(true);
     }
 
-    public boolean isInterrupted() { return interrupted; }
+    public boolean isStopped() {
+        return context.isStopped();
+    }
 
-    public void interrupt() { this.interrupted = true; }
+    // --- engine-internal ---
 
-    // --- reverting ---
+    ExecState execState() { return execState; }
 
-    public boolean isReverting() { return reverting; }
+    /** True when this exchanger runs a sub-graph (created by {@link #runGraph}). */
+    boolean isSubgraphEval() { return subgraphEval; }
 
-    public FlowExchanger reverting(boolean reverting) {
-        this.reverting = reverting;
-        return this;
+    void markSubgraphEval() { this.subgraphEval = true; }
+
+    /** Marks a graph as having reached its END node (see the END dispatch). */
+    void markEnded(Graph graph) {
+        graphEnded.add(graph.id());
+    }
+
+    boolean isGraphEnded(String graphId) {
+        return graphEnded.contains(graphId);
     }
 }

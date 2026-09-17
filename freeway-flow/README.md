@@ -1,112 +1,102 @@
 # freeway-flow
 
-轻量级图编排引擎。**v1** 定义格式移植自 [solon-flow](https://github.com/opensolon/solon-flow)；**v2** 格式为 Freeway 原生设计（显式 entry、节点/边分离、编译时校验）——两代格式同由 `GraphSpec` 承载，以 `version=2` 标记区分。
+进程内图编排引擎：加载 DAG，用带条件、网关与分支隔离的语义执行。图格式为
+**Freeway 原生设计**（`version=3`，显式 entry、节点/边分离、构建期全量校验）；引擎语义由
+Freeway 自行定义，不追随上游行为。7 种节点、封闭的任务词汇表、boot 期报错的校验姿态，
+与框架其他模块同一种品味。
 
-## 源项目信息
+> **边界**：这是编排器，不是耐用工作流引擎——不提供跨进程持久化与断点恢复，
+> 执行是同步 in-JVM 的。
 
-| 项 | 值 |
-|---|---|
-| **源项目** | [opensolon/solon-flow](https://github.com/opensolon/solon-flow) |
-| **原始作者** | noear (西东) |
-| **移植版本** | solon-flow 4.0.2（对应 freeway-flow v1 格式） |
-| **源项目许可** | Apache License 2.0 |
-| **源项目活跃期** | 2025-03 ~ 至今 |
+## 来源与许可
 
-> **注意**：以下移植变更是针对 v1 定义格式而言的。v2 格式与此无关——它是 Freeway 原生设计（`GraphSpec` 内 `version=2`）。
-
-## 移植变更
-
-solon-flow 核心引擎对外部库有较多依赖，移植过程对每一处做了裁剪/替换以实现**零新增三方依赖**：
+引擎谱系可追溯至 [opensolon/solon-flow](https://github.com/opensolon/solon-flow) 4.0.2
+（[Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0)）。保留的是节点分类与
+若干遍历不变式；图 schema、任务词汇表、执行模型（迭代前沿行走）、join/loop 语义与校验
+姿态均为 Freeway 重写。零新增三方依赖：
 
 | solon-flow 依赖 | 用途 | freeway-flow 替代 |
 |---|---|---|
-| `snakeyaml` | YAML 图定义解析 | **移除** — 仅支持 JSON |
-| `snack4` (ONode) | JSON 序列化 | `freeway-commons` JsonObject / JsonArray / JsonUtils |
-| `dami2` (DamiBus) | 执行级事件总线 | **自写** `FlowEventBus`（~90行，ConcurrentHashMap + CopyOnWriteArrayList） |
-| `liquor-eval` (Scripts) | 脚本/任务求值 | **移除** — task 仅支持 @bean / #graph / $meta / !marker 四种引用 |
-| `solon-expression` (SnelParser) | 条件表达式解析 | **自写** `ExprEvaluator`（~600行递归下降解析器） |
-| `solon.Utils` / `solon.core.util.Assert` | 工具/断言 | JDK: `Objects.requireNonNull` / `str == null \|\| str.isEmpty()` |
-| `solon.lang.*` | 注解标记 (@Preview 等) | **移除** |
-| `solon.core.util.RankEntity` | 拦截器排序 | `FlowOptions.RankedInterceptor` record |
+| `snakeyaml` | YAML 图定义 | **移除** — 仅支持 JSON |
+| `snack4` (ONode) | JSON 序列化 | `freeway-commons` JsonUtils |
+| `dami2` (DamiBus) | 执行级事件总线 | `FlowEventBus`（~90 行） |
+| `liquor-eval` (Scripts) | 脚本/任务求值 | **移除** — task 仅 `@name` / `#graphId` / 内联组件 |
+| `solon-expression` (SnelParser) | 条件表达式 | `ExprEvaluator`（独立递归下降实现） |
+| `RankEntity` | 拦截器排序 | 容器扩展链（组装期定序，加载后不可变） |
 
-## 保留的能力（与 solon-flow 一致）
+## 节点语义
 
-- **7 种节点类型**：START / END / ACTIVITY / EXCLUSIVE / INCLUSIVE / PARALLEL / LOOP
-- **JSON 定义解析**：`Graph.fromText(json)`，格式与 solon-flow 兼容
-- **条件表达式求值**：`ExprEvaluator` 支持 `>`, `<`, `>=`, `<=`, `==`, `!=`, `&&`, `||`, `!`, 括号，变量路径
-- **拦截器链**：`FlowInterceptor` + `FlowInvocation`，完整责任链 + 节点生命周期回调
-- **事件总线**：`FlowEventBus`，topic 主题式 pub/sub，作用域限定单次执行
-- **PlantUML 导出**：`Graph.toPlantUml()`，完整保留，纯字符串拼接无外部依赖
-- **执行痕迹**：`FlowTrace` + `NodeRecord`，支持暂停/恢复
-- **子图调用**：`#graphId` 嵌套流程
-- **编程构建**：`Graph.create(id, spec -> { ... })` Builder API
+| 类型 | 语义 |
+|---|---|
+| `START` | 入口；沿匹配的边推进 |
+| `END` | 标记图完成；未达 END 且非主动停止的运行会失败 |
+| `ACTIVITY` | 写 `data` → 跑 task → 沿匹配边 and-fan-out |
+| `EXCLUSIVE` | 择一：首个命中的 `when`，否则默认边，否则**死端报错** |
+| `INCLUSIVE` | 先 join（所有前驱分支到达各计数一次）再 run 再 fan |
+| `PARALLEL` | 先 join 再 fork；`join:"merge"`（默认）分支写隔离 + 冲突检测，`"shared"` 显式退回共享 |
+| `LOOP` | `$for`/`$in` 迭代 body（顺序、每次迭代重置体内 join 计数）；无 `$for` 即普通网关 |
 
-## 模块依赖
+## 词汇表（构建期即校验）
 
-```xml
-<dependency>
-    <groupId>com.jujin8.freeway</groupId>
-    <artifactId>freeway-commons</artifactId>  <!-- JSON + 工具 -->
-</dependency>
-<dependency>
-    <groupId>com.jujin8.freeway</groupId>
-    <artifactId>freeway-ioc</artifactId>       <!-- IoC 容器 -->
-</dependency>
-<dependency>
-    <groupId>org.slf4j</groupId>
-    <artifactId>slf4j-api</artifactId>          <!-- 日志 -->
-</dependency>
-```
+- **task**：`@name`（容器按 id 解析 `TaskComponent`/`ConditionComponent`）、`#graphId`（子图，
+  未达 END 即在调用点报错）、内联组件（编程式）。v1/v2 的 `$meta`、`!marker` 已删除：
+  静态值改用节点 `data` 字段，标记匹配用带 id 的 contribute + `@name`——旧写法在
+  **构建期**报错并指路。
+- **when（条件）**：`ExprEvaluator` 表达式（`> < >= <= == != && || !`、括号、`a.b.c` 路径、
+  列表下标），或 `@name` 组件引用。所有表达式在 `create()` 编译，非法表达式启动即失败。
+- **join**：仅 PARALLEL 节点的保留 meta 键，`merge`（缺省）或 `shared`。
 
-**零新增三方依赖。**
-
-## 快速开始（v2 格式，推荐）
+## 快速开始（v3）
 
 ```java
-// 1. 定义图（v2 JSON — 显式entry + 分离的nodes/links）
 String json = """
 {
-  "version": 2,
+  "version": 3,
   "id": "demo", "entry": "s",
   "nodes": [
-    { "id": "s",  "type": "start" },
-    { "id": "gw", "type": "exclusive" },
-    { "id": "high", "type": "activity", "task": "!handler:high" },
-    { "id": "low",  "type": "activity", "task": "!handler:low" },
+    { "id": "s",    "type": "start" },
+    { "id": "gw",   "type": "exclusive" },
+    { "id": "high", "type": "activity", "task": "@handler" },
+    { "id": "low",  "type": "activity", "data": { "verdict": "存档" }, "task": "@handler" },
     { "id": "e",    "type": "end" }
   ],
   "links": [
-    { "from": "s",    "to": "gw" },
-    { "from": "gw",   "to": "high", "when": "score > 80" },
-    { "from": "gw",   "to": "low",  "when": "score <= 80" },
+    { "from": "s",  "to": "gw" },
+    { "from": "gw", "to": "high", "when": "score > 80" },
+    { "from": "gw", "to": "low",  "when": "score <= 80" },
     { "from": "high", "to": "e" },
     { "from": "low",  "to": "e" }
   ]
 }""";
 
-// 2. 构建引擎：!marker 任务必须带标记注册 —— lambda 拿不到 @FlowMarker 注解，
-//    所以走 markerIndex() 的显式标记形式（类实现则直接 engine.register(实例)）
-FlowEngine engine = FlowEngine.create();
-engine.markerIndex().register(
-    (TaskComponent) (ctx, node) -> System.out.println("高分"), Set.of("handler:high"));
-engine.markerIndex().register(
-    (TaskComponent) (ctx, node) -> System.out.println("低分"), Set.of("handler:low"));
+// IoC 装配：任务 = 带 id 的容器绑定，拦截器 = 贡献的扩展（加载期定链，之后不可变）
+App app = Freeway.create(new FlowModule(), binder -> {
+    binder.contribute(TaskComponent.class).add("handler", (ctx, node) ->
+        System.out.println(ctx.get("verdict")));
+    binder.contribute(FlowInterceptor.class).add("audit", new FlowInterceptor() {
+        @Override public void onNodeStart(FlowContext ctx, Node node) {
+            System.out.println("-> " + node.id());
+        }
+    });
+});
 
-// 3. 执行
-Graph graph = Graph.fromText(json);  // v2 格式：version=2 必填，缺了直接报错
+Graph graph = Graph.fromText(json);      // 构建期校验：环/入口/词汇/表达式/join
 FlowContext ctx = FlowContext.of();
 ctx.put("score", 95);
-engine.eval(graph, ctx);  // 输出: 高分
+app.get(FlowEngine.class).eval(graph, ctx);
+
+// 独立使用（无容器）：只支持内联组件与 #子图
+FlowEngine standalone = FlowEngine.create();
 ```
 
-图定义只认 v2：`version` 必须是 `2`，且 `nodes` / `links` 齐备。v1（`layout`）已在 1.5.2 删除，
-`Graph.fromText()` 对它直接抛 `IllegalArgumentException` 并说明缺什么。
+分支隔离：`join: "merge"`（默认）下每个 PARALLEL 分支写入线程本地缓冲，干净结束时合并；
+两个分支改同一键的同一个基值 → 合并报冲突，而不是静默择一。
 
-## 版权声明
+## 模块依赖
+
+`freeway-ioc` + `freeway-commons` + slf4j-api（框架内模块，零新增三方）。
 
 ```
-原始代码版权 (c) 2017-2025 noear.org and authors
-Licensed under the Apache License, Version 2.0
-
-移植适配至 freeway 框架，保留原始许可证条款。
+原始代码版权 (c) 2017-2025 noear.org and authors，
+以 Apache License 2.0 授权；Freeway 重写保留原始许可条款。
 ```

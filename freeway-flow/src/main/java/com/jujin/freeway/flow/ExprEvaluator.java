@@ -63,7 +63,26 @@ public final class ExprEvaluator {
      * Evaluates a condition expression, returning a boolean
      */
     public static boolean evalCondition(String expr, Map<String, Object> context) {
-        if (expr == null || expr.isBlank()) return true;
+        AstNode node = compiled(expr);
+        Object val = node.eval(context);
+        // Top-level expressions must use the same truthiness as operators:
+        // a bare "flag" holding "false" would otherwise be truthy while
+        // "flag && true" is falsy.
+        return toBool(val);
+    }
+
+    /**
+     * Compiles an expression without evaluating it — the graph builder's
+     * boot-time check, so a malformed condition fails at startup instead of
+     * at the first run that happens to route through the branch that carries
+     * it. Compilation primes the same cache {@link #evalCondition} uses.
+     */
+    public static void validate(String expr) {
+        compiled(expr);
+    }
+
+    private static AstNode compiled(String expr) {
+        if (expr == null || expr.isBlank()) return ALWAYS_TRUE;
         String key = expr.trim();
         AstNode node = CACHE.get(key);
         if (node == null) {
@@ -75,14 +94,13 @@ public final class ExprEvaluator {
                 }
             }
         }
-        Object val = node.eval(context);
-        // Top-level expressions must use the same truthiness as operators:
-        // a bare "flag" holding "false" would otherwise be truthy while
-        // "flag && true" is falsy.
-        return toBool(val);
+        return node;
     }
 
     // ======================== AST node types ========================
+
+    /** A blank expression is vacuously true (the caller's default path). */
+    private static final AstNode ALWAYS_TRUE = ctx -> true;
 
     private interface AstNode {
         Object eval(Map<String, Object> ctx);

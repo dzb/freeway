@@ -71,7 +71,7 @@ public class Graph {
 
     public static Graph fromText(String text) {
         // Route through GraphSpec.fromText so the version gate is shared:
-        // only canonical v2 documents (version=2 with nodes+links) load,
+        // only canonical v3 documents (version=3 with nodes+links) load,
         // anything else fails with the same clear error as GraphSpec.
         return GraphSpec.fromText(text).create();
     }

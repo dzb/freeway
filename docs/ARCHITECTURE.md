@@ -86,13 +86,20 @@ freeway-commons         zero deps
   programmatic transactions, built-in pooling, dialect auto-detection from the
   JDBC URL, `DatabaseHub` for multi-datasource. Schema (annotation-driven DDL)
   and Migration (versioned SQL) are complementary evolution paths.
-- **Flow** — graph orchestration ported from solon-flow: 7 node types
+- **Flow** — in-JVM graph orchestration (lineage: solon-flow 4.0.2, Apache 2.0;
+  schema and semantics are freeway-native): 7 node types
   (START/END/ACTIVITY/EXCLUSIVE/INCLUSIVE/PARALLEL/LOOP), JSON definitions via
-  `Graph.fromText(json)`, a hand-written `ExprEvaluator` and `FlowEventBus`,
-  PlantUML export, tracing with pause/resume, subgraph calls (`#graphId`) and
-  interceptor chains. Tasks resolve by prefix — `@bean` (IoC binding id),
-  `#graph` (nested subflow), `$meta` (graph metadata), `!marker`
-  (`@FlowMarker` intersection); the guide's flow section tabulates them. Zero
+  `Graph.fromText(json)` (`version=3`), a hand-written `ExprEvaluator` and
+  `FlowEventBus`, PlantUML export, subgraph calls (`#graphId`), contributed
+  interceptor chains, and an iterative frontier walk (no path-length stack
+  limit). `GraphSpec.create()` is a boot-time gate: cycles, bad references,
+  unknown task vocabulary, non-compiling `when` expressions and bad `join`
+  declarations all fail the build. Branch writes are isolated by a
+  `PARALLEL` node's `join` meta (`merge`, default — with conflict detection —
+  or `shared`). Tasks resolve from a closed vocabulary — `@name` (IoC binding
+  id) or `#graph` (nested subflow) — plus a node's `data` field for static
+  values; there is no marker/`$meta` string syntax. The module runs in-process;
+  it is not a durable workflow engine and offers no pause/resume. Zero
   dependencies beyond commons + ioc.
 
 ## Injection Annotations

@@ -17,6 +17,21 @@ class GraphSpecTest {
         return FlowEngine.create(Map.of("default", driver));
     }
 
+    /** A driver that counts every task execution. */
+    private static FlowDriver countingDriver(AtomicInteger counter) {
+        return new FlowDriver() {
+            @Override
+            public boolean handleCondition(FlowExchanger exchanger, ConditionDesc condition) {
+                return true;
+            }
+
+            @Override
+            public void handleTask(FlowExchanger exchanger, TaskDesc task) {
+                if (!task.isEmpty()) counter.incrementAndGet();
+            }
+        };
+    }
+
     @Test
     void testBlueprintBuildsAndRuns() {
         GraphSpec blueprint = GraphSpec.create("blueprint_v2", bp -> {
@@ -27,7 +42,7 @@ class GraphSpecTest {
             bp.addEnd("end");
         });
 
-        assertEquals(2, blueprint.version());
+        assertEquals(3, blueprint.version());
         assertEquals("start", blueprint.entry());
 
         Graph graph = blueprint.create();
@@ -35,14 +50,7 @@ class GraphSpecTest {
         assertEquals("start", graph.start().id());
 
         AtomicInteger counter = new AtomicInteger();
-        FlowEngine engine = newEngine(FlowDriverDefault.builder()
-                .container(name -> {
-                    if ("counter".equals(name)) {
-                        return (TaskComponent) (ctx, node) -> counter.incrementAndGet();
-                    }
-                    return null;
-                })
-                .build());
+        FlowEngine engine = newEngine(countingDriver(counter));
 
         engine.eval(blueprint, FlowContext.of());
         assertEquals(1, counter.get());
@@ -67,7 +75,7 @@ class GraphSpecTest {
     }
 
     @Test
-    void testV2JsonCanLoadThroughGraphApi() {
+    void testV3JsonCanLoadThroughGraphApi() {
         GraphSpec blueprint = GraphSpec.create("v2_graph", bp -> {
             bp.entry("start");
             bp.addStart("start").linkAdd("task");
@@ -77,7 +85,7 @@ class GraphSpecTest {
 
         String json = blueprint.toJson();
         GraphSpec parsed = GraphSpec.fromText(json);
-        assertEquals(2, parsed.version());
+        assertEquals(3, parsed.version());
         assertEquals("start", parsed.entry());
         assertEquals(3, parsed.nodes().size());
 
@@ -97,13 +105,13 @@ class GraphSpecTest {
         IllegalArgumentException ex = assertThrows(
             IllegalArgumentException.class,
             () -> Graph.fromText(v1));
-        assertTrue(ex.getMessage().contains("v2"),
+        assertTrue(ex.getMessage().contains("v3"),
             "got: " + ex.getMessage());
 
         String missingVersion = "{\"nodes\":[],\"links\":[]}";
         assertThrows(IllegalArgumentException.class, () -> Graph.fromText(missingVersion));
 
-        String missingLinks = "{\"id\":\"g\",\"version\":2,\"nodes\":[]}";
+        String missingLinks = "{\"id\":\"g\",\"version\":3,\"nodes\":[]}";
         assertThrows(IllegalArgumentException.class, () -> Graph.fromText(missingLinks));
 
         // Both entry points report the same gate error for the same document.
@@ -114,12 +122,12 @@ class GraphSpecTest {
     }
 
     @Test
-    void testGraphFromTextAcceptsValidV2Document() {
+    void testGraphFromTextAcceptsValidV3Document() {
         // A canonical v2 document still loads through Graph.fromText.
         String json = """
                 {
                   "id": "via_graph_api",
-                  "version": 2,
+                  "version": 3,
                   "entry": "start",
                   "nodes": [
                     { "id": "start", "type": "START" },
@@ -159,11 +167,11 @@ class GraphSpecTest {
     }
 
     @Test
-    void testBlueprintFromV2JsonReadsCanonicalFields() {
+    void testBlueprintFromV3JsonReadsCanonicalFields() {
         String json = """
                 {
                   "id": "compat",
-                  "version": 2,
+                  "version": 3,
                   "entry": "start",
                   "nodes": [
                     { "id": "start", "type": "start" },
@@ -239,14 +247,7 @@ class GraphSpecTest {
         });
 
         AtomicInteger counter = new AtomicInteger();
-        FlowEngine engine = newEngine(FlowDriverDefault.builder()
-                .container(name -> {
-                    if ("counter".equals(name)) {
-                        return (TaskComponent) (ctx, node) -> counter.incrementAndGet();
-                    }
-                    return null;
-                })
-                .build());
+        FlowEngine engine = newEngine(countingDriver(counter));
 
         engine.load(blueprint);
         assertNotNull(engine.graph("engine_blueprint"));
@@ -377,14 +378,14 @@ class GraphSpecTest {
             spec.addActivity("a").task("@counter");
         });
         String json = bp.toJson();
-        assertTrue(json.contains("\"version\":2"));
+        assertTrue(json.contains("\"version\":3"));
     }
 
     @Test
     void testUnknownNodeTypeRejected() {
         // Regression: "UNKNOWN" passed fromDom and the engine switch silently
         // dropped the node (task never ran, links never traversed).
-        String json = "{\"id\":\"g\",\"version\":2,\"nodes\":["
+        String json = "{\"id\":\"g\",\"version\":3,\"nodes\":["
             + "{\"id\":\"n\",\"type\":\"UNKNOWN\"}],\"links\":[]}";
         IllegalArgumentException ex = assertThrows(
             IllegalArgumentException.class,
@@ -413,7 +414,7 @@ class GraphSpecTest {
     void testNonObjectArrayEntriesRejected() {
         // Regression: scalar entries in nodes/links arrays were silently
         // skipped, building a graph with fewer elements than authored.
-        String json = "{\"id\":\"g\",\"version\":2,"
+        String json = "{\"id\":\"g\",\"version\":3,"
             + "\"nodes\":[42,{\"id\":\"n\",\"type\":\"ACTIVITY\"}],\"links\":[]}";
         IllegalArgumentException ex = assertThrows(
             IllegalArgumentException.class,

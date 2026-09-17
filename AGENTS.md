@@ -34,7 +34,7 @@ adapters (Undertow/Jetty engines, HikariCP, Kafka) live in
 | `freeway-boot` | Launcher, runtime lifecycle, profiles, config cascade (hot reload) | ioc |
 | `freeway-http` | Routing, built-in HTTP engine, WebSocket, SSE | ioc + commons |
 | `freeway-db` | JDBC, ORM, pooling, transactions, migrations | commons (+ ioc, DbModule only) |
-| `freeway-flow` | Graph workflow engine — 7 node types, v2 DAG format, task resolution | ioc + commons |
+| `freeway-flow` | Graph workflow engine — 7 node types, v3 DAG format (boot-validated), task vocabulary, branch isolation | ioc + commons |
 | `freeway-cloud` | Cloud-native foundation — discovery, remote invocation (JDK HttpClient), observability, resilience, health, secrets, storage | ioc + commons + http (+ boot, test) |
 
 No module adds an external dependency beyond SLF4J 2.0.18 (declared explicitly

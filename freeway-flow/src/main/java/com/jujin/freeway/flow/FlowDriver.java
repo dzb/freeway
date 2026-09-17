@@ -3,29 +3,27 @@ package com.jujin.freeway.flow;
 import java.util.concurrent.ExecutorService;
 
 /**
- * Flow driver
+ * Resolves a graph's conditions and tasks and supplies the executor for
+ * PARALLEL fan-out. Custom drivers are contributed to the container
+ * ({@code binder.contribute(FlowDriver.class).add(id, driver)}) and selected
+ * per graph by the {@code driver} field.
  */
 public interface FlowDriver {
 
-    /** Async executor (for PARALLEL node concurrency) */
+    /** Async executor for PARALLEL node fan-out; null = branches run sequentially. */
     default ExecutorService executor() {
         return null;
     }
 
-    /** When a node run starts */
+    /** When a node run starts. */
     default void onNodeStart(FlowExchanger exchanger, Node node) {}
 
-    /** When a node run ends */
+    /** When a node run ends. */
     default void onNodeEnd(FlowExchanger exchanger, Node node) {}
 
-    /** Handles condition evaluation */
+    /** Evaluates a condition reference. */
     boolean handleCondition(FlowExchanger exchanger, ConditionDesc condition) throws Throwable;
 
-    /** Handles a task */
-    default void handleTask(FlowExchanger exchanger, TaskDesc task) throws Throwable {
-        postHandleTask(exchanger, task);
-    }
-
-    /** Post-handles a task */
-    void postHandleTask(FlowExchanger exchanger, TaskDesc task) throws Throwable;
+    /** Executes a task reference. */
+    void handleTask(FlowExchanger exchanger, TaskDesc task) throws Throwable;
 }

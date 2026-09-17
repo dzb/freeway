@@ -24,6 +24,7 @@ public final class NodeSpec {
     final NodeType type;
     String title;
     final Map<String, Object> meta = new LinkedHashMap<>();
+    final Map<String, Object> data = new LinkedHashMap<>();
     final List<PendingLink> pendingLinks = new ArrayList<>();
     String when;
     ConditionComponent whenComponent;
@@ -59,6 +60,15 @@ public final class NodeSpec {
     public NodeSpec metaPut(String key, Object value) {
         if (key != null && !key.isEmpty()) {
             this.meta.put(key, value);
+        }
+        touch();
+        return this;
+    }
+
+    /** Static values this node writes into the context before its task runs. */
+    public NodeSpec data(Map<String, Object> data) {
+        if (data != null && !data.isEmpty()) {
+            this.data.putAll(data);
         }
         touch();
         return this;
@@ -141,6 +151,10 @@ public final class NodeSpec {
 
     public Map<String, Object> meta() {
         return Collections.unmodifiableMap(meta);
+    }
+
+    public Map<String, Object> data() {
+        return Collections.unmodifiableMap(data);
     }
 
     public String when() {

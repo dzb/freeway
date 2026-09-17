@@ -1,22 +1,19 @@
 # freeway-flow 并行分支上下文隔离方案
 
-## 现状(2026-08)
+## 现状(2026-09，引擎再设计后)
 
-当前实现:PARALLEL 分支**共享**同一个 `FlowContext` 与 `ExecState`。
+fork/overlay/join 隔离模型已实现，成为默认语义；schema 见 `freeway-flow/docs/graph-v3.md` 的 `join` 声明。
 
-- 数据区(`FlowContext.data`)是 `ConcurrentHashMap` — 单键读写线程安全。
-- 执行态(`ExecState` 计数/栈)的复合操作已原子化 — 并发分支汇合到同一
-  INCLUSIVE/LOOP 节点时,`peek→count→compare→pop` 在共享栈锁内执行,
-  消除结构性竞态。
-- **仍存在的限制**:并发写同一个 data key 时,最终值依赖线程调度
-  (无事务性);回放/排障在多分支竞争场景下可能不稳定。
-- 下文描述的 fork/overlay/join 完全隔离模型是设计提案,尚未实现。
+- `PARALLEL` 节点缺省 `join: "merge"`：每个分支在 `FlowContext.beginBranch()` 打开的
+  线程本地写缓冲中执行——分支内的读"缓冲优先、父级兜底"，分支互不见半成品；分支干净走完后
+  `merge` 折叠进父层，同一键被两分支基于同一基值写出不同值时，合并以 `FlowException` 报冲突并点名该键
+  (不静默择一)。分支异常中止则整体丢弃其缓冲——半成品不进父级。
+- 显式 `join: "shared"` 退回共享写：无缓冲、无冲突检测，单写者纪律由图自己保证。
+- 执行态(`ExecState` 计数/loop 栈/死端)仍随子图评估共享，但收进引擎私有的 (graph,node) 键空间，
+  custom driver 不再能写入同一字符串袋；`$for` 的 `peek→hasNext→pop` 抢占继续在栈监视器内原子完成。
 
-上述现状在最近的 flow 语义修复(网关死路检测、表达式语义、$for 原子抢占等)
-之后**保持不变**:分支依然共享同一个 `FlowContext` 实例,引擎的
-`FlowEngineDefault.parallel_run_out()` 注释明确将"分支共享同一 FlowContext、
-并发写同一 data key 是已知限制"列为既定行为并引用本文档;数据隔离
-(per-branch overlay / join 合并)仍未实现。
+下文保留当年的设计论证(为何隔离、目标与模型取舍)作为决策轨迹；实现落点为 `FlowContextImpl`
+的 Layer/merge 与 `FlowEngineDefault.runBranch`。
 
 ## 背景
 

@@ -43,8 +43,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | RPC 以 POJO / List / Map 作 handler 参数 | 直接可调用：服务端按声明参数类型重绑定（此前以 `ClassCastException` 出现，且被当作业务异常回报） |
 | RPC 参数个数与导出签名不符 | 派发前判为 `Kind.REJECTED`（400 + reject reason）；此前落到业务异常分类 |
 | singleton holder 经接口注入 `@NotThreadSafe` 实现 | 启动期拒绝（与直接注入具体类同等）：单例代理恰好缓存一个 target，隔一层接口并不洗掉标记 |
+| flow 图 `"version": 2`、`task: "$metaKey"`、`task: "!marker"` | 升到 `3`；静态值写节点 `data` 字段，标记匹配改为带 id 的 contribute + `@name`——旧写法在 `GraphSpec.create()` 报错并指路 |
+| `engine.register(TaskComponent)` / `engine.markerIndex()` / `@FlowMarker` | 删除；任务解析只走 `@name` → `container.get(TaskComponent.class, name)` |
+| `FlowContainer` 适配缝 | 删除；`FlowDriverDefault` 直接持 `Container` |
+| `engine.addInterceptor(i[, index])` / `removeInterceptor` / `FlowOptions.interceptorAdd` / `FlowInvocation` | `FlowInterceptor` 经 `binder.contribute(FlowInterceptor.class)` 贡献，加载成链、之后不可变；`interceptFlow(context, graph, chain)` 收 `FlowChain` |
+| `eval(graph, steps, ctx)` / `recordNode` / `FlowTrace` / `ctx.trace()/enableTrace/lastRecord/lastNodeId/interrupt()` / `FlowContext.exchanger()` | 删除——回放-跳过不是耐用执行；停止用 `ctx.stop()`，早完成合法；序列化 `toJson()` 只用于诊断 |
+| `NodeType.UNKNOWN` / `NodeType.code()` | 删除；解析为全函数，未知类型名当场报错列出合法值 |
 
 行为变化（无需改调用点，但值得知道）：
+
+- flow 执行改为迭代前沿行走：路径长度不再消耗 JVM 栈（实测 20,000 节点链正常运行），
+  `MAX_EXECUTION_DEPTH` 守卫与 `StackOverflowError` 兜底删除；构建期的环检测 DFS 同步改迭代（它此前会在
+  同样的深度上先炸栈）。
+- flow 的构建门禁扩大：所有 `when` 表达式在 `create()` 编译；`join` 键只允许 PARALLEL、取值限
+  `merge`/`shared`；`data` 键非空白。这些过去在运行期才暴露的错误如今 boot 即报。
+- flow PARALLEL 默认 `join: "merge"`：分支写入线程本地缓冲、干净结束时合并、写写冲突报错——共享可变
+  context 从"文档里的道歉"变成图上声明；`shared` 显式退回旧行为。
+- `@graph` 子图未达 END 现在在调用节点抛错，不再静默 interrupt 父流程。
+- flow join 计数、loop 迭代器、死端标记收进 `ExecState` 引擎私有命名空间；custom driver 不再有与引擎
+  monitor 键同池的字符串袋（`vars()`/root 计数器/泛型 `stack()` 等测试外零调用者的面删除）。
 
 - 接口单例代理的稳态方法调用不再争抢 JVM 级 realize 锁：锁只护首次构造与关闭密封，命中缓存即无锁返回——注释里
   的"cached lookups are lock-free"自此为真（实测此前一次无关慢构造可阻塞其它容器已建单例的调用 1.2s）。
@@ -70,6 +87,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **freeway-flow 再设计：从"移植的引擎"到"freeway 的图解释器"（schema 升级 v2→v3）** —
+  模块此前自称"port of solon-flow 4.0.2"，注释把"保持上游行为"当目标；机制层还随身带着独立小框架的
+  配件（自带 DI 缝 `FlowContainer`、自带标记表 `FlowMarkerIndex`、自带拦截器链 `FlowOptions`+可变
+  注册、自带回放-跳过"持久性" `FlowTrace`）。这一轮把所有"自制迷你机制"换成 freeway 已有的答案，
+  只留图解释本身：
+  - **执行**：递归下降改迭代前沿行走；删 `MAX_EXECUTION_DEPTH` 与 `StackOverflowError` 兜底；深度守卫的
+    递归构建期环检测同步迭代化。构建期校验姿态不变式（死端响亮、task_exec 恰一对齐、失败分类）逐条保留并有测试。
+  - **机制归位**：拦截器=贡献的 `Extension<FlowInterceptor>`（加载成链，启动后不可变，删
+    `addInterceptor/removeInterceptor/FlowOptions/FlowInvocation` 与 COW 排序竞态）；`@name` 直接走
+    `container.get(TaskComponent|ConditionComponent, name)`（删 `FlowContainer` 适配缝）；`!marker` 整条删除；
+    `ExecState` 收为引擎私有的 (graph,node) 键空间（删 `vars()`、root 计数器、泛型 `stack()`——均无仓内调用者）；
+    solon 式公共死面 `Node.TAG`、`TaskDesc/ConditionDesc.isNotEmpty`、`ConditionDesc.attachment` 一并删除
+    （上一轮曾以"外部调用者"为由恢复它们；本轮按"兼容不是目标"再删，迁移即 `node.type()` 与 `!desc.isEmpty()`）。
+  - **语义诚实**：pause/resume/`FlowTrace`/`steps`/`reverting`/`interrupt()` 删除（回放-跳过不是耐用执行，
+    demo 与仓内零使用）；子图未达 END 改为在调用点报错；`FlowContext.put(null)` 从静默丢弃改为清除语义，
+    LOOP 的 remove 变通随之删除；`toJson()` 文档改口为诊断用。
+  - **schema v3**：task 词汇表封闭为 `@name`/`#graphId`/内联组件 + 节点 `data` 字段（替 `$meta` 魔法键）；
+    `when` 表达式在 `create()` 编译；`PARALLEL` 节点新增 `join` 声明（`merge` 缺省：分支写隔离+冲突报错，
+    `shared` 显式退回）；`NodeType.UNKNOWN` 哨兵与 `code()` 删除。v1/v2 文档格式与旧词汇命中即构建期报错并指路。
+  - **文档**：`package-info` 与 README 从"移植说明文"改写为语义规格（保留 Apache 2.0 来源标注）；
+    现行 schema 规格落在 `freeway-flow/docs/graph-v3.md`，`graph-v2.md` 标注为历史提案；
+    `migration-notes/assessment/plan` 保留为带日期的轨迹记录。
 - **SymbolSource 收敛为一条链，系统属性成为一个 SymbolProvider（freeway-ioc）** — 此前 SYS tier 在 ioc 内部
   有两个实现，而且语义不同：容器链里是一个 `SymbolProvider`（`order()=TIER_SYS_PROPS`，由
   `SymbolSourceDefault.standard()` 匿名构造），独立来源 `SymbolSource.systemProperties()` 则是另一份扁平实现

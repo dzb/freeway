@@ -8,6 +8,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Deque;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -26,7 +27,7 @@ import org.slf4j.LoggerFactory;
  * of this explicit (V, E) representation.</p>
  */
 public class GraphSpec {
-    public static final int VERSION = 2;
+    public static final int VERSION = 3;
     private static final Logger LOG = LoggerFactory.getLogger(GraphSpec.class);
 
     private final String id;
@@ -246,6 +247,9 @@ public class GraphSpec {
             if (node.task != null && !node.task.isEmpty()) {
                 domNode.put("task", node.task);
             }
+            if (!node.data.isEmpty()) {
+                domNode.put("data", node.data);
+            }
             if (node.taskComponent != null) {
                 throw new IllegalStateException(
                     "Node '" + node.id + "' uses an inline TaskComponent which "
@@ -297,7 +301,7 @@ public class GraphSpec {
         }
 
         throw new IllegalArgumentException(
-            "Expected a v2 graph definition (version=" + VERSION
+            "Expected a v3 graph definition (version=" + VERSION
                 + " with 'nodes' and 'links'), found: "
                 + (version == null ? "no version field" : "version " + version)
                 + (dom.containsKey("nodes") ? "" : ", missing 'nodes'")
@@ -328,16 +332,10 @@ public class GraphSpec {
             String nodeId = requireString(nodeDom, "id", "Node at index " + i);
             String typeStr = requireString(nodeDom, "type", "Node '" + nodeId + "'");
             NodeType nodeType = NodeType.of(typeStr);
-            if (nodeType == NodeType.UNKNOWN) {
-                throw new IllegalArgumentException(
-                    "Unknown node type '" + typeStr + "' for node '" + nodeId
-                        + "'. Valid types: START, END, ACTIVITY, EXCLUSIVE, "
-                        + "INCLUSIVE, PARALLEL, LOOP."
-                );
-            }
             NodeSpec node = blueprint.addNode(nodeId, nodeType);
             node.title(nodeDom.getString("title"));
             node.meta(toMap(nodeDom.getObject("meta")));
+            node.data(toMap(nodeDom.getObject("data")));
             node.when(nodeDom.getString("when"));
             node.task(nodeDom.getString("task"));
         }
@@ -375,6 +373,7 @@ public class GraphSpec {
             NodeSpec nodeBlueprint = blueprint.addNode(node.id(), node.type());
             nodeBlueprint.title(node.title());
             nodeBlueprint.meta(node.metas());
+            nodeBlueprint.data(node.data());
             if (node.when() != null) {
                 if (node.when().component() != null) {
                     nodeBlueprint.when(node.when().component());
@@ -452,7 +451,12 @@ public class GraphSpec {
         //    before entry-candidate resolution.
         validateEntry();
 
-        // 1. Validate all link references resolve
+        // 1. Validate all link references resolve, and index the outgoing
+        //    edges once — cycle detection and the reachability BFS below both
+        //    walk them, and a per-scan re-filter of every link would make
+        //    each O(V·E) for no reason on a graph that is immutable after
+        //    this point anyway.
+        Map<String, List<LinkSpec>> outgoing = new LinkedHashMap<>();
         for (LinkSpec link : links) {
             if (!nodes.containsKey(link.from)) {
                 throw new IllegalStateException(
@@ -464,13 +468,13 @@ public class GraphSpec {
                         "Link references unknown target node '" + link.from
                         + "' -> '" + link.to + "' in graph: " + id);
             }
+            outgoing.computeIfAbsent(link.from, k -> new ArrayList<>()).add(link);
         }
 
-        // 1.5 Reject cycles — a cyclic graph recurses forever at runtime and
-        //     the execution depth guard is a passive backstop, not validation.
-        //     LOOP iteration is driven by the engine's $in loop, never by a
-        //     link back to the loop node, so no cycle is legitimate here.
-        List<String> cycle = findCycle();
+        // 1.5 Reject cycles — a cyclic graph never completes its walk. LOOP
+        //     iteration is driven by the engine's $in loop, never by a link
+        //     back to the loop node, so no cycle is legitimate here.
+        List<String> cycle = findCycle(outgoing);
         if (cycle != null) {
             throw new IllegalStateException(
                 "Cycle detected in graph '" + id + "': " + String.join(" -> ", cycle)
@@ -481,32 +485,56 @@ public class GraphSpec {
 
         // 1.6 Reject duplicate unconditional links: two edges with the same
         //     from+to where at least one carries no condition would execute
-        //     the target node twice (double task execution, double trace
-        //     records). Multi-edges are legitimate only when every edge is
-        //     condition-guarded. The scan checks all pairs regardless of
-        //     declaration order — an unconditional edge first or second both
-        //     double-execute.
-        for (int i = 0; i < links.size(); i++) {
-            LinkSpec a = links.get(i);
-            if (a.when == null || a.when.isEmpty()) {
-                for (int j = 0; j < links.size(); j++) {
-                    if (j == i) {
-                        continue;
-                    }
-                    LinkSpec b = links.get(j);
-                    if (b.from.equals(a.from) && b.to.equals(a.to)) {
-                        throw new IllegalStateException(
-                            "Duplicate unconditional link '" + a.from
-                                + "' -> '" + a.to + "' in graph: " + id
-                                + ". Multiple edges between the same nodes must"
-                                + " carry distinct 'when' conditions."
-                        );
-                    }
+        //     the target node twice (double task execution, double dead-end
+        //     bookkeeping). Multi-edges are legitimate only when every edge
+        //     is condition-guarded. The first unconditional edge claims the
+        //     pair; a second edge over the same pair (conditional either way)
+        //     collides — one hash-set touch per edge, so a 20k-link chain
+        //     validates in linear time.
+        Set<String> unconditionalPairs = new HashSet<>();
+        Set<String> anyPairs = new HashSet<>();
+        for (LinkSpec link : links) {
+            String pair = link.from + '\u0000' + link.to;
+            boolean unconditional = link.when == null || link.when.isEmpty();
+            if (unconditional) {
+                if (!unconditionalPairs.add(pair)) {
+                    throw duplicateUnconditional(link);
+                }
+                if (anyPairs.contains(pair)) {
+                    throw duplicateUnconditional(link);
+                }
+            } else if (unconditionalPairs.contains(pair)) {
+                throw duplicateUnconditional(link);
+            }
+            anyPairs.add(pair);
+        }
+
+        // 1.7 Closed vocabulary, expressions, join declaration and data keys —
+        //     everything that can be known statically is known here, at
+        //     startup: a bad task reference, a malformed condition, a
+        //     misplaced or unknown `join`, or a blank data key fails the
+        //     build instead of surfacing at the first run that happens to
+        //     route through the node.
+        for (NodeSpec node : nodes.values()) {
+            validateTask(node);
+            validateCondition(node.when, node.whenComponent,
+                "Node '" + node.id() + "' when");
+            validateJoin(node);
+            for (String key : node.data.keySet()) {
+                if (key == null || key.isBlank()) {
+                    throw new IllegalStateException(
+                        "Node '" + node.id() + "' in graph '" + id
+                            + "' has a blank data key — data keys are context"
+                            + " keys and must not be blank");
                 }
             }
         }
+        for (LinkSpec link : links) {
+            validateCondition(link.when, link.whenComponent,
+                "Link '" + link.from + "' -> '" + link.to + "' when");
+        }
 
-        // 2. Validate entry — v2 requires exactly one entry point.
+        // 2. Validate entry — v3 requires exactly one entry point.
         //    The entry node keeps its original type in the runtime graph;
         //    execution starts from that node regardless of type.
         String resolvedEntry = resolveEntry();
@@ -547,10 +575,8 @@ public class GraphSpec {
                 if (!bfsOrder.add(nodeId)) {
                     continue;
                 }
-                for (LinkSpec link : links) {
-                    if (link.from.equals(nodeId)) {
-                        queue.addLast(link.to);
-                    }
+                for (LinkSpec link : outgoing.getOrDefault(nodeId, List.of())) {
+                    queue.addLast(link.to);
                 }
             }
         }
@@ -569,41 +595,61 @@ public class GraphSpec {
         return this;
     }
 
-    private List<String> findCycle() {
-        // Three-color DFS: 0 = unvisited, 1 = on current path, 2 = fully explored.
+    private List<String> findCycle(Map<String, List<LinkSpec>> outgoing) {
+        // Iterative three-color DFS — recursion depth here would match the
+        // chain length and blow the stack on a 20k-link path, defeating the
+        // engine's own iterative walk. Each frame is a node plus its child
+        // cursor; the path stack is the current DFS branch, colored 1, and
+        // recolored 2 on unwind.
         Map<String, Integer> state = new LinkedHashMap<>();
         Deque<String> path = new ArrayDeque<>();
-        for (String nodeId : nodes.keySet()) {
-            if (dfsCycle(nodeId, state, path)) {
-                return cycleDescription(path);
+        Deque<java.util.Iterator<LinkSpec>> cursors = new ArrayDeque<>();
+        for (String root : nodes.keySet()) {
+            if (state.getOrDefault(root, 0) == 2) {
+                continue;
             }
+            if (!dfsCycleIterative(root, outgoing, state, path, cursors)) {
+                path.clear();
+                cursors.clear();
+                continue;
+            }
+            return cycleDescription(path);
         }
         return null;
     }
 
-    private boolean dfsCycle(
-        String nodeId,
+    /** Returns true when a back-edge was found; path then holds the DFS branch. */
+    private boolean dfsCycleIterative(
+        String root,
+        Map<String, List<LinkSpec>> outgoing,
         Map<String, Integer> state,
-        Deque<String> path
+        Deque<String> path,
+        Deque<java.util.Iterator<LinkSpec>> cursors
     ) {
-        int s = state.getOrDefault(nodeId, 0);
-        if (s == 2) {
-            return false;
-        }
-        if (s == 1) {
-            // Back-edge: nodeId is already on the current path.
-            path.addLast(nodeId);
-            return true;
-        }
-        state.put(nodeId, 1);
-        path.addLast(nodeId);
-        for (LinkSpec link : links) {
-            if (link.from.equals(nodeId) && dfsCycle(link.to, state, path)) {
+        state.put(root, 1);
+        path.addLast(root);
+        cursors.push(outgoing.getOrDefault(root, List.of()).iterator());
+        while (!cursors.isEmpty()) {
+            java.util.Iterator<LinkSpec> cursor = cursors.peek();
+            if (!cursor.hasNext()) {
+                // Fully explored: unwind this frame.
+                cursors.pop();
+                state.put(path.removeLast(), 2);
+                continue;
+            }
+            String next = cursor.next().to;
+            int s = state.getOrDefault(next, 0);
+            if (s == 2) {
+                continue;                       // already closed
+            }
+            if (s == 1) {                       // back-edge → cycle
+                path.addLast(next);
                 return true;
             }
+            state.put(next, 1);
+            path.addLast(next);
+            cursors.push(outgoing.getOrDefault(next, List.of()).iterator());
         }
-        path.removeLast();
-        state.put(nodeId, 2);
         return false;
     }
 
@@ -619,14 +665,15 @@ public class GraphSpec {
         // Reachable first (BFS order), then unreachable (insertion order) — never
         // silently drop nodes; toMap()/toJson() must round-trip faithfully.
         List<NodeSpec> ordered = new ArrayList<>(nodes.size());
+        Set<String> placed = new HashSet<>();
         if (bfsOrder != null && !bfsOrder.isEmpty()) {
             for (String nodeId : bfsOrder) {
                 NodeSpec node = nodes.get(nodeId);
-                if (node != null) ordered.add(node);
+                if (node != null && placed.add(nodeId)) ordered.add(node);
             }
         }
         for (NodeSpec node : nodes.values()) {
-            if (!ordered.contains(node)) ordered.add(node);
+            if (placed.add(node.id)) ordered.add(node);
         }
         return ordered;
     }
@@ -656,6 +703,80 @@ public class GraphSpec {
                     + "' — entry must name one of the graph's nodes"
             );
         }
+    }
+
+    /**
+     * The v3 task vocabulary: {@code @name}, {@code #graphId} or an inline
+     * component. A {@code $} reference is now the node's data field; a
+     * {@code !} reference is now an {@code @name} with a contributed id —
+     * both fail at build with the migration named, not at first execution.
+     */
+    private void validateTask(NodeSpec node) {
+        String task = node.task;
+        if (task == null || task.isBlank()) {
+            return; // inline component or no task
+        }
+        String t = task.trim();
+        if (t.length() > 1 && (t.startsWith("@") || t.startsWith("#"))) {
+            return;
+        }
+        String hint = "";
+        if (t.startsWith("$")) {
+            hint = " A '$' reference was dropped in v3: static values are"
+                + " the node's 'data' field.";
+        } else if (t.startsWith("!")) {
+            hint = " A '!' reference was dropped in v3: contribute the"
+                + " component with an id and reference it as '@name'.";
+        }
+        throw new IllegalStateException(
+            "Node '" + node.id + "' in graph '" + id + "' has unsupported"
+                + " task '" + task + "'. The vocabulary is '@name', '#graphId'"
+                + " or an inline component." + hint
+        );
+    }
+
+    private void validateCondition(String when, ConditionComponent component, String what) {
+        if (component != null || when == null || when.isBlank()) {
+            return;
+        }
+        String w = when.trim();
+        if (w.startsWith("@") && w.length() > 1) {
+            return; // @name component reference — resolved at run
+        }
+        try {
+            ExprEvaluator.validate(when);
+        } catch (RuntimeException e) {
+            throw new IllegalStateException(
+                what + " expression is invalid in graph '" + id + "': " + e.getMessage(), e);
+        }
+    }
+
+    /** The {@code join} meta is a PARALLEL fork field, merge (default) or shared. */
+    private void validateJoin(NodeSpec node) {
+        Object join = node.meta.get("join");
+        if (join == null) {
+            return;
+        }
+        if (node.type != NodeType.PARALLEL) {
+            throw new IllegalStateException(
+                "Node '" + node.id + "' declares a 'join' meta but is " + node.type
+                    + " — join is a PARALLEL fork field in graph: " + id);
+        }
+        String v = String.valueOf(join);
+        if (!v.equals("merge") && !v.equals("shared")) {
+            throw new IllegalStateException(
+                "PARALLEL node '" + node.id + "' has join '" + v
+                    + "' — expected 'merge' (branch-isolated writes, conflict-checked)"
+                    + " or 'shared' (single-writer); in graph: " + id);
+        }
+    }
+
+    private IllegalStateException duplicateUnconditional(LinkSpec link) {
+        return new IllegalStateException(
+            "Duplicate unconditional link '" + link.from + "' -> '" + link.to
+                + "' in graph: " + id
+                + ". Multiple edges between the same nodes must"
+                + " carry distinct 'when' conditions.");
     }
 
     private static Map<String, Object> toMap(JsonObject obj) {

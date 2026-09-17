@@ -1,20 +1,15 @@
 package com.jujin.freeway.flow;
 
-import com.jujin.freeway.flow.internal.Stepper;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.Stack;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicReference;
@@ -22,51 +17,57 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * The default {@link FlowEngine} implementation — the engine returned by
- * {@link FlowEngine#create()} and bound as a singleton by
- * {@link FlowModule}.
+ * The default {@link FlowEngine}: an iterative interpreter of the v3 DAG.
  *
- * <p>Migration notes:
+ * <p>Each evaluation walks a frontier (an explicit work stack) from the
+ * graph's START: a node runs, its matched successors join the frontier, and
+ * the walk repeats. Nothing recurses per node — a 10,000-node chain costs no
+ * more JVM stack than a 10-node one — and nesting exists only where the
+ * author created it (loop iterations, sequential parallel branches,
+ * sub-graph calls), never as an artifact of path length.</p>
+ *
+ * <p>The seven node semantics, each pinned by {@code FlowEngineTest}:
  * <ul>
- *   <li>Node traversal, conditional branching, sub-graph calls and interceptor-chain logic are preserved, but execution-state control is explicitly consolidated within the engine instance.</li>
- *   <li>Drivers are injected via {@code Map<String, FlowDriver>} and matched by the graph's driver name (null/"" → "default").</li>
- *   <li>Pause, stop and revert flags belong to a single execution's state, enabling resume and continued execution after brief interruptions.</li>
+ *   <li><b>START</b> — entry; fires its hooks and advances along matched links.</li>
+ *   <li><b>END</b> — marks the graph as completed; a run without it that was
+ *       not stopped on purpose fails the evaluation.</li>
+ *   <li><b>ACTIVITY</b> — writes its {@code data}, runs its task, fans out.</li>
+ *   <li><b>EXCLUSIVE</b> — exactly one branch: first matching condition, else
+ *       the default link; matching nothing is a dead end, reported loudly.</li>
+ *   <li><b>INCLUSIVE</b> — join then fan: activates once every arriving
+ *       branch has counted in, then routes all matching links.</li>
+ *   <li><b>PARALLEL</b> — join then fork: branches run on the driver's
+ *       executor (or inline without one); {@code join: "merge"} (default)
+ *       isolates each branch's writes and merges them with conflict
+ *       detection, {@code join: "shared"} opts out.</li>
+ *   <li><b>LOOP</b> — with {@code $for}/{@code $in} it iterates its body
+ *       sequentially per item, re-arming body joins each iteration; without
+ *       {@code $for} it is a plain activity gateway.</li>
  * </ul>
- * This keeps the ported engine's original behavior while satisfying Freeway's explicit assembly model.</p>
+ * Failure taxonomy is deliberate: configuration errors (unknown graph, bad
+ * reference, ambiguous component) propagate as {@link IllegalArgumentException}
+ * or {@link IllegalStateException}; execution failures surface as
+ * {@link FlowException}.</p>
  */
-public class FlowEngineDefault implements FlowEngine {
+public final class FlowEngineDefault implements FlowEngine {
 
     private static final Logger LOG = LoggerFactory.getLogger(FlowEngineDefault.class);
 
     /**
-     * Maximum node recursion depth during evaluation. The executor walks the
-     * graph recursively (one frame per node), so pathologically deep chains
-     * could exhaust the JVM stack. This limit fails fast with a clear error;
-     * real-world flows rarely exceed a few hundred nodes. Deeper graphs should
-     * be restructured or evaluated iteratively.
-     */
-    static final int MAX_EXECUTION_DEPTH = 1000;
-
-    /**
-     * Upper bound for LOOP node iterations driven by {@code $in}. Iterations
-     * run sequentially inside a single frame, so the recursion depth guard
-     * offers no protection against an oversized or unbounded collection.
+     * Upper bound for LOOP iterations driven by {@code $in}: iterations run
+     * sequentially, so a misconfigured or unbounded collection would otherwise
+     * spin here forever.
      */
     static final int MAX_LOOP_ITERATIONS = 100_000;
 
-    protected final Map<String, Graph> graphMap;
-    protected final Map<String, FlowDriver> drivers;
-    protected final FlowMarkerIndex markerIndex = new FlowMarkerIndex();
-    protected final List<FlowOptions.RankedInterceptor> interceptorList;
+    private final Map<String, Graph> graphMap = new ConcurrentHashMap<>();
+    private final Map<String, FlowDriver> drivers;
+    private final List<FlowInterceptor> interceptors;
 
-    public FlowEngineDefault(Map<String, FlowDriver> drivers) {
-        this.drivers = new HashMap<>(Objects.requireNonNull(drivers, "drivers"));
-        // Concurrent: load()/unload() may run while other threads evaluate.
-        this.graphMap = new ConcurrentHashMap<>();
-        // Copy-on-write: addInterceptor/removeInterceptor may run while eval
-        // snapshots the list (plain ArrayList would CME or publish a
-        // partially-sorted list).
-        this.interceptorList = new CopyOnWriteArrayList<>();
+    public FlowEngineDefault(Map<String, FlowDriver> drivers,
+            List<FlowInterceptor> interceptors) {
+        this.drivers = Map.copyOf(Objects.requireNonNull(drivers, "drivers"));
+        this.interceptors = List.copyOf(Objects.requireNonNull(interceptors, "interceptors"));
     }
 
     @Override
@@ -84,32 +85,7 @@ public class FlowEngineDefault implements FlowEngine {
         return driver;
     }
 
-    @Override
-    public void register(TaskComponent handler) {
-        if (handler != null) {
-            markerIndex.register(handler);
-        }
-    }
-
-    @Override
-    public FlowMarkerIndex markerIndex() {
-        return markerIndex;
-    }
-
-    // --- interceptor ---
-
-    @Override
-    public void addInterceptor(FlowInterceptor interceptor, int index) {
-        interceptorList.add(new FlowOptions.RankedInterceptor(interceptor, index));
-        if (!interceptorList.isEmpty()) Collections.sort(interceptorList);
-    }
-
-    @Override
-    public void removeInterceptor(FlowInterceptor interceptor) {
-        interceptorList.removeIf(r -> r.interceptor() == interceptor);
-    }
-
-    // --- graph ---
+    // --- graph management ---
 
     @Override
     public void load(Graph graph) {
@@ -117,10 +93,9 @@ public class FlowEngineDefault implements FlowEngine {
         if (id == null || id.isBlank()) {
             throw new IllegalArgumentException("Graph id must not be blank");
         }
-        if (graphMap.containsKey(id)) {
+        if (graphMap.putIfAbsent(id, graph) != null) {
             throw new IllegalArgumentException("Graph already loaded: " + id);
         }
-        graphMap.put(id, graph);
     }
 
     @Override
@@ -128,142 +103,243 @@ public class FlowEngineDefault implements FlowEngine {
 
     @Override
     public Collection<Graph> graphs() {
-        // A snapshot, like FlowTrace/FlowMarkerIndex return: a live view would
-        // let a caller's iteration see graphs load/unload mid-flight.
+        // A snapshot: a live view would let a caller's iteration see graphs
+        // load/unload mid-flight.
         return List.copyOf(graphMap.values());
     }
 
     @Override
     public Graph graph(String graphId) { return graphMap.get(graphId); }
 
-    // ==================== core eval ====================
+    // --- eval ---
 
     @Override
-    public void eval(Graph graph, FlowExchanger exchanger, FlowOptions options) throws FlowException {
-        Node lastNode = exchanger.context().trace().lastNode(graph);
-        FlowExchanger bak = exchanger.context().exchanger();
+    public void eval(Graph graph, FlowContext context) throws FlowException {
+        Objects.requireNonNull(context, "context");
+        // A fresh top-level run owns its context: a reused one must not carry
+        // a previous run's stop flag or subscriptions into it.
+        context.stopped(false);
+        FlowExchanger exchanger = new FlowExchanger(graph, this, driver(graph), context);
+        eval(graph, exchanger);
+    }
 
-        // Propagate the caller's per-eval options to sub-graph calls:
-        // runGraph() reads this and re-passes it, so per-eval interceptors
-        // (interceptFlow / onNodeStart / onNodeEnd) cover sub-graph nodes too.
-        // Only the raw options are stored — the engine-level interceptor list
-        // is merged per eval below, so it is never added twice on nested evals.
-        exchanger.evalOptions(options);
-
-        // A FRESH run (the trace holds no record for this graph) starts with
-        // a clean event bus: a reused FlowContext must not keep firing stale
-        // subscriptions from a paused/interrupted run of another graph (their
-        // closures capture the old execution). Resuming the same graph keeps
-        // its trace record and therefore its subscriptions; sub-graph evals
-        // share the live bus and must never clear it mid-run.
-        if (exchanger.context().trace().lastRecord(graph.id()) == null
-                && !exchanger.isSubgraphEval()) {
+    @Override
+    public void eval(Graph graph, FlowExchanger exchanger) throws FlowException {
+        if (!exchanger.isSubgraphEval()) {
             exchanger.context().eventBus().clear();
         }
+        FlowInterceptor.FlowChain walk = () -> this.walk(exchanger, graph.start());
+        runChain(0, exchanger.context(), graph, walk);
 
-        // Defensive copy — never mutate the caller's FlowOptions instance
-        FlowOptions opts = new FlowOptions();
-        if (options != null) {
-            opts.interceptorAdd(options.interceptorList());
-        }
-        opts.interceptorAdd(interceptorList);
-
-        try {
-            exchanger.context().exchanger(exchanger);
-            exchanger.context().stopped(false);
-            new FlowInvocation(exchanger, opts, lastNode, this::evalDo).invoke();
-            // Completed (non-stopped, non-interrupted) evals release
-            // flow-scoped event subscriptions so a reused FlowContext does
-            // not accumulate stale subscribers across runs. Paused and
-            // interrupted evals keep theirs — the run continues on resume.
-            if (!exchanger.isStopped() && !exchanger.isInterrupted()) {
-                exchanger.context().eventBus().clear();
-                // A gateway dead end (EXCLUSIVE with no match/default, or a
-                // join that never received all its branches) must not report
-                // success: the graph never reached its END node. Stopped and
-                // interrupted runs are exempt — stopping is intentional and
-                // an interceptor-blocked run is not a dead end.
-                ExecState.DeadEnd deadEnd = exchanger.execState().deadEnd();
-                if (deadEnd != null) {
-                    throw new FlowException(
-                        "Graph '" + graph.id() + "' did not complete: dead end at node '"
-                            + deadEnd.nodeId() + "' in graph '" + deadEnd.graphId()
-                            + "' (an EXCLUSIVE node matched no condition/default link, "
-                            + "or a join gateway never received all its incoming branches)"
-                    );
-                }
-            }
-            // Resume replay walks from START with tasks skipped until the
-            // traced node is reached. If gateway conditions changed since the
-            // partial run, the walk may never reach it — silently returning
-            // success with every task skipped would be worse than failing.
-            // Only a genuinely interrupted run (trace holds a non-END node)
-            // counts as resume: a fresh eval whose flow was blocked by an
-            // interceptor legitimately ends with tasks never started.
-            NodeRecord last = exchanger.context().trace().lastRecord(graph.id());
-            if (last != null && !last.isEnd()
-                    && !exchanger.isStopped() && exchanger.isReverting()) {
+        // A gateway dead end (EXCLUSIVE with no match/default, or a join that
+        // never received all its branches) must not report success: the graph
+        // never reached its END node. Stopped runs are exempt — stopping is
+        // intentional. The check also covers a no-op chain: an interceptor
+        // that never proceeds leaves the graph un-run, which is indistinguish-
+        // able from a veto and therefore legal.
+        if (!exchanger.isStopped()) {
+            ExecState.DeadEnd deadEnd = exchanger.execState().deadEnd();
+            if (deadEnd != null) {
                 throw new FlowException(
-                    "Unable to resume graph '" + graph.id()
-                        + "': the resume point was not reached during replay "
-                        + "(a gateway condition may have changed since the "
-                        + "interrupted run)"
+                    "Graph '" + graph.id() + "' did not complete: dead end at node '"
+                        + deadEnd.nodeId() + "' in graph '" + deadEnd.graphId()
+                        + "' (an EXCLUSIVE node matched no condition/default link, "
+                        + "or a join gateway never received all its incoming branches)"
                 );
             }
-        } catch (StackOverflowError e) {
-            // Safety net for recursion the depth guard cannot see (e.g. a
-            // user TaskComponent recursing) — surface it as a FlowException
-            // instead of crashing the thread with an Error.
-            throw new FlowException(
-                "Graph execution exceeded the JVM stack depth ("
-                    + graph.id() + "); check for cycles or excessive nesting",
-                e
-            );
-        } finally {
-            exchanger.context().exchanger(bak);
+            // Completed run: drop flow-scoped subscriptions so a reused
+            // context cannot carry this run's subscribers into the next.
+            exchanger.context().eventBus().clear();
         }
     }
 
-    protected void evalDo(FlowInvocation inv, FlowOptions options) throws FlowException {
-        node_run(inv.exchanger(), options, inv.startNode().graph().start(), inv.startNode());
+    private void runChain(int index, FlowContext context, Graph graph,
+            FlowInterceptor.FlowChain leaf) throws FlowException {
+        if (index >= interceptors.size()) {
+            leaf.proceed();
+            return;
+        }
+        interceptors.get(index).interceptFlow(
+            context, graph, () -> runChain(index + 1, context, graph, leaf));
     }
 
-    // ==================== lifecycle hooks ====================
+    // --- the frontier walk ---
 
-    protected boolean onNodeStart(FlowExchanger exchanger, FlowOptions options, Node node) {
-        return nodeHook(exchanger, options, node, true);
-    }
-
-    protected boolean onNodeEnd(FlowExchanger exchanger, FlowOptions options, Node node) {
-        return nodeHook(exchanger, options, node, false);
-    }
-
-    /** Shared body of {@link #onNodeStart} / {@link #onNodeEnd} — they differ only in which hook is invoked. */
-    private boolean nodeHook(FlowExchanger exchanger, FlowOptions options, Node node, boolean start) {
-        if (exchanger.isReverting()) return true;
-
-        if (start) {
-            for (var ri : options.interceptorList()) {
-                ri.interceptor().onNodeStart(exchanger.context(), node);
+    private void walk(FlowExchanger exchanger, Node entry) throws FlowException {
+        ArrayDeque<Node> frontier = new ArrayDeque<>();
+        if (entry != null) {
+            frontier.push(entry);
+        }
+        while (!frontier.isEmpty()) {
+            Node node = frontier.pop();
+            if (exchanger.isStopped()) {
+                return;
             }
-            exchanger.driver().onNodeStart(exchanger, node);
+            switch (node.type()) {
+                case START -> {
+                    if (nodeHooks(exchanger, node)) fanOut(exchanger, node, frontier);
+                }
+                case END -> {
+                    if (onNodeStart(exchanger, node)) {
+                        exchanger.markEnded(node.graph());
+                        onNodeEnd(exchanger, node);
+                    }
+                }
+                case ACTIVITY -> {
+                    if (taskExec(exchanger, node)) fanOut(exchanger, node, frontier);
+                }
+                case EXCLUSIVE -> {
+                    if (taskExec(exchanger, node)) exclusiveOut(exchanger, node, frontier);
+                }
+                case INCLUSIVE -> {
+                    if (joinArrived(exchanger, node) && taskExec(exchanger, node)) {
+                        fanOut(exchanger, node, frontier);
+                    }
+                }
+                case PARALLEL -> {
+                    if (joinArrived(exchanger, node) && taskExec(exchanger, node)) {
+                        parallelOut(exchanger, node);
+                    }
+                }
+                case LOOP -> loopRun(exchanger, node, frontier);
+            }
+        }
+    }
+
+    /** START/END lifecycle: the hook pair only, no task, no condition. */
+    private boolean nodeHooks(FlowExchanger exchanger, Node node) {
+        if (!onNodeStart(exchanger, node)) return false;
+        return onNodeEnd(exchanger, node);
+    }
+
+    /** And-fan-out: every link whose condition matches joins the frontier, in link order. */
+    private void fanOut(FlowExchanger exchanger, Node node, ArrayDeque<Node> frontier)
+            throws FlowException {
+        List<Node> matched = new ArrayList<>();
+        for (Link link : node.nextLinks()) {
+            if (conditionTest(exchanger, link.when(), true)) {
+                matched.add(link.nextNode());
+            }
+        }
+        // Reverse push: the frontier pops in declared link order.
+        for (int i = matched.size() - 1; i >= 0; i--) {
+            frontier.push(matched.get(i));
+        }
+    }
+
+    /** Xor-fan-out: first matching link wins; else the default; else dead end. */
+    private void exclusiveOut(FlowExchanger exchanger, Node node, ArrayDeque<Node> frontier)
+            throws FlowException {
+        Link defLine = null;
+        for (Link link : node.nextLinks()) {
+            if (link.when().isEmpty()) {
+                if (defLine != null) {
+                    LOG.warn(
+                        "EXCLUSIVE node '{}/{}' has multiple default (unconditional) links — using the last one",
+                        node.graph().id(), node.id()
+                    );
+                }
+                defLine = link;
+            } else if (conditionTest(exchanger, link.when(), false)) {
+                frontier.push(link.nextNode());
+                return;
+            }
+        }
+        if (defLine != null) {
+            frontier.push(defLine.nextNode());
         } else {
-            for (var ri : options.interceptorList()) {
-                ri.interceptor().onNodeEnd(exchanger.context(), node);
-            }
-            exchanger.driver().onNodeEnd(exchanger, node);
+            LOG.warn(
+                "EXCLUSIVE node '{}/{}' matched no condition and has no default link — execution stops at this node",
+                node.graph().id(), node.id()
+            );
+            markDeadEnd(exchanger, node);
         }
-
-        if (exchanger.isStopped()) return false;
-        if (exchanger.isInterrupted()) {
-            return false;
-        }
-        return true;
     }
 
-    // ==================== condition / task ====================
+    /**
+     * Join bookkeeping shared by INCLUSIVE and PARALLEL: every incoming
+     * branch counts in, and the gateway activates exactly on the arrival
+     * that completes it — earlier arrivals are provisional dead ends (cleared
+     * on activation) so a run that completes without full arrival fails
+     * loudly instead of silently. The counter re-arms at activation so a
+     * fork-join inside a LOOP body works again next iteration.
+     */
+    private boolean joinArrived(FlowExchanger exchanger, Node node) {
+        int expected = node.prevLinks().size();
+        int arrived = exchanger.execState().countIncr(node.graph(), node.id());
+        if (arrived >= expected) {
+            exchanger.execState().countSet(node.graph(), node.id(), 0);
+            exchanger.execState().deadEndClear(node.graph(), node.id());
+            return true;
+        }
+        markDeadEnd(exchanger, node);
+        return false;
+    }
 
-    protected boolean condition_test(FlowExchanger exchanger, ConditionDesc condition, boolean def) throws FlowException {
+    private void markDeadEnd(FlowExchanger exchanger, Node node) {
+        exchanger.execState().deadEnd(node.graph(), node.id());
+    }
+
+    /** Task lifecycle: hooks around the node's condition-gated data + task, exactly-one-end. */
+    private boolean taskExec(FlowExchanger exchanger, Node node) throws FlowException {
+        boolean ended = false;
+        try {
+            // onNodeStart runs inside the try so the pairing below is
+            // unconditional: whether it succeeds, returns false (stopped) or
+            // throws, onNodeEnd is invoked exactly once — otherwise
+            // interceptors and drivers maintaining per-node state (e.g. a
+            // nesting stack) leak a start without an end.
+            if (!onNodeStart(exchanger, node)) return false;
+
+            if (conditionTest(exchanger, node.when(), true)) {
+                if (!node.data().isEmpty()) {
+                    exchanger.context().putAll(node.data());
+                }
+                try {
+                    exchanger.driver().handleTask(exchanger, node.task());
+                } catch (FlowException e) {
+                    throw e;
+                } catch (IllegalStateException | IllegalArgumentException e) {
+                    throw e; // configuration errors — preserve original type
+                } catch (Throwable e) {
+                    throw new FlowException(
+                        FlowException.TASK_FAILED + ": " + node.graph().id() + " / " + node.id(), e);
+                }
+            }
+
+            if (exchanger.isStopped()) return false;
+            ended = true;
+            return onNodeEnd(exchanger, node);
+        } finally {
+            if (!ended) {
+                try {
+                    onNodeEnd(exchanger, node);
+                } catch (Exception ex) {
+                    LOG.warn("onNodeEnd failed after task failure at {}/{}",
+                        node.graph().id(), node.id(), ex);
+                }
+            }
+        }
+    }
+
+    private boolean onNodeStart(FlowExchanger exchanger, Node node) {
+        for (FlowInterceptor interceptor : interceptors) {
+            interceptor.onNodeStart(exchanger.context(), node);
+        }
+        exchanger.driver().onNodeStart(exchanger, node);
+        return !exchanger.isStopped();
+    }
+
+    private boolean onNodeEnd(FlowExchanger exchanger, Node node) {
+        for (FlowInterceptor interceptor : interceptors) {
+            interceptor.onNodeEnd(exchanger.context(), node);
+        }
+        exchanger.driver().onNodeEnd(exchanger, node);
+        return !exchanger.isStopped();
+    }
+
+    private boolean conditionTest(FlowExchanger exchanger, ConditionDesc condition, boolean def)
+            throws FlowException {
         if (condition.isEmpty()) return def;
         try {
             return exchanger.driver().handleCondition(exchanger, condition);
@@ -272,393 +348,154 @@ public class FlowEngineDefault implements FlowEngine {
         } catch (IllegalStateException | IllegalArgumentException e) {
             throw e; // configuration errors — preserve original type
         } catch (Throwable e) {
-            throw new FlowException("The condition handle failed: " + condition.graph().id() + " / " + condition.description(), e);
+            throw new FlowException("The condition handle failed: "
+                + condition.graph().id() + " / " + condition.description(), e);
         }
     }
 
-    protected boolean task_exec(FlowExchanger exchanger, FlowOptions options, Node node) throws FlowException {
-        if (exchanger.isReverting()) return true;
+    // --- PARALLEL ---
 
-        boolean ended = false;
+    private void parallelOut(FlowExchanger exchanger, Node node) throws FlowException {
+        List<Node> branches = node.nextNodes();
+        if (exchanger.driver().executor() == null || branches.size() < 2) {
+            // No executor (or nothing to overlap): branches run inline, each
+            // still isolated and merged in order.
+            for (Node branch : branches) {
+                runBranch(exchanger, node, branch);
+            }
+            return;
+        }
+        // NESTED PARALLEL HAZARD: the join awaits on the calling thread. A
+        // fixed-size pool deadlocks when graphs nest PARALLEL nodes (outer
+        // branches occupy all workers while inner branches sit queued). Use a
+        // cached/unbounded executor, or size the pool >= worst-case concurrent
+        // branches.
+        CountDownLatch latch = new CountDownLatch(branches.size());
+        // First failure wins (CAS): deterministic error reporting, and the
+        // fast-path bail below lets queued branches skip work early.
+        AtomicReference<Throwable> errorRef = new AtomicReference<>();
+        for (Node branch : branches) {
+            try {
+                exchanger.driver().executor().execute(() -> {
+                    try {
+                        if (errorRef.get() != null) return;
+                        runBranch(exchanger, node, branch);
+                    } catch (Throwable ex) {
+                        errorRef.compareAndSet(null, ex);
+                    } finally {
+                        latch.countDown();
+                    }
+                });
+            } catch (RejectedExecutionException rejected) {
+                // Executor no longer accepting work (shutting down): record
+                // and release this branch's latch slot so await() cannot hang
+                // on work that will never be scheduled.
+                errorRef.compareAndSet(null, rejected);
+                latch.countDown();
+            }
+        }
         try {
-            // onNodeStart runs inside the try so the pairing below is
-            // unconditional: whether it succeeds, returns false (stopped /
-            // interrupted) or throws, onNodeEnd is invoked exactly once for
-            // this node — otherwise interceptors/drivers maintaining per-node
-            // state (e.g. a nesting stack) leak a start without an end.
-            if (!onNodeStart(exchanger, options, node)) return false;
-
-            if (condition_test(exchanger, node.when(), true)) {
-                try {
-                    exchanger.driver().handleTask(exchanger, node.task());
-                } catch (FlowException e) {
-                    throw e;
-                } catch (IllegalStateException | IllegalArgumentException e) {
-                    throw e; // configuration errors — preserve original type
-                } catch (Throwable e) {
-                    throw new FlowException(FlowException.TASK_FAILED + ": " + node.graph().id() + " / " + node.id(), e);
-                }
+            latch.await();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new FlowException("Parallel execution interrupted", e);
+        }
+        Throwable ex = errorRef.get();
+        if (ex != null) {
+            // Match the inline path's exception-type contract: configuration
+            // errors stay distinguishable from execution failures.
+            if (ex instanceof FlowException fe) throw fe;
+            if (ex instanceof IllegalStateException || ex instanceof IllegalArgumentException) {
+                throw (RuntimeException) ex;
             }
-
-            if (exchanger.isStopped()) return false;
-            if (exchanger.isInterrupted()) return false;
-
-            // Mark BEFORE invoking so a throwing onNodeEnd is not re-invoked
-            // by the failure path below.
-            ended = true;
-            return onNodeEnd(exchanger, options, node);
-        } finally {
-            // Failure path: every onNodeStart must be paired with onNodeEnd,
-            // otherwise interceptors/drivers maintaining per-node state
-            // (e.g. a nesting stack) leak on the first exception. The end
-            // hook failure is logged, never masking the original exception.
-            if (!ended) {
-                try {
-                    onNodeEnd(exchanger, options, node);
-                } catch (Exception ex) {
-                    LOG.warn(
-                        "onNodeEnd failed after task failure at {}/{}",
-                        node.graph().id(), node.id(), ex
-                    );
-                }
-            }
+            throw new FlowException(ex);
         }
     }
 
-    // ==================== dispatcher ====================
-
-    protected void node_run(FlowExchanger exchanger, FlowOptions options, Node node, Node startNode) throws FlowException {
-        if (node == null) return;
-        int depth = exchanger.enterNode();
-        try {
-            if (depth > MAX_EXECUTION_DEPTH) {
-                throw new FlowException(
-                    "Flow execution depth exceeded (max " + MAX_EXECUTION_DEPTH
-                        + " nodes) at graph '" + node.graph().id()
-                        + "' / node '" + node.id()
-                        + "' — check for cycles or an excessively long chain"
-                );
-            }
-            nodeRunBody(exchanger, options, node, startNode);
-        } finally {
-            exchanger.exitNode();
+    /**
+     * One branch of a PARALLEL fork. Unless the fork declares
+     * {@code join: "shared"}, the branch runs over a thread-local write
+     * buffer and merges into the parent on clean completion — concurrent
+     * branches then cannot race on a key, and a genuine write-write conflict
+     * fails the run with both values named. A branch that stopped or failed
+     * contributes nothing (its partial writes are discarded with it).
+     */
+    private void runBranch(FlowExchanger exchanger, Node fork, Node branch) throws FlowException {
+        if ("shared".equals(fork.metaAsString("join"))) {
+            walk(exchanger, branch);
+            return;
         }
+        Runnable merge = exchanger.context().beginBranch();
+        // A throwing walk never reaches the merger: an aborted branch
+        // contributes nothing, its partial writes discarded with it.
+        walk(exchanger, branch);
+        merge.run();
     }
 
-    /** The recursive traversal body — kept separate so the depth guard wraps every entry. */
-    private void nodeRunBody(FlowExchanger exchanger, FlowOptions options, Node node, Node startNode) throws FlowException {
-        if (exchanger.isStopped()) return;
-        // interrupt() is global for the run: once set it stops every branch at
-        // its next node boundary. Deliberately NOT cleared here — clearing on
-        // first observation made which branches stop scheduling-dependent.
-        if (exchanger.isInterrupted()) {
+    // --- LOOP ---
+
+    private void loopRun(FlowExchanger exchanger, Node node, ArrayDeque<Node> frontier)
+            throws FlowException {
+        String forKey = node.metaAsString("$for");
+        if (forKey == null) {
+            // No $in/$for pair: a plain activity gateway (iteration is undefined).
+            if (taskExec(exchanger, node)) fanOut(exchanger, node, frontier);
             return;
         }
 
-        if (exchanger.isReverting()) {
-            if (node.id().equals(startNode.id())
-                    && node.graph().id().equals(startNode.graph().id())) {
-                exchanger.reverting(false);
-            }
-        } else {
-            exchanger.recordNode(node.graph(), node);
-        }
-
-        if (!exchanger.isReverting()) {
-            if (!exchanger.nextStep(node)) {
-                exchanger.stop();
-                return;
-            }
-        }
-
-        switch (node.type()) {
-            case START     -> start_run(exchanger, options, node, startNode);
-            case END       -> end_run(exchanger, options, node, startNode);
-            case ACTIVITY  -> activity_run(exchanger, options, node, startNode);
-            case INCLUSIVE -> inclusive_run(exchanger, options, node, startNode);
-            case EXCLUSIVE -> exclusive_run(exchanger, options, node, startNode);
-            case PARALLEL  -> parallel_run(exchanger, options, node, startNode);
-            case LOOP      -> loop_run(exchanger, options, node, startNode);
-            // Defensive: a graph built through a path that bypasses v2
-            // validation must fail loudly instead of silently dead-ending.
-            case UNKNOWN   -> throw new FlowException(
-                "Node '" + node.id() + "' in graph '"
-                    + node.graph().id() + "' has UNKNOWN type");
-        }
-    }
-
-    // ==================== START ====================
-
-    protected void start_run(FlowExchanger exchanger, FlowOptions options, Node node, Node startNode) {
-        if (!onNodeStart(exchanger, options, node)) return;
-        if (!onNodeEnd(exchanger, options, node)) return;
-        for (Link l : node.nextLinks()) {
-            if (condition_test(exchanger, l.when(), true)) {
-                node_run(exchanger, options, l.nextNode(), startNode);
-            }
-        }
-    }
-
-    // ==================== END ====================
-
-    protected void end_run(FlowExchanger exchanger, FlowOptions options, Node node, Node startNode) {
-        if (!onNodeStart(exchanger, options, node)) return;
-        // Direct completion signal — independent of the trace (which may be
-        // disabled) and of trace reset semantics for repeated subgraph calls.
-        exchanger.markEnded(node.graph());
-        onNodeEnd(exchanger, options, node);
-    }
-
-    // ==================== ACTIVITY ====================
-
-    protected void activity_run(FlowExchanger exchanger, FlowOptions options, Node node, Node startNode) {
-        if (!task_exec(exchanger, options, node)) return;
-        activity_run_out(exchanger, options, node, startNode);
-    }
-
-    protected void activity_run_out(FlowExchanger exchanger, FlowOptions options, Node node, Node startNode) {
-        for (Link l : node.nextLinks()) {
-            if (condition_test(exchanger, l.when(), true)) {
-                node_run(exchanger, options, l.nextNode(), startNode);
-            }
-        }
-    }
-
-    // ==================== EXCLUSIVE ====================
-
-    protected void exclusive_run(FlowExchanger exchanger, FlowOptions options, Node node, Node startNode) {
-        if (!task_exec(exchanger, options, node)) return;
-        exclusive_run_out(exchanger, options, node, startNode);
-    }
-
-    protected void exclusive_run_out(FlowExchanger exchanger, FlowOptions options, Node node, Node startNode) {
-        Link defLine = null;
-        for (Link l : node.nextLinks()) {
-            if (l.when().isEmpty()) {
-                if (defLine != null) {
-                    LOG.warn(
-                        "EXCLUSIVE node '{}/{}' has multiple default (unconditional) links — using the last one",
-                        node.graph().id(), node.id()
-                    );
-                }
-                defLine = l;
-            } else if (condition_test(exchanger, l.when(), false)) {
-                node_run(exchanger, options, l.nextNode(), startNode);
-                return;
-            }
-        }
-        if (defLine != null) {
-            node_run(exchanger, options, defLine.nextNode(), startNode);
-        } else {
-            LOG.warn(
-                "EXCLUSIVE node '{}/{}' matched no condition and has no default link — execution stops at this node",
-                node.graph().id(), node.id()
-            );
-            // The run would otherwise "complete" without reaching END. Mark
-            // the dead end so eval() can fail loudly. Skipped during resume
-            // replay, which is only a walk to the resume point.
-            markDeadEnd(exchanger, node);
-        }
-    }
-
-    private void markDeadEnd(FlowExchanger exchanger, Node node) {
-        if (!exchanger.isReverting()) {
-            exchanger.execState().deadEnd(node.graph(), node.id());
-        }
-    }
-
-    // ==================== INCLUSIVE ====================
-
-    protected void inclusive_run(FlowExchanger exchanger, FlowOptions options, Node node, Node startNode) {
-        if (!inclusive_run_in(exchanger, node)) return;
-        if (!task_exec(exchanger, options, node)) return;
-        inclusive_run_out(exchanger, options, node, startNode);
-    }
-
-    protected boolean inclusive_run_in(FlowExchanger exchanger, Node node) {
-        if (node.prevLinks().size() > 1) {
-            // Join semantics: the gateway activates exactly once, when every
-            // incoming branch has arrived (standard BPMN inclusive-join).
-            // countIncr is per-eval (ExecState is fresh per evaluation), so
-            // the Nth arrival activates it and earlier ones park. Branches
-            // whose condition does not route them to the gateway would leave
-            // the join incomplete — same limitation as before, now explicit.
-            // The counter is reset on activation (like PARALLEL) so a loop
-            // body containing the fork-join re-arms for its next iteration.
-            synchronized (exchanger.execState().stack(node.graph(), "inclusive_run")) {
-                int arrived = exchanger.execState().countIncr(node.graph(), node.id());
-                if (arrived >= node.prevLinks().size()) {
-                    exchanger.execState().countSet(node.graph(), node.id(), 0);
-                    // All branches arrived — the join is not a dead end.
-                    exchanger.execState().deadEndClear(node.graph(), node.id());
-                    return true;
-                }
-                // Still waiting for branches. This is normal mid-run, but if
-                // eval completes without activation the graph never reached
-                // END — record the provisional dead end so the completion
-                // check can fail loudly. Skipped during resume replay (walk
-                // only), and cleared above if the join later activates.
-                markDeadEnd(exchanger, node);
-                return false;
-            }
-        }
-        return true;
-    }
-
-    protected void inclusive_run_out(FlowExchanger exchanger, FlowOptions options, Node node, Node startNode) {
-        List<Link> matched = new ArrayList<>();
-        for (Link l : node.nextLinks()) {
-            if (condition_test(exchanger, l.when(), true)) matched.add(l);
-        }
-        for (Link l : matched) node_run(exchanger, options, l.nextNode(), startNode);
-    }
-
-    // ==================== PARALLEL ====================
-
-    protected void parallel_run(FlowExchanger exchanger, FlowOptions options, Node node, Node startNode) {
-        if (!parallel_run_in(exchanger, node)) return;
-        if (!task_exec(exchanger, options, node)) return;
-        parallel_run_out(exchanger, options, node, startNode);
-    }
-
-    protected boolean parallel_run_in(FlowExchanger exchanger, Node node) {
-        int count = exchanger.execState().countIncr(node.graph(), node.id());
-        if (node.prevLinks().size() <= count) {
-            // All branches arrived — the join is not a dead end.
-            exchanger.execState().deadEndClear(node.graph(), node.id());
-            return true;
-        }
-        // Still waiting for branches — provisional dead end, same contract as
-        // the INCLUSIVE join above.
-        markDeadEnd(exchanger, node);
-        return false;
-    }
-
-    protected void parallel_run_out(FlowExchanger exchanger, FlowOptions options, Node node, Node startNode) {
-        // Branches share the same FlowContext — concurrent writes to the same
-        // key are a known limitation (see docs/freeway-flow-parallel-context-isolation.md).
-        //
-        // NESTED PARALLEL HAZARD: the join awaits on the CALLING thread. If a
-        // branch itself contains a PARALLEL node and the executor is a
-        // fixed-size pool, outer branches can occupy every worker while
-        // waiting on inner branches that are still queued — classic thread-
-        // starvation deadlock. Use a cached/unbounded executor (or size the
-        // pool >= worst-case concurrent branches) when graphs nest PARALLEL.
-        exchanger.execState().countSet(node.graph(), node.id(), 0);
-
-        if (exchanger.driver().executor() == null || node.nextNodes().size() < 2) {
-            for (Node n : node.nextNodes()) node_run(exchanger, options, n, startNode);
-        } else {
-            CountDownLatch cdl = new CountDownLatch(node.nextNodes().size());
-            // First failure wins (CAS): deterministic error reporting, and the
-            // fast-path bail below lets queued branches skip work early.
-            AtomicReference<Throwable> errorRef = new AtomicReference<>();
-            for (Node n : node.nextNodes()) {
-                try {
-                    exchanger.driver().executor().execute(() -> {
-                        try {
-                            if (errorRef.get() != null) return;
-                            node_run(exchanger, options, n, startNode);
-                        } catch (Throwable ex) {
-                            errorRef.compareAndSet(null, ex);
-                        } finally {
-                            cdl.countDown();
-                        }
-                    });
-                } catch (RejectedExecutionException rejected) {
-                    // Executor no longer accepting work (shutting down):
-                    // record and release this branch's latch slot so await()
-                    // below cannot hang on work that will never be scheduled.
-                    // Already-queued branches observe the recorded error via
-                    // the fast-path check above and return immediately.
-                    errorRef.compareAndSet(null, rejected);
-                    cdl.countDown();
-                }
-            }
-            try {
-                cdl.await();
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new FlowException("Parallel execution interrupted", e);
-            }
-            if (errorRef.get() != null) {
-                Throwable ex = errorRef.get();
-                // Match the serial path's exception-type contract: configuration
-                // errors (missing binding, bad marker) stay distinguishable.
-                if (ex instanceof FlowException fe) throw fe;
-                if (ex instanceof IllegalStateException || ex instanceof IllegalArgumentException) {
-                    throw (RuntimeException) ex;
-                }
-                throw new FlowException(ex);
-            }
-        }
-    }
-
-    // ==================== LOOP ====================
-
-    protected void loop_run(FlowExchanger exchanger, FlowOptions options, Node node, Node startNode) {
-        if (node.metaAsString("$for") == null) {
-            if (!loop_run_in(exchanger, node)) return;
-            if (!task_exec(exchanger, options, node)) return;
-            activity_run_out(exchanger, options, node, startNode);
-        } else {
-            // $for LOOP: claim the node atomically before running it. The
-            // claim (skip-if-running check + iterator acquisition + push)
-            // happens under one lock, so two PARALLEL branches reaching this
-            // node concurrently cannot both pass an empty-stack check and each
-            // run the loop body — the first arrival runs it (task and body),
-            // later arrivals skip the whole node.
-            if (!loop_run_claim(exchanger, node)) return;
-            if (!task_exec(exchanger, options, node)) return;
-            loop_run_out(exchanger, options, node, startNode);
-        }
-    }
-
-    protected boolean loop_run_in(FlowExchanger exchanger, Node node) {
-        Stack<Iterator> stack = exchanger.execState().stack(node.graph(), "loop_run/" + node.id());
-        // Atomic peek→hasNext→pop: a LOOP node reachable from concurrent
-        // PARALLEL branches shares this stack.
+        ArrayDeque<Iterator<?>> stack = exchanger.execState().loopStack(node.graph(), node.id());
+        Iterator<?> iterator;
         synchronized (stack) {
-            if (loopBusy(stack)) return false;
+            // Claim atomically: the "sibling already running this loop" check,
+            // the fresh iterator and the push happen under one monitor, so two
+            // branches reaching this node cannot both run the body — later
+            // arrivals skip the whole node. An exhausted iterator left by a
+            // completed run is popped first, re-arming a sequential re-entry.
+            if (loopBusy(stack)) return;
+            iterator = loopIterator(exchanger, node);
+            stack.push(iterator);
         }
-        return true;
+
+        if (!taskExec(exchanger, node)) return;
+
+        // Guard against unbounded iteration: a misconfigured $in (e.g. a
+        // multi-million-element collection) would otherwise spin here forever.
+        int iterations = 0;
+        while (iterator.hasNext()) {
+            if (++iterations > MAX_LOOP_ITERATIONS) {
+                throw new FlowException(
+                    "LOOP iteration limit exceeded (max " + MAX_LOOP_ITERATIONS
+                        + ") at graph '" + node.graph().id() + "' / node '" + node.id()
+                        + "' — check '$in' for an oversized or unbounded collection"
+                );
+            }
+            exchanger.context().put(forKey, iterator.next());
+            // A new iteration re-enters the body: join counters (and their
+            // provisional dead-ends) left by the previous iteration must not
+            // leak into this one.
+            resetLoopBodyJoins(exchanger, node);
+            // The body runs to completion per iteration (a nested walk per
+            // matched link), not round-robin across iterations.
+            List<Node> body = new ArrayList<>();
+            for (Link link : node.nextLinks()) {
+                if (conditionTest(exchanger, link.when(), true)) {
+                    body.add(link.nextNode());
+                }
+            }
+            for (Node member : body) {
+                walk(exchanger, member);
+            }
+        }
     }
 
-    /**
-     * True when the top of the loop stack still has items — i.e. a sibling
-     * branch is currently running this $for LOOP. An exhausted iterator left
-     * by a completed run is popped so a later re-entry re-arms the loop.
-     * Must be called while holding the stack monitor ({@code loop_run_in} /
-     * {@code loop_run_claim} invoke it inside their synchronized blocks).
-     */
-    private boolean loopBusy(Stack<Iterator> stack) {
-        if (!stack.isEmpty()) {
-            Iterator<?> iter = stack.peek();
-            if (iter.hasNext()) return true;
+    /** True when the loop's top iterator still has items — caller holds the monitor. */
+    private static boolean loopBusy(ArrayDeque<Iterator<?>> stack) {
+        Iterator<?> top = stack.peek();
+        if (top != null) {
+            if (top.hasNext()) return true;
             stack.pop();
         }
         return false;
-    }
-
-    /**
-     * Atomically claims this $for LOOP for the current arrival: the
-     * "is another branch already running it?" check, the {@code $in} iterator
-     * acquisition and the stack push all happen under the same stack monitor.
-     * Returns {@code false} when a sibling branch is already running the loop
-     * — the arrival then skips the node entirely.
-     *
-     * <p>An exhausted iterator left by a completed run is popped first, so a
-     * later sequential re-entry (e.g. this node inside another loop's body)
-     * re-arms the loop with a fresh run. Dead-end markers (EXCLUSIVE /
-     * gateway joins) are intentionally untouched here.
-     */
-    protected boolean loop_run_claim(FlowExchanger exchanger, Node node) {
-        Stack<Iterator> stack = exchanger.execState().stack(node.graph(), "loop_run/" + node.id());
-        synchronized (stack) {
-            if (loopBusy(stack)) return false; // a sibling branch is running this loop
-            stack.push(loop_iterator(exchanger, node));
-        }
-        return true;
     }
 
     /**
@@ -666,7 +503,7 @@ public class FlowEngineDefault implements FlowEngine {
      * context key holding either, or a {@code "start...end"} /
      * {@code "start:end:step"} range string.
      */
-    protected Iterator<?> loop_iterator(FlowExchanger exchanger, Node node) {
+    private Iterator<?> loopIterator(FlowExchanger exchanger, Node node) {
         Object inKey = node.meta("$in");
 
         Object inObj;
@@ -676,7 +513,7 @@ public class FlowEngineDefault implements FlowEngine {
             if (!inKeyStr.contains(":") && !inKeyStr.contains("...")) {
                 inObj = exchanger.context().getAs(inKeyStr);
             } else {
-                inObj = Stepper.from(inKeyStr);
+                inObj = com.jujin.freeway.flow.internal.Stepper.from(inKeyStr);
             }
         } else {
             throw new FlowException(
@@ -696,64 +533,16 @@ public class FlowEngineDefault implements FlowEngine {
         );
     }
 
-    protected void loop_run_out(FlowExchanger exchanger, FlowOptions options, Node node, Node startNode) {
-        String forKey = node.metaAsString("$for");
-        Stack<Iterator> stack = exchanger.execState().stack(node.graph(), "loop_run/" + node.id());
-        Iterator<?> iter;
-        synchronized (stack) {
-            // The claiming branch's iterator (pushed by loop_run_claim). The
-            // stack keeps it until the next claim pops/replaces it, so
-            // concurrent arrivals keep skipping while the loop is live.
-            if (stack.isEmpty()) return; // defensive — loop_run_claim always precedes
-            iter = stack.peek();
-        }
-
-        // Guard against unbounded iteration: a misconfigured or malicious
-        // $in (e.g. a multi-million-element list) would otherwise spin here
-        // forever — the recursion depth guard does not help because LOOP body
-        // iterations run sequentially in a single frame.
-        int iterations = 0;
-        while (iter.hasNext()) {
-            if (++iterations > MAX_LOOP_ITERATIONS) {
-                throw new FlowException(
-                    "LOOP iteration limit exceeded (max " + MAX_LOOP_ITERATIONS
-                        + ") at graph '" + node.graph().id()
-                        + "' / node '" + node.id()
-                        + "' — check '$in' for an oversized or unbounded collection"
-                );
-            }
-            Object item = iter.next();
-            if (item == null) {
-                // put() silently ignores null — remove instead so a null
-                // element cannot leave the PREVIOUS iteration's value visible.
-                exchanger.context().remove(forKey);
-            } else {
-                exchanger.context().put(forKey, item);
-            }
-            // A new iteration re-enters the body: join counters (and their
-            // provisional dead-ends) left by the previous iteration must not
-            // leak into this one — a fork-join that received fewer arrivals
-            // last iteration would otherwise falsely activate early (or
-            // twice) now.
-            resetLoopBodyJoins(exchanger, node);
-            activity_run_out(exchanger, options, node, startNode);
-        }
-    }
-
-    // ==================== loop body join hygiene ====================
-
     /**
      * Resets the inclusive/parallel join bookkeeping inside this LOOP's body
-     * at the start of every iteration. Counters keyed per (graph, node) would
-     * otherwise carry residue across iterations: a join that received fewer
-     * arrivals than expected in one iteration never reset its counter (only
-     * activation does), so the next iteration could falsely activate early or
-     * twice. The provisional dead-end is cleared too — a new iteration starts
-     * fresh and re-records it if the join is still short.
+     * at the start of every iteration. A join that received fewer arrivals
+     * than expected in one iteration never reset its counter (only activation
+     * does), so the next iteration could falsely activate early or twice. The
+     * provisional dead-end is cleared too — a new iteration starts fresh.
      */
     private void resetLoopBodyJoins(FlowExchanger exchanger, Node loopNode) {
-        String cacheKey = loopNode.graph().id() + "/" + loopNode.id();
-        List<String> joins = exchanger.execState().loopBodyJoins(cacheKey, k -> loopBodyJoins(loopNode));
+        List<String> joins = exchanger.execState().loopBodyJoins(
+            loopNode.graph(), loopNode.id(), () -> loopBodyJoins(loopNode));
         Graph graph = loopNode.graph();
         for (String joinId : joins) {
             exchanger.execState().countSet(graph, joinId, 0);
@@ -762,27 +551,26 @@ public class FlowEngineDefault implements FlowEngine {
     }
 
     /**
-     * Collects the ids of join nodes (INCLUSIVE/PARALLEL with more than one
-     * incoming link) reachable from the LOOP node's outgoing links — i.e. the
-     * gateways executed inside each iteration of the loop body. Computed once
-     * per (graph, loop node) per evaluation and cached in {@link ExecState}.
+     * Join nodes (INCLUSIVE/PARALLEL with more than one incoming link)
+     * reachable from the LOOP node's outgoing links — the gateways executed
+     * inside each iteration of the body.
      */
     private static List<String> loopBodyJoins(Node loopNode) {
         Graph graph = loopNode.graph();
         List<String> joins = new ArrayList<>();
         Set<String> visited = new HashSet<>();
         ArrayDeque<Node> queue = new ArrayDeque<>();
-        for (Link l : loopNode.nextLinks()) queue.add(l.nextNode());
+        for (Link link : loopNode.nextLinks()) queue.add(link.nextNode());
         while (!queue.isEmpty()) {
             Node n = queue.poll();
             if (!visited.add(n.id())) continue;
             if (n == loopNode) continue;               // cycle safety (graphs are DAGs)
-            if (n.type() == NodeType.END) continue; // the body ends at END
+            if (n.type() == NodeType.END) continue;    // the body ends at END
             if ((n.type() == NodeType.INCLUSIVE || n.type() == NodeType.PARALLEL)
                     && n.prevLinks().size() > 1) {
                 joins.add(n.id());
             }
-            for (Link l : n.nextLinks()) queue.add(l.nextNode());
+            for (Link link : n.nextLinks()) queue.add(link.nextNode());
         }
         return joins;
     }

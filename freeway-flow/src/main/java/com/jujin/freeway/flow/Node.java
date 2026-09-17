@@ -12,13 +12,14 @@ import java.util.Objects;
  * Node
  */
 public class Node {
-    public static final String TAG = "node";
-
     private final Graph graph;
     private final String id;
     private final String title;
     private final NodeType type;
     private final Map<String, Object> metas;
+    /** Static values the node writes into the context before its task runs
+     *  (schema field {@code data}) — empty for pure nodes. */
+    private final Map<String, Object> data;
     private final ConditionDesc when;
     private final TaskDesc task;
     private final List<Link> nextLinks;
@@ -31,9 +32,6 @@ public class Node {
     private volatile List<Node> prevNodes;
     private volatile List<Link> prevLinks;
 
-    /** Arbitrary per-node attachment for application use. */
-    public Object attachment;
-
     public Node(Graph graph, NodeSpec spec, List<Link> links) {
         this(graph, spec, spec.type(), links);
     }
@@ -45,6 +43,9 @@ public class Node {
         this.type = type;
         this.when = new ConditionDesc(graph, spec.when(), spec.whenComponent());
         this.task = new TaskDesc(this, spec.task(), spec.taskComponent());
+        this.data = spec.data().isEmpty()
+            ? Map.of()
+            : Collections.unmodifiableMap(new LinkedHashMap<>(spec.data()));
 
         if (spec.meta() == null || spec.meta().isEmpty()) {
             this.metas = Map.of();
@@ -68,6 +69,7 @@ public class Node {
     public String title() { return title; }
     public NodeType type() { return type; }
     public Map<String, Object> metas() { return metas; }
+    public Map<String, Object> data() { return data; }
 
     public Object meta(String key) { return metas.get(key); }
 
