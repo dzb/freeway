@@ -4,7 +4,14 @@ Key architectural decisions and the reasoning behind them.
 
 ## Striped Lock for Singleton Concurrency
 
-**Decision:** Replace `synchronized (targetCache)` with 64-way striped locking for singleton creation in `ServiceRuntime.realize()`.
+**Status: superseded twice.** Stripes were collapsed back to one
+`REALIZE_LOCK` soon after (cross-stripe deadlock when two singletons depend on each other), and
+the "self-consistency" batch then made cached dispatch lock-free outright: a realized singleton is
+published into the CHM before any reader can see it, so `realize()` answers cache hits before the
+lock and `REALIZE_LOCK` now serializes only first-time construction plus the close seal. Kept as
+the trajectory that taught us the hot path was the problem.
+
+**Decision (original):** Replace `synchronized (targetCache)` with 64-way striped locking for singleton creation in `ServiceRuntime.realize()`.
 
 **Why:** The global lock serialized all singleton creation, creating a bottleneck during startup (dense service creation) and lazy-load concurrency. Channeling contention to 64 stripes via `key.hashCode() & STRIPE_MASK` provides per-key serialization without global serialization.
 
@@ -43,7 +50,11 @@ synchronized (lock) {
 
 ## Flow-state trace: the one dual-shape read that stays
 
-**Decision:** `FlowContextImpl` reads the serialized `trace` field as an object, and — only if that
+**Status: superseded.** The v3 redesign deleted `FlowTrace`, `NodeRecord` and the pause/resume
+machinery outright (replay-and-skip is not durability, and `FlowContext.toJson()` is now
+diagnostics-only), so the dual-shape read it defended no longer exists.
+
+**Decision (original):** `FlowContextImpl` reads the serialized `trace` field as an object, and — only if that
 fails — as a JSON **string** containing the object.
 
 **Why:** the string shape is what earlier versions wrote into flow-state documents. Those documents
@@ -73,7 +84,7 @@ private static final Map<String, AstNode> CACHE = new LinkedHashMap<>(512, 0.75f
 };
 ```
 
-Read-write lock allows concurrent reads (fast path) and serializes the rare write (first parse, cache miss). The `match()` method contains a fix where operator characters (like `!`) skip ident-boundary validation — `!isIdentStart(token.charAt(0))` prevents `!active` from being incorrectly rejected.
+The `match()` method contains a fix where operator characters (like `!`) skip ident-boundary validation — `!isIdentStart(token.charAt(0))` prevents `!active` from being incorrectly rejected. `ExprEvaluator.validate(expr)` runs the same compilation without evaluation, which is how the graph builder compiles every `when` at build time.
 
 **See also:** `ExprEvaluator.java` (`freeway-flow`)
 
@@ -246,7 +257,7 @@ JSON → GraphSpec.normalize() → new Graph
 
 ## Flow Driver Extension Point
 
-**Decision:** `FlowDriver` is a contributed extension point (`binder.contribute(FlowDriver.class)`). `FlowModule` binds `FlowContainer` and creates `FlowDriverDefault` internally; custom drivers are contributed by id. Graphs select their driver via the `"driver"` field (null/"" → `"default"`). The engine receives a plain `Map<String, FlowDriver>`, assembled by `FlowModule` via `Extension.asMap()`.
+**Decision:** `FlowDriver` is a contributed extension point (`binder.contribute(FlowDriver.class)`). `FlowModule` creates `FlowDriverDefault` against the container itself (the `FlowContainer` adapter seam was deleted with v3); custom drivers are contributed by id. Graphs select their driver via the `"driver"` field (null/"" → `"default"`). The engine receives a plain `Map<String, FlowDriver>`, assembled by `FlowModule` via `Extension.asMap()`.
 
 **Why:** This keeps `FlowEngineDefault` IoC-free while giving users the standard Freeway extension mechanism. The `Extension.asMap()` bridge converts named contributions into a plain map at the module boundary. Custom drivers can be registered via `add("custom", driver)` or `add(MyDriver.class)` (auto-instantiated via `container.create()`).
 
@@ -258,7 +269,7 @@ JSON → GraphSpec.normalize() → new Graph
 
 **Decision:** `Graph.doAddNode()` does NOT force the entry node to `NodeType.START`. The entry node keeps its original type; execution starts from that node regardless.
 
-**Why:** The previous behavior (promote entry→START) silently dropped task/loop behavior when the entry pointed to a non-START node. With type preservation, `node_run()` dispatches to the entry's actual type — an entry ACTIVITY runs its task, an entry LOOP iterates. This was the root cause of `loopNodeViaV2` test returning 0 executions when 4 were expected.
+**Why:** The previous behavior (promote entry→START) silently dropped task/loop behavior when the entry pointed to a non-START node. With type preservation, the frontier walk dispatches to the entry's actual type — an entry ACTIVITY runs its task, an entry LOOP iterates. This was the root cause of the (then-named) `loopNodeViaV2` test returning 0 executions when 4 were expected; it survives as `loopNodeViaEntry`.
 
 **See also:** `Graph.java:doAddNode()` (`freeway-flow`)
 
@@ -298,7 +309,7 @@ JSON → GraphSpec.normalize() → new Graph
 
 **Decision:** `FlowEngineDefault.task_exec()` and `condition_test()` propagate `IllegalStateException` and `IllegalArgumentException` unwrapped. All other non-`FlowException` throwables are wrapped in `FlowException`.
 
-**Why:** Configuration errors (missing FlowContainer, unknown driver id) carry clear diagnostic messages. Wrapping them in a generic `FlowException("The task handle failed: g / a")` buried the root cause. The stratification preserves diagnostic clarity for setup errors while still wrapping unexpected runtime failures with graph context.
+**Why:** Configuration errors (no container for `@name`, unknown driver id) carry clear diagnostic messages. Wrapping them in a generic `FlowException("The task handle failed: g / a")` buried the root cause. The stratification preserves diagnostic clarity for setup errors while still wrapping unexpected runtime failures with graph context.
 
 **See also:** `FlowEngineDefault.java:task_exec()`, `FlowDriverDefault.java:container()` (`freeway-flow`)
 
@@ -306,7 +317,11 @@ JSON → GraphSpec.normalize() → new Graph
 
 ## FlowOptions Defensive Copy
 
-**Decision:** `FlowEngineDefault.eval()` always creates a new `FlowOptions` instance. If a non-null `options` is passed, its interceptor list is copied to the new instance before adding engine-level interceptors.
+**Status: superseded.** The v3 redesign deleted `FlowOptions` entirely — the interceptor chain is
+contributed as an `Extension<FlowInterceptor>` and frozen at load, so there is no per-eval mutable
+list to copy and the accumulation bug class this worked around is structurally gone.
+
+**Decision (original):** `FlowEngineDefault.eval()` always creates a new `FlowOptions` instance. If a non-null `options` is passed, its interceptor list is copied to the new instance before adding engine-level interceptors.
 
 **Why:** `FlowOptions.DEFAULT` is a public static singleton. The previous code mutating it via `options.interceptorAdd(interceptorList)` caused interceptor accumulation across multiple `eval()` calls sharing the same `DEFAULT` instance.
 
@@ -321,10 +336,10 @@ JSON → GraphSpec.normalize() → new Graph
 **Why:** A graph that stops mid-way is a workflow defect; silently returning success hid it from callers and tests. The mechanism:
 
 - `ExecState` keeps a concurrent `Set<DeadEnd>` keyed per `(graphId, nodeId)`. An EXCLUSIVE node records a dead end when it matches no condition and has no default link (still logged as a warning). Joins record a *provisional* dead end each time they are entered but cannot activate; when the final branch arrives, the join clears only its own entry (`deadEndClear`) so a dead end recorded by a sibling branch is not lost.
-- The completion check in `eval()` throws `FlowException("Graph '...' did not complete: dead end at node '...'")`, naming the stuck node and graph. **Exemptions:** runs ended via `stop()` / `interrupt()` — including interceptor-blocked runs — are not dead ends (stopping is intentional); resume replay walks never mark, because `markDeadEnd` skips `isReverting()` and the replay is only a walk to the resume point.
+- The completion check in `eval()` throws `FlowException("Graph '...' did not complete: dead end at node '...'")`, naming the stuck node and graph. **Exemption:** a run ended via `stop()` is not a dead end (stopping is intentional); an interceptor veto that never proceeds simply records nothing. v1/v2-era `interrupt()` and resume-replay exemptions retired with those mechanisms.
 - Sub-graph evals share the parent's `ExecState` (passed through `FlowExchanger.runGraph()`), so a dead end recorded inside a sub-graph propagates to the caller's completion check. No reset is needed at eval start — a fresh `ExecState` is created per top-level evaluation.
 
-**See also:** `ExecState.java:DeadEnd`, `FlowEngineDefault.java:eval()` / `exclusive_run_out()` / `inclusive_run_in()` / `parallel_run_in()` (`freeway-flow`)
+**See also:** `ExecState.java:DeadEnd`, `FlowEngineDefault.java:eval()` / `exclusiveOut()` / `joinArrived()` (`freeway-flow`)
 
 ---
 
@@ -364,7 +379,7 @@ JSON → GraphSpec.normalize() → new Graph
 
 **Why:** Previously, concurrent arrivals could each observe an empty/not-yet-pushed stack and both run the body — a $for loop re-entered from parallel branches double-executed its iteration side effects. Sequential re-entry is handled too: an exhausted iterator left by a completed run is popped first, so a later re-entry (e.g. the node inside another loop's body) re-arms the loop with a fresh iterator — "exhaust → pop → re-arm".
 
-**See also:** `FlowEngineDefault.java:loop_run_claim()` / `loop_run_out()` (`freeway-flow`)
+**See also:** `FlowEngineDefault.java:loopRun()` / `ExecState.loopStack()` (`freeway-flow`)
 
 ---
 
@@ -380,7 +395,12 @@ JSON → GraphSpec.normalize() → new Graph
 
 ## Sub-Graph Per-Eval Interceptor Inheritance
 
-**Decision:** Sub-graph evals inherit the caller's per-eval interceptors: `FlowExchanger.runGraph()` stores the raw per-eval `FlowOptions` on the parent exchanger (`evalOptions`) and re-passes it to the sub-eval, so per-eval interceptors (`interceptFlow` / `onNodeStart` / `onNodeEnd`) cover sub-graph nodes too.
+**Status: superseded.** The problem it solved (per-eval interceptors missing sub-graph nodes, and
+the double-merge hazard) is dissolved by v3's shape: there is exactly one interceptor chain per
+engine, frozen at load, and `runGraph()`'s nested eval runs the same chain — every node of parent
+and child is visited exactly once by construction.
+
+**Decision (original):** Sub-graph evals inherit the caller's per-eval interceptors: `FlowExchanger.runGraph()` stores the raw per-eval `FlowOptions` on the parent exchanger (`evalOptions`) and re-passes it to the sub-eval, so per-eval interceptors (`interceptFlow` / `onNodeStart` / `onNodeEnd`) cover sub-graph nodes too.
 
 **Why:** Previously a sub-graph call lost the caller's per-eval interceptors — nodes inside the sub-graph ran with only engine-level interceptors. Only the *raw* options are propagated: each eval merges the engine-level interceptor list itself, so nested evals never run engine-level interceptors twice.
 
@@ -388,9 +408,9 @@ JSON → GraphSpec.normalize() → new Graph
 
 ---
 
-## Graph.fromText v2 Version Gate
+## Graph.fromText Version Gate
 
-**Decision:** `Graph.fromText()` now routes through `GraphSpec.fromText()` so it shares the same version gate as `GraphSpec`: only canonical v2 documents (`version=2` with `nodes` and `links`) load; anything else fails with the same clear `IllegalArgumentException` (naming the version field and any missing keys).
+**Decision:** `Graph.fromText()` routes through `GraphSpec.fromText()` so it shares the same version gate as `GraphSpec`: only canonical current-version documents (since v3: `version=3` with `nodes` and `links`; v1 `layout` and v2 are rejected outright — no converters) load; anything else fails with the same clear `IllegalArgumentException` (naming the version field and any missing keys).
 
 **Why:** The previous path (`GraphSpec.fromDom` directly) skipped the version check, so `Graph.fromText()` could accept non-canonical documents that `GraphSpec` rejected — the two entry points disagreed about what "a valid graph definition" means.
 
@@ -400,7 +420,12 @@ JSON → GraphSpec.normalize() → new Graph
 
 ## FlowContext.putAll Null Filtering
 
-**Decision:** `FlowContext.putAll(map)` skips `null` values — consistent with `put()`, which does not store `null`. A `null` map argument still fails fast (NPE), exactly like the previous `data().putAll(null)`.
+**Status: reversed by the v3 redesign.** Silently dropping a null write meant `put(k, null)` left
+the old value readable — the LOOP code had to work around it with `remove()`, the classic sign the
+primitive was wrong. `put`/`putAll` now treat a null value as a clear: the key reads back null and
+disappears from `containsKey` (the branch-layer sentinel stores the clearing inside a buffer).
+
+**Decision (original):** `FlowContext.putAll(map)` skipped `null` values — consistent with `put()`, which did not store `null`.
 
 **Why:** `Map.putAll` semantics would store a `null` value for a key, creating entries that `put()` would never create and that downstream readers must defensively handle. Unifying the two paths makes batch and single-key population behave identically.
 

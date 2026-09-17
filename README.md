@@ -293,13 +293,13 @@ freeway-db's library classes are **ioc-free** and independently usable outside t
 
 A lightweight graph workflow engine for orchestrating multi-step processes:
 
-- **Graph definition** — JSON-based DAGs with 7 node types: `START`, `END`, `ACTIVITY`, `EXCLUSIVE`, `INCLUSIVE`, `PARALLEL`, `LOOP`. Canonical v2 format (`nodes`+`links`); cyclic graphs are rejected at build time.
-- **Task resolution** — nodes specify what to execute via a prefix syntax. `!markerName` matches a `TaskComponent` by `@FlowMarker` intersection (most specific wins). `@beanName` looks up a `TaskComponent` from the IoC container. `#graphId` calls another loaded graph as a subflow. `$metaKey` reads graph metadata into the execution context. Conditions also support `@beanName` (resolving to `ConditionComponent`) in addition to inline expressions.
-- **Validation at build time** — `normalize()` checks link references, entry node uniqueness, reachability, and rejects cycles.
-- **Tracing** — pause/resume execution with step-by-step trace records.
+- **Graph definition** — JSON-based DAGs with 7 node types: `START`, `END`, `ACTIVITY`, `EXCLUSIVE`, `INCLUSIVE`, `PARALLEL`, `LOOP`. Canonical v3 format (`nodes`+`links` with an explicit `entry`); the build gate validates link references, cycles, entry, task vocabulary, `when` expressions, `join` declarations and `data` keys — everything static fails at boot, not mid-run.
+- **Task vocabulary** — a closed set: `@name` resolves a `TaskComponent`/`ConditionComponent` bound in the IoC container, `#graphId` calls another loaded graph as a subflow, and inline components work programmatically; a node's `data` field writes static values into the execution context.
+- **Execution** — iterative frontier walk (path length never costs JVM stack); gateway dead ends fail the run loudly; `ctx.stop()` is a legal early completion.
+- **Branch isolation** — a `PARALLEL` fork declares `join: "merge"` (default: per-branch write buffers merged on clean completion, write-write conflicts fail the run) or `join: "shared"` to opt out.
 - **PlantUML export** — visualize any graph definition as a PlantUML diagram.
-- **Interceptor chain** — wrap task execution with custom logic.
-- **Expression evaluator** — self-written recursive-descent parser (~600 lines) for condition evaluation on decision nodes.
+- **Interceptor chain** — contributed `FlowInterceptor`s frozen at load; exactly-one end per start, subgraphs share the chain.
+- **Expression evaluator** — self-written recursive-descent parser (~600 lines) with a compiled-AST LRU cache; conditions compile at build time.
 - **Zero extra dependencies** — built on commons + ioc only.
 
 Graphs load from JSON:
@@ -307,11 +307,12 @@ Graphs load from JSON:
 ```java
 Graph graph = Graph.fromText("""
     {
-      "version": 2,
+      "version": 3,
+      "id": "demo", "entry": "start",
       "nodes": [
-        {"id": "start", "type": "START", "next": "greet"},
-        {"id": "greet", "task": "!greeter", "next": "end"},
-        {"id": "end", "type": "END"}
+        {"id": "start", "type": "START"},
+        {"id": "greet", "type": "ACTIVITY", "task": "@greeter"},
+        {"id": "end",   "type": "END"}
       ],
       "links": [
         {"from": "start", "to": "greet"},
@@ -320,7 +321,10 @@ Graph graph = Graph.fromText("""
     }
     """);
 FlowEngine engine = container.get(FlowEngine.class);
-engine.execute(graph, new HashMap<>());
+engine.load(graph);
+FlowContext ctx = FlowContext.of();
+ctx.put("name", "world");
+engine.eval("demo", ctx);
 ```
 
 ### Extensions

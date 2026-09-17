@@ -349,6 +349,10 @@ HTTP 语义——但今天只有两个来源、且安全用例已被覆盖，提
 | C2 大文件职责拆分（`JULEnhancer`/`StaticResourceMount`/`Sql` 等） | **按用户判据不做**：文件大小不是拆分理由，看职责是否内聚与拆分 ROI；该判据已写入 `AGENTS.md` | — |
 | C3 默认值归属统一（`DbModule` 与 `MigrationRunner`） | 已随 B2 落地（`Options.defaults()` 是唯一出处） | core `6f2f0d24` |
 | D1 §3.8.3：tier 与链各只有一处实现（`SymbolProvider.systemProperties()` + `SymbolSource.of`，删 `SymbolSource.systemProperties()`） | 已落地（ext 三个无容器构造器各改一行） | core `0ad6ffe5` + ext `aafa2ab` |
+| E1 品味失守两批：tier 1"让话为真"（flow 报错指向已删 API、幻影 javadoc、死分支）+ tier 2"让契约执法"（ioc 热点锁、h2 早期 RST 死锁、枚举写绑定、池迟到释放、RPC 参数重绑、mesh 退避、LB 权重、数字守卫、cause 环、hook 重入 close），16 例回归先红后绿 | 已落地 | core `8137ef34` |
+| E2 freeway-flow 再设计：schema v2→v3——迭代前沿执行（删深度守卫）、机制归位（扩展链拦截器/容器直解析，删 `FlowContainer`/`FlowMarkerIndex`/`FlowOptions`/`FlowInvocation`）、语义诚实（删 pause/resume/`FlowTrace`/steps；子图未 END 在调用点报错；`put(null)` 改清除）、构建期词汇/表达式/join 校验、`PARALLEL join` 分支隔离 + 冲突检测；净减 1012 行 | 已落地 | core `b1b4a866` |
+| E3 产物对齐 v3：根 README flow 段（含 v2 时代的不存在字段/`execute(…)` 假 API 示例）、`skills/freeway-dev`、设计决策日志的 superseded 标注、隔离方案文档"现状"改写 | 已落地 | 本批 |
+| 第三层观察项（未动）：EventBus 出 ioc、容器 eager validation、HPACK 编码器动态表、h2 拒绝路径头块消化（RFC 9113 §4.1）、h2 流级超时、db 事务作用域化 | 未落地（路线备忘） | — |
 
 审计方法上的两次自我纠正也留在正文：`instanceof` 强转计数与 `Sql.Condition` 构造器计数的假阳性（§1），
 以及一条被模块反例撤回的结论（`Dialect` 命名，§5 第 1 条）。

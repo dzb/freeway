@@ -30,7 +30,7 @@ Freeway is a JDK 25+ Java framework built around compose-first modules, explicit
   `Binding` exposes `.to(Class)` and `.to(c -> ...)` only — there is no `.to(instance)`. Bind an
   existing object by returning it from a singleton provider
 - `freeway-boot` - app bootstrap, config cascade, profiles, runtime lifecycle
-- `freeway-flow` - graph workflow engine — 7 node types, canonical `GraphSpec` DAG format, `!marker` task resolution
+- `freeway-flow` - graph workflow engine — 7 node types, canonical `GraphSpec` DAG format (v3, boot-validated), `@name`/`#subgraph` task vocabulary, `PARALLEL` branch isolation
 - `freeway-http` - routing, filters, static resources, multipart, SSE, WebSocket
 - `freeway-db` - JDBC access, transactions, pools, migrations, schema
 - external adapters live in `freeway-ext`
