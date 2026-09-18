@@ -5,7 +5,7 @@
 #   ./run.sh            # build + start node B (subscriber) + node A (publisher)
 #   ./run.sh --no-build # skip the maven package step
 #
-# Requires: JDK 25, local Maven repo with freeway 1.5.2-SNAPSHOT artifacts
+# Requires: JDK 25, local Maven repo with freeway 1.5.3-SNAPSHOT artifacts
 # installed (mvn install in the freeway-2 repo root first), and — for the
 # Kafka channel — a broker reachable at 127.0.0.1:9092 (e.g. podman run -d
 # --name kafka-test -p 9092:9092 ... apache/kafka:4.1.2). Without a broker the
