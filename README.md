@@ -19,7 +19,7 @@ every API deliberate, every concept pulling its weight. In an ecosystem where
 ceremony is often mistaken for rigor, Freeway bets that **clarity, simplicity, and
 good taste** still have a place.
 
-**Latest release: 1.5.1** — [Release notes](docs/RELEASE-NOTES-1.5.1.md) · [Changelog](CHANGELOG.md)
+**Latest release: 1.5.3** — [Release notes](docs/RELEASE-NOTES-1.5.3.md) · [Changelog](CHANGELOG.md)
 
 | Module | Description                                               |
 |-------------------------|------------------------------------------------------|
