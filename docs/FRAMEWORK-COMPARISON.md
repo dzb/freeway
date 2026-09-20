@@ -1,6 +1,6 @@
 # Java 四框架横向对比报告（2026 年 9 月）
 
-**对比对象**：Spring Boot 4.x / Quarkus 3.x / Micronaut 4.x-5.x / Freeway 2.x
+**对比对象**：Spring Boot 4.x / Quarkus 3.x / Micronaut 4.x-5.x / Freeway 1.5.x
 
 **评估标准**：心智负担、概念数量、仪式感消除、复杂性真实去向、所见即所得程度
 
