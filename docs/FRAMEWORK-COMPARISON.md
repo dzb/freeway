@@ -304,7 +304,7 @@ order  tier
 
 ## 八、运行时性能
 
-| 指标 | Spring Boot 4 | Quarkus 3.x | Micronaut 4.x/5.x | Freeway 2.x |
+| 指标 | Spring Boot 4 | Quarkus 3.x | Micronaut 4.x/5.x | Freeway 1.5.x |
 |------|---------------|-------------|-------------------|-------------|
 | **JVM 启动** | 2,400–3,200ms | 500–900ms | 600–1,000ms | 待测（核心零依赖，预期较快） |
 | **Native 启动** | 70–120ms | 12–25ms | 25–50ms | 待测（核心零依赖，native 编译应简单） |
