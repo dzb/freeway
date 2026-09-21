@@ -109,7 +109,7 @@ All in `com.jujin.freeway.ioc.annotation`:
 - `@Inject` — field/constructor/parameter injection; `@Inject("id")` for
   qualified injection.
 - `@Symbol("key")` — strict config lookup; a missing key fails.
-- `@Value("${key:default}")` — expression expansion with optional default.
+- `@Symbol("${key:default}")` — expression expansion with optional default.
 - `@PostConstruct` / `@PreDestroy` — lifecycle callbacks after injection
   completes and before the instance is destroyed.
 

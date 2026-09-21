@@ -684,7 +684,7 @@ IoC 容器不提供外部化配置键。所有配置通过编程式 API 完成�
 - **绑定**：`binder.bind(X.class).to(Y.class)` / `.to(c -> ...)`
 - **作用域**：`bind().scope(SINGLETON | PROTOTYPE | THREAD)`
 - **`.primary()`**：引擎/池/方言选择 — 默认实现绑定无 `.primary()`，扩展模块绑定替代实现时带 `.primary()`，容器自动解析
-- **注入**：`@Inject`、`@Symbol`（严格查找）、`@Value("${key:default}")`（表达式展开）
+- **注入**：`@Inject`、`@Symbol`（严格查找或表达式展开）
 - **扩展**：`Contribution<RuntimeHook>`、`Extension` 机制
 - **Bean 选择**：通过 `binding.primary()` 而非注解
 

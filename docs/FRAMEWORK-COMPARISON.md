@@ -71,7 +71,7 @@ ModuleEx（bind 方法）
 + Route（Route.get / Route.post）
 + RuntimeHook（start / stop）
 + Scope（SINGLETON / PROTOTYPE / THREAD）
-+ @Inject / @Symbol / @Value（3 个注解）
++ @Inject / @Symbol（2 个注解）
 + Database / Orm（直接使用）
 + HttpFilter（一个接口，doFilter + order）
 + EventBus / EventSubscriber
@@ -539,7 +539,7 @@ public class UserService {
 ```java
 // Agent 需要记住的全部核心概念：
 // ModuleEx, Container, Binder, Route, RuntimeHook, Scope
-// @Inject, @Symbol, @Value
+// @Inject, @Symbol
 // Database, Orm, HttpFilter, EventBus
 // 就这些。
 ```

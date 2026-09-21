@@ -14,7 +14,6 @@ import com.jujin.freeway.ioc.annotation.IntermediateType;
 import com.jujin.freeway.ioc.AmbiguousBindingException;
 import com.jujin.freeway.ioc.annotation.NotThreadSafe;
 import com.jujin.freeway.ioc.annotation.Symbol;
-import com.jujin.freeway.ioc.annotation.Value;
 import com.jujin.freeway.ioc.extension.Extension;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 import org.slf4j.Logger;
@@ -61,7 +60,7 @@ final class InjectionResolver {
                 // clear directive instead. Non-writable properties WITHOUT any
                 // injection annotation stay untouched (existing behavior).
                 AnnotationLookup lookup = of(property);
-                if (hasInjectionAnnotation(lookup) || hasConfiguredValueAnnotation(lookup)) {
+                if (hasInjectionAnnotation(lookup) || hasSymbolAnnotation(lookup)) {
                     if (property.isFieldBacked()) {
                         throw new IllegalStateException(
                             "Cannot inject into final field " + property.name()
@@ -135,9 +134,9 @@ final class InjectionResolver {
         }
         // An @Value/@Symbol on a List/Map injection point means "coerce the
         // configured value", not "consume contributions" — otherwise
-        // @Value List<String> would silently inject an empty contribution
+        // @Symbol List<String> would silently inject an empty contribution
         // list and drop the configuration.
-        if (hasConfiguredValueAnnotation(lookup)) {
+        if (hasSymbolAnnotation(lookup)) {
             return null;
         }
         // Constructor parameters consume contributions implicitly — the
@@ -252,29 +251,27 @@ final class InjectionResolver {
         return lookup.annotation(Inject.class).isPresent();
     }
 
-    private static boolean hasConfiguredValueAnnotation(AnnotationLookup lookup) {
-        return lookup.annotation(Symbol.class).isPresent()
-            || lookup.annotation(Value.class).isPresent();
+    private static boolean hasSymbolAnnotation(AnnotationLookup lookup) {
+        return lookup.annotation(Symbol.class).isPresent();
     }
 
     private String resolveId(AnnotationLookup lookup) {
         return normalizedId(lookup.annotation(Inject.class).orElse(null));
     }
 
-    private Object resolveConfiguredValue(AnnotationLookup lookup, Class<?> targetType) {
+    private Object resolveSymbolValue(AnnotationLookup lookup, Class<?> targetType) {
         // Resolve SymbolSource/Coercer through the container so a primary
         // override is honored at every injection site (constructor, field,
-        // @Value, @Symbol) instead of hard-coding the built-in instance.
+        // @Symbol) instead of hard-coding the built-in instance.
         var symbol = lookup.annotation(Symbol.class);
         if (symbol.isPresent()) {
-            return coerceConfiguredValue(targetType,
-                container.get(SymbolSource.class).resolve(symbol.get().value()), lookup);
-        }
-
-        var value = lookup.annotation(Value.class);
-        if (value.isPresent()) {
-            return coerceConfiguredValue(targetType,
-                container.get(SymbolSource.class).expand(value.get().value()), lookup);
+            String val = symbol.get().value();
+            // ${...} template → expand (supports defaults and variable composition)
+            // Plain key      → resolve (missing = fail-fast)
+            String raw = val.contains("${")
+                ? container.get(SymbolSource.class).expand(val)
+                : container.get(SymbolSource.class).resolve(val);
+            return coerceConfiguredValue(targetType, raw, lookup);
         }
 
         return null;
@@ -329,7 +326,7 @@ final class InjectionResolver {
         if (injected != null) {
             return injected;
         }
-        Object configured = resolveConfiguredValue(lookup, targetType);
+        Object configured = resolveSymbolValue(lookup, targetType);
         if (configured != null) {
             return configured;
         }
@@ -347,9 +344,9 @@ final class InjectionResolver {
         if (!hasInjectionAnnotation(lookup)) {
             return null;
         }
-        if (hasConfiguredValueAnnotation(lookup)) {
+        if (hasSymbolAnnotation(lookup)) {
             throw new IllegalArgumentException(
-                "Cannot combine service injection and configured value annotations on "
+                "Cannot combine service injection and @Symbol on "
                     + ownerType.getName()
             );
         }
@@ -406,7 +403,7 @@ final class InjectionResolver {
             Class<? extends Annotation> annType = ann.annotationType();
             // Skip framework annotations that aren't markers
             if (annType == Inject.class || annType == Symbol.class
-                    || annType == Value.class || annType == IntermediateType.class) {
+                    || annType == IntermediateType.class) {
                 continue;
             }
             // Check if this annotation is a known marker

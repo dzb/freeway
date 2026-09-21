@@ -28,7 +28,7 @@ class EndpointContributor implements ContributorMarker {
     final Endpoint endpoint;
 
     @Inject
-    EndpointContributor(@Value("${endpoint}") Endpoint endpoint) {
+    EndpointContributor(@Symbol("${endpoint}") Endpoint endpoint) {
         this.endpoint = endpoint;
     }
 }
@@ -45,7 +45,7 @@ class SpecialConsumerImpl implements SpecialConsumer {
     final String value;
 
     @Inject
-    SpecialConsumerImpl(@Value("${" + IocKeys.SPECIAL + "}") String value) {
+    SpecialConsumerImpl(@Symbol("${" + IocKeys.SPECIAL + "}") String value) {
         this.value = value;
     }
 
@@ -98,7 +98,7 @@ class OverrideSymbolSource implements SymbolSource {
 }
 
 class ValueConsumer {
-    @Value("${ioc.override.key}")
+    @Symbol("${ioc.override.key}")
     String value;
 }
 
@@ -323,7 +323,7 @@ final class ConfiguredService {
     private final int port;
     private final String name;
 
-    public ConfiguredService(@Symbol(PORT_KEY) int port, @Value("${" + NAME_KEY + "}") String name) {
+    public ConfiguredService(@Symbol(PORT_KEY) int port, @Symbol("${" + NAME_KEY + "}") String name) {
         this.port = port;
         this.name = name;
     }
@@ -342,7 +342,7 @@ final class ConfiguredService {
 }
 
 final class FieldConfiguredService {
-    @Value("${" + PORT_KEY + "}")
+    @Symbol("${" + PORT_KEY + "}")
     private int port;
 
     @Symbol(NAME_KEY)
@@ -363,7 +363,7 @@ final class FinalInjectFieldBean {
 }
 
 final class FinalValueFieldBean {
-    @Value("${" + PORT_KEY + "}")
+    @Symbol("${" + PORT_KEY + "}")
     final String port = "default";
 }
 
@@ -429,7 +429,7 @@ record Timeout(int millis) {
 final class EndpointHolder {
     private final Endpoint endpoint;
 
-    public EndpointHolder(@Value("${" + ENDPOINT_KEY + "}") Endpoint endpoint) {
+    public EndpointHolder(@Symbol("${" + ENDPOINT_KEY + "}") Endpoint endpoint) {
         this.endpoint = endpoint;
     }
 
@@ -439,7 +439,7 @@ final class EndpointHolder {
 }
 
 final class TimeoutHolder {
-    @Value("${" + TIMEOUT_KEY + "}")
+    @Symbol("${" + TIMEOUT_KEY + "}")
     @IntermediateType(Integer.class)
     private Timeout timeout;
 
@@ -451,7 +451,7 @@ final class TimeoutHolder {
 final class AppNameHolder {
     private final String name;
 
-    public AppNameHolder(@Value("${" + APP_NAME_KEY + "}") String name) {
+    public AppNameHolder(@Symbol("${" + APP_NAME_KEY + "}") String name) {
         this.name = name;
     }
 
@@ -466,24 +466,24 @@ final class UnknownSymbolService {
 }
 
 final class UncoercibleListService {
-    @Value("${" + APP_NAME_KEY + "}")
+    @Symbol("${" + APP_NAME_KEY + "}")
     private List<String> values;
 }
 
 final class UnclosedSymbolService {
-    @Value("${unclosed")
+    @Symbol("${unclosed")
     private String value;
 }
 
 final class ConflictingAnnotationsService {
     @Inject
-    @Value("${some.path}")
+    @Symbol("${some.path}")
     private PaymentGateway gateway;
 }
 
 final class ConfiguredListConsumer {
     @SuppressWarnings("unused")
-    ConfiguredListConsumer(@Value("${" + LIST_KEY + "}") List<String> values) {}
+    ConfiguredListConsumer(@Symbol("${" + LIST_KEY + "}") List<String> values) {}
 }
 
 final class QualifiedListConsumer {

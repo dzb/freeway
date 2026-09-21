@@ -16,7 +16,7 @@ import com.jujin.freeway.ioc.EventSubscriber;
 import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.ModuleNode;
 import com.jujin.freeway.ioc.RuntimeHook;
-import com.jujin.freeway.ioc.annotation.Value;
+import com.jujin.freeway.ioc.annotation.Symbol;
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 import org.junit.jupiter.api.AfterEach;
@@ -281,7 +281,7 @@ class FreewayAppTest {
     }
 
     public static class ValueHolder {
-        @Value("${server.port}")
+        @Symbol("${server.port}")
         String port;
     }
 

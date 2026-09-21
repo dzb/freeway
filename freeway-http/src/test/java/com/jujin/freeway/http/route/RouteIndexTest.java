@@ -11,7 +11,7 @@ import com.jujin.freeway.http.websocket.WebSocketRoute;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Freeway;
 import com.jujin.freeway.ioc.annotation.Inject;
-import com.jujin.freeway.ioc.annotation.Value;
+import com.jujin.freeway.ioc.annotation.Symbol;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -237,7 +237,7 @@ class RouteIndexTest {
     static class InjectedHandler implements RouteHandler {
         final String greeting;
         @Inject
-        InjectedHandler(@Value("${greeting:Hello}") String greeting) {
+        InjectedHandler(@Symbol("${greeting:Hello}") String greeting) {
             this.greeting = greeting;
         }
         @Override public void handle(HttpContext ctx) throws Exception {

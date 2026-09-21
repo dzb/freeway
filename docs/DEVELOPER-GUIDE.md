@@ -342,7 +342,7 @@ Supported annotations in `com.jujin.freeway.ioc.annotation`:
 |------------|---------|
 | `@Inject` | Field, constructor, or parameter injection |
 | `@Symbol("key")` | Strict config lookup — missing key fails |
-| `@Value("${key:default}")` | Config expression with optional default |
+| `@Symbol("${key:default}")` | Config expression with optional default |
 
 ```java
 public class UserService {
@@ -360,7 +360,7 @@ public class UserService {
     @Inject("audit")
     private Logger audit;
 
-    @Value("${app.timeout:30}")
+    @Symbol("${app.timeout:30}")
     private int timeout;
 }
 ```
@@ -372,22 +372,22 @@ Annotation injection on records is also supported:
 ```java
 public record ServerConfig(
     @Symbol("server.port") int port,
-    @Value("${app.name:freeway}") String appName
+    @Symbol("${app.name:freeway}") String appName
 ) {}
 ```
 
-`@Symbol` and `@Value` serve two distinct purposes:
+`@Symbol` serves two purposes based on syntax:
 
 - **`@Symbol("key")`** — for **required** configuration. The key *must* exist;
   if absent the container refuses to start. Use this for mandatory settings
   like server ports, database URLs, or credentials — values without which
   the application cannot function.
 
-- **`@Value("${key:default}")`** — for **optional** configuration. The
+- **`@Symbol("${key:default}")`** — for **optional** configuration. The
   expression is expanded from the config cascade; if the key is missing the
   default value after the colon is used. Use this for settings with sensible
   fallbacks like timeouts, feature flags, or cosmetic names. The shell-style
-  `:-` separator is also supported: `@Value("${port:-8080}")` strips a single
+  `:-` separator is also supported: `@Symbol("${port:-8080}")` strips a single
   leading dash from the default and yields `"8080"` (not `"-8080"`), while
   `${port:8080}` keeps the default verbatim and `${port:}`/`${port:-}` both
   yield the empty string.
@@ -397,17 +397,17 @@ public record ServerConfig(
 @Symbol("db.url") String dbUrl;
 
 // Optional — defaults to 30 if app.timeout is not set
-@Value("${app.timeout:30}") int timeout;
+@Symbol("${app.timeout:30}") int timeout;
 
 // Expression expansion — any config key can be interpolated
-@Value("${app.name:freeway}") String appName;
+@Symbol("${app.name:freeway}") String appName;
 ```
 
 Both paths use the container's type coercion mechanism, so values are
 automatically converted to the target type (`int`, `boolean`, `Duration`, etc.).
 
 Field injection into a **final** field (or any other non-writable property)
-carrying `@Inject`, `@Symbol`, or `@Value` fails fast with a clear error —
+carrying `@Inject` or `@Symbol` fails fast with a clear error —
 the field would otherwise be silently skipped and keep its default value.
 Use constructor injection for final fields.
 
@@ -607,7 +607,7 @@ binder.contribute(EventSubscriber.class)
 
 ### Type Coercion
 
-Commons owns the reusable scalar coercion mechanics (`Coercer` interface, `CoerceRule<S,T>`, `CoercerDefault`). IoC owns container-aware coercion rules and `@Symbol`/`@Value` integration. The two layers are separate: commons does not import ioc types.
+Commons owns the reusable scalar coercion mechanics (`Coercer` interface, `CoerceRule<S,T>`, `CoercerDefault`). IoC owns container-aware coercion rules and `@Symbol` integration. The two layers are separate: commons does not import ioc types.
 
 ```java
 // Built-in: String → primitives, enums, UUID, dates, collections, maps
@@ -717,7 +717,7 @@ the wrong order.
 
 ### Config Cascade
 
-The symbol chain resolves every config lookup (`@Symbol`/`@Value` and
+The symbol chain resolves every config lookup (`@Symbol` and
 `SymbolSource.resolve` — the single read entry; `AppConfig` only carries
 profiles, the sources it contributes and lifecycle). Lowest to highest priority —
 every tier is a `SymbolProvider` with a declared `order()`, and each
@@ -826,7 +826,7 @@ Duration ttl = LOCK_TTL.parse(symbols.resolve(LOCK_TTL.key(), null),    // coerc
 ```
 
 Absent/blank values fall back to the spec default, required specs fail
-fast, and the same chain backs `@Symbol`/`@Value` injection.
+fast, and the same chain backs `@Symbol` injection.
 
 ---
 

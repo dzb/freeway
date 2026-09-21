@@ -207,7 +207,7 @@ binder.bind(Cache.class).to(FastCache.class).marker(Fast.class);
 | `@Inject` | 构造器/字段/参数注入 | `@Inject private Logger log;` |
 | `@Inject("id")` | 按绑定 id 注入 | `@Inject("audit") Logger audit;` |
 | `@Symbol("key")` | 严格配置查找，key 不存在抛异常 | `@Symbol("server.port") int port;` |
-| `@Value("${key:default}")` | 配置表达式，可带默认值 | `@Value("${app.timeout:30}") int timeout;` |
+| `@Symbol("${key:default}")` | 配置表达式，可带默认值 | `@Symbol("${app.timeout:30}") int timeout;` |
 | `@PostConstruct` | 初始化回调 | `void init() { ... }` |
 | `@PreDestroy` | 销毁回调 | `void cleanup() { ... }` |
 
@@ -216,7 +216,7 @@ binder.bind(Cache.class).to(FastCache.class).marker(Fast.class);
 ```java
 public record ServerConfig(
     @Symbol("server.port") int port,
-    @Value("${app.name:freeway}") String appName
+    @Symbol("${app.name:freeway}") String appName
 ) {}
 ```
 
@@ -234,7 +234,7 @@ public class UserService {
     // 字段注入（应用代码可接受）
     @Inject private Logger log;
     @Inject("audit") private Logger audit;
-    @Value("${app.timeout:30}") private int timeout;
+    @Symbol("${app.timeout:30}") private int timeout;
 }
 ```
 

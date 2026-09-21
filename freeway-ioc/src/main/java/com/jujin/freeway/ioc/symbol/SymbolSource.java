@@ -12,11 +12,11 @@ import java.util.List;
  * it to {@code key=value} and this interface answers lookups over the merged
  * chain. Values are raw strings — typing is a separate, explicit
  * post-processing step (declare a {@link SymbolSpec}, parse the resolved
- * value), and DI gets the same chain via {@code @Symbol}/{@code @Value}:
+ * value), and DI gets the same chain via {@code @Symbol}:
  * <pre>{@code
  * public record ServerConfig(
  *     @Symbol("server.port") int port,
- *     @Value("${app.name:freeway}") String appName
+ *     @Symbol("${app.name:freeway}") String appName
  * ) {}
  * }</pre>
  *
