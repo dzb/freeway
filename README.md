@@ -1,7 +1,7 @@
 # Freeway Framework
 <div align="left">
   <img width="96" src=".github/assets/logo.png" alt="Freeway Framework Logo">
-  <p>Compose-First · Full-Featured · Zero-Dependency · High-Performance · Concise & Tasteful.</p>
+  <p>Compose-First · Full-Featured · Zero-Dependency · High-Performance · Concise & Tasteful · Agentic-Friendly</p>
 </div>
 
 [![Maven Central](https://img.shields.io/maven-central/v/com.jujin8.freeway/freeway-parent?label=Maven%20Central&color=blue)](https://central.sonatype.com/artifact/com.jujin8.freeway/freeway-parent)
