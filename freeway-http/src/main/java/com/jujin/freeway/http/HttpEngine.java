@@ -5,6 +5,28 @@ import java.io.IOException;
 /**
  * Starts an HTTP server on the given configuration and dispatches
  * incoming exchanges to the provided handler.
+ *
+ * <p><b>Honor contract.</b> {@code config} is the server's transport
+ * declaration and reaches every engine unchanged; each engine maps it onto
+ * its own facilities in three tiers:
+ * <ul>
+ *   <li><b>Must honor</b> — {@code host}, {@code port}, {@code backlog},
+ *       {@code shutdownGrace}: the server's address and lifecycle, plus
+ *       {@code readTimeout}, {@code writeTimeout}, {@code receiveBufferSize},
+ *       {@code sendBufferSize} and {@code maxConnections} wherever the engine
+ *       has a counterpart (the built-in engine has one for all five).</li>
+ *   <li><b>Per-exchange policy</b> — {@code maxBodySize} and
+ *       {@code compression} are applied by the engine to every exchange it
+ *       creates (the built-in engine pushes both into its context at session
+ *       start) and enforced with the shared helpers
+ *       ({@link AbstractHttpContext#readBody}, {@link Compression}) so body
+ *       accounting and q-value negotiation match across engines.</li>
+ *   <li><b>Engine-private</b> — {@code h2ResetBurstLimit} / {@code
+ *       h2ResetWindow} guard the built-in HTTP/2 implementation; an engine
+ *       without that guard must report a non-default setting at startup
+ *       rather than ignore it.</li>
+ * </ul>
+ * A field the engine cannot apply must say so at startup — never silently.
  */
 public interface HttpEngine {
 
@@ -27,7 +49,7 @@ public interface HttpEngine {
      * from its own settings while the built-in {@code freeway.http.ssl.*} keys
      * stay unset, or the reverse.
      *
-     * <p>Every engine answers this: it is what {@link WebServer#secure()} — and
+     * <p>Every engine answers this: it is what {@link HttpServer#secure()} — and
      * behind it the registry scheme an instance publishes — is derived from.
      */
     boolean secure();

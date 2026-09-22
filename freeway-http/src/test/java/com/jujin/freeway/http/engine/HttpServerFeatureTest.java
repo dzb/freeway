@@ -27,8 +27,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.HttpServerConfig;
-import com.jujin.freeway.http.WebServer;
-import com.jujin.freeway.http.RequestComponents;
+import com.jujin.freeway.http.HttpServer;
+import com.jujin.freeway.http.HttpPipeline;
 import com.jujin.freeway.http.TestHttp;
 import com.jujin.freeway.http.filter.AccessLogFilter;
 import com.jujin.freeway.http.filter.HttpFilter;
@@ -46,9 +46,9 @@ class HttpServerFeatureTest {
     @Test
     void filtersRunInAscendingOrderValue() throws Exception {
         var execution = new ArrayList<String>();
-        var server = WebServer.create(TestHttp.engine(),
+        var server = HttpServer.create(TestHttp.engine(),
             TestServerConfig.loopback(),
-                RequestComponents.of(Route.get("/", ctx -> ctx.send(200, "ok")))
+                HttpPipeline.of(Route.get("/", ctx -> ctx.send(200, "ok")))
                 .withFilters(new HttpFilter() {
                 @Override
                 public void doFilter(HttpContext ctx, RouteHandler next)
@@ -94,8 +94,8 @@ class HttpServerFeatureTest {
     @Test
     void gzipCompressesCompressibleBodiesWhenAccepted() throws Exception {
         int port = freePort();
-        var server = WebServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(port), RequestComponents.of(Route.get("/text", ctx -> {
+        var server = HttpServer.create(TestHttp.engine(),
+            TestServerConfig.loopback(port), HttpPipeline.of(Route.get("/text", ctx -> {
                 ctx.setHeader("Content-Type", "text/plain");
                 ctx.send(200, "A".repeat(1000));
             }), Route.get("/small", ctx -> {
@@ -135,8 +135,8 @@ class HttpServerFeatureTest {
     @Test
     void unknownLengthStreamingUsesChunkedEncoding() throws Exception {
         int port = freePort();
-        var server = WebServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(port), RequestComponents.of(Route.get("/stream", ctx ->
+        var server = HttpServer.create(TestHttp.engine(),
+            TestServerConfig.loopback(port), HttpPipeline.of(Route.get("/stream", ctx ->
                 ctx.output(new ByteArrayInputStream(
                     "hello-chunked-world".getBytes(StandardCharsets.UTF_8)), -1))));
         server.start();
@@ -157,8 +157,8 @@ class HttpServerFeatureTest {
     @Test
     void emptyUnknownLengthStreamTerminatesChunkedBody() throws Exception {
         int port = freePort();
-        var server = WebServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(port), RequestComponents.of(Route.get("/empty", ctx ->
+        var server = HttpServer.create(TestHttp.engine(),
+            TestServerConfig.loopback(port), HttpPipeline.of(Route.get("/empty", ctx ->
                 ctx.output(new ByteArrayInputStream(new byte[0]), -1))));
         server.start();
         try {
@@ -176,8 +176,8 @@ class HttpServerFeatureTest {
     @Test
     void gzipStreamingFallsBackToChunkedFraming() throws Exception {
         int port = freePort();
-        var server = WebServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(port), RequestComponents.of(Route.get("/gz", ctx -> {
+        var server = HttpServer.create(TestHttp.engine(),
+            TestServerConfig.loopback(port), HttpPipeline.of(Route.get("/gz", ctx -> {
                 ctx.setHeader("Content-Type", "text/plain");
                 ctx.output(new ByteArrayInputStream(
                     "compress-me-please".getBytes(StandardCharsets.UTF_8)), 18);
@@ -203,8 +203,8 @@ class HttpServerFeatureTest {
         ByteArrayOutputStream logBytes = new ByteArrayOutputStream();
         PrintStream log = new PrintStream(logBytes, true, StandardCharsets.UTF_8);
         int port = freePort();
-        var server = WebServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(port), RequestComponents.of(Route.get("/ok", ctx -> ctx.send(200, "ok")))
+        var server = HttpServer.create(TestHttp.engine(),
+            TestServerConfig.loopback(port), HttpPipeline.of(Route.get("/ok", ctx -> ctx.send(200, "ok")))
                 .withFilter(new AccessLogFilter(log))
                 );
         server.start();
@@ -244,8 +244,8 @@ class HttpServerFeatureTest {
 
         var metrics = new HttpServerOperationalTest.TestMetrics();
         int port = freePort();
-        var server = WebServer.create(TestHttp.engine(metrics),
-            TestServerConfig.loopback(port), RequestComponents.of()
+        var server = HttpServer.create(TestHttp.engine(metrics),
+            TestServerConfig.loopback(port), HttpPipeline.of()
                 .withStaticFiles(StaticResourceMount.directory("/files", root)));
         server.start();
         try {
@@ -283,8 +283,8 @@ class HttpServerFeatureTest {
         Files.writeString(secondRoot.resolve("sub/index.html"), "second sub index");
 
         int port = freePort();
-        var server = WebServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(port), RequestComponents.of()
+        var server = HttpServer.create(TestHttp.engine(),
+            TestServerConfig.loopback(port), HttpPipeline.of()
                 .withStaticFiles(StaticResourceMount.directory("/static", firstRoot), StaticResourceMount.directory("/static", secondRoot)));
         server.start();
         try {

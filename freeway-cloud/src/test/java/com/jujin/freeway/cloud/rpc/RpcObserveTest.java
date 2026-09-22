@@ -11,7 +11,7 @@ import com.jujin.freeway.cloud.discovery.ServiceDiscoveryDefault;
 import com.jujin.freeway.cloud.observe.TracerDefault;
 import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.HttpModule;
-import com.jujin.freeway.http.WebServer;
+import com.jujin.freeway.http.HttpServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -41,7 +41,7 @@ class RpcObserveTest {
     }
 
     private static CloudHttpClientDefault client(
-        WebServer server, MetricsDefault metrics, TracerDefault tracer) {
+        HttpServer server, MetricsDefault metrics, TracerDefault tracer) {
         var store = new RegistryStore();
         store.register(ServiceInstance.of("echo", "i1",
             Endpoint.of("http", server.host(), server.port()), Map.of()));
@@ -58,7 +58,7 @@ class RpcObserveTest {
         try (AppRuntime app = FreewayApp.run(
             new CloudHttpClientTest.EchoModule(), new HttpModule())) {
             var metrics = new MetricsDefault();
-            CloudHttpClientDefault client = client(app.get(WebServer.class), metrics, new TracerDefault());
+            CloudHttpClientDefault client = client(app.get(HttpServer.class), metrics, new TracerDefault());
 
             CloudResponse resp = client.call("echo", CloudRequest.get("/api/echo"));
             assertTrue(resp.is2xx());
@@ -78,7 +78,7 @@ class RpcObserveTest {
             new CloudHttpClientTest.EchoModule(), new HttpModule())) {
             var metrics = new MetricsDefault();
             // tracer == null mirrors freeway.cloud.rpc.trace.enabled=false.
-            CloudHttpClientDefault client = client(app.get(WebServer.class), metrics, null);
+            CloudHttpClientDefault client = client(app.get(HttpServer.class), metrics, null);
 
             CloudResponse resp = client.call("echo", CloudRequest.get("/api/echo"));
             assertTrue(resp.is2xx());

@@ -28,7 +28,7 @@ import org.slf4j.LoggerFactory;
  * and resolves the handlers (see {@code RpcExportHook}). This class is the
  * protocol: version check, handler lookup, argument decoding, dispatch and the
  * exception boundary. Its two entries exist for the two assemblies that need a
- * route without the module: {@link #route} for a standalone {@code WebServer}
+ * route without the module: {@link #route} for a standalone {@code HttpServer}
  * (an ext engine's {@code RouteIndex}, a custom mount) and {@link #exportsRoute}
  * for the framework's own wildcard route.
  */

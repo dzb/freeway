@@ -5,7 +5,7 @@ import com.jujin.freeway.boot.FreewayApp;
 import com.jujin.freeway.cloud.CloudConfigKeys;
 import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.HttpModule;
-import com.jujin.freeway.http.WebServer;
+import com.jujin.freeway.http.HttpServer;
 import com.jujin.freeway.http.websocket.WebSocketEndpoint;
 import com.jujin.freeway.http.websocket.WebSocketListener;
 import com.jujin.freeway.http.websocket.WebSocketRoute;
@@ -82,7 +82,7 @@ class PeerHubHandshakeStateTest {
     }
 
     private static int port(AppRuntime app) {
-        return app.get(WebServer.class).port();
+        return app.get(HttpServer.class).port();
     }
 
     // ── server leg ────────────────────────────────────────────────────────
@@ -138,7 +138,7 @@ class PeerHubHandshakeStateTest {
         try {
             System.setProperty(CloudConfigKeys.EVENT_ENABLED, "true");
             System.setProperty(CloudConfigKeys.EVENT_PEERS,
-                "127.0.0.1:" + fakeNode.get(WebServer.class).port());
+                "127.0.0.1:" + fakeNode.get(HttpServer.class).port());
             node = FreewayApp.run(new HttpModule(), new CloudEventModule());
             PeerHub hub = node.get(PeerHub.class);
             List<CloudEventEnvelope.Parsed> intercepted = new ArrayList<>();

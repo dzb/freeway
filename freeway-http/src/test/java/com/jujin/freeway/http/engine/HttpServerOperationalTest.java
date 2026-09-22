@@ -28,8 +28,8 @@ import org.junit.jupiter.api.Test;
 
 import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.http.HttpServerConfig;
-import com.jujin.freeway.http.WebServer;
-import com.jujin.freeway.http.RequestComponents;
+import com.jujin.freeway.http.HttpServer;
+import com.jujin.freeway.http.HttpPipeline;
 import com.jujin.freeway.http.TestHttp;
 import com.jujin.freeway.http.event.HttpErrorEvent;
 import com.jujin.freeway.http.filter.AccessLogFilter;
@@ -65,8 +65,8 @@ class HttpServerOperationalTest {
     @Test
     void readTimeoutClosesIdleConnection() throws Exception {
         int port = freePort();
-        var server = WebServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(port).withMaxBodySize(1024).withReadTimeout(Duration.ofMillis(500)).withMaxConnections(0), RequestComponents.of(Route.get("/", ctx -> ctx.send(200, "ok"))));
+        var server = HttpServer.create(TestHttp.engine(),
+            TestServerConfig.loopback(port).withMaxBodySize(1024).withReadTimeout(Duration.ofMillis(500)).withMaxConnections(0), HttpPipeline.of(Route.get("/", ctx -> ctx.send(200, "ok"))));
         server.start();
         try (Socket socket = new Socket("127.0.0.1", port)) {
             socket.setSoTimeout(3000);
@@ -80,8 +80,8 @@ class HttpServerOperationalTest {
     @Test
     void maxConnectionsRejectsExcessConnections() throws Exception {
         int port = freePort();
-        var server = WebServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(port).withMaxBodySize(1024).withReadTimeout(Duration.ofMinutes(2)).withMaxConnections(2), RequestComponents.of(Route.get("/", ctx -> ctx.send(200, "ok"))));
+        var server = HttpServer.create(TestHttp.engine(),
+            TestServerConfig.loopback(port).withMaxBodySize(1024).withReadTimeout(Duration.ofMinutes(2)).withMaxConnections(2), HttpPipeline.of(Route.get("/", ctx -> ctx.send(200, "ok"))));
         server.start();
         try (Socket first = new Socket("127.0.0.1", port);
              Socket second = new Socket("127.0.0.1", port)) {
@@ -100,8 +100,8 @@ class HttpServerOperationalTest {
     @Test
     void expect100ContinueGetsInterimResponse() throws Exception {
         int port = freePort();
-        var server = WebServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(port), RequestComponents.of(Route.post("/echo", ctx -> ctx.send(200, ctx.bodyText()))));
+        var server = HttpServer.create(TestHttp.engine(),
+            TestServerConfig.loopback(port), HttpPipeline.of(Route.post("/echo", ctx -> ctx.send(200, ctx.bodyText()))));
         server.start();
         try (Socket socket = new Socket("127.0.0.1", port)) {
             socket.setSoTimeout(3000);
@@ -130,8 +130,8 @@ class HttpServerOperationalTest {
     @Test
     void oversizedBodyClosesConnectionInsteadOfDrainingNextRequest() throws Exception {
         int port = freePort();
-        var server = WebServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(port).withMaxBodySize(4).withReadTimeout(Duration.ofSeconds(2)).withMaxConnections(0), RequestComponents.of(Route.post("/body", ctx -> ctx.send(200, ctx.bodyText())), Route.get("/next", ctx -> ctx.send(200, "next"))));
+        var server = HttpServer.create(TestHttp.engine(),
+            TestServerConfig.loopback(port).withMaxBodySize(4).withReadTimeout(Duration.ofSeconds(2)).withMaxConnections(0), HttpPipeline.of(Route.post("/body", ctx -> ctx.send(200, ctx.bodyText())), Route.get("/next", ctx -> ctx.send(200, "next"))));
         server.start();
         try (Socket socket = new Socket("127.0.0.1", port)) {
             socket.setSoTimeout(3000);
@@ -155,8 +155,8 @@ class HttpServerOperationalTest {
     void metricsRecordConnectionsRequestsAndStatus() throws Exception {
         TestMetrics metrics = new TestMetrics();
         int port = freePort();
-        var server = WebServer.create(TestHttp.engine(metrics),
-            TestServerConfig.loopback(port), RequestComponents.of(Route.get("/ok", ctx -> ctx.send(200, "ok")), Route.get("/boom", ctx -> {
+        var server = HttpServer.create(TestHttp.engine(metrics),
+            TestServerConfig.loopback(port), HttpPipeline.of(Route.get("/ok", ctx -> ctx.send(200, "ok")), Route.get("/boom", ctx -> {
                 throw new RuntimeException("boom");
             })));
         server.start();
@@ -220,8 +220,8 @@ class HttpServerOperationalTest {
         int port = freePort();
         // The sink overload is the seam this test needs: it watches the events a
         // server publishes without a container in front of them.
-        var server = WebServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(port), RequestComponents.of(Route.post("/boom", ctx -> {
+        var server = HttpServer.create(TestHttp.engine(),
+            TestServerConfig.loopback(port), HttpPipeline.of(Route.post("/boom", ctx -> {
                 ctx.setMaxBodySize(1);
                 ctx.body();
                 ctx.send(200, "unexpected");
@@ -243,9 +243,9 @@ class HttpServerOperationalTest {
     @Test
     void customErrorHandlerDoesNotReplaceBuiltInMappings() throws Exception {
         int port = freePort();
-        var server = WebServer.create(TestHttp.engine(),
+        var server = HttpServer.create(TestHttp.engine(),
             TestServerConfig.loopback(port),
-            RequestComponents.of(
+            HttpPipeline.of(
                 Route.post("/body", ctx -> {
                     ctx.setMaxBodySize(1);
                     ctx.body();
@@ -254,7 +254,7 @@ class HttpServerOperationalTest {
                 Route.get("/custom", ctx -> {
                     throw new IllegalStateException("custom boom");
                 }))
-            .withErrorMapper((ctx, ex) -> {
+            .withErrorHandlers((ctx, ex) -> {
                 if (ex instanceof IllegalStateException) {
                     ctx.sendJson(418, Map.of("error", "custom"));
                     return true;
@@ -290,8 +290,8 @@ class HttpServerOperationalTest {
     @Test
     void http11RequiresSingleHostHeader() throws Exception {
         int port = freePort();
-        var server = WebServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(port), RequestComponents.of(Route.get("/", ctx -> ctx.send(200, "ok"))));
+        var server = HttpServer.create(TestHttp.engine(),
+            TestServerConfig.loopback(port), HttpPipeline.of(Route.get("/", ctx -> ctx.send(200, "ok"))));
         server.start();
         try {
             try (Socket socket = new Socket("127.0.0.1", port)) {
@@ -336,8 +336,8 @@ class HttpServerOperationalTest {
     @Test
     void malformedRequestLineGets400() throws Exception {
         int port = freePort();
-        var server = WebServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(port), RequestComponents.of(Route.get("/", ctx -> ctx.send(200, "ok"))));
+        var server = HttpServer.create(TestHttp.engine(),
+            TestServerConfig.loopback(port), HttpPipeline.of(Route.get("/", ctx -> ctx.send(200, "ok"))));
         server.start();
         try (Socket socket = new Socket("127.0.0.1", port)) {
             socket.setSoTimeout(3000);
@@ -354,8 +354,8 @@ class HttpServerOperationalTest {
     @Test
     void unknownExpectValueGets417() throws Exception {
         int port = freePort();
-        var server = WebServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(port), RequestComponents.of(Route.get("/", ctx -> ctx.send(200, "ok"))));
+        var server = HttpServer.create(TestHttp.engine(),
+            TestServerConfig.loopback(port), HttpPipeline.of(Route.get("/", ctx -> ctx.send(200, "ok"))));
         server.start();
         try (Socket socket = new Socket("127.0.0.1", port)) {
             socket.setSoTimeout(3000);
@@ -374,8 +374,8 @@ class HttpServerOperationalTest {
     @Test
     void headerWithoutColonGets400() throws Exception {
         int port = freePort();
-        var server = WebServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(port), RequestComponents.of(Route.get("/", ctx -> ctx.send(200, "ok"))));
+        var server = HttpServer.create(TestHttp.engine(),
+            TestServerConfig.loopback(port), HttpPipeline.of(Route.get("/", ctx -> ctx.send(200, "ok"))));
         server.start();
         try (Socket socket = new Socket("127.0.0.1", port)) {
             socket.setSoTimeout(3000);
@@ -395,8 +395,8 @@ class HttpServerOperationalTest {
     void accessLogIncludesClientIpAndUserAgent() throws Exception {
         int port = freePort();
         var log = new ByteArrayOutputStream();
-        var server = WebServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(port).withMaxBodySize(1024).withReadTimeout(Duration.ofSeconds(2)).withMaxConnections(0), RequestComponents.of(Route.get("/", ctx -> ctx.send(200, "ok")))
+        var server = HttpServer.create(TestHttp.engine(),
+            TestServerConfig.loopback(port).withMaxBodySize(1024).withReadTimeout(Duration.ofSeconds(2)).withMaxConnections(0), HttpPipeline.of(Route.get("/", ctx -> ctx.send(200, "ok")))
                 .withFilter(new AccessLogFilter(new PrintStream(log, true)))
                 );
         server.start();
@@ -422,8 +422,8 @@ class HttpServerOperationalTest {
     @Test
     void writeTimeoutClosesConnectionWhenPeerStopsReading() throws Exception {
         int port = freePort();
-        var server = WebServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(port).withMaxBodySize(1024).withReadTimeout(Duration.ofSeconds(30)).withMaxConnections(0).withWriteTimeout(Duration.ofMillis(500)), RequestComponents.of(Route.get("/big", ctx ->
+        var server = HttpServer.create(TestHttp.engine(),
+            TestServerConfig.loopback(port).withMaxBodySize(1024).withReadTimeout(Duration.ofSeconds(30)).withMaxConnections(0).withWriteTimeout(Duration.ofMillis(500)), HttpPipeline.of(Route.get("/big", ctx ->
                 ctx.send(200, "x".repeat(16 * 1024 * 1024)))));
         server.start();
         try (Socket socket = new Socket("127.0.0.1", port)) {

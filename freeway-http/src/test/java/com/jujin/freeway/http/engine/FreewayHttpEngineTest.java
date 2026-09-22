@@ -50,8 +50,8 @@ import com.jujin.freeway.commons.json.JsonUtils;
 import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.HttpServerConfig;
-import com.jujin.freeway.http.WebServer;
-import com.jujin.freeway.http.RequestComponents;
+import com.jujin.freeway.http.HttpServer;
+import com.jujin.freeway.http.HttpPipeline;
 import com.jujin.freeway.http.TestHttp;
 import com.jujin.freeway.http.filter.CorsFilter;
 import com.jujin.freeway.http.route.Route;
@@ -118,7 +118,7 @@ class FreewayHttpEngineTest {
                     ctx.send(200, "ok");
                 })
             ));
-        assertTrue(app.get(WebServer.class).isRunning());
+        assertTrue(app.get(HttpServer.class).isRunning());
 
         HttpClient client = HttpClient.newHttpClient();
         HttpResponse<String> resp = client.send(
@@ -135,8 +135,8 @@ class FreewayHttpEngineTest {
     @Test
     void bodyOnGetWithoutContentLengthReturnsEmptyAndKeepsConnectionUsable() throws Exception {
         int port = freePort();
-        var server = WebServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(port), RequestComponents.of(Route.get("/read", ctx -> ctx.send(200, "len=" + ctx.body().length)), Route.get("/ping", ctx -> ctx.send(200, "pong"))));
+        var server = HttpServer.create(TestHttp.engine(),
+            TestServerConfig.loopback(port), HttpPipeline.of(Route.get("/read", ctx -> ctx.send(200, "len=" + ctx.body().length)), Route.get("/ping", ctx -> ctx.send(200, "pong"))));
         server.start();
         try (var sock = new Socket("127.0.0.1", port)) {
             sock.setSoTimeout(3000);
@@ -160,8 +160,8 @@ class FreewayHttpEngineTest {
     @Test
     void unreadPostBodyDoesNotBreakKeepAlive() throws Exception {
         int port = freePort();
-        var server = WebServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(port), RequestComponents.of(Route.post("/ignore", ctx -> ctx.send(200, "ok")), Route.get("/ping", ctx -> ctx.send(200, "pong"))));
+        var server = HttpServer.create(TestHttp.engine(),
+            TestServerConfig.loopback(port), HttpPipeline.of(Route.post("/ignore", ctx -> ctx.send(200, "ok")), Route.get("/ping", ctx -> ctx.send(200, "pong"))));
         server.start();
         try (var sock = new Socket("127.0.0.1", port)) {
             sock.setSoTimeout(3000);
@@ -196,8 +196,8 @@ class FreewayHttpEngineTest {
     @Test
     void chunkedBodyWithPipelinedNextRequestKeepsBoth() throws Exception {
         int port = freePort();
-        var server = WebServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(port), RequestComponents.of(Route.post("/echo", ctx -> ctx.send(200, new String(
+        var server = HttpServer.create(TestHttp.engine(),
+            TestServerConfig.loopback(port), HttpPipeline.of(Route.post("/echo", ctx -> ctx.send(200, new String(
                 ctx.body(), StandardCharsets.UTF_8))), Route.get("/ping", ctx -> ctx.send(200, "pong"))));
         server.start();
         try (var sock = new Socket("127.0.0.1", port)) {
@@ -230,8 +230,8 @@ class FreewayHttpEngineTest {
     @Test
     void handlerConnectionCloseActuallyClosesConnection() throws Exception {
         int port = freePort();
-        var server = WebServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(port), RequestComponents.of(Route.get("/close", ctx -> {
+        var server = HttpServer.create(TestHttp.engine(),
+            TestServerConfig.loopback(port), HttpPipeline.of(Route.get("/close", ctx -> {
                 ctx.setHeader("Connection", "close");
                 ctx.send(200, "first");
             })));
@@ -261,8 +261,8 @@ class FreewayHttpEngineTest {
     @Test
     void sseClosesConnectionAfterComplete() throws Exception {
         int port = freePort();
-        var server = WebServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(port), RequestComponents.of(Route.get("/sse", ctx -> {
+        var server = HttpServer.create(TestHttp.engine(),
+            TestServerConfig.loopback(port), HttpPipeline.of(Route.get("/sse", ctx -> {
                 try (var emitter = ctx.sse()) {
                     emitter.send("hi");
                 }
@@ -319,7 +319,7 @@ class FreewayHttpEngineTest {
         System.setProperty(HttpConfigKeys.SERVER_PORT, String.valueOf(port));
 
         app = FreewayApp.run(new String[0], new PingModule());
-        assertTrue(app.get(WebServer.class).isRunning());
+        assertTrue(app.get(HttpServer.class).isRunning());
 
         HttpClient client = HttpClient.newHttpClient();
         var response = client.send(
@@ -340,7 +340,7 @@ class FreewayHttpEngineTest {
         System.setProperty("freeway.http.server.port", String.valueOf(port));
 
         app = FreewayApp.run(new String[0], new PingModule());
-        assertTrue(app.get(WebServer.class).isRunning());
+        assertTrue(app.get(HttpServer.class).isRunning());
 
         HttpClient client = HttpClient.newHttpClient();
         var response = client.send(
@@ -361,7 +361,7 @@ class FreewayHttpEngineTest {
         System.setProperty(HttpConfigKeys.SERVER_PORT, String.valueOf(port));
 
         app = FreewayApp.run(new String[0], new PingModule());
-        assertTrue(app.get(WebServer.class).isRunning());
+        assertTrue(app.get(HttpServer.class).isRunning());
 
         HttpClient client = HttpClient.newHttpClient();
         CompletableFuture<String> received = new CompletableFuture<>();
@@ -400,7 +400,7 @@ class FreewayHttpEngineTest {
         System.setProperty(HttpConfigKeys.SERVER_HOST, "127.0.0.1");
         System.setProperty(HttpConfigKeys.SERVER_PORT, String.valueOf(port));
         app = FreewayApp.run(new String[0], new PingModule());
-        assertTrue(app.get(WebServer.class).isRunning());
+        assertTrue(app.get(HttpServer.class).isRunning());
 
         try (var sock = new Socket("127.0.0.1", port)) {
             var out = sock.getOutputStream();
@@ -441,7 +441,7 @@ class FreewayHttpEngineTest {
                 })
             )
         );
-        assertTrue(app.get(WebServer.class).isRunning());
+        assertTrue(app.get(HttpServer.class).isRunning());
 
         HttpClient client = HttpClient.newHttpClient();
         HttpResponse<String> r = client.send(
@@ -487,7 +487,7 @@ class FreewayHttpEngineTest {
                 })
             ));
         });
-        assertTrue(app.get(WebServer.class).isRunning());
+        assertTrue(app.get(HttpServer.class).isRunning());
 
         HttpClient client = HttpClient.newHttpClient();
         CompletableFuture<Integer> closed = new CompletableFuture<>();
@@ -522,7 +522,7 @@ class FreewayHttpEngineTest {
                 ctx.send(200, ctx.bodyText());
             }))
         );
-        assertTrue(app.get(WebServer.class).isRunning());
+        assertTrue(app.get(HttpServer.class).isRunning());
 
         HttpClient client = HttpClient.newHttpClient();
         HttpResponse<String> response = client.send(
@@ -552,7 +552,7 @@ class FreewayHttpEngineTest {
                 Route.get("/missing.txt", ctx -> ctx.send(200, "route handled"))
             );
         });
-        assertTrue(app.get(WebServer.class).isRunning());
+        assertTrue(app.get(HttpServer.class).isRunning());
 
         HttpClient client = HttpClient.newHttpClient();
         // Existing file should be served by static mount
@@ -722,8 +722,8 @@ class FreewayHttpEngineTest {
 
     @Test
     void isMultipartDoesNotReadBodyForNonMultipartRequest() throws Exception {
-        var server = WebServer.create(TestHttp.engine(),
-            TestServerConfig.loopback().withMaxBodySize(1024), RequestComponents.of(Route.post("/check", ctx ->
+        var server = HttpServer.create(TestHttp.engine(),
+            TestServerConfig.loopback().withMaxBodySize(1024), HttpPipeline.of(Route.post("/check", ctx ->
                 ctx.send(200, "is-multipart=" + ctx.isMultipart()))));
         server.start();
         try {
@@ -746,8 +746,8 @@ class FreewayHttpEngineTest {
 
     @Test
     void webSocketSubprotocolIsNegotiated() throws Exception {
-        var server = WebServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(), RequestComponents.of()
+        var server = HttpServer.create(TestHttp.engine(),
+            TestServerConfig.loopback(), HttpPipeline.of()
                 .withWebSockets(WebSocketRoute.of("/ws/sub", new WebSocketEndpoint() {
                 @Override
                 public WebSocketListener open(
@@ -797,8 +797,8 @@ class FreewayHttpEngineTest {
         // CORS disabled must not gate WebSocket upgrades: an Origin header
         // that would fail the allow-list is accepted because there is no
         // CORS policy at all.
-        var server = WebServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(), RequestComponents.of()
+        var server = HttpServer.create(TestHttp.engine(),
+            TestServerConfig.loopback(), HttpPipeline.of()
                 .withCors(CorsFilter.defaults().withEnabled(false))
                 .withWebSockets(WebSocketRoute.of("/ws", session -> WebSocketListener.NOOP)));
         server.start();
@@ -813,8 +813,8 @@ class FreewayHttpEngineTest {
     void webSocketUpgradeRejectsOriginWhenCorsEnabled() throws Exception {
         // With CORS enabled and an explicit allow-list, an Origin outside
         // the list must be rejected with 403.
-        var server = WebServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(), RequestComponents.of()
+        var server = HttpServer.create(TestHttp.engine(),
+            TestServerConfig.loopback(), HttpPipeline.of()
                 .withCors(new CorsFilter(true, List.of("https://allowed.example"),
                 List.of("GET"), List.of(), List.of(), "", false))
                 .withWebSockets(WebSocketRoute.of("/ws", session -> WebSocketListener.NOOP)));
@@ -853,8 +853,8 @@ class FreewayHttpEngineTest {
 
     @Test
     void leadingEmptyLineIsIgnoredOnKeepAlive() throws Exception {
-        var server = WebServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(), RequestComponents.of(Route.get("/", ctx -> ctx.send(200, "ok"))));
+        var server = HttpServer.create(TestHttp.engine(),
+            TestServerConfig.loopback(), HttpPipeline.of(Route.get("/", ctx -> ctx.send(200, "ok"))));
         server.start();
         try {
             try (var socket = new Socket("127.0.0.1", server.port())) {
@@ -877,8 +877,8 @@ class FreewayHttpEngineTest {
 
     @Test
     void negativeContentLengthIsRejected() throws Exception {
-        var server = WebServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(), RequestComponents.of(Route.get("/", ctx -> ctx.send(200, "ok"))));
+        var server = HttpServer.create(TestHttp.engine(),
+            TestServerConfig.loopback(), HttpPipeline.of(Route.get("/", ctx -> ctx.send(200, "ok"))));
         server.start();
         try {
             try (var socket = new Socket("127.0.0.1", server.port())) {
@@ -908,8 +908,8 @@ class FreewayHttpEngineTest {
 
     @Test
     void healthzMatchesTrailingSlash() throws Exception {
-        var server = WebServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(), RequestComponents.of(Route.get("/", ctx -> ctx.send(200, "root"))));
+        var server = HttpServer.create(TestHttp.engine(),
+            TestServerConfig.loopback(), HttpPipeline.of(Route.get("/", ctx -> ctx.send(200, "root"))));
         server.start();
         try {
             var client = HttpClient.newHttpClient();
@@ -935,8 +935,8 @@ class FreewayHttpEngineTest {
 
     @Test
     void plainHttpRequestIsNotSecure() throws Exception {
-        var server = WebServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(), RequestComponents.of(Route.get("/secure", ctx -> ctx.send(200, String.valueOf(ctx.isSecure())))));
+        var server = HttpServer.create(TestHttp.engine(),
+            TestServerConfig.loopback(), HttpPipeline.of(Route.get("/secure", ctx -> ctx.send(200, String.valueOf(ctx.isSecure())))));
         server.start();
         try {
             var client = HttpClient.newHttpClient();
@@ -955,8 +955,8 @@ class FreewayHttpEngineTest {
 
     @Test
     void plainHttpRequestHasNoSslSession() throws Exception {
-        var server = WebServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(), RequestComponents.of(Route.get("/session", ctx ->
+        var server = HttpServer.create(TestHttp.engine(),
+            TestServerConfig.loopback(), HttpPipeline.of(Route.get("/session", ctx ->
                 ctx.send(200, String.valueOf(ctx.sslSession() != null)))));
         server.start();
         try {
@@ -982,8 +982,8 @@ class FreewayHttpEngineTest {
 
     @Test
     void rejectsOversizedRequestLine() throws Exception {
-        var server = WebServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(), RequestComponents.of(Route.get("/", ctx -> ctx.send(200, "ok"))));
+        var server = HttpServer.create(TestHttp.engine(),
+            TestServerConfig.loopback(), HttpPipeline.of(Route.get("/", ctx -> ctx.send(200, "ok"))));
         server.start();
         try {
             try (var socket = new Socket("127.0.0.1", server.port())) {
@@ -1060,8 +1060,8 @@ class FreewayHttpEngineTest {
     void closeWaitsForInFlightRequestWithinGrace() throws Exception {
         var handlerStarted = new CountDownLatch(1);
         var releaseHandler = new CountDownLatch(1);
-        var server = WebServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(), RequestComponents.of(Route.get("/slow", ctx -> {
+        var server = HttpServer.create(TestHttp.engine(),
+            TestServerConfig.loopback(), HttpPipeline.of(Route.get("/slow", ctx -> {
                 handlerStarted.countDown();
                 releaseHandler.await();
                 ctx.send(200, "slow-done");
@@ -1160,7 +1160,7 @@ class FreewayHttpEngineTest {
                     "protocol", ctx.sslSession() != null
                         ? ctx.sslSession().getProtocol() : "")))
             ));
-        assertTrue(app.get(WebServer.class).isRunning(),
+        assertTrue(app.get(HttpServer.class).isRunning(),
             "HttpModule must start an HTTPS server when freeway.http.ssl.* is configured");
 
         var client = HttpClient.newBuilder()
@@ -1188,8 +1188,8 @@ class FreewayHttpEngineTest {
     @Test
     void httpsNegotiatesHttp2OverTls(@TempDir Path tempDir) throws Exception {
         Path keystore = generateKeyStore(tempDir);
-        var server = WebServer.create(TestHttp.tlsEngine(serverSslContext(keystore), true),
-            TestServerConfig.loopback(), RequestComponents.of(Route.get("/h2-tls", ctx -> ctx.sendJson(200, Map.of(
+        var server = HttpServer.create(TestHttp.tlsEngine(serverSslContext(keystore), true),
+            TestServerConfig.loopback(), HttpPipeline.of(Route.get("/h2-tls", ctx -> ctx.sendJson(200, Map.of(
                 "secure", ctx.isSecure(),
                 "protocol", ctx.sslSession() != null
                     ? ctx.sslSession().getProtocol() : "")))));
@@ -1239,7 +1239,7 @@ class FreewayHttpEngineTest {
                     "protocol", ctx.sslSession() != null
                         ? ctx.sslSession().getProtocol() : "")))
             ));
-        assertTrue(app.get(WebServer.class).isRunning());
+        assertTrue(app.get(HttpServer.class).isRunning());
 
         var client = HttpClient.newBuilder()
             .sslContext(trustAllSslContext())
@@ -1293,7 +1293,7 @@ class FreewayHttpEngineTest {
                     "secure", ctx.isSecure(),
                     "session", ctx.sslSession() != null)))
             ));
-        assertTrue(app.get(WebServer.class).isRunning());
+        assertTrue(app.get(HttpServer.class).isRunning());
 
         // A client without a certificate must fail the TLS handshake.
         var anonymous = HttpClient.newBuilder()
@@ -1333,8 +1333,8 @@ class FreewayHttpEngineTest {
 
     @Test
     void headResponseReportsCorrectContentLength() throws Exception {
-        var server = WebServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(), RequestComponents.of(Route.get("/data", ctx ->
+        var server = HttpServer.create(TestHttp.engine(),
+            TestServerConfig.loopback(), HttpPipeline.of(Route.get("/data", ctx ->
                 ctx.send(200, "Hello World"))));
         server.start();
         try {
@@ -1367,8 +1367,8 @@ class FreewayHttpEngineTest {
         // The fast id (ThreadLocalRandom + HexFormat) must keep the same
         // wire contract as the old UUID.randomUUID().toString().replace("-",""):
         // 32 lowercase hex chars, no hyphens.
-        var server = WebServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(), RequestComponents.of(Route.get("/whoami", ctx ->
+        var server = HttpServer.create(TestHttp.engine(),
+            TestServerConfig.loopback(), HttpPipeline.of(Route.get("/whoami", ctx ->
                 ctx.send(200, ctx.correlationId()))));
         server.start();
         try {
@@ -1391,8 +1391,8 @@ class FreewayHttpEngineTest {
 
     @Test
     void propagatesClientXRequestId() throws Exception {
-        var server = WebServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(), RequestComponents.of(Route.get("/whoami", ctx ->
+        var server = HttpServer.create(TestHttp.engine(),
+            TestServerConfig.loopback(), HttpPipeline.of(Route.get("/whoami", ctx ->
                 ctx.send(200, ctx.correlationId()))));
         server.start();
         try {
@@ -1412,8 +1412,8 @@ class FreewayHttpEngineTest {
 
     @Test
     void propagatesLowercaseXRequestId() throws Exception {
-        var server = WebServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(), RequestComponents.of(Route.get("/whoami", ctx ->
+        var server = HttpServer.create(TestHttp.engine(),
+            TestServerConfig.loopback(), HttpPipeline.of(Route.get("/whoami", ctx ->
                 ctx.send(200, ctx.correlationId()))));
         server.start();
         try {
@@ -1463,7 +1463,7 @@ class FreewayHttpEngineTest {
             binder.contribute(Route.class).add(
                 Route.get("/greet/{name}", GreetHandler.class));
         });
-        assertTrue(app.get(WebServer.class).isRunning());
+        assertTrue(app.get(HttpServer.class).isRunning());
 
         HttpClient client = HttpClient.newHttpClient();
         HttpResponse<String> resp = client.send(
@@ -1489,7 +1489,7 @@ class FreewayHttpEngineTest {
                             throw new RuntimeException("forced error");
                         })
                 ));
-        assertTrue(app.get(WebServer.class).isRunning());
+        assertTrue(app.get(HttpServer.class).isRunning());
 
         // JDK HttpClient with version(HTTP_2) attempts h2c upgrade on cleartext.
         // If server supports h2c → 101 → H2 frames → handler error → RST_STREAM.

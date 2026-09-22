@@ -66,7 +66,7 @@ class HttpSslActivationTest {
 
         assertTrue(app.get(com.jujin.freeway.http.SslSettings.class).enabled(),
             "a configured keystore must activate HTTPS without ssl.enabled");
-        assertTrue(app.get(com.jujin.freeway.http.WebServer.class).secure(),
+        assertTrue(app.get(com.jujin.freeway.http.HttpServer.class).secure(),
             "the server must report the transport it was configured with — the cloud"
                 + " registry endpoint and mesh origin derive their scheme from it");
         assertEquals("CN=localhost",
@@ -90,7 +90,7 @@ class HttpSslActivationTest {
 
         assertFalse(app.get(com.jujin.freeway.http.SslSettings.class).enabled(),
             "the kill switch must suppress the configured keystore");
-        assertFalse(app.get(com.jujin.freeway.http.WebServer.class).secure(),
+        assertFalse(app.get(com.jujin.freeway.http.HttpServer.class).secure(),
             "the kill switch must reach the server's reported transport too");
         // Plain HTTP on the same port: the TLS attempt would fail the read.
         assertEquals(200, plainGet(port));

@@ -18,7 +18,7 @@ import com.jujin.freeway.cloud.discovery.ServiceRegistry;
 import com.jujin.freeway.commons.json.JsonCodecDefault;
 import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.HttpModule;
-import com.jujin.freeway.http.WebServer;
+import com.jujin.freeway.http.HttpServer;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.ModuleEx;
@@ -130,7 +130,7 @@ class RpcExportWiringTest {
     }
 
     private static void pointDiscoveryAt(AppRuntime app, String serviceId) {
-        WebServer web = app.get(WebServer.class);
+        HttpServer web = app.get(HttpServer.class);
         app.get(ServiceRegistry.class).register(ServiceInstance.of(
             serviceId, "i1", Endpoint.of("http", web.host(), web.port()), Map.of()));
     }
@@ -284,7 +284,7 @@ class RpcExportWiringTest {
 
     @Test
     void routeIsImmuneToHookOrdering() throws Exception {
-        // A hook that resolves WebServer before the export hook freezes the
+        // A hook that resolves HttpServer before the export hook freezes the
         // route index early. The export route is contributed at bind time, so
         // it is already in that index — this is the property that replaced the
         // "add a route from a hook" design, which would have lost the route
@@ -296,7 +296,7 @@ class RpcExportWiringTest {
                     .add("test.freeze-routes-early", new RuntimeHook() {
                         @Override
                         public void start(Container container) {
-                            container.get(WebServer.class);
+                            container.get(HttpServer.class);
                         }
 
                     })

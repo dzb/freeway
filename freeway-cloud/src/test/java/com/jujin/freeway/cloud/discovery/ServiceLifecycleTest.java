@@ -8,7 +8,7 @@ import com.jujin.freeway.cloud.CloudConfigKeys;
 import com.jujin.freeway.cloud.internal.RegistryStore;
 import com.jujin.freeway.http.HttpModule;
 import com.jujin.freeway.http.HttpConfigKeys;
-import com.jujin.freeway.http.WebServer;
+import com.jujin.freeway.http.HttpServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -49,7 +49,7 @@ class ServiceLifecycleTest {
             store = app.get(RegistryStore.class);
             List<ServiceInstance> instances = store.liveReady("lifecycle-svc", Duration.ofMinutes(1));
             assertEquals(1, instances.size(), "HTTP endpoint must auto-register");
-            assertEquals(app.get(WebServer.class).port(), instances.get(0).endpoint().port());
+            assertEquals(app.get(HttpServer.class).port(), instances.get(0).endpoint().port());
         }
         assertTrue(store.liveReady("lifecycle-svc", Duration.ofMinutes(1)).isEmpty(),
             "shutdown unregisters before the container closes");

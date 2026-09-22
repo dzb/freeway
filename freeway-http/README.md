@@ -32,28 +32,28 @@ engine/              — socket I/O, protocol parsing, connection lifecycle
   (HttpConnection, Http1xSession, Http1xParser live directly here)
   http2/             — Http2Connection, frame/HPACK/stream management
   ws/                — WebSocket frame read/write protocol
-WebServer            — filter chain, routing, event publishing (Consumer<Object>)
+HttpServer            — filter chain, routing, event publishing (Consumer<Object>)
 HttpModule           — IoC bridge: registers FreewayHttpEngine, wires EventBus
 ```
 
 ### Standalone (no container at all)
 
-`WebServer.create` is the one derivation of a server from its parts, and it
+`HttpServer.create` is the one derivation of a server from its parts, and it
 needs nothing from `freeway-ioc` or `freeway-boot`: an engine, an
-`HttpServerConfig`, and the `RequestComponents` the server routes through.
+`HttpServerConfig`, and the `HttpPipeline` the server routes through.
 
 ```java
-WebServer server = WebServer.create(
+HttpServer server = HttpServer.create(
     new FreewayHttpEngine(FreewayHttpEngine.Wiring.defaults(
         new JsonCodecDefault(), new CoercerDefault())),
     HttpServerConfig.defaults().withHost("0.0.0.0").withPort(8080),
-    RequestComponents.of(Route.get("/ping", ctx -> ctx.send(200, "pong"))));
+    HttpPipeline.of(Route.get("/ping", ctx -> ctx.send(200, "pong"))));
 server.start();
 ```
 
-The parts grow through withers — `RequestComponents.of(routes)` then
+The parts grow through withers — `HttpPipeline.of(routes)` then
 `.withWebSockets(…)`, `.withFilter(…)`, `.withStaticFiles(…)`,
-`.withErrorMapper(…)`, `.withCors(…)`, `.withHealth(…)` — and the four-argument
+`.withErrorHandlers(…)`, `.withCors(…)`, `.withHealth(…)` — and the four-argument
 `create(…, eventSink)` publishes `HttpExchangeEvent`/`HttpErrorEvent` wherever
 you want them (the three-argument form publishes nothing, so a server nobody
 observes builds no per-request event). What `create` always adds, on both paths:
@@ -65,7 +65,7 @@ skipped, and the transport verdict read from the engine.
 `HttpModule` is the container face of the same derivation: it resolves each
 value type from its own `freeway.http.*` keys (`HttpServerConfig.from`,
 `CorsFilter.from`, `HealthFilter.from`, `SslSettings.from`), collects the
-contributed routes/filters/mounts/mappers, and calls `WebServer.create` with the
+contributed routes/filters/mounts/mappers, and calls `HttpServer.create` with the
 container's `EventBus` as the sink. It holds no defaults and no policy of its
 own, which is why the two paths cannot drift.
 
@@ -81,7 +81,7 @@ FreewayApp.run(args, new HttpModule(), binder -> {
 
 | Package | Visibility | Contents |
 |---|---|---|
-| `http/` | public API | WebServer, HttpContext, HttpEngine, RouteIndex, filter interfaces |
+| `http/` | public API | HttpServer, HttpContext, HttpEngine, RouteIndex, filter interfaces |
 | `http/engine/` | implementation | `FreewayHttpEngine` (public), `HttpConnection`, `Http1xSession`, `Http1xParser`, HTTP/1.x framing and shared I/O |
 | `http/engine/http2/` | package | Http2Connection, 29 HTTP/2 frame/HPACK/stream files |
 | `http/engine/ws/` | package | WebSocketFrame, WebSocketSessionImpl, WsUtil, opcode/close enums |

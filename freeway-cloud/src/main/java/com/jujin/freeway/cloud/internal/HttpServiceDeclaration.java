@@ -5,7 +5,7 @@ import com.jujin.freeway.cloud.discovery.Endpoint;
 import com.jujin.freeway.cloud.discovery.ServiceDeclaration;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.ioc.symbol.SymbolSpec;
-import com.jujin.freeway.http.WebServer;
+import com.jujin.freeway.http.HttpServer;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.MissingBindingException;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
@@ -17,11 +17,11 @@ import java.util.function.Function;
 
 /**
  * Built-in {@link ServiceDeclaration} for the HTTP endpoint: registers the
- * {@link WebServer}'s address under the configured service id (fallback
+ * {@link HttpServer}'s address under the configured service id (fallback
  * chain: {@code freeway.cloud.registry.service-id} →
  * {@code freeway.app.name} → {@code freeway-app}).
  *
- * <p>Returns {@code null} when no {@link WebServer} is bound (HTTP module not
+ * <p>Returns {@code null} when no {@link HttpServer} is bound (HTTP module not
  * installed) — the registry hook skips it. Scheme and host default to
  * {@code auto} ({@link ServiceIdentity}): the scheme follows the server's
  * transport, the host prefers {@code POD_IP} and then a routable local
@@ -61,9 +61,9 @@ public final class HttpServiceDeclaration implements ServiceDeclaration {
 
     /** @see #resolve */
     public static ServiceInstance of(Container container) {
-        WebServer server;
+        HttpServer server;
         try {
-            server = container.get(WebServer.class);
+            server = container.get(HttpServer.class);
         } catch (MissingBindingException e) {
             return null; // no HTTP module — nothing to register
         }

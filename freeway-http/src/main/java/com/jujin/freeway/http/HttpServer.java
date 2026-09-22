@@ -12,7 +12,6 @@ import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.event.HttpErrorEvent;
 import com.jujin.freeway.http.event.HttpExchangeEvent;
 import com.jujin.freeway.http.event.HttpServerStartedEvent;
@@ -30,9 +29,9 @@ import com.jujin.freeway.http.websocket.WebSocketMatch;
  * Orchestrates HTTP request handling: filter chain, route dispatch, static
  * files, WebSocket upgrades, error mapping, and event publishing.
  */
-public final class WebServer implements AutoCloseable {
+public final class HttpServer implements AutoCloseable {
 
-    private static final Logger LOG = LoggerFactory.getLogger(WebServer.class);
+    private static final Logger LOG = LoggerFactory.getLogger(HttpServer.class);
     static final Consumer<Object> NOOP_SINK = event -> {};
 
     private final RouteIndex routes;
@@ -52,12 +51,12 @@ public final class WebServer implements AutoCloseable {
     private volatile HttpServerHandle handle;
 
     /**
-     * The server for these parts, publishing nothing: the standalone shape, where
-     * no one is listening so no per-request event objects are built.
+     * The server for this pipeline, publishing nothing: the standalone shape,
+     * where no one is listening so no per-request event objects are built.
      */
-    public static WebServer create(HttpEngine engine, HttpServerConfig config,
-            RequestComponents components) {
-        return create(engine, config, components, NOOP_SINK);
+    public static HttpServer create(HttpEngine engine, HttpServerConfig config,
+            HttpPipeline pipeline) {
+        return create(engine, config, pipeline, NOOP_SINK);
     }
 
     /**
@@ -69,11 +68,11 @@ public final class WebServer implements AutoCloseable {
      *
      * @param eventSink  receives {@link HttpExchangeEvent} / {@link HttpErrorEvent}
      *                   and the start event; {@link #create(HttpEngine,
-     *                   HttpServerConfig, RequestComponents)} passes the no-op sink
+     *                   HttpServerConfig, HttpPipeline)} passes the no-op sink
      */
-    public static WebServer create(HttpEngine engine, HttpServerConfig config,
-            RequestComponents components, Consumer<Object> eventSink) {
-        return new WebServer(engine, config, eventSink, builtInMapperLast(components),
+    public static HttpServer create(HttpEngine engine, HttpServerConfig config,
+            HttpPipeline pipeline, Consumer<Object> eventSink) {
+        return new HttpServer(engine, config, eventSink, builtInMapperLast(pipeline),
             (host, port) -> port > 0);
     }
 
@@ -83,13 +82,8 @@ public final class WebServer implements AutoCloseable {
      * lets an application re-map a case the built-in mappings cover (an oversized
      * body, a failed validation) without losing the ones it does not handle.
      */
-    private static RequestComponents builtInMapperLast(RequestComponents components) {
-        var mappers = new ArrayList<ErrorHandler>(components.errorHandlers().size() + 1);
-        mappers.addAll(components.errorHandlers());
-        mappers.add(ErrorHandler.defaults());
-        return new RequestComponents(components.routes(), components.websocketIndex(),
-            components.corsFilter(), components.healthFilter(), components.staticMounts(),
-            components.filters(), mappers);
+    private static HttpPipeline builtInMapperLast(HttpPipeline pipeline) {
+        return pipeline.withErrorHandlers(ErrorHandler.defaults());
     }
 
     /**
@@ -101,24 +95,23 @@ public final class WebServer implements AutoCloseable {
      * false}, and the standalone builder that replaced it re-derived the verdict
      * a second time; both are gone, and the verdict has one owner.</p>
      */
-    WebServer(
+    HttpServer(
         HttpEngine engine,
         HttpServerConfig config,
         Consumer<Object> eventSink,
-        RequestComponents pipeline,
+        HttpPipeline pipeline,
         ReadinessProbe readinessProbe
     ) {
-        this.routes = Objects.requireNonNull(pipeline.routes(), "routes");
-        this.websocketIndex = Objects.requireNonNull(pipeline.websocketIndex(), "websocketIndex");
-        this.corsFilter = Objects.requireNonNull(pipeline.corsFilter(), "corsFilter");
-        this.staticMounts = pipeline.staticMounts() != null ? pipeline.staticMounts() : List.of();
+        this.routes = pipeline.routes();
+        this.websocketIndex = pipeline.websocketIndex();
+        this.corsFilter = pipeline.corsFilter();
+        this.staticMounts = pipeline.staticMounts();
         this.errorHandlers = pipeline.errorHandlers();
         // Application filters plus the built-in CORS/health filters share
         // one ordered chain; inactive built-ins are skipped entirely so a
         // no-op request never pays a virtual call.
         var orderedFilters = new ArrayList<>(pipeline.filters());
-        HealthFilter healthFilter = Objects.requireNonNull(
-            pipeline.healthFilter(), "healthFilter");
+        HealthFilter healthFilter = pipeline.healthFilter();
         if (healthFilter.isActive()) orderedFilters.add(healthFilter);
         if (corsFilter.isActive()) orderedFilters.add(corsFilter);
         orderedFilters.sort(Comparator.comparingInt(HttpFilter::order));
@@ -135,7 +128,7 @@ public final class WebServer implements AutoCloseable {
             try {
                 filterChain.handle(ctx);
             } catch (Exception ex) {
-                boolean handled = WebServer.this.handleException(ctx, ex);
+                boolean handled = HttpServer.this.handleException(ctx, ex);
                 if (!handled && publishEvents) {
                     publish(new HttpErrorEvent(
                         ctx.method(), ctx.path(), ex));
@@ -233,7 +226,7 @@ public final class WebServer implements AutoCloseable {
     private HttpServerHandle requireStarted() {
         HttpServerHandle h = this.handle;
         if (h == null) {
-            throw new IllegalStateException("WebServer is not started");
+            throw new IllegalStateException("HttpServer is not started");
         }
         return h;
     }

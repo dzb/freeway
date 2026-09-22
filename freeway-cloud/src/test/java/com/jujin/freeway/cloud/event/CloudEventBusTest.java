@@ -86,7 +86,7 @@ class CloudEventBusTest {
     @Test
     void topicEventRoundTripBothDirectionsOverOneConnection() throws Exception {
         nodeB = startB("greet.", null);
-        int bPort = nodeB.get(com.jujin.freeway.http.WebServer.class).port();
+        int bPort = nodeB.get(com.jujin.freeway.http.HttpServer.class).port();
         nodeA = startA(bPort, "ack.");
         awaitMesh(nodeA, nodeB);
 
@@ -115,7 +115,7 @@ class CloudEventBusTest {
     @Test
     void subscriptionPrefixFiltersOutUnsubscribedTopics() throws Exception {
         nodeB = startB("greet.", null);
-        int bPort = nodeB.get(com.jujin.freeway.http.WebServer.class).port();
+        int bPort = nodeB.get(com.jujin.freeway.http.HttpServer.class).port();
         nodeA = startA(bPort, "");
         awaitMesh(nodeA, nodeB);
 
@@ -133,7 +133,7 @@ class CloudEventBusTest {
     void classEventRoundTripsThroughWhitelist() throws Exception {
         String type = GreetEvent.class.getName();
         nodeB = startB(type, type); // subscribe + whitelist by class name
-        int bPort = nodeB.get(com.jujin.freeway.http.WebServer.class).port();
+        int bPort = nodeB.get(com.jujin.freeway.http.HttpServer.class).port();
         nodeA = startA(bPort, "");
         awaitMesh(nodeA, nodeB);
 
@@ -152,7 +152,7 @@ class CloudEventBusTest {
     @Test
     void classEventOutsideWhitelistIsDropped() throws Exception {
         nodeB = startB(GreetEvent.class.getName(), OrderedEvent.class.getName());
-        int bPort = nodeB.get(com.jujin.freeway.http.WebServer.class).port();
+        int bPort = nodeB.get(com.jujin.freeway.http.HttpServer.class).port();
         nodeA = startA(bPort, "");
         awaitMesh(nodeA, nodeB);
 
@@ -170,7 +170,7 @@ class CloudEventBusTest {
         // OrderedEvent is a CLASS-channel event, so node B must allowlist its
         // type — CLASS delivery is deny-by-default.
         nodeB = startB("order.", OrderedEvent.class.getName());
-        int bPort = nodeB.get(com.jujin.freeway.http.WebServer.class).port();
+        int bPort = nodeB.get(com.jujin.freeway.http.HttpServer.class).port();
         nodeA = startA(bPort, "");
         awaitMesh(nodeA, nodeB);
 

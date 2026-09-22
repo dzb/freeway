@@ -28,7 +28,7 @@
             <groupId>com.jujin8.freeway</groupId>
             <artifactId>freeway-ioc</artifactId>
         </dependency>
-        <!-- Test scope: the cloud runtime hangs off ioc's RuntimeHook/WebServer
+        <!-- Test scope: the cloud runtime hangs off ioc's RuntimeHook/HttpServer
              and imports nothing from boot; only the end-to-end tests boot a
              real app (AppRuntime / FreewayApp). Keeping this compile-scope
              would drag boot onto every consumer's classpath for nothing. -->

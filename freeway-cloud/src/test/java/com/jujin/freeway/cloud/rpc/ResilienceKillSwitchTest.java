@@ -102,7 +102,7 @@ class ResilienceKillSwitchTest {
     /** Registers this app's own server as a service instance (test shortcut). */
     private static final class WebServerHolder {
         static void register(AppRuntime app, String serviceId) {
-            var server = app.get(com.jujin.freeway.http.WebServer.class);
+            var server = app.get(com.jujin.freeway.http.HttpServer.class);
             app.get(ServiceRegistry.class).register(
                 ServiceInstance.of(serviceId, "i1",
                     Endpoint.of("http", server.host(), server.port()), java.util.Map.of()));

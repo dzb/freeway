@@ -60,7 +60,7 @@ freeway-cloud  (com.jujin.freeway.cloud)
   测试依赖：freeway-boot, junit
 ```
 
-`freeway-http` 只用来提供 WebServer / 路由面：cloud 在其上贡献
+`freeway-http` 只用来提供 HttpServer / 路由面：cloud 在其上贡献
 `/health/live|ready`、`/metrics`、`POST /rpc/{mapping}/{method}` 与
 `WS /cloud/event` 端点，并以 `HttpFilter` 扩展点接入传播与追踪。依赖方向
 单向（cloud → http），http 零外部依赖。
@@ -232,14 +232,14 @@ public record Health(boolean live, boolean ready, Instant lastSeen) {
   租约过期、后端重启），调用方应重新 `register`。心跳自愈由此成立——注册
   表对不持有的实例返回 `true`，等于让调用方误以为可达。
 - `ServiceDeclaration.resolve(container)` 在 HTTP 服务器启动后调用
-  （host:port 已确定），内建 `HttpServiceDeclaration` 注册 `WebServer` 地址；
+  （host:port 已确定），内建 `HttpServiceDeclaration` 注册 `HttpServer` 地址；
   其它协议/多端口由模块各自贡献。跨进程发现的后端适配器（Nacos/K8s
   endpoints 等）走 `.primary()`（**未交付**，§8.1）。
 - serviceId 取 `freeway.cloud.registry.service-id` → `freeway.app.name`；
   instanceId 默认派生，可用 `registry.service-instance-id` 钉住。
 - **身份的两个 auto**（值写不出来，只能推导，且启动时打一行说明选了哪个）：
   `registry.service-scheme=auto`（默认）跟随 HTTP 服务器是否启用 TLS
-  （`WebServer.secure()`，1.5.4 起转述 `HttpEngine.secure()`：谁终止 TLS 谁回答，
+  （`HttpServer.secure()`，1.5.4 起转述 `HttpEngine.secure()`：谁终止 TLS 谁回答，
   适配器引擎忽略 `freeway.http.ssl.*` 也不会把 https 节点注册成 `http://`）——
   注册的 `http/https` 与网格拨号的 `ws/wss` 出自
   同一次推导，开 TLS 不会漏改而注册出 `http://`；`registry.service-host=auto`
@@ -699,6 +699,6 @@ API**，遵循 `Database`/`Pool` 模式，并发交给虚拟线程。
 | 2026-09-12 | 审计轮次：失败获得 `kind()`（13 值）；`ServiceRegistry.renew` 返回 boolean 并自愈；readiness 只说框架验证得到的事（3 次失败判不健康、未注册报 `not registered`、关停期不健康）；密钥按 size + 全精度 mtime 轮换；网格出站 TLS 与 RPC 共用一条安全面，明文 + token 启动告警；停机加 `registry.shutdown-drain` / `rpc.shutdown-grace` 与 WS `1001 going away`；contribution id 统一 `freeway.cloud.*`；`@Local` 收敛到参数/字段并覆盖 `Metrics` / `TransportSecurity`；补充可选输入规则与 `Wiring` 兼容构造 |
 | 2026-09-13 | 模块组合改树：`ModuleEx.subModules()` 与 `ModuleTree` 删除，组合成为入口构建的 `ModuleNode` 值（容器持有，`Container.moduleTree()`）；伞模块 `CloudModule` 改为片段工厂 `CloudModules.standard()`，应用可替换或取出其中任一模块 |
 | 2026-09-14 | 结构节点由"命名分组"改为"bundle 模块"：`group` 概念删除，`ModuleEx` 的 bundle 类用 `@SubModule` 声明子模块（构建树时展开，非回调）；`CloudModules.standard()` 工厂删除，恢复为 `CloudModule` + `@SubModule`，子模块仍可单独放置取子集（无排除 API） |
-| 2026-09-12 | 配置面审计：`registry.service-scheme` / `service-host` / `shutdown-drain` 默认改为 `auto`（分别跟随 HTTP 服务器 TLS、推导可路由地址、由注册表后端回答），网格拨号方案改读解析出的实例端点；布尔键统一 `Coercer` 解析（垃圾值启动失败，不再静默 `false`）；override 文件重复键启动告警点名两个文件；新增 `WebServer.secure()` 与 `ServiceRegistry.drainWindow()` |
+| 2026-09-12 | 配置面审计：`registry.service-scheme` / `service-host` / `shutdown-drain` 默认改为 `auto`（分别跟随 HTTP 服务器 TLS、推导可路由地址、由注册表后端回答），网格拨号方案改读解析出的实例端点；布尔键统一 `Coercer` 解析（垃圾值启动失败，不再静默 `false`）；override 文件重复键启动告警点名两个文件；新增 `HttpServer.secure()` 与 `ServiceRegistry.drainWindow()` |
 | 2026-09-12 | 文档合并：本文取代 `freeway-cloud-unified-design.md` / `freeway-cloud-events-design.md` / `freeway-cloud-rpc-design.md` / `freeway-cloud-implementation-plan.md`；四份文档仍然有效的排除项与能力边界（无应用层心跳、MQ 语义、全局成员视图、webhook 出站、`@CloudEvent` 注解实体）与 core 后续项（含 `Advisor` 织入、网格心跳）并入 §5 / §7 / §8；配置键清单移出为对 `docs/freeway-config.md` 的索引 |
 | 2026-09-14 | 兼容不再是目标：`AGENTS.md` 的可选输入规则删除"记录作为适配器装配点保留旧 arity 委托构造器"（上一轮 09-12 写入）——新增组件直接改变规范构造器形状，编译错误即迁移路径；随之删除 `CloudHttpClientDefault.Wiring` 的 9 参兼容构造（ext `RemoteRpcContract` 同批改传 10 参）与 `freeway-log.properties` 的过渡读取（旧名只检测、告警，不加载） |

@@ -77,15 +77,15 @@ freeway-commons         zero deps
   HTTP/1.x + HTTP/2 h2c/h2 + WebSocket + HTTPS) is the only engine type that
   forms public API; everything else in `engine/` and its `http2/`, `ws/`
   sub-packages is an intra-engine contract with no stability promise.
-  `WebServer` orchestrates it (CorsFilter → HealthFilter → custom filters →
+  `HttpServer` orchestrates it (CorsFilter → HealthFilter → custom filters →
   route dispatch, events published through a `Consumer<Object>`), and
   `HttpModule` bridges that consumer to the EventBus while registering the
-  engine as default. `HttpModule` is the *only* assembler of `WebServer`:
+  engine as default. `HttpModule` is the *only* assembler of `HttpServer`:
   without boot a caller places the module in a lightweight container
   (`Freeway.create(new HttpModule(), …)`) and overrides the `HttpEngine` /
   `HttpServerConfig` bindings with `.primary()` — there is no second wiring to
   drift from the first. The transport verdict is the engine's (`HttpEngine.secure()`),
-  so `WebServer.secure()` reports what is actually terminating TLS rather than
+  so `HttpServer.secure()` reports what is actually terminating TLS rather than
   re-deriving a config presence rule. Route path variables use `:name` or
   `{name}`, with `{name:regex}` for constraints.
 - **DB** — `Database` is the entry point: named params (`:name`/`$name`),

@@ -122,16 +122,16 @@ public final class HttpModule implements ModuleEx {
         binder.bind(HttpServerConfig.class).to(container ->
             HttpServerConfig.from(container.get(SymbolSource.class))).id("builtin");
 
-        // WebServer — the module's whole job: read the parts off the container,
+        // HttpServer — the module's whole job: read the parts off the container,
         // hand them to the one derivation. No policy of its own; see create(...).
-        binder.bind(WebServer.class).to(container -> {
+        binder.bind(HttpServer.class).to(container -> {
             var filters = new ArrayList<>(
                 container.extension(HttpFilter.class).all());
             if (container.get(SymbolSource.class)
                     .resolve(ACCESS_LOG_ENABLED)) {
                 filters.add(new AccessLogFilter());
             }
-            var components = new RequestComponents(
+            var pipeline = new HttpPipeline(
                 container.get(RouteIndex.class),
                 container.get(WebSocketIndex.class),
                 container.get(CorsFilter.class),
@@ -140,10 +140,10 @@ public final class HttpModule implements ModuleEx {
                 List.copyOf(filters),
                 container.extension(ErrorHandler.class).all()
             );
-            return WebServer.create(
+            return HttpServer.create(
                 container.get(HttpEngine.class),
                 container.get(HttpServerConfig.class),
-                components,
+                pipeline,
                 event -> container.get(EventBus.class).publish(event));
         });
 
@@ -151,11 +151,11 @@ public final class HttpModule implements ModuleEx {
             @Override
             public void start(Container container) {
                 SslSettings ssl = container.get(SslSettings.class);
-                container.get(WebServer.class).start();
+                container.get(HttpServer.class).start();
                 if (ssl.enabled() && ssl.reloadInterval() != null
                         && !ssl.reloadInterval().isZero()) {
                     if (isBuiltinEngineActive(container)) {
-                        // The built-in engine is the one WebServer started, so
+                        // The built-in engine is the one HttpServer started, so
                         // reloading its SSLContext actually rotates the live
                         // server's certificate material.
                         sslReloader = new SslReloader(
@@ -172,7 +172,7 @@ public final class HttpModule implements ModuleEx {
                         } catch (RuntimeException ex) {
                             sslReloader.close();
                             sslReloader = null;
-                            container.get(WebServer.class).stop();
+                            container.get(HttpServer.class).stop();
                             throw ex;
                         }
                     } else {
@@ -189,7 +189,7 @@ public final class HttpModule implements ModuleEx {
                     sslReloader.close();
                     sslReloader = null;
                 }
-                container.get(WebServer.class).stop();
+                container.get(HttpServer.class).stop();
             }
         });
 
@@ -210,7 +210,7 @@ public final class HttpModule implements ModuleEx {
     /**
      * True when the HttpEngine the container resolves ({@code primary()}
      * wins over the built-in binding) is this module's built-in binding —
-     * i.e. the engine WebServer started is the {@code FreewayHttpEngine}
+     * i.e. the engine HttpServer started is the {@code FreewayHttpEngine}
      * whose {@code reload(SSLContext)} the {@link SslReloader} drives.
      * Probed through the binding's marker (no instance realization), so an
      * ext engine module selected via {@code .primary()} answers false

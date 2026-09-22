@@ -57,12 +57,12 @@ class TracePropagationTest {
         try (AppRuntime app = FreewayApp.create(new TraceModule(), new HttpModule()).add(CloudModule.class).start()) {
             app.get(ServiceRegistry.class).register(
                 ServiceInstance.of("svc", "i1",
-                    Endpoint.of("http", "127.0.0.1", app.get(com.jujin.freeway.http.WebServer.class).port()),
+                    Endpoint.of("http", "127.0.0.1", app.get(com.jujin.freeway.http.HttpServer.class).port()),
                     Map.of()));
 
             HttpClient client = HttpClient.newHttpClient();
             HttpRequest request = HttpRequest.newBuilder(
-                    URI.create("http://127.0.0.1:" + app.get(com.jujin.freeway.http.WebServer.class).port()
+                    URI.create("http://127.0.0.1:" + app.get(com.jujin.freeway.http.HttpServer.class).port()
                         + "/api/call"))
                 .header("traceparent", "00-" + TRACE_ID + "-" + SPAN_ID + "-01")
                 .header("tracestate", TRACE_STATE)

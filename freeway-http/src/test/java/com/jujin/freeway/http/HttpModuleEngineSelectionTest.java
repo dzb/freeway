@@ -104,7 +104,7 @@ class HttpModuleEngineSelectionTest {
 
         app = FreewayApp.run(new FakeEngineModule());
 
-        assertTrue(app.get(WebServer.class).isRunning(),
+        assertTrue(app.get(HttpServer.class).isRunning(),
             "the ext engine must serve the web server");
         // Grace period well past one reload interval: the reloader must not
         // exist at all (its scheduled check starts after the first interval,

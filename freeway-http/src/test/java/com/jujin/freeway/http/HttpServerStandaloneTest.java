@@ -22,14 +22,14 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The standalone shape: a {@link WebServer} built with no container, no module
+ * The standalone shape: a {@link HttpServer} built with no container, no module
  * and no config file — nothing from {@code freeway-ioc} or {@code freeway-boot}
  * appears in this file. What it must not be is a second set of assembly rules:
- * it goes through {@link WebServer#create}, the one derivation {@link HttpModule}
+ * it goes through {@link HttpServer#create}, the one derivation {@link HttpModule}
  * also calls, so the framework's error mapping and the precedence of an
  * application's own mapper hold on both paths.
  */
-class WebServerStandaloneTest {
+class HttpServerStandaloneTest {
 
     private static final HttpClient CLIENT = HttpClient.newHttpClient();
 
@@ -59,8 +59,8 @@ class WebServerStandaloneTest {
 
     @Test
     void assemblesAndServesWithoutAContainer() throws Exception {
-        var server = WebServer.create(engine(), loopback(),
-            RequestComponents.of(
+        var server = HttpServer.create(engine(), loopback(),
+            HttpPipeline.of(
                 Route.get("/ping", ctx -> ctx.send(200, "pong")),
                 Route.post("/boom", ctx -> {
                     ctx.setMaxBodySize(4);
@@ -82,13 +82,13 @@ class WebServerStandaloneTest {
 
     @Test
     void applicationMapperOutranksTheBuiltInOneOnBothPaths() throws Exception {
-        var server = WebServer.create(engine(), loopback(),
-            RequestComponents.of(Route.post("/boom", ctx -> {
+        var server = HttpServer.create(engine(), loopback(),
+            HttpPipeline.of(Route.post("/boom", ctx -> {
                     ctx.setMaxBodySize(4);
                     ctx.body();
                     ctx.send(200, "unexpected");
                 }))
-                .withErrorMapper((ctx, ex) -> {
+                .withErrorHandlers((ctx, ex) -> {
                     ctx.send(418, "application mapper");
                     return true;
                 }));
@@ -109,8 +109,8 @@ class WebServerStandaloneTest {
             seen.incrementAndGet();
             next.handle(ctx);
         };
-        var server = WebServer.create(engine(), loopback(),
-            RequestComponents.of(Route.get("/ping", ctx -> ctx.send(200, "pong")))
+        var server = HttpServer.create(engine(), loopback(),
+            HttpPipeline.of(Route.get("/ping", ctx -> ctx.send(200, "pong")))
                 .withCors(CorsFilter.defaults().withEnabled(false))
                 .withHealth(HealthFilter.defaults().withPath("/alive"))
                 .withFilter(counting));

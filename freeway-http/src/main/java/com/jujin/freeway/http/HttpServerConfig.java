@@ -6,7 +6,11 @@ import com.jujin.freeway.ioc.symbol.SymbolSource;
 import com.jujin.freeway.ioc.symbol.SymbolSpec;
 
 /**
- * Server-level configuration for the built-in HTTP engine.
+ * Server-level configuration — the transport declaration half of a server
+ * (its sibling {@link HttpPipeline} declares the handling half). It reaches
+ * every {@link HttpEngine} unchanged through {@link HttpEngine#start}; the
+ * honor tiers for its fields (must honor / per-exchange policy / engine-private)
+ * are stated with the engine contract on {@link HttpEngine#start}.
  *
  * @param host              bind address
  * @param port              listen port (0 selects an ephemeral port)

@@ -13,8 +13,8 @@ import java.time.Duration;
 import org.junit.jupiter.api.Test;
 
 import com.jujin.freeway.http.HttpServerConfig;
-import com.jujin.freeway.http.WebServer;
-import com.jujin.freeway.http.RequestComponents;
+import com.jujin.freeway.http.HttpServer;
+import com.jujin.freeway.http.HttpPipeline;
 import com.jujin.freeway.http.TestHttp;
 import com.jujin.freeway.http.route.Route;
 
@@ -145,9 +145,9 @@ class Http2PseudoHeaderValidationTest {
 
     // --- plumbing ---
 
-    private static WebServer server() {
-        return WebServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(), RequestComponents.of(Route.get("/", ctx -> ctx.send(200, "ok"))));
+    private static HttpServer server() {
+        return HttpServer.create(TestHttp.engine(),
+            TestServerConfig.loopback(), HttpPipeline.of(Route.get("/", ctx -> ctx.send(200, "ok"))));
     }
 
     private static void assertGoawayProtocolError(byte[] block, String what)

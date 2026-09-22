@@ -1136,7 +1136,7 @@ c.close();
 
 ### HTTP 测试
 ```java
-WebServer server = c.get(WebServer.class);
+HttpServer server = c.get(HttpServer.class);
 server.start();
 try {
     HttpClient client = HttpClient.newHttpClient();

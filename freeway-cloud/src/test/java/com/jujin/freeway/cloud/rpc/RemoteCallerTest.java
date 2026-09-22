@@ -78,7 +78,7 @@ class RemoteCallerTest {
         System.setProperty(HttpConfigKeys.SERVER_PORT, "0");
         System.setProperty(CloudConfigKeys.RPC_REQUEST_TIMEOUT, "2000");
         server = FreewayApp.create(new HttpModule()).add(CloudModule.class).add(new RpcExportModule()).start();
-        var webServer = server.get(com.jujin.freeway.http.WebServer.class);
+        var webServer = server.get(com.jujin.freeway.http.HttpServer.class);
         caller = server.get(RemoteCaller.class);   // framework-bound, not hand-wired
 
         ServiceRegistry registry = server.get(ServiceRegistry.class);
@@ -251,7 +251,7 @@ class RemoteCallerTest {
     /** Drives the endpoint directly — the consumer validates segments and
      *  cannot express a malformed path. */
     private String postRaw(String path, String body) throws Exception {
-        int port = server.get(com.jujin.freeway.http.WebServer.class).port();
+        int port = server.get(com.jujin.freeway.http.HttpServer.class).port();
         String request = "POST " + path + " HTTP/1.1\r\n"
             + "Host: t\r\n"
             + "X-RPC-Version: 1\r\n"

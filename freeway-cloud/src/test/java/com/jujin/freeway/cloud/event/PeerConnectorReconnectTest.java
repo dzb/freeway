@@ -5,7 +5,7 @@ import com.jujin.freeway.boot.FreewayApp;
 import com.jujin.freeway.cloud.CloudConfigKeys;
 import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.HttpModule;
-import com.jujin.freeway.http.WebServer;
+import com.jujin.freeway.http.HttpServer;
 
 import java.net.ServerSocket;
 import java.util.List;
@@ -51,7 +51,7 @@ class PeerConnectorReconnectTest {
     }
 
     private static int port(AppRuntime app) {
-        return app.get(WebServer.class).port();
+        return app.get(HttpServer.class).port();
     }
 
     /**

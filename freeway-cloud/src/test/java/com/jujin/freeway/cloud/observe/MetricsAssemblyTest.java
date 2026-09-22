@@ -97,7 +97,7 @@ class MetricsAssemblyTest {
     }
 
     private static HttpResponse<String> get(AppRuntime app, String path) throws Exception {
-        int port = app.get(com.jujin.freeway.http.WebServer.class).port();
+        int port = app.get(com.jujin.freeway.http.HttpServer.class).port();
         HttpClient client = HttpClient.newHttpClient();
         return client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + path))
             .GET().build(), HttpResponse.BodyHandlers.ofString());

@@ -54,7 +54,7 @@ Prefer `.to(Class)` whenever constructor injection is sufficient. Use the provid
 
 - construction mixes services with plain values or runtime config (`PoolConfig`, `HttpConfig`, `KafkaConfig`);
 - construction must branch on configuration or select between constructors (e.g. SSL enabled/disabled);
-- the object graph aggregates `List`/`Map` contributions or extension data (`RouteIndex`, `WebServer`);
+- the object graph aggregates `List`/`Map` contributions or extension data (`RouteIndex`, `HttpServer`);
 - the instance already exists and must not be rebuilt (`AppConfig`, a shared `PeerHub`);
 - realization must be deferred until after all modules are composed (lazy builtins).
 

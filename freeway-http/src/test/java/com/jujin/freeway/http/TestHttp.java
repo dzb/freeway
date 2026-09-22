@@ -10,10 +10,10 @@ import com.jujin.freeway.http.route.Route;
 import com.jujin.freeway.ioc.ModuleEx;
 
 /**
- * The two things a test needs that {@link WebServer#create} does not decide for it:
+ * The two things a test needs that {@link HttpServer#create} does not decide for it:
  * an engine to serve with, and (for the few tests that exercise {@link HttpModule}
  * itself) the module-side bindings. Everything else a test declares directly —
- * {@link HttpServerConfig} values and {@link RequestComponents} parts — because
+ * {@link HttpServerConfig} values and {@link HttpPipeline} parts — because
  * that is exactly what an application declares.
  */
 public final class TestHttp {

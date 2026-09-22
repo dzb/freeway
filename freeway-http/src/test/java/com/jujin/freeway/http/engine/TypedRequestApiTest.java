@@ -6,8 +6,8 @@ import com.jujin.freeway.commons.validation.NotBlank;
 import com.jujin.freeway.commons.validation.NotNull;
 import com.jujin.freeway.commons.validation.Size;
 import com.jujin.freeway.http.HttpServerConfig;
-import com.jujin.freeway.http.WebServer;
-import com.jujin.freeway.http.RequestComponents;
+import com.jujin.freeway.http.HttpServer;
+import com.jujin.freeway.http.HttpPipeline;
 import com.jujin.freeway.http.TestHttp;
 import com.jujin.freeway.http.route.Route;
 
@@ -48,9 +48,9 @@ class TypedRequestApiTest {
         }
     }
 
-    private static WebServer server(int port, Route... routes) {
-        return WebServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(port), RequestComponents.of(routes));
+    private static HttpServer server(int port, Route... routes) {
+        return HttpServer.create(TestHttp.engine(),
+            TestServerConfig.loopback(port), HttpPipeline.of(routes));
     }
 
     private static HttpResponse<String> send(int port, HttpRequest request) throws Exception {

@@ -12,7 +12,7 @@ import com.jujin.freeway.cloud.context.InvocationContext;
 import com.jujin.freeway.cloud.context.TraceContext;
 import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.HttpModule;
-import com.jujin.freeway.http.WebServer;
+import com.jujin.freeway.http.HttpServer;
 import com.jujin.freeway.http.route.Route;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.ModuleEx;
@@ -151,7 +151,7 @@ class InboundTracingTest {
 
     private static HttpResponse<String> get(AppRuntime app, String path, boolean traced) throws Exception {
         HttpRequest.Builder builder = HttpRequest.newBuilder(
-            URI.create("http://127.0.0.1:" + app.get(WebServer.class).port() + path)).GET();
+            URI.create("http://127.0.0.1:" + app.get(HttpServer.class).port() + path)).GET();
         if (traced) {
             builder.header("traceparent", "00-" + TRACE_ID + "-" + SPAN_ID + "-01");
         }

@@ -10,7 +10,7 @@ Freeway is a JDK 25+ Java framework built around compose-first modules, explicit
 ## Use This Skill For
 
 - `Freeway`, `module`, `FreewayApp`, `ModuleEx`, `Binder`, `Binding`, `Container`
-- `HttpModule`, `WebServer`, `Route`, `HttpFilter`, `HealthCheck`
+- `HttpModule`, `HttpServer`, `Route`, `HttpFilter`, `HealthCheck`
 - `DbModule`, `DatabaseBuilder`, `Orm`, `Schema`, `MigrationRunner`
 - `EventBus`, `RuntimeHook`, `Defer`, `ScopedCache`, `Scoping`
 - API usage, module layout, and code generation for Freeway projects
@@ -41,7 +41,7 @@ Freeway is a JDK 25+ Java framework built around compose-first modules, explicit
 - `FreewayApp.run(String[] args, ModuleEx...)` - full application startup; accepts module instances
 - `FreewayApp.create(ModuleEx...)` - builder for advanced startup control; compose modules explicitly
 - `DatabaseBuilder` - standalone database construction without IoC
-- `Freeway.create(new HttpModule(), …)` - 无 boot 起 HTTP 服务；`HttpModule` 是 `WebServer` 的唯一装配者
+- `Freeway.create(new HttpModule(), …)` - 无 boot 起 HTTP 服务；`HttpModule` 是 `HttpServer` 的唯一装配者
 
 ## Preferred Output Style
 

@@ -8,7 +8,7 @@ import com.jujin.freeway.ioc.Container;
  * contributions and registers them in one place.
  *
  * <p>Invoked AFTER the HTTP server starts, so {@code host:port} are known
- * ({@code WebServer.host()/port()} require a started server).
+ * ({@code HttpServer.host()/port()} require a started server).
  */
 @FunctionalInterface
 public interface ServiceDeclaration {

@@ -206,7 +206,7 @@ ordinary constructor injection cannot express:
 |---|---|---|
 | Constructor mixes plain/runtime values with services | Config values and durations are not container bindings; they must be read and passed explicitly | `PoolConfig`, `HttpConfig`, `KafkaConfig` |
 | Construction must branch on configuration | `.to(Class)` always uses the same constructor path | HTTP engine chooses plaintext or TLS constructor from `ssl.enabled` |
-| Object graph aggregates contributions | Constructor injection sees bound services, not collected extension points | `RouteIndex` collects `Route`/`RouteGroup`; `WebServer` assembles filters, mounts and error handlers |
+| Object graph aggregates contributions | Constructor injection sees bound services, not collected extension points | `RouteIndex` collects `Route`/`RouteGroup`; `HttpServer` assembles filters, mounts and error handlers |
 | A pre-created or externally owned object must be bound | The container must not re-construct it, but should still own its lifecycle | boot's `AppConfig`; a `PeerHub` shared with a sink and WS route |
 | Construction must wait until all modules are composed | Realization happens on first resolution, after contributions are final | the lazy `EventBus` builtin resolving a user-supplied primary `Metrics` |
 
@@ -832,11 +832,11 @@ fast, and the same chain backs `@Symbol` injection.
 
 ## HTTP
 
-Three-layer architecture: **engine layer** handles transport (socket I/O, protocol parsing), **orchestration layer** (`WebServer`) wires filters and routing, **integration layer** (`HttpModule`) bridges to IoC.
+Three-layer architecture: **engine layer** handles transport (socket I/O, protocol parsing), **orchestration layer** (`HttpServer`) wires filters and routing, **integration layer** (`HttpModule`) bridges to IoC.
 
 | Category | Main Types |
 |----------|------------|
-| Core | `HttpEngine`, `HttpContext`, `HttpFilter`, `HttpModule`, `WebServer`, `JsonCodec` |
+| Core | `HttpEngine`, `HttpContext`, `HttpFilter`, `HttpModule`, `HttpServer`, `JsonCodec` |
 | Engine (shared) | `FreewayHttpEngine`, `HttpContextImpl`, `HttpSession`, `HttpServerHandleImpl`, `SessionBufferedInputStream/OutputStream`, `FixedLengthInputStream`, `ChunkedInputStream` |
 | Engine (HTTP/1.x) | `HttpConnection`, `Http1xSession`, `Http1xParser` in `engine/` |
 | Engine (HTTP/2) | `Http2Connection`, `Http2Stream`, `FrameSerializer`, `HPackContext` etc in `engine/http2/` |
@@ -1017,7 +1017,7 @@ public class AuthFilter implements HttpFilter {
 binder.contribute(HttpFilter.class).add(new AuthFilter());
 ```
 
-Built-in filters: `AccessLogFilter` (optional text access log), `CorsFilter` (configurable CORS via `freeway.http.cors.*` keys), `HealthFilter` (health endpoint, see below). Request timing is measured by `WebServer` and published as `HttpExchangeEvent`.
+Built-in filters: `AccessLogFilter` (optional text access log), `CorsFilter` (configurable CORS via `freeway.http.cors.*` keys), `HealthFilter` (health endpoint, see below). Request timing is measured by `HttpServer` and published as `HttpExchangeEvent`.
 
 ### Health Check
 
@@ -1150,7 +1150,7 @@ FreewayApp.run(new String[0], new AppModule(), new HttpModule(), new UndertowMod
 4. With both modules, the container resolves `.primary()` → `UndertowEngine`
 5. `HttpEngine` is the seam: under boot a test or an adapter binds its own engine
    with `.primary()`; with no container at all it passes one to
-   `WebServer.create(engine, config, components)` — the single derivation
+   `HttpServer.create(engine, config, pipeline)` — the single derivation
    `HttpModule` also calls, so there is no second assembly path to bypass
 
 No config keys needed — just add or remove the extension module. Same `.primary()` pattern used by `freeway-db-hikari` and custom database dialects.
@@ -1184,7 +1184,7 @@ drives the same snapshot comparison (`0` disables hot reload entirely).
 When using `Container` directly (not `FreewayApp`), start the server explicitly:
 
 ```java
-WebServer server = container.get(WebServer.class);
+HttpServer server = container.get(HttpServer.class);
 server.start();
 try {
     HttpClient client = HttpClient.newHttpClient();
@@ -2211,7 +2211,7 @@ MyService svc = c.get(MyService.class);
 c.close();
 
 // HTTP tests (in-process)
-WebServer server = container.get(WebServer.class);
+HttpServer server = container.get(HttpServer.class);
 server.start();
 try {
     HttpClient client = HttpClient.newHttpClient();
@@ -2253,7 +2253,7 @@ summary.
 - **`Defer` triggers:** DB transaction commit, HTTP request completion, batch/job success boundaries, ordered post-commit side effects such as invalidate → rebuild → notify.
 - **`ScopedCache` triggers:** request-scoped lookup tables, per-scope connections or handles, repeated resolution of thread-scoped services, values that need one cleanup action when the scope exits.
 - Thread-scoped services use **`Scoping.within()`** to enter an execution boundary; the scope auto-closes when the work lambda completes. Backed by JDK 25 `ScopedValue` — no `ThreadLocal` overhead on virtual threads.
-- **`RuntimeHook`** provides start/stop extension points for modules. Ordered via `add(id, value).before()` / `.after()`. HTTP startup uses hook id `"freeway.http.server"` — no longer a side effect of resolving `WebServer`.
+- **`RuntimeHook`** provides start/stop extension points for modules. Ordered via `add(id, value).before()` / `.after()`. HTTP startup uses hook id `"freeway.http.server"` — no longer a side effect of resolving `HttpServer`.
 - **`LoggerSource`** is the built-in logger service. Commons registers a JUL-backed SLF4J provider unconditionally via `META-INF/services`; at startup `LogBootstrap.ensureProvider()` probes the classpath for external SLF4J providers (Logback, Log4j, slf4j-simple) and pins the `slf4j.provider` system property so the external provider wins — the JUL provider is the fallback only when no external provider is present (or the user sets `-Dslf4j.provider` explicitly).
 
 ### Conventions

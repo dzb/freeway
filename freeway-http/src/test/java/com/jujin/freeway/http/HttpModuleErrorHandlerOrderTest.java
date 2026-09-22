@@ -38,7 +38,7 @@ class HttpModuleErrorHandlerOrderTest {
                     ctx.send(200, "unexpected");
                 })),
                 claimEverything)) {
-            WebServer server = c.get(WebServer.class);
+            HttpServer server = c.get(HttpServer.class);
             server.start();
             var response = HttpClient.newHttpClient().send(
                 HttpRequest.newBuilder().uri(URI.create("http://127.0.0.1:" + server.port() + "/boom"))

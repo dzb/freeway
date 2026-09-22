@@ -12,7 +12,7 @@ import com.jujin.freeway.cloud.discovery.LoadBalancerDefault;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.HttpModule;
-import com.jujin.freeway.http.WebServer;
+import com.jujin.freeway.http.HttpServer;
 import com.jujin.freeway.http.route.Route;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.ModuleEx;
@@ -134,7 +134,7 @@ class CloudHttpClientShutdownTest {
         List<ServiceInstance> instances = server == null
             ? List.of()
             : List.of(ServiceInstance.of("svc", "i1",
-                Endpoint.of("http", "127.0.0.1", server.get(WebServer.class).port())));
+                Endpoint.of("http", "127.0.0.1", server.get(HttpServer.class).port())));
         return new CloudHttpClientDefault(
             serviceId -> instances,
             new LoadBalancerDefault(),

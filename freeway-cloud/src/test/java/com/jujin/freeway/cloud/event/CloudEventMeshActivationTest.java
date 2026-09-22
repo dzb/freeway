@@ -66,7 +66,7 @@ class CloudEventMeshActivationTest {
         System.clearProperty(CloudConfigKeys.EVENT_ENABLED);
         System.clearProperty(CloudConfigKeys.EVENT_SUBSCRIPTIONS);
         System.setProperty(CloudConfigKeys.EVENT_PEERS,
-            "127.0.0.1:" + nodeB.get(com.jujin.freeway.http.WebServer.class).port());
+            "127.0.0.1:" + nodeB.get(com.jujin.freeway.http.HttpServer.class).port());
         nodeA = FreewayApp.run(new String[0], new HttpModule(), new CloudEventModule());
 
         awaitMesh(nodeA, nodeB);
@@ -91,7 +91,7 @@ class CloudEventMeshActivationTest {
         // Kill switch wins over presence: peers configured, enabled=false.
         System.setProperty(CloudConfigKeys.EVENT_ENABLED, "false");
         System.setProperty(CloudConfigKeys.EVENT_PEERS,
-            "127.0.0.1:" + nodeB.get(com.jujin.freeway.http.WebServer.class).port());
+            "127.0.0.1:" + nodeB.get(com.jujin.freeway.http.HttpServer.class).port());
         nodeA = FreewayApp.run(new String[0], new HttpModule(), new CloudEventModule());
 
         Thread.sleep(900);
