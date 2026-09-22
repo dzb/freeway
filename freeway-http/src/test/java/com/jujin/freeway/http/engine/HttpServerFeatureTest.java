@@ -233,6 +233,45 @@ class HttpServerFeatureTest {
     }
 
     @Test
+    void accessLogRecordsMappedStatusOnHandlerException() throws Exception {
+        ByteArrayOutputStream logBytes = new ByteArrayOutputStream();
+        PrintStream log = new PrintStream(logBytes, true, StandardCharsets.UTF_8);
+        int port = freePort();
+        var server = HttpServer.create(TestHttp.engine(),
+            TestServerConfig.loopback(port),
+            HttpPipeline.of(Route.get("/boom",
+                    ctx -> { throw new IllegalStateException("boom"); }))
+                .withFilter(new AccessLogFilter(log))
+                );
+        server.start();
+        try {
+            HttpClient client = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
+                .build();
+            var resp = client.send(
+                HttpRequest.newBuilder()
+                    .uri(URI.create("http://127.0.0.1:" + port + "/boom"))
+                    .GET().build(),
+                HttpResponse.BodyHandlers.ofString());
+            assertEquals(500, resp.statusCode());
+
+            long deadline = System.currentTimeMillis() + 3000;
+            while (!logBytes.toString(StandardCharsets.UTF_8).contains("GET /boom 500")
+                    && System.currentTimeMillis() < deadline) {
+                Thread.sleep(20);
+            }
+            String line = logBytes.toString(StandardCharsets.UTF_8);
+            assertTrue(line.contains("GET /boom 500"),
+                "access log must record the mapped status, not the pre-mapping "
+                    + "default of 200: " + line);
+            assertFalse(line.contains("GET /boom 200"),
+                "access log must not record the pre-mapping default: " + line);
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
     void largeStaticFilesUseSendfileFastPath(@TempDir Path tempDir) throws Exception {
         Path root = Files.createDirectory(tempDir.resolve("files"));
         byte[] content = new byte[200 * 1024];

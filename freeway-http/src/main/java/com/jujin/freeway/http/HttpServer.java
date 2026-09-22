@@ -284,14 +284,37 @@ public final class HttpServer implements AutoCloseable {
         RouteHandler handler,
         List<HttpFilter> filters
     ) {
-        if (filters.isEmpty()) return handler;
-        RouteHandler chain = handler;
+        RouteHandler chain = withErrorMapping(handler);
         for (int i = filters.size() - 1; i >= 0; i--) {
             HttpFilter filter = filters.get(i);
             RouteHandler next = chain;
-            chain = ctx -> filter.doFilter(ctx, next);
+            chain = withErrorMapping(ctx -> filter.doFilter(ctx, next));
         }
         return chain;
+    }
+
+    /**
+     * Applies the error-mapping list at the point of failure, inside the
+     * chain: a filter's {@code finally} (the access log) runs while an
+     * exception is still unwinding, so mapping outside the chain would let
+     * every observer read the pre-mapping default of 200 instead of the
+     * mapped 500. Wrapping dispatch and each filter level keeps the same
+     * list and the same "first mapper wins" rule — only the timing moves,
+     * so a filter outside the thrower always observes the final status.
+     * The outermost catch in the request handler stays as the last net.
+     */
+    private RouteHandler withErrorMapping(RouteHandler handler) {
+        return ctx -> {
+            try {
+                handler.handle(ctx);
+            } catch (Exception ex) {
+                boolean handled = handleException(ctx, ex);
+                if (!handled && publishEvents) {
+                    publish(new HttpErrorEvent(
+                        ctx.method(), ctx.path(), ex));
+                }
+            }
+        };
     }
 
     private void dispatchToRoute(HttpContext ctx) throws Exception {
@@ -333,7 +356,14 @@ public final class HttpServer implements AutoCloseable {
         match.handler().handle(ctx);
     }
 
-    /** Commits the standard plain-text 404 response. */
+    /**
+     * Maps one exception through the error-handler list, falling back to the
+     * plain-text 500 when no handler claims it.
+     *
+     * @return true when a handler claimed it, or the response was already
+     *         committed and the transport failure is an expected quiet
+     *         lifecycle event; false when the built-in 500 fallback was sent
+     */
     private boolean handleException(HttpContext ctx, Exception exception) {
         for (ErrorHandler handler : errorHandlers) {
             try {

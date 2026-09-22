@@ -116,6 +116,12 @@ builder 不是第二个入口而是第二个组装根：自带一份默认值、
   `HttpModule` 启动时逐键探测"旧前缀键存在而对应新键缺失"这唯一会静默失效的形状，
   一条 WARN 点名每个死键及改法（`旧键 → 新键`）；新键存在即不报——值无论如何生效，
   包括以 `${freeway.web.*}` 引用旧键的写法；死键自身的值展开失败也只报不抛。
+- **异常路径的访问日志记 200**：错误映射原来包在整条链外侧，而过滤器的 `finally`
+  （`AccessLogFilter` 在其中读 `ctx.status()`）在异常回卷时先于外层 `catch` 执行，读到的
+  是未映射的默认 200。映射现在下沉到链内（dispatch 与每层 filter 各包一层，映射列表与
+  "先到先映射"规则不变）：handler 抛出的异常不再穿透过滤器链，外层过滤器观察到的即是
+  映射后的终值；请求处理最外层的 catch 保留为兜底。
+  `HttpServerFeatureTest.accessLogRecordsMappedStatusOnHandlerException` 钉住该路径。
 
 ### Changed
 
