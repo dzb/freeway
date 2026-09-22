@@ -60,7 +60,7 @@ Container → Binder → ModuleEx → Defer → Extension<T> → RuntimeHook
 
 ### Freeway：减法作为第一原则
 
-这是 Freeway 与另外两者最显著的**文化差异**。CHANGELOG 中每个版本都有 "Removed" 章节。被删除的包括：
+这是 Freeway 与另外两者最显著的**文化差异**。CHANGELOG 中多个版本都有 "Removed" 章节。被删除的包括：
 
 - `inject()` — 因为鼓励 `new X() + container.inject(x)` 的反模式
 - `Extension.Key` — 因为"没用，`Class<?>` 就够了"
@@ -73,9 +73,10 @@ Container → Binder → ModuleEx → Defer → Extension<T> → RuntimeHook
 
 Route 从 4 字段变为 3 字段是一个典型案例：发现设计瑕疵 → 不打补丁 → 重新审视抽象 → 引入 `LazyHandler` 包装器 → 删除冗余字段。**这不是"修 bug"，这是设计迭代**。
 
-`SKILL.zh.md` 中明确写着：
+`AGENTS.md` 的仓库约定把这条写成了规则：
 
-> **减法优先**：任何新抽象或新方法如果无法替代已有的设计，就不要引入。优先考虑删除或简化。
+> **No compatibility shims**: a renamed key, a replaced API shape or a superseded
+> mechanism is deleted, not kept alongside its replacement.
 
 **判断**：在"删除的勇气"这个维度上，Freeway 远高于 Solon，Solon 远高于 Spring。这使 Freeway 的 API 表面比它的代码年龄看起来更新。
 
@@ -167,14 +168,14 @@ public interface Plugin {
 
 ```
 freeway-http/
-├── src/main/java/io/freeway/http/
-│   ├── Route.java           ← record，零容器依赖
-│   ├── RouteHandler.java    ← @FunctionalInterface，零容器依赖
-│   ├── RouteIndex.java      ← 纯 trie 数据结构，零容器依赖
-│   ├── HttpPipeline.java ← record，处理声明（HttpServer.create 是唯一推导）
+├── src/main/java/com/jujin/freeway/http/
+│   ├── route/Route.java        ← record，零容器依赖
+│   ├── route/RouteHandler.java ← @FunctionalInterface，零容器依赖
+│   ├── route/RouteIndex.java   ← 纯 trie 数据结构，零容器依赖
+│   ├── HttpPipeline.java       ← record，处理声明（HttpServer.create 是唯一推导）
 │   └── ...
 ├── freeway-http-ioc/（概念上）
-│   └── HttpModule.java      ← 唯一的容器感知点（1.5.5 删掉了与之并存的第二条装配根 WebServerBuilder）
+│   └── HttpModule.java         ← 唯一的容器感知点
 ```
 
 `RouteIndex` 不知道 `Container`，`DatabaseImpl` 不知道 `Container`。IoC 属于 Module，不属于核心实现。这是一个**架构上的分层策略，不是接口约定，而是设计文化**。
@@ -184,7 +185,7 @@ freeway-http/
 - core 代码可以独立测试（不需要容器）
 - core 代码可以被其他框架复用（没有框架锁）
 - Module 是唯一的"框架意识"入口
-- 如果不用 IoC，可以直接 `new HttpServer().handler(...)` 走 builder 路径
+- 如果不用 IoC，可以直接 `HttpServer.create(engine, config, pipeline)` 零容器装配，与容器路径共用同一个派生点
 
 **判断**：Spring 的模块边界是命名空间（弱），Solon 的模块边界是 Plugin 接口（中），Freeway 的模块边界是**跨模块的分层契约**（强）。
 
@@ -250,15 +251,18 @@ ScopedValue 从根本上改变了一种编程模型：
 
 DeepWiki 文档覆盖了架构说明和 API 参考，但 "Design Decision" 类的内容分散各处，没有集中记录 trade-off。
 
-### Freeway：每个决策都有文档
+### Freeway：决策的 why 跟着变更走
 
-`docs/` 目录下的每个设计文档都包含来自实际问题的设计讨论。`Design Decisions` 文件以结构化方式记录每个重要决策：
+Freeway 没有一份集中的"设计决策"文件——why 写在变更记录本身：
 
-- **"为什么移除 inject()"**：因为 `new X() + container.inject(x)` 的反模式
-- **"为什么 Route 从 4 字段变为 3 字段"**：因为 handlerType 字段产生了约束不变量
-- **"为什么使用 Striped Lock"**：因为 `ConcurrentHashMap.computeIfAbsent` 在递归场景抛出异常
-- **"为什么从配置键切换到 .primary()"**：因为配置键存在发现和文档问题
-- **"为什么 Shutdown 需要异常聚合"**：因为先发生的失败不应阻止后续步骤执行
+- **CHANGELOG 的 Removed / 迁移条目自带删除理由**：`CorsFilter.Builder` 被删，因为
+  "重述策略默认值的对象是同一个答案的第二个持有者"；`internal.HttpModuleConfig` 被删，
+  因为它是"键的第二份所有者——13 个 server 旋钮的默认逐个重述"；
+- **复杂模块有自己的决策文档**：`docs/freeway-flow-design-decisions.md` 逐条记录
+  （如 "Striped Lock for Singleton Concurrency"：`ConcurrentHashMap.computeIfAbsent`
+  在递归场景抛 "Recursive update"，所以选择可重入的锁）；
+- **版本发布说明承载当时的权衡**：`docs/RELEASE-NOTES-*.md` 逐版记录引入与取舍的背景
+  （如 1.5.0 讨论 `.primary()` 绑定、构造器选择与配置激活的分工）。
 
 每个决策都对应一个**真实的问题场景**（不是抽象的可能性），然后给出**具体的权衡分析**。
 
