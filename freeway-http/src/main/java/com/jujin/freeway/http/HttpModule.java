@@ -1,5 +1,6 @@
 package com.jujin.freeway.http;
 
+import java.lang.reflect.Field;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -172,6 +173,7 @@ public final class HttpModule implements ModuleEx {
         binder.contribute(RuntimeHook.class).add(SERVER_HOOK, new RuntimeHook() {
             @Override
             public void start(Container container) {
+                reportRetiredPrefixKeys(container.get(SymbolSource.class));
                 SslSettings ssl = container.get(SslSettings.class);
                 boolean builtinEngine = isBuiltinEngineActive(container);
                 if (!builtinEngine) {
@@ -239,6 +241,71 @@ public final class HttpModule implements ModuleEx {
                 + "active HttpEngine is not built in — the tuned value has no effect here; "
                 + "the active engine module owns its own guard (built-in path: HttpModule "
                 + "wires these keys into FreewayHttpEngine.Wiring automatically)");
+        }
+    }
+
+    /**
+     * Loudness for configuration that stopped taking effect: v1.2.1 read
+     * these keys under {@value HttpConfigKeys#RETIRED_PREFIX}, v1.2.2 renamed
+     * the prefix to {@code freeway.http.*} and the fallback was later removed
+     * — an app still configured with the old prefix runs silently on
+     * defaults. The dead shape is probed precisely: the retired twin present
+     * while the current key is <em>absent</em>. A present current key means
+     * its value reaches the server no matter where it came from (literal or
+     * a {@code ${freeway.web.*}} reference), so only the silent case warns.
+     *
+     * <p>The key list is enumerated off the constants class itself, so the
+     * notice cannot drift from the key table: a key added tomorrow gets its
+     * twin probed without a second list to maintain (its twin can only be
+     * absent, which costs one lookup). A probe whose value fails to expand
+     * counts as present — a dead key's broken content must not stop startup
+     * before the notice names it (a present <em>current</em> key is parsed
+     * later by its value type and fails there, naming itself).
+     *
+     * @return {@code "old → new"} entries; empty when nothing is dead
+     */
+    static List<String> retiredPrefixNotices(SymbolSource symbols) {
+        var dead = new ArrayList<String>();
+        for (Field field : HttpConfigKeys.class.getFields()) {
+            if (field.getType() != String.class) continue;
+            String key;
+            try {
+                key = (String) field.get(null);
+            } catch (ReflectiveOperationException e) {
+                continue;
+            }
+            if (key == null || !key.startsWith(HttpConfigKeys.PREFIX)) continue;
+            String retired = HttpConfigKeys.RETIRED_PREFIX
+                + key.substring(HttpConfigKeys.PREFIX.length());
+            if (present(symbols, retired) && !present(symbols, key)) {
+                dead.add(retired + " → " + key);
+            }
+        }
+        return dead;
+    }
+
+    /**
+     * Presence, not value: a key nothing reads still counts as configured
+     * when its value cannot expand, and that failure may not propagate —
+     * startup must reach the notice naming the rename.
+     */
+    private static boolean present(SymbolSource symbols, String key) {
+        try {
+            return symbols.resolve(key, null) != null;
+        } catch (RuntimeException e) {
+            return true;
+        }
+    }
+
+    /** One WARN at startup listing every dead retired-prefix key and its
+     *  current name — the fix travels with the report. */
+    private static void reportRetiredPrefixKeys(SymbolSource symbols) {
+        var dead = retiredPrefixNotices(symbols);
+        if (!dead.isEmpty()) {
+            LOG.warn("config key(s) under the retired '{}' prefix are no longer read "
+                + "(the prefix became '{}' in v1.2.2): {} — rename each key as shown",
+                HttpConfigKeys.RETIRED_PREFIX, HttpConfigKeys.PREFIX,
+                String.join(", ", dead));
         }
     }
 

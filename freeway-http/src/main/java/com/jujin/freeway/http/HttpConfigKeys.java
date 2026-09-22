@@ -36,6 +36,11 @@ public final class HttpConfigKeys {
     private HttpConfigKeys() {}
 
     static final String PREFIX = "freeway.http";
+    /** The v1.2.1 prefix, retired in v1.2.2 when every key moved to
+     * {@code freeway.http.*} (the legacy fallback was removed in e37ba527).
+     * Nothing reads keys under it — held solely for the startup notice that
+     * names the rename (see {@code HttpModule.retiredPrefixNotices}). */
+    static final String RETIRED_PREFIX = "freeway.web";
 
     // ── Decision keys ─────────────────────────────────────────
 
