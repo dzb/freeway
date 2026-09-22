@@ -1,5 +1,11 @@
 # freeway 核心审计：理念一致性 + 现代性（1.5.2-SNAPSHOT）
 
+> **历史快照（已失效部分见下）**：本文写于 1.5.2-SNAPSHOT，行号与文件引用以当时代码为准。
+> 1.5.5 已删除文中多处引用的 `WebServerBuilder`、`internal.HttpModuleConfig` 与
+> `WebServer`（更名为 `HttpServer`，装配收敛为 `HttpServer.create` 一个派生点）——
+> 涉及这三个类型的发现与修法建议均已随删除落地，见 CHANGELOG 1.5.5 的 Migration/Removed。
+> 其余结论仍以现行代码复核为准。
+
 审计对象：七个核心模块（commons / ioc / boot / http / db / flow / cloud）的 `src/main`。
 方向：**整体理念 → 实现的一致性**，以及**现代性**（链式 API、方法与变量命名、JDK 25 惯用法）。
 `freeway-ext` 不在本轮范围（它的结构与一致性审计见该仓库 `docs/audit-structure-consistency-1.5.2.md`）。

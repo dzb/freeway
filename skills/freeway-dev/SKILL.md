@@ -7,6 +7,8 @@ description: 基于 Freeway 框架构建 Java 应用。当用户提到 Freeway�
 
 Freeway is a JDK 25+ Java framework built around compose-first modules, explicit wiring, and minimal ceremony.
 
+> 中文版全文见 [SKILL.zh.md](SKILL.zh.md)。
+
 ## Use This Skill For
 
 - `Freeway`, `module`, `FreewayApp`, `ModuleEx`, `Binder`, `Binding`, `Container`

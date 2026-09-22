@@ -673,7 +673,7 @@ API**，遵循 `Database`/`Pool` 模式，并发交给虚拟线程。
 | 出站证书轮换 | `SecretStore` 能轮换，但 TLS 材料只在启动时读一次——证书到期只能重启 | `TransportSecurityDefault` 复用密钥文件的 size/mtime 监测，重建 `SSLContext` |
 | 每方法韧性策略 | 现在整个 `CloudHttpClient` 一套阈值，读与写该有不同的重试观 | `@Idempotent` 同级的每方法声明（超时/重试上限），由 `RemoteProxyFactory` 读取 |
 | 本地调用的韧性注解（`@Retry` / `@CircuitBreak` / `@RateLimit` + `Advisor` 织入） | 三个 SPI 目前只在 `CloudHttpClient` 出站路径统一生效（§5.5）：进程内直连的慢依赖没有同一套治理，应用得手写模板代码 | 复用 ioc 已有的 `Binding.advise` / `Advisor.wrap(selector, advice)`，读方法级（退到类级）注解并复用同一批 SPI；注解只做选择，阈值仍是现有键，不新增第二套配置 |
-| SKILL 文档 cloud 章节（`docs/SKILL.zh.md`） | 应用面 API 仍在动，写早了立刻过期 | 以 `docs/DEVELOPER-GUIDE.md` 的 `## Cloud` 一节为骨架（三档接入表 + 能力索引表），不另起一套说法 |
+| SKILL 文档 cloud 章节（`skills/freeway-dev/SKILL.zh.md`） | 应用面 API 仍在动，写早了立刻过期 | 以 `docs/DEVELOPER-GUIDE.md` 的 `## Cloud` 一节为骨架（三档接入表 + 能力索引表），不另起一套说法 |
 
 ### 8.3 交付标准（沿用实施计划）
 

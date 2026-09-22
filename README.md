@@ -54,6 +54,12 @@ This gives you:
 - **Small footprint** — core modules have **zero external dependencies** (SLF4J API only).
 - **Aesthetic coherence** — APIs read like the intent they express, not the machinery underneath.
 
+The one automatic step is disclosed here rather than discovered later:
+`FreewayApp.run(...)` additionally loads `ModuleEx` implementations declared
+in `META-INF/services` (ServiceLoader SPI, on by default; disable with
+`autoDiscovery(false)`). Bindings themselves are never scanned — each one is
+written in a `bind(Binder)` you can read.
+
 Freeway rejects the idea that enterprise Java must be verbose, annotation-riddled,
 and XML-laden. It offers a quieter, more deliberate alternative: fewer concepts,
 sharper boundaries, and code that looks like it was written by someone who cares.
@@ -128,6 +134,9 @@ public final class App implements ModuleEx {
 curl http://localhost:8080/           # Hello Freeway
 curl http://localhost:8080/users/42   # {"id":"42","name":"Alice"}
 ```
+
+A runnable REST + DB sample (routes, validation, ORM, transactions — with
+tests and a fat-jar smoke path) lives in [`demo/rest-db`](demo/rest-db/README.md).
 
 ## Build
 

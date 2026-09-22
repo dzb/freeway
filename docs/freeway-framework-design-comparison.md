@@ -129,6 +129,9 @@ FreewayApp.create(new HttpModule(), new DbModule(), new MyModule())
 - 所有扩展通过 `binder.contribute(Class).add(...)` 贡献 → 贡献点和排序规则在一起
 - 所有配置通过配置级联加载 → 环境变量、properties 文件、CLI 参数的优先级是已知的
 
+唯一例外是已披露的 SPI：`FreewayApp.run(...)` 默认还会加载 `META-INF/services`
+声明的模块（`autoDiscovery(false)` 关闭）。绑定仍从不扫描。
+
 你能够**通过读一个文件**来理解整个应用的结构。恢复了"局部推理"的能力。
 
 代价是：你需要写这个文件。**这正是显式性的价格**。
@@ -225,7 +228,9 @@ Solon.start(MyApp.class, args, app -> {
 - **ScopedValue**：作为 Defer、事务作用域、线程作用域的基础——替代了 ThreadLocal
 - **Record**：`Route`、`RouteGroup`、`HttpPipeline` 都是 record——声明即定义
 - **@FunctionalInterface**：`RouteHandler`、`HttpFilter`、`ModuleEx` 都是函数式接口
-- **Sealed class / Pattern matching**：用于受限类型层次和类型驱动的分发
+- **Pattern matching / 虚拟线程**：`instanceof` 绑定与 switch 箭头分发常态化（全仓 140+ 处），
+  每连接一个虚拟线程承载 HTTP 引擎。`sealed class` 未用于类型层次——现代化是选择性的，
+  不是特性堆砌
 
 ScopedValue 从根本上改变了一种编程模型：
 

@@ -12,7 +12,7 @@
 |---|---|---|---|---|
 | **核心理念** | 约定优于配置，运行时灵活性 | 构建时处理，容器优先 | 编译时 DI，零运行时反射 | 显式组合，零黑盒 |
 | **复杂性去向** | 留在运行时 | 搬到构建时 | 搬到编译时（代码生成） | **不存在** |
-| **DI 时机** | 运行时（反射 + AOP 代理） | 构建时（ARC 容器） | 编译时（注解处理器） | 运行时（JDK 代理，仅 when needed） |
+| **DI 时机** | 运行时（反射 + AOP 代理） | 构建时（ARC 容器） | 编译时（注解处理器） | 运行时（反射注入；JDK 代理仅 when needed） |
 | **类path扫描** | 有 | 无 | 无 | 无 |
 | **代码生成** | 无 | 有（构建时） | 有（编译时） | 无 |
 | **字节码增强** | 有（AOP 代理） | 有（构建时解析） | 有（编译时生成） | 无（仅 JDK 代理） |
@@ -258,6 +258,10 @@ FreewayApp.run(args, new AppModule(), new HttpModule(), new JettyModule());
 | **冲突检测** | 运行时可能冲突 | 构建时检测 | 编译时检测 | **启动时显式报告** |
 | **ModuleNode 树** | 无 | 无 | 无 | **有——不可变树，启动时验证** |
 
+> 注：Freeway 的"完全显式"有一个已披露的例外——`FreewayApp.run(...)` 默认通过
+> ServiceLoader SPI 加载 `META-INF/services` 声明的额外模块（`autoDiscovery(false)`
+> 关闭）。绑定本身从不扫描，每个绑定都写在可读的 `bind(Binder)` 里。
+
 ### Freeway 的 ModuleNode 机制
 
 ```java
@@ -307,14 +311,16 @@ order  tier
 | 指标 | Spring Boot 4 | Quarkus 3.x | Micronaut 4.x/5.x | Freeway 1.5.x |
 |------|---------------|-------------|-------------------|-------------|
 | **JVM 启动** | 2,400–3,200ms | 500–900ms | 600–1,000ms | 待测（核心零依赖，预期较快） |
-| **Native 启动** | 70–120ms | 12–25ms | 25–50ms | 待测（核心零依赖，native 编译应简单） |
-| **空闲内存（Native）** | 50–75MB | 35–60MB | 18–58MB | 待测 |
+| **Native 启动** | 70–120ms | 12–25ms | 25–50ms | 未投入（无 native 构建，无从测起） |
+| **空闲内存（Native）** | 50–75MB | 35–60MB | 18–58MB | 未投入 |
 | **吞吐量（JVM）** | ~18k req/s | ~16k req/s | ~14k req/s | 待测 |
-| **GraalVM Native** | 需要配置反射 hint | 自动（大多数） | 最可靠（零反射） | 核心零依赖，应最简单 |
+| **GraalVM Native** | 需要配置反射 hint | 自动（大多数） | 最可靠（零反射） | 未投入：DI/JSON/ORM 皆运行时反射，需 reachability metadata，未配置未验证 |
 
 ### Freeway 的性能特征
 
-- 核心模块零外部依赖 → native 编译无反射问题
+- 核心模块零外部依赖 → native 下没有第三方依赖问题；但 DI/JSON/ORM 都在
+  运行时反射，GraalVM 下需要 reachability metadata——该工作目前未投入，
+  任何"编译应最简单"的说法都未经验证
 - 同步阻塞 I/O + 虚拟线程 → 代码简单，JIT 优化友好
 - HTTP/2 内置 → 无容器切换成本
 - 连接池内置 → 无 HikariCP 依赖

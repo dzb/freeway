@@ -35,7 +35,7 @@ the delivery counter in B's log proves both paths end-to-end.
 - JDK 25
 - Freeway artifacts in the local Maven repo:
   ```bash
-  cd freeway-2 && mvn install -DskipTests -Dgpg.skip=true     # core (incl. freeway-cloud)
+  cd freeway && mvn install -DskipTests -Dgpg.skip=true     # core (incl. freeway-cloud)
   cd freeway-ext && mvn install -DskipTests -Dgpg.skip=true -pl freeway-mq-kafka -am
   ```
 - (Kafka channel only) a broker at `127.0.0.1:9092`. Podman one-liner:

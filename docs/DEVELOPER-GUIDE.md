@@ -7,6 +7,13 @@ Freeway is a lightweight, modern Java application framework for JDK 25+. Compose
 Lambda handlers are the simplest way to get started:
 
 ```java
+import com.jujin.freeway.boot.AppRuntime;
+import com.jujin.freeway.boot.FreewayApp;
+import com.jujin.freeway.http.HttpContext;
+import com.jujin.freeway.http.route.Route;
+import com.jujin.freeway.ioc.Binder;
+import com.jujin.freeway.ioc.ModuleEx;
+
 // A minimal HTTP application
 public class App {
     public static void main(String[] args) {
@@ -22,6 +29,15 @@ public class App {
         }
     }
 }
+```
+
+One import must carry its full path — the JDK ships a different
+`com.sun.net.httpserver.HttpServer` under the same simple name, and an
+auto-import of that one compiles through `container.get(HttpServer.class)`
+only to fail the binding lookup at runtime:
+
+```java
+import com.jujin.freeway.http.HttpServer;
 ```
 
 When a handler needs injected services, use a handler class instead.
@@ -49,10 +65,14 @@ public class App {
             public GetUser(UserService service) { this.service = service; }
 
             public void handle(HttpContext ctx) throws Exception {
-                var user = service.findById(ctx.pathVar("id"));
-                user.ifPresentOrElse(
-                    u -> ctx.sendJson(200, u),
-                    () -> ctx.send(404, "Not found"));
+                // send/sendJson throw IOException, so the branches cannot
+                // sit in ifPresentOrElse lambdas — use explicit statements.
+                var user = service.findById(ctx.pathVar("id").orElseThrow());
+                if (user.isEmpty()) {
+                    ctx.send(404, "Not found");
+                    return;
+                }
+                ctx.sendJson(200, user.orElseThrow());
             }
         }
     }
@@ -903,10 +923,12 @@ public static final class UserHandlers {
         }
 
         public void handle(HttpContext ctx) throws Exception {
-            var user = service.findById(ctx.pathVar("id"));
-            user.ifPresentOrElse(
-                u -> ctx.sendJson(200, u),
-                () -> ctx.send(404, "Not found"));
+            var user = service.findById(ctx.pathVar("id").orElseThrow());
+            if (user.isEmpty()) {
+                ctx.send(404, "Not found");
+                return;
+            }
+            ctx.sendJson(200, user.orElseThrow());
         }
     }
 }
