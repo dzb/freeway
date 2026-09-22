@@ -24,9 +24,9 @@ public interface ErrorHandler {
     boolean handle(HttpResponse response, Exception exception) throws Exception;
 
     /**
-     * The built-in exception-to-response handler shared by the IoC
-     * {@code HttpModule} and the standalone {@code WebServerBuilder}, so both
-     * entry points produce identical error bodies: 413 for oversized bodies,
+     * The built-in exception-to-response handler {@code HttpModule} appends
+     * after an application's own mappers, so every server produces identical
+     * error bodies: 413 for oversized bodies,
      * 415 for unsupported request media types, 400 for invalid multipart
      * requests and failed bean validation, and {@code false} for anything
      * else.

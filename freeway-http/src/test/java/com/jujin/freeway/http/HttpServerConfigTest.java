@@ -22,8 +22,9 @@ class HttpServerConfigTest {
     @Test
     void defaultsAreTheDeclaredModuleDefaults() {
         // The defaults used to be stated in three places (the config keys, the
-        // removed builder, WebServerBuilder) and had drifted: the builder said
-        // port 0 / grace 0 while the module declares 8080 / 2s. One statement now.
+        // standalone builder, the server constructor) and had drifted: the
+        // builder said port 0 / grace 0 while the module declares 8080 / 2s.
+        // One statement now, and one assembly path to read it from.
         HttpServerConfig defaults = HttpServerConfig.defaults();
 
         assertEquals(HttpServerConfig.DEFAULT_HOST, defaults.host());

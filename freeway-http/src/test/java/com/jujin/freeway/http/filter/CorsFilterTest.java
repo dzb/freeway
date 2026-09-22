@@ -11,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class CorsFilterTest {
     @Test
     void addsHeadersForPreflight() throws Exception {
-        CorsFilter filter = CorsFilter.builder().allowAllOrigins().build();
+        CorsFilter filter = CorsFilter.defaults();
         StubHttpContext ctx = new StubHttpContext("OPTIONS", "/any")
             .requestHeader("Origin", "https://example.com")
             .requestHeader("Access-Control-Request-Method", "POST");
@@ -27,10 +27,9 @@ class CorsFilterTest {
     void noCorsHeadersOnPlainRequest() throws Exception {
         // A request without an Origin header is not a CORS request: the
         // filter must pass through without stamping CORS response headers.
-        CorsFilter filter = CorsFilter.builder()
-            .allowedOrigins("https://example.com")
-            .allowCredentials(true)
-            .build();
+        CorsFilter filter = CorsFilter.defaults()
+            .withAllowedOrigins(List.of("https://example.com"))
+            .withAllowCredentials(true);
         StubHttpContext ctx = new StubHttpContext("GET", "/api");
 
         filter.doFilter(ctx, e -> e.send(200, "ok"));

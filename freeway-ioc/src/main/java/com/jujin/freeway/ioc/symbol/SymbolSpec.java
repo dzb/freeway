@@ -97,6 +97,20 @@ public record SymbolSpec<T>(
         );
     }
 
+    /**
+     * This key with {@code fallback} as its default — the form a type uses when
+     * it assembles itself from config: the default is the value the object
+     * already holds, so the key table never restates a default that lives on the
+     * type. Absent, blank and unparseable handling are unchanged; only the
+     * fallback value differs.
+     * <pre>{@code
+     * cfg = cfg.withPort(symbols.resolve(PORT.orDefault(cfg.port())));
+     * }</pre>
+     */
+    public SymbolSpec<T> orDefault(T fallback) {
+        return new SymbolSpec<>(key, type, fallback, parser, required);
+    }
+
     /** The list decoder — the single home of the comma-list encoding. */
     public static List<String> splitList(String raw) {
         if (raw == null || raw.isBlank()) {

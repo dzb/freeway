@@ -6,8 +6,10 @@ and SSE support. No external dependencies beyond the JDK.
 
 ## Engine
 
-`FreewayHttpEngine` is the default engine. It is constructed directly with
-a `JsonCodec` and `Coercer` — no IoC container required for standalone use.
+`FreewayHttpEngine` is the default engine. It is constructed directly with a
+`JsonCodec` and `Coercer`, but the *server* around it is assembled by
+`HttpModule` alone — with or without boot (`Freeway.create(new HttpModule(), …)`
+needs no config files and no profiles).
 
 | Feature | Status |
 |---|---|
@@ -34,15 +36,38 @@ WebServer            — filter chain, routing, event publishing (Consumer<Objec
 HttpModule           — IoC bridge: registers FreewayHttpEngine, wires EventBus
 ```
 
-### Standalone use (no IoC)
+### Standalone (no container at all)
+
+`WebServer.create` is the one derivation of a server from its parts, and it
+needs nothing from `freeway-ioc` or `freeway-boot`: an engine, an
+`HttpServerConfig`, and the `RequestComponents` the server routes through.
 
 ```java
-var server = WebServerBuilder.builder()
-    .config(new HttpServerConfig("0.0.0.0", 8080, 0, Duration.ofSeconds(2)))
-    .route(Route.get("/ping", ctx -> ctx.send(200, "pong")))
-    .build();
+WebServer server = WebServer.create(
+    new FreewayHttpEngine(FreewayHttpEngine.Wiring.defaults(
+        new JsonCodecDefault(), new CoercerDefault())),
+    HttpServerConfig.defaults().withHost("0.0.0.0").withPort(8080),
+    RequestComponents.of(Route.get("/ping", ctx -> ctx.send(200, "pong"))));
 server.start();
 ```
+
+The parts grow through withers — `RequestComponents.of(routes)` then
+`.withWebSockets(…)`, `.withFilter(…)`, `.withStaticFiles(…)`,
+`.withErrorMapper(…)`, `.withCors(…)`, `.withHealth(…)` — and the four-argument
+`create(…, eventSink)` publishes `HttpExchangeEvent`/`HttpErrorEvent` wherever
+you want them (the three-argument form publishes nothing, so a server nobody
+observes builds no per-request event). What `create` always adds, on both paths:
+the built-in exception mapper consulted **last**, inactive built-in filters
+skipped, and the transport verdict read from the engine.
+
+### With IoC (FreewayApp)
+
+`HttpModule` is the container face of the same derivation: it resolves each
+value type from its own `freeway.http.*` keys (`HttpServerConfig.from`,
+`CorsFilter.from`, `HealthFilter.from`, `SslSettings.from`), collects the
+contributed routes/filters/mounts/mappers, and calls `WebServer.create` with the
+container's `EventBus` as the sink. It holds no defaults and no policy of its
+own, which is why the two paths cannot drift.
 
 ### With IoC (FreewayApp)
 
@@ -114,8 +139,8 @@ and protocol/cipher-suite restrictions.
 - Accepted sockets run with `TCP_NODELAY` and `SO_KEEPALIVE`.
 - `freeway.http.server.receive-buffer-size` / `send-buffer-size` tune
   `SO_RCVBUF` / `SO_SNDBUF` on accepted sockets (0 = OS default).
-- `Metrics` (freeway-commons SPI) is wired through `HttpModule` /
-  `WebServerBuilder.metrics(...)`: counters for connections, requests,
+- `Metrics` (freeway-commons SPI) is bound in the container and read by
+  `HttpModule` when it builds the built-in engine: counters for connections, requests,
   4xx/5xx responses, WebSocket/HTTP/2 connections, plus active-connection
   and in-flight-request gauges, and a `freeway.http.requests.duration` timer
   recording per-request handler time in nanoseconds (`freeway.http.*`).
@@ -143,5 +168,6 @@ and protocol/cipher-suite restrictions.
   automatically fall back to buffered streaming. sendfile transfers are
   tracked by the write-timeout watchdog and counted under
   `freeway.http.sendfile.transfers`.
-- A text access log can be enabled with `freeway.http.access-log.enabled`
-  (IoC) or `WebServerBuilder.accessLog(PrintStream)` (standalone).
+- A text access log can be enabled with `freeway.http.access-log.enabled`, or by
+  contributing `new AccessLogFilter(out)` as an `HttpFilter` when the destination
+  is not the log.

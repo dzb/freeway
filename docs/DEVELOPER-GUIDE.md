@@ -1054,9 +1054,9 @@ binder.contribute(StaticResourceMount.class)
 
 // Options
 StaticResourceMount.classpath("/assets", "/static")
-    .cacheMaxAgeSeconds(3600)
-    .immutable(true)            // sets Cache-Control: immutable
-    .fallthrough(true);         // pass to next handler on 404
+    .withCacheMaxAgeSeconds(3600)
+    .withImmutable(true)            // sets Cache-Control: immutable
+    .withFallthrough(true);         // pass to next handler on 404
 ```
 
 Directory requests serve that directory's `index.html` — both at the mount
@@ -1148,7 +1148,10 @@ FreewayApp.run(new String[0], new AppModule(), new HttpModule(), new UndertowMod
 2. `UndertowModule` binds `HttpEngine` → `UndertowEngine` **with** `.primary()`
 3. With only `HttpModule`, `FreewayHttpEngine` is the sole binding and used automatically
 4. With both modules, the container resolves `.primary()` → `UndertowEngine`
-5. `WebServerBuilder.engine(…)` bypasses container resolution entirely for programmatic override
+5. `HttpEngine` is the seam: under boot a test or an adapter binds its own engine
+   with `.primary()`; with no container at all it passes one to
+   `WebServer.create(engine, config, components)` — the single derivation
+   `HttpModule` also calls, so there is no second assembly path to bypass
 
 No config keys needed — just add or remove the extension module. Same `.primary()` pattern used by `freeway-db-hikari` and custom database dialects.
 

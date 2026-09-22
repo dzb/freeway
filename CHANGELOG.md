@@ -7,6 +7,83 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Migration
+
+`WebServer` 的装配收敛成**一个派生点**：`WebServer.create(engine, config, components[, eventSink])`。
+原来并存两条装配路径：`HttpModule`（容器）与 `WebServerBuilder`（"无 IoC 的独立用法"）——
+builder 不是第二个入口而是第二个组装根：自带一份默认值、自己追加 `ErrorHandler.defaults()`、
+自己判 `secure`，于是同一件事有两种答案（内置错误映射在 builder 里排最后、在容器里按贡献
+顺序排最前；类路由在容器里能解析、在 builder 里直接报错）。这一轮把派生规则搬进 `create`，
+两条路都只是"填部件再调用"，**独立构建的能力原样保留且不再需要容器**。
+
+同时删掉 `internal.HttpModuleConfig`：它是键的第二份所有者——13 个 server 旋钮的默认逐个重述
+（只是运气好引用了 `HttpServerConfig.DEFAULT_*`），CORS/health 的默认与 `CorsFilter.defaults()` /
+`HealthFilter.defaults()` 各说两遍，还让 `HttpServerConfig` 有了两条取得通路（`container.get(...)` 与
+`cfg.server()`）。改为既有先例 `SslSettings.from(symbols)` 的形状：**值类型自己读自己的键**。
+
+| 旧 API / 行为 | 新 API / 行为 |
+|---|---|
+| `WebServerBuilder.builder().config(c).route(r).build()` | `WebServer.create(engine, c, RequestComponents.of(r))` |
+| `WebServerBuilder.engine(e)` / `.sslContext(ctx, h2)` / `.metrics(m)` | 都是 engine 的事：把 `new FreewayHttpEngine(Wiring.defaults(json, coercer).withSsl(…).withMetrics(…))` 直接交给 `create` |
+| `.route(…)` / `.webSocketRoute(…)` / `.filter(…)` / `.staticFile(…)` / `.errorHandler(…)` / `.cors(…)` / `.health(…)` | `RequestComponents.of(…).withRoutes/withWebSockets/withFilters/withStaticFiles/withErrorMapper/withCors/withHealth(…)`（wither 返回新实例） |
+| `.accessLog(out)` | `RequestComponents.of(…).withFilter(new AccessLogFilter(out))`；容器里是键 `freeway.http.access-log.enabled` |
+| `.eventSink(sink)` | `create` 的第 4 参（`Consumer<Object>`）；三参照旧发布"没人观察就不造事件" |
+| `.jsonCodec(…)` / `.coercer(…)` / `.routeGroup(…)` | 删除（core+ext 零调用点）。builder 里那两个私有 `new JsonCodecDefault()` / `new CoercerDefault()` 正是"容器注册的 `CoerceRule` 到不了 HTTP"的源头 |
+| `internal.HttpModuleConfig`（快照 record + 26 个 SymbolSpec） | 删除：`HttpServerConfig.from(symbols)` / `CompressionConfig.from` / `CorsFilter.from` / `HealthFilter.from` / `SslSettings.from`（已存在），每个键一行 `withX(resolve(SPEC.orDefault(现值)))`；`access-log` 一个布尔键由 `HttpModule` 自己读 |
+| `SslSettings` 只能从 `HttpModuleConfig.ssl()` 拿 | 它自己是绑定服务：`container.get(SslSettings.class)`（引擎与热重载 hook 共用一次解析） |
+| `HttpServerConfig` 由配置键唯一决定，无覆盖缝 | `HttpModule` 以 `.id("builtin")` 绑定，覆盖走 `.primary()`（与 `HttpEngine` 同一套词汇） |
+| `HttpEngine` 实现者不声明传输 | `HttpEngine.secure()` 为实现方法：谁持有密钥谁回答（内置引擎看 `SSLContext`，Undertow/Jetty 看自己的 listener） |
+| `WebServer` 包私有构造器（5 参，含 `secure` 与 `ReadinessProbe`） | `WebServer.create(...)` 两个重载；构造器仍包私有，probe 只作包内测试缝 |
+| 容器里应用自定义 `ErrorHandler` 排在内置映射**之后** | 内置映射由 `create` 追加在最后，两条路一致：贡献顺序等于放置顺序，而应用总在 `HttpModule` 之后放置，于是 413/415/400 这些"应用想重映射的案例"会被框架先抢走。`HttpModuleErrorHandlerOrderTest` + `WebServerStandaloneTest` 各钉一半 |
+| `CorsFilter.builder().allowedOrigins("a,b").allowCredentials(true).build()` | `CorsFilter.defaults().withAllowedOrigins(List.of("a","b")).withAllowCredentials(true)` |
+| `new CorsFilter(false, null, null, null, null, null, false)` / `new HealthFilter(false, …, null)` | `CorsFilter.defaults().withEnabled(false)` / `HealthFilter.defaults().withEnabled(false)` |
+| `CorsFilter.DEFAULT` / `HealthFilter.DEFAULT` | `defaults()`（与 `HttpServerConfig.defaults()`、1.5.3 的 `PlantUmlOptions.defaults()` 同一动词，常量与工厂不留两名） |
+| `StaticResourceMount.cacheMaxAgeSeconds(n)` / `.immutable(b)` / `.fallthrough(b)`（写） | `withCacheMaxAgeSeconds` / `withImmutable` / `withFallthrough`；裸名词只剩读（`fallthrough()`），调用点从此能分辨赋值与取值 |
+| `.builder()` 作为"配置型对象流式装配"的合法示例 | 约定收紧为：builder **不得持有默认值**（`FlowDriverDefault.Builder` 合法：两个必填部件，无一条默认）；差量构造一律 `defaults()` + `withX` |
+
+行为变化（无需改调用点，但值得知道）：
+
+- `WebServer.secure()` 是引擎的判据，不再重读 `freeway.http.ssl.*`。
+- 事件发布跟着 `create` 的重载走：三参（独立）不发布，四参发布；`HttpModule` 用四参交给 `EventBus`。
+- `HealthFilter` 的 `healthCheck` 不再接受 `null`（构造期 `requireNonNull`）：关闭的探针此前会留一个
+  每次请求都可能 NPE 的字段。默认路径成为 `HealthFilter.DEFAULT_PATH`，`normalize` 与 `defaults()`
+  不再各写一个 `"/healthz"`。
+
+### Added
+
+- `SymbolSpec.orDefault(fallback)`：叠加式读取的默认由**被构建的值**给出，键表因此不必重述默认；
+  `SymbolSource.resolve(spec)` 一行一键（`SymbolSpecTest` 钉住"缺省键留原值、空值留原值、存在则
+  经链的 `Coercer` 解析"）。
+- `WebServer.create` 两个重载、`RequestComponents.of/withX`、`HttpServerConfig.from` 与
+  `CompressionConfig.from`、`CorsFilter.from`、`HealthFilter.from`、`HealthFilter` 的
+  `enabled()/healthPath()/healthCheck()` 读取与 `withPath/withCheck`、`CorsFilter` 的七个字段读取。
+- 测试：`WebServerStandaloneTest`（零容器构建并服务、mapper 优先级、withers 全部生效）、
+  `HttpModuleErrorHandlerOrderTest`（容器路径的同一条优先级）。
+
+### Removed
+
+- `WebServerBuilder`（209 行）与 `internal.HttpModuleConfig`（151 行）：前者是第二个组装根，后者是
+  第二个默认值所有者；派生规则现在只有 `WebServer.create` 一处，键与默认只有值类型一处。
+- `CorsFilter.Builder`：它不是"少写几个参数"的糖，而是第二个默认值持有者——methods/headers/maxAge
+  在 `DEFAULT` 之外又硬写一遍，`*` + credentials 的校验判两次且两处异常类型不同，同时它比规范构造器
+  还窄（给不出 `enabled=false`、`exposedHeaders`、`maxAge`）。
+
+### Fixed
+
+- **cloud 注册 scheme 判错**：`HttpServiceDeclaration` 用 `WebServer.secure()` 决定 `http`/`https`，
+  而它读的是 freeway 自己的 `freeway.http.ssl.*` 键——由可能忽略这些键的 Undertow/Jetty 适配器终止
+  TLS 时，https 节点被注册成 `http://`。判据上收到 `HttpEngine.secure()` 后，注册的身份与真正提供
+  传输的组件一致。
+- **应用无法重映射框架已映射的异常**（容器路径）：见迁移表倒数第 6 行。
+
+### Changed
+
+- `freeway-http` 的 66 处测试构造改为直接 `WebServer.create(...)`（零容器，引擎由 `TestHttp.engine()`
+  给出）；只有两个测 `HttpModule` 本身的测试仍走容器。ext testkit 与 benchmark 保持走 `HttpModule`：
+  契约要量"应用真正拿到的那个服务器"，那里 `Metrics`/`CorsFilter`/`HealthFilter` 的默认仍来自键。
+- AGENTS 的命名段改写（builder 不得持有默认值；`withX` 为写、裸名词为读），`docs/ARCHITECTURE.md`
+  与 `freeway-http/README.md`、`docs/DEVELOPER-GUIDE.md`、skills 两份随之更新。
+
 ## [1.5.3] - 2026-09-20
 
 ### Migration

@@ -28,7 +28,9 @@ import org.junit.jupiter.api.io.TempDir;
 import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.HttpServerConfig;
 import com.jujin.freeway.http.WebServer;
-import com.jujin.freeway.http.WebServerBuilder;
+import com.jujin.freeway.http.RequestComponents;
+import com.jujin.freeway.http.TestHttp;
+import com.jujin.freeway.http.filter.AccessLogFilter;
 import com.jujin.freeway.http.filter.HttpFilter;
 import com.jujin.freeway.http.route.Route;
 import com.jujin.freeway.http.route.RouteHandler;
@@ -44,17 +46,17 @@ class HttpServerFeatureTest {
     @Test
     void filtersRunInAscendingOrderValue() throws Exception {
         var execution = new ArrayList<String>();
-        WebServer server = WebServerBuilder.builder()
-            .config(TestServerConfig.loopback())
-            .filter(new HttpFilter() {
+        var server = WebServer.create(TestHttp.engine(),
+            TestServerConfig.loopback(),
+                RequestComponents.of(Route.get("/", ctx -> ctx.send(200, "ok")))
+                .withFilters(new HttpFilter() {
                 @Override
                 public void doFilter(HttpContext ctx, RouteHandler next)
                         throws Exception {
                     execution.add("late");
                     next.handle(ctx);
                 }
-            })
-            .filter(new HttpFilter() {
+            }, new HttpFilter() {
                 @Override
                 public int order() {
                     return -200;
@@ -66,17 +68,14 @@ class HttpServerFeatureTest {
                     execution.add("early");
                     next.handle(ctx);
                 }
-            })
-            .filter(new HttpFilter() {
+            }, new HttpFilter() {
                 @Override
                 public void doFilter(HttpContext ctx, RouteHandler next)
                         throws Exception {
                     execution.add("default");
                     next.handle(ctx);
                 }
-            })
-            .route(Route.get("/", ctx -> ctx.send(200, "ok")))
-            .build();
+            }));
         server.start();
         try {
             var resp = HttpClient.newHttpClient().send(
@@ -95,17 +94,14 @@ class HttpServerFeatureTest {
     @Test
     void gzipCompressesCompressibleBodiesWhenAccepted() throws Exception {
         int port = freePort();
-        WebServer server = WebServerBuilder.builder()
-            .config(TestServerConfig.loopback(port))
-            .route(Route.get("/text", ctx -> {
+        var server = WebServer.create(TestHttp.engine(),
+            TestServerConfig.loopback(port), RequestComponents.of(Route.get("/text", ctx -> {
                 ctx.setHeader("Content-Type", "text/plain");
                 ctx.send(200, "A".repeat(1000));
-            }))
-            .route(Route.get("/small", ctx -> {
+            }), Route.get("/small", ctx -> {
                 ctx.setHeader("Content-Type", "text/plain");
                 ctx.send(200, "tiny");
-            }))
-            .build();
+            })));
         server.start();
         try {
             RawResponse compressed = request(port, "/text", "Accept-Encoding: gzip\r\n");
@@ -139,12 +135,10 @@ class HttpServerFeatureTest {
     @Test
     void unknownLengthStreamingUsesChunkedEncoding() throws Exception {
         int port = freePort();
-        WebServer server = WebServerBuilder.builder()
-            .config(TestServerConfig.loopback(port))
-            .route(Route.get("/stream", ctx ->
+        var server = WebServer.create(TestHttp.engine(),
+            TestServerConfig.loopback(port), RequestComponents.of(Route.get("/stream", ctx ->
                 ctx.output(new ByteArrayInputStream(
-                    "hello-chunked-world".getBytes(StandardCharsets.UTF_8)), -1)))
-            .build();
+                    "hello-chunked-world".getBytes(StandardCharsets.UTF_8)), -1))));
         server.start();
         try {
             RawResponse resp = request(port, "/stream", "");
@@ -163,11 +157,9 @@ class HttpServerFeatureTest {
     @Test
     void emptyUnknownLengthStreamTerminatesChunkedBody() throws Exception {
         int port = freePort();
-        WebServer server = WebServerBuilder.builder()
-            .config(TestServerConfig.loopback(port))
-            .route(Route.get("/empty", ctx ->
-                ctx.output(new ByteArrayInputStream(new byte[0]), -1)))
-            .build();
+        var server = WebServer.create(TestHttp.engine(),
+            TestServerConfig.loopback(port), RequestComponents.of(Route.get("/empty", ctx ->
+                ctx.output(new ByteArrayInputStream(new byte[0]), -1))));
         server.start();
         try {
             RawResponse resp = request(port, "/empty", "");
@@ -184,14 +176,12 @@ class HttpServerFeatureTest {
     @Test
     void gzipStreamingFallsBackToChunkedFraming() throws Exception {
         int port = freePort();
-        WebServer server = WebServerBuilder.builder()
-            .config(TestServerConfig.loopback(port))
-            .route(Route.get("/gz", ctx -> {
+        var server = WebServer.create(TestHttp.engine(),
+            TestServerConfig.loopback(port), RequestComponents.of(Route.get("/gz", ctx -> {
                 ctx.setHeader("Content-Type", "text/plain");
                 ctx.output(new ByteArrayInputStream(
                     "compress-me-please".getBytes(StandardCharsets.UTF_8)), 18);
-            }))
-            .build();
+            })));
         server.start();
         try {
             RawResponse resp = request(port, "/gz", "Accept-Encoding: gzip\r\n");
@@ -213,11 +203,10 @@ class HttpServerFeatureTest {
         ByteArrayOutputStream logBytes = new ByteArrayOutputStream();
         PrintStream log = new PrintStream(logBytes, true, StandardCharsets.UTF_8);
         int port = freePort();
-        WebServer server = WebServerBuilder.builder()
-            .config(TestServerConfig.loopback(port))
-            .accessLog(log)
-            .route(Route.get("/ok", ctx -> ctx.send(200, "ok")))
-            .build();
+        var server = WebServer.create(TestHttp.engine(),
+            TestServerConfig.loopback(port), RequestComponents.of(Route.get("/ok", ctx -> ctx.send(200, "ok")))
+                .withFilter(new AccessLogFilter(log))
+                );
         server.start();
         try {
             HttpClient client = HttpClient.newBuilder()
@@ -255,11 +244,9 @@ class HttpServerFeatureTest {
 
         var metrics = new HttpServerOperationalTest.TestMetrics();
         int port = freePort();
-        WebServer server = WebServerBuilder.builder()
-            .config(TestServerConfig.loopback(port))
-            .metrics(metrics)
-            .staticFile(StaticResourceMount.directory("/files", root))
-            .build();
+        var server = WebServer.create(TestHttp.engine(metrics),
+            TestServerConfig.loopback(port), RequestComponents.of()
+                .withStaticFiles(StaticResourceMount.directory("/files", root)));
         server.start();
         try {
             RawResponse full = request(port, "/files/big.bin", "");
@@ -296,11 +283,9 @@ class HttpServerFeatureTest {
         Files.writeString(secondRoot.resolve("sub/index.html"), "second sub index");
 
         int port = freePort();
-        WebServer server = WebServerBuilder.builder()
-            .config(TestServerConfig.loopback(port))
-            .staticFile(StaticResourceMount.directory("/static", firstRoot))
-            .staticFile(StaticResourceMount.directory("/static", secondRoot))
-            .build();
+        var server = WebServer.create(TestHttp.engine(),
+            TestServerConfig.loopback(port), RequestComponents.of()
+                .withStaticFiles(StaticResourceMount.directory("/static", firstRoot), StaticResourceMount.directory("/static", secondRoot)));
         server.start();
         try {
             // First mount matches but has no sub/index.html — the dispatch

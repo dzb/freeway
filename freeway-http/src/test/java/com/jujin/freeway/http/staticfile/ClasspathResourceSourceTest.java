@@ -33,7 +33,7 @@ class ClasspathResourceSourceTest {
     @Test
     void fallthroughReturnsFalseForMissingResource() throws Exception {
         StaticResourceMount mount = StaticResourceMount.classpath("/assets", "static")
-            .fallthrough(true);
+            .withFallthrough(true);
 
         StubHttpContext ctx = new StubHttpContext("GET", "/assets/missing.txt");
         assertFalse(mount.serve(ctx, ctx));

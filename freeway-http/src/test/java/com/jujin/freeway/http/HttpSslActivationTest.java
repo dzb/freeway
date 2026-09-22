@@ -7,7 +7,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
-import com.jujin.freeway.http.internal.HttpModuleConfig;
 import com.jujin.freeway.http.route.Route;
 import java.io.IOException;
 import java.net.ServerSocket;
@@ -65,8 +64,7 @@ class HttpSslActivationTest {
             binder.contribute(Route.class)
                 .add(Route.get("/", ctx -> ctx.send(200, "ok"))));
 
-        assertTrue(app.get(com.jujin.freeway.http.internal.HttpModuleConfig.class)
-                .ssl().enabled(),
+        assertTrue(app.get(com.jujin.freeway.http.SslSettings.class).enabled(),
             "a configured keystore must activate HTTPS without ssl.enabled");
         assertTrue(app.get(com.jujin.freeway.http.WebServer.class).secure(),
             "the server must report the transport it was configured with — the cloud"
@@ -90,8 +88,7 @@ class HttpSslActivationTest {
             binder.contribute(Route.class)
                 .add(Route.get("/", ctx -> ctx.send(200, "ok"))));
 
-        assertFalse(app.get(com.jujin.freeway.http.internal.HttpModuleConfig.class)
-                .ssl().enabled(),
+        assertFalse(app.get(com.jujin.freeway.http.SslSettings.class).enabled(),
             "the kill switch must suppress the configured keystore");
         assertFalse(app.get(com.jujin.freeway.http.WebServer.class).secure(),
             "the kill switch must reach the server's reported transport too");

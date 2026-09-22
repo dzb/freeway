@@ -10,8 +10,9 @@ import com.jujin.freeway.http.route.RouteHandler;
 
 /**
  * Text access log: writes one line per request with method, path, status,
- * elapsed milliseconds, client IP, and user agent. Opt-in — wire via
- * {@code WebServerBuilder.accessLog(...)} or {@code freeway.http.access-log.enabled}.
+ * elapsed milliseconds, client IP, and user agent. Opt-in — set
+ * {@code freeway.http.access-log.enabled}, or contribute this filter to the
+ * container when the destination is not the log.
  */
 public final class AccessLogFilter implements HttpFilter {
 

@@ -2,6 +2,9 @@ package com.jujin.freeway.http;
 
 import java.time.Duration;
 
+import com.jujin.freeway.ioc.symbol.SymbolSource;
+import com.jujin.freeway.ioc.symbol.SymbolSpec;
+
 /**
  * Server-level configuration for the built-in HTTP engine.
  *
@@ -107,13 +110,37 @@ public record HttpServerConfig(
                 throw new IllegalArgumentException("compression minSize must be >= 0: " + minSize);
             }
         }
+
+        private static final SymbolSpec<Boolean> ENABLED =
+            SymbolSpec.of(HttpConfigKeys.COMPRESSION_ENABLED, Boolean.class, null);
+        private static final SymbolSpec<Integer> MIN_SIZE =
+            SymbolSpec.of(HttpConfigKeys.COMPRESSION_MIN_SIZE, Integer.class, null);
+
+        /** The gzip policy as {@code freeway.http.compression.*} answers it. */
+        public static CompressionConfig from(SymbolSource symbols) {
+            CompressionConfig cfg = DEFAULT;
+            cfg = cfg.withEnabled(symbols.resolve(ENABLED.orDefault(cfg.enabled())));
+            cfg = cfg.withMinSize(symbols.resolve(MIN_SIZE.orDefault(cfg.minSize())));
+            return cfg;
+        }
+
+        /** Same policy with compression switched on or off. */
+        public CompressionConfig withEnabled(boolean enabled) {
+            return new CompressionConfig(enabled, minSize);
+        }
+
+        /** Same policy leaving responses below this size uncompressed. */
+        public CompressionConfig withMinSize(int minSize) {
+            return new CompressionConfig(enabled, minSize);
+        }
     }
 
     /**
      * The HTTP module's defaults: what {@code freeway.http.*} declares when
      * nothing is configured (host/port/backlog/shutdown grace) plus the library
      * defaults for every other knob. This is the one place they are stated —
-     * the config keys and {@link WebServerBuilder} read them from here.
+     * {@link #from(com.jujin.freeway.ioc.symbol.SymbolSource)} overlays keys
+     * onto it, and nothing restates these values.
      */
     public static HttpServerConfig defaults() {
         return new HttpServerConfig(
@@ -121,6 +148,60 @@ public record HttpServerConfig(
             DEFAULT_MAX_BODY_SIZE, DEFAULT_READ_TIMEOUT, DEFAULT_MAX_CONNECTIONS,
             DEFAULT_WRITE_TIMEOUT, CompressionConfig.DEFAULT, 0, 0,
             DEFAULT_H2_RESET_BURST_LIMIT, DEFAULT_H2_RESET_WINDOW);
+    }
+
+    // ── Key declarations: name and type only ──
+    //
+    // No spec states a default: `from` below pins each one to the field it
+    // overlays with {@link SymbolSpec#orDefault}, so a default is written once —
+    // on the value it belongs to — and an absent or blank key keeps it.
+
+    private static final SymbolSpec<String> HOST =
+        SymbolSpec.of(HttpConfigKeys.SERVER_HOST, String.class, null);
+    private static final SymbolSpec<Integer> PORT =
+        SymbolSpec.of(HttpConfigKeys.SERVER_PORT, Integer.class, null);
+    private static final SymbolSpec<Integer> BACKLOG =
+        SymbolSpec.of(HttpConfigKeys.SERVER_BACKLOG, Integer.class, null);
+    private static final SymbolSpec<Duration> SHUTDOWN_GRACE =
+        SymbolSpec.of(HttpConfigKeys.SERVER_SHUTDOWN_GRACE, Duration.class, null);
+    private static final SymbolSpec<Long> MAX_BODY_SIZE =
+        SymbolSpec.of(HttpConfigKeys.MAX_BODY_SIZE, Long.class, null);
+    private static final SymbolSpec<Duration> READ_TIMEOUT =
+        SymbolSpec.of(HttpConfigKeys.SERVER_READ_TIMEOUT, Duration.class, null);
+    private static final SymbolSpec<Integer> MAX_CONNECTIONS =
+        SymbolSpec.of(HttpConfigKeys.SERVER_MAX_CONNECTIONS, Integer.class, null);
+    private static final SymbolSpec<Duration> WRITE_TIMEOUT =
+        SymbolSpec.of(HttpConfigKeys.SERVER_WRITE_TIMEOUT, Duration.class, null);
+    private static final SymbolSpec<Integer> RECEIVE_BUFFER =
+        SymbolSpec.of(HttpConfigKeys.SERVER_RECEIVE_BUFFER, Integer.class, null);
+    private static final SymbolSpec<Integer> SEND_BUFFER =
+        SymbolSpec.of(HttpConfigKeys.SERVER_SEND_BUFFER, Integer.class, null);
+    private static final SymbolSpec<Integer> H2_RESET_BURST_LIMIT =
+        SymbolSpec.of(HttpConfigKeys.H2_RESET_BURST_LIMIT, Integer.class, null);
+    private static final SymbolSpec<Duration> H2_RESET_WINDOW =
+        SymbolSpec.of(HttpConfigKeys.H2_RESET_WINDOW, Duration.class, null);
+
+    /**
+     * This configuration as {@code freeway.http.server.*} answers it: start from
+     * {@link #defaults()} and overlay one key per knob, each line naming only
+     * its key and its field and defaulting back to the value already there.
+     */
+    public static HttpServerConfig from(SymbolSource symbols) {
+        HttpServerConfig cfg = defaults();
+        cfg = cfg.withHost(symbols.resolve(HOST.orDefault(cfg.host())));
+        cfg = cfg.withPort(symbols.resolve(PORT.orDefault(cfg.port())));
+        cfg = cfg.withBacklog(symbols.resolve(BACKLOG.orDefault(cfg.backlog())));
+        cfg = cfg.withShutdownGrace(symbols.resolve(SHUTDOWN_GRACE.orDefault(cfg.shutdownGrace())));
+        cfg = cfg.withMaxBodySize(symbols.resolve(MAX_BODY_SIZE.orDefault(cfg.maxBodySize())));
+        cfg = cfg.withReadTimeout(symbols.resolve(READ_TIMEOUT.orDefault(cfg.readTimeout())));
+        cfg = cfg.withMaxConnections(symbols.resolve(MAX_CONNECTIONS.orDefault(cfg.maxConnections())));
+        cfg = cfg.withWriteTimeout(symbols.resolve(WRITE_TIMEOUT.orDefault(cfg.writeTimeout())));
+        cfg = cfg.withCompression(CompressionConfig.from(symbols));
+        cfg = cfg.withReceiveBufferSize(symbols.resolve(RECEIVE_BUFFER.orDefault(cfg.receiveBufferSize())));
+        cfg = cfg.withSendBufferSize(symbols.resolve(SEND_BUFFER.orDefault(cfg.sendBufferSize())));
+        cfg = cfg.withH2ResetBurstLimit(symbols.resolve(H2_RESET_BURST_LIMIT.orDefault(cfg.h2ResetBurstLimit())));
+        cfg = cfg.withH2ResetWindow(symbols.resolve(H2_RESET_WINDOW.orDefault(cfg.h2ResetWindow())));
+        return cfg;
     }
 
     /** Same configuration with {@link #host} replaced. */

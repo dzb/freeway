@@ -16,7 +16,6 @@ import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.commons.json.JsonCodecDefault;
 import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.http.engine.FreewayHttpEngine;
-import com.jujin.freeway.http.internal.HttpModuleConfig;
 import com.jujin.freeway.http.SslContexts;
 import com.jujin.freeway.http.SslSettings;
 import com.jujin.freeway.http.internal.SslReloader;
@@ -40,12 +39,18 @@ import com.jujin.freeway.ioc.RuntimeHook;
 import com.jujin.freeway.ioc.annotation.Builtin;
 import com.jujin.freeway.ioc.annotation.Marker;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
+import com.jujin.freeway.ioc.symbol.SymbolSpec;
 
 @Marker(Builtin.class)
 /** Freeway HTTP module: wires routes, filters, engine, WebSocket, SSE, and the server runtime hook. */
 public final class HttpModule implements ModuleEx {
     private static final Logger LOG = LoggerFactory.getLogger(HttpModule.class);
     public static final String SERVER_HOOK = "freeway.http.server";
+
+    /** The one key this module reads on its own rather than through a value type:
+     *  the access log is a filter the module contributes, not a field of anything. */
+    private static final SymbolSpec<Boolean> ACCESS_LOG_ENABLED =
+        SymbolSpec.of(HttpConfigKeys.ACCESS_LOG_ENABLED, Boolean.class, false);
     private volatile SslReloader sslReloader;
 
     @Override
@@ -67,17 +72,15 @@ public final class HttpModule implements ModuleEx {
         });
         binder.bind(WebSocketIndex.class).to(WebSocketIndex.class);
         binder.bind(JsonCodec.class).to(JsonCodecDefault.class);
-        // Config — one immutable snapshot, bound once for the whole module.
-        binder.bind(HttpModuleConfig.class).to(container -> HttpModuleConfig.from(
-            container.get(SymbolSource.class)));
 
-        // CorsFilter — bridge IoC config to plain constructor (list-typed)
-        binder.bind(CorsFilter.class).to(container -> {
-            HttpModuleConfig.Cors cors = container.get(HttpModuleConfig.class).cors();
-            return new CorsFilter(cors.enabled(), cors.allowedOrigins(),
-                cors.allowedMethods(), cors.allowedHeaders(),
-                cors.exposedHeaders(), cors.maxAge(), cors.allowCredentials());
-        });
+        // Config — each face resolved by the type that owns its keys and its
+        // defaults (HttpServerConfig.from, CorsFilter.from, HealthFilter.from,
+        // SslSettings.from): the module reads no defaults of its own, so a key
+        // and a default cannot be stated in two places and drift.
+        binder.bind(SslSettings.class).to(container ->
+            SslSettings.from(container.get(SymbolSource.class)));
+        binder.bind(CorsFilter.class).to(container ->
+            CorsFilter.from(container.get(SymbolSource.class)));
 
         // Engines — concrete bindings, HTTPS when SSL is enabled
         binder.bind(FreewayHttpEngine.class).to(container -> {
@@ -85,7 +88,7 @@ public final class HttpModule implements ModuleEx {
             var coercer = container.get(Coercer.class);
             var metrics = container.get(Metrics.class);
 
-            SslSettings ssl = container.get(HttpModuleConfig.class).ssl();
+            SslSettings ssl = container.get(SslSettings.class);
             if (!ssl.enabled()) {
                 LOG.debug("SSL disabled, using plain HTTP engine");
                 return new FreewayHttpEngine(
@@ -113,21 +116,22 @@ public final class HttpModule implements ModuleEx {
             container.get(FreewayHttpEngine.class)).id("builtin")
             .marker(Builtin.class);
 
-        // WebServer — bridge IoC capabilities to plain constructor
+        // Engine contract — one binding, so a caller that must vary a transport
+        // knob (an adapter's own defaults, a test on an ephemeral port) overrides
+        // it with .primary() instead of assembling a second server.
+        binder.bind(HttpServerConfig.class).to(container ->
+            HttpServerConfig.from(container.get(SymbolSource.class))).id("builtin");
+
+        // WebServer — the module's whole job: read the parts off the container,
+        // hand them to the one derivation. No policy of its own; see create(...).
         binder.bind(WebServer.class).to(container -> {
-            HttpEngine engine = container.get(HttpEngine.class);
-            HttpModuleConfig cfg = container.get(HttpModuleConfig.class);
-
-            Consumer<Object> eventSink = event ->
-                container.get(EventBus.class).publish(event);
-
             var filters = new ArrayList<>(
                 container.extension(HttpFilter.class).all());
-            if (cfg.accessLogEnabled()) {
+            if (container.get(SymbolSource.class)
+                    .resolve(ACCESS_LOG_ENABLED)) {
                 filters.add(new AccessLogFilter());
             }
-
-            var pipeline = new RequestComponents(
+            var components = new RequestComponents(
                 container.get(RouteIndex.class),
                 container.get(WebSocketIndex.class),
                 container.get(CorsFilter.class),
@@ -136,21 +140,17 @@ public final class HttpModule implements ModuleEx {
                 List.copyOf(filters),
                 container.extension(ErrorHandler.class).all()
             );
-
-            return new WebServer(
-                engine,
-                cfg.server(),
-                eventSink,
-                pipeline,
-                (host, port) -> port > 0,
-                cfg.ssl().enabled()
-            );
+            return WebServer.create(
+                container.get(HttpEngine.class),
+                container.get(HttpServerConfig.class),
+                components,
+                event -> container.get(EventBus.class).publish(event));
         });
 
         binder.contribute(RuntimeHook.class).add(SERVER_HOOK, new RuntimeHook() {
             @Override
             public void start(Container container) {
-                SslSettings ssl = container.get(HttpModuleConfig.class).ssl();
+                SslSettings ssl = container.get(SslSettings.class);
                 container.get(WebServer.class).start();
                 if (ssl.enabled() && ssl.reloadInterval() != null
                         && !ssl.reloadInterval().isZero()) {
@@ -194,14 +194,10 @@ public final class HttpModule implements ModuleEx {
         });
 
         binder.bind(HealthCheck.class).to(container -> HealthCheck.ALWAYS_OK);
-        binder.bind(HealthFilter.class).to(container -> {
-            HttpModuleConfig.Health health = container.get(HttpModuleConfig.class).health();
-            HealthCheck check = container.get(HealthCheck.class);
-            return new HealthFilter(health.enabled(), health.path(), check);
-        });
-
-        binder.contribute(ErrorHandler.class)
-            .add(ErrorHandler.defaults());
+        // The check is a bound service (a container question), the path and the
+        // switch are keys — from(...) takes both and states neither twice.
+        binder.bind(HealthFilter.class).to(container -> HealthFilter.from(
+            container.get(SymbolSource.class), container.get(HealthCheck.class)));
     }
 
     /** Resolves a {@link LazyHandler} (class-based route) against the

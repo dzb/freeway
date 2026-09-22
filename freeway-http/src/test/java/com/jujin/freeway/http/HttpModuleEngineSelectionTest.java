@@ -127,6 +127,11 @@ class HttpModuleEngineSelectionTest {
 
     private static final class FakeEngine implements HttpEngine {
         @Override
+        public boolean secure() {
+            return false;
+        }
+
+        @Override
         public HttpServerHandle start(HttpServerConfig config, ExchangeHandler handler) {
             return new HttpServerHandle() {
                 @Override

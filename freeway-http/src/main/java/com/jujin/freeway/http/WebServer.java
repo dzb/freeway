@@ -48,30 +48,66 @@ public final class WebServer implements AutoCloseable {
     private final ExchangeHandler exchangeHandler;
     private final RouteHandler filterChain;
     private final boolean publishEvents;
-    /** Resolved transport verdict: this server was configured to serve TLS. */
-    private final boolean secure;
 
     private volatile HttpServerHandle handle;
 
     /**
-     * The one public constructor, and the only one that can answer
-     * {@link #secure()} correctly: it takes the transport verdict explicitly.
+     * The server for these parts, publishing nothing: the standalone shape, where
+     * no one is listening so no per-request event objects are built.
+     */
+    public static WebServer create(HttpEngine engine, HttpServerConfig config,
+            RequestComponents components) {
+        return create(engine, config, components, NOOP_SINK);
+    }
+
+    /**
+     * The one derivation of a server from its parts — what {@link HttpModule}
+     * calls with the container's {@code EventBus} as the sink, and what a caller
+     * without a container calls directly. Both paths get the same two policies
+     * because they are stated only here: the built-in exception mapper is
+     * consulted last, and a server is ready when its engine reports a bound port.
+     *
+     * @param eventSink  receives {@link HttpExchangeEvent} / {@link HttpErrorEvent}
+     *                   and the start event; {@link #create(HttpEngine,
+     *                   HttpServerConfig, RequestComponents)} passes the no-op sink
+     */
+    public static WebServer create(HttpEngine engine, HttpServerConfig config,
+            RequestComponents components, Consumer<Object> eventSink) {
+        return new WebServer(engine, config, eventSink, builtInMapperLast(components),
+            (host, port) -> port > 0);
+    }
+
+    /**
+     * The framework's own mapper, appended after the application's: the list's
+     * rule is "first mapper that claims the exception wins", so appending is what
+     * lets an application re-map a case the built-in mappings cover (an oversized
+     * body, a failed validation) without losing the ones it does not handle.
+     */
+    private static RequestComponents builtInMapperLast(RequestComponents components) {
+        var mappers = new ArrayList<ErrorHandler>(components.errorHandlers().size() + 1);
+        mappers.addAll(components.errorHandlers());
+        mappers.add(ErrorHandler.defaults());
+        return new RequestComponents(components.routes(), components.websocketIndex(),
+            components.corsFilter(), components.healthFilter(), components.staticMounts(),
+            components.filters(), mappers);
+    }
+
+    /**
+     * Assembled by {@link HttpModule} or {@link #create}: every part is in hand
+     * here, and {@link #secure()} is correct for any server that exists because
+     * it is the engine's own verdict, not something an assembler could get wrong.
      *
      * <p>The 4-argument form that used to sit here hard-coded {@code secure =
-     * false}, so every caller that built a TLS server through it got a server
-     * whose {@code secure()} lied — which is how the ext TLS tests read it. Use
-     * {@link WebServerBuilder} to assemble a server from outside this package;
-     * it derives {@code secure} from the SSL context it was given.</p>
+     * false}, and the standalone builder that replaced it re-derived the verdict
+     * a second time; both are gone, and the verdict has one owner.</p>
      */
     WebServer(
         HttpEngine engine,
         HttpServerConfig config,
         Consumer<Object> eventSink,
         RequestComponents pipeline,
-        ReadinessProbe readinessProbe,
-        boolean secure
+        ReadinessProbe readinessProbe
     ) {
-        this.secure = secure;
         this.routes = Objects.requireNonNull(pipeline.routes(), "routes");
         this.websocketIndex = Objects.requireNonNull(pipeline.websocketIndex(), "websocketIndex");
         this.corsFilter = Objects.requireNonNull(pipeline.corsFilter(), "corsFilter");
@@ -171,15 +207,16 @@ public final class WebServer implements AutoCloseable {
     }
 
     /**
-     * Whether this server was configured to serve TLS — the HTTP module's
-     * resolved verdict ({@code http.ssl.*}: an explicit {@code enabled} wins,
-     * otherwise a key-store path means HTTPS). Answers the scheme question for
-     * collaborators that build the node's externally visible identity (the
-     * cloud registry endpoint, the event mesh origin), so they do not
-     * re-derive another module's presence rule.
+     * Whether this server serves TLS — the engine's verdict, read through
+     * {@link HttpEngine#secure()}. An engine that terminates TLS answers true
+     * whatever the configuration says, and an adapter that ignores the built-in
+     * {@code freeway.http.ssl.*} keys cannot make this server claim otherwise.
+     * Answers the scheme question for collaborators that build the node's
+     * externally visible identity (the cloud registry endpoint, the event mesh
+     * origin), so they do not re-derive another module's presence rule.
      */
     public boolean secure() {
-        return secure;
+        return engine.secure();
     }
 
     @Override

@@ -171,10 +171,10 @@ freeway-http/
 │   ├── Route.java           ← record，零容器依赖
 │   ├── RouteHandler.java    ← @FunctionalInterface，零容器依赖
 │   ├── RouteIndex.java      ← 纯 trie 数据结构，零容器依赖
-│   ├── RequestComponents.java ← record，零容器依赖
+│   ├── RequestComponents.java ← record，包内部件袋（HttpModule 是唯一装配者）
 │   └── ...
 ├── freeway-http-ioc/（概念上）
-│   └── HttpModule.java      ← 唯一的容器感知点
+│   └── HttpModule.java      ← 唯一的容器感知点（1.5.4 删掉了与之并存的第二条装配根 WebServerBuilder）
 ```
 
 `RouteIndex` 不知道 `Container`，`DatabaseImpl` 不知道 `Container`。IoC 属于 Module，不属于核心实现。这是一个**架构上的分层策略，不是接口约定，而是设计文化**。

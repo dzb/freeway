@@ -126,6 +126,14 @@ public final class FreewayHttpEngine implements HttpEngine {
     public SSLParameters sslParameters() { return sslParameters; }
     Metrics metrics() { return metrics; }
 
+    /** A context was wired (or later reloaded) into this engine, so the
+     *  sockets it accepts are TLS. Read on every call: {@link #reload} can
+     *  only add certificate material, never take it away. */
+    @Override
+    public boolean secure() {
+        return sslContext != null;
+    }
+
     /** Atomically swaps the SSL context for new connections (certificate
      *  rotation / hot reload). Existing connections keep their old context. */
     public void reload(SSLContext sslContext) {

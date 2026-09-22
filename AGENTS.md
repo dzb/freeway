@@ -71,7 +71,22 @@ transitively) plus JUnit at test scope. Anything else belongs in an ext adapter.
   `ModuleNode.of`), mirroring `List.of`. `create` is the framework *entry
   point* that hands you something to configure or run (`Freeway.create`,
   `FreewayApp.create`, `FlowEngine.create`, `Graph.create`), and `.builder()`
-  is fluent assembly of a configured object (`WebServerBuilder.builder()`).
+  is fluent assembly of a configured object — licensed *only* when the builder
+  holds no defaults of its own (`FlowDriverDefault.Builder`: two required
+  parts, nothing stated). An object that varies from a stated default in a
+  field or two is a `defaults()` value plus per-field withers returning new
+  instances — the wither verb is `withX` (`HttpServerConfig.withPort`,
+  `CorsFilter.withAllowedOrigins`, `StaticResourceMount.withFallthrough`), while
+  a bare noun form means a read (`StaticResourceMount.fallthrough()`), so a call
+  site can always tell an assignment from a lookup — never a builder that copies
+  those defaults into itself, which is a second owner of
+  the same answer.
+  Assembling a *service graph* is never a builder's job: `WebServer.create(…)`
+  is the one derivation of a server from its parts, `HttpModule` is its
+  container face (keys → value types, contributions → parts), and a caller with
+  no container calls `create` directly — the standalone `WebServerBuilder` that
+  duplicated that root, and the `HttpModuleConfig` snapshot that restated the
+  value types' defaults a second time, are both gone (see CHANGELOG 1.5.4).
   One verb per role: `FreewayApp.create` replaced `FreewayApp.of` and
   `FlowEngine.create` replaced `FlowEngine.newInstance`, so the entry points no
   longer disagree with `Freeway.create` next to them.

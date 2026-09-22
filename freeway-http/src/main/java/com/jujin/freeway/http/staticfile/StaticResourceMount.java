@@ -70,11 +70,11 @@ public final class StaticResourceMount {
         return new StaticResourceMount(mountPath, new ClasspathResourceSource(resourceRoot), DEFAULT_CACHE_MAX_AGE_SECONDS, false, false);
     }
 
-    public StaticResourceMount cacheMaxAgeSeconds(long cacheMaxAgeSeconds) {
+    public StaticResourceMount withCacheMaxAgeSeconds(long cacheMaxAgeSeconds) {
         return new StaticResourceMount(mountPath, source, cacheMaxAgeSeconds, immutable, fallthrough);
     }
 
-    public StaticResourceMount immutable(boolean immutable) {
+    public StaticResourceMount withImmutable(boolean immutable) {
         return new StaticResourceMount(mountPath, source, cacheMaxAgeSeconds, immutable, fallthrough);
     }
 
@@ -83,7 +83,7 @@ public final class StaticResourceMount {
      * returning 404 when the file is not found. Similar to nginx's
      * {@code try_files} directive — useful for SPA front-end routing.
      */
-    public StaticResourceMount fallthrough(boolean fallthrough) {
+    public StaticResourceMount withFallthrough(boolean fallthrough) {
         return new StaticResourceMount(mountPath, source, cacheMaxAgeSeconds, immutable, fallthrough);
     }
 

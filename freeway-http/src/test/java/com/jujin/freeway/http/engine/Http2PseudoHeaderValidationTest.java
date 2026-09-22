@@ -14,7 +14,8 @@ import org.junit.jupiter.api.Test;
 
 import com.jujin.freeway.http.HttpServerConfig;
 import com.jujin.freeway.http.WebServer;
-import com.jujin.freeway.http.WebServerBuilder;
+import com.jujin.freeway.http.RequestComponents;
+import com.jujin.freeway.http.TestHttp;
 import com.jujin.freeway.http.route.Route;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -86,7 +87,7 @@ class Http2PseudoHeaderValidationTest {
     void missingAuthorityIsAccepted() throws Exception {
         // RFC 7540 §8.1.2.3: :authority is optional for non-CONNECT requests.
         byte[] block = new byte[] {GET, PATH_INDEX, SCHEME_HTTP};
-        WebServer server = server();
+        var server = server();
         server.start();
         try {
             try (var socket = openH2(server.port())) {
@@ -110,7 +111,7 @@ class Http2PseudoHeaderValidationTest {
             "OPTIONS".getBytes(StandardCharsets.ISO_8859_1),
             new byte[] {(byte) 0x44, 0x01}, "*".getBytes(StandardCharsets.ISO_8859_1),
             new byte[] {SCHEME_HTTP}, authority("localhost"));
-        WebServer server = server();
+        var server = server();
         server.start();
         try {
             try (var socket = openH2(server.port())) {
@@ -128,7 +129,7 @@ class Http2PseudoHeaderValidationTest {
     void validRequestStillServed() throws Exception {
         byte[] block = concat(new byte[] {GET, PATH_INDEX, SCHEME_HTTP},
             authority("localhost"));
-        WebServer server = server();
+        var server = server();
         server.start();
         try {
             try (var socket = openH2(server.port())) {
@@ -145,15 +146,13 @@ class Http2PseudoHeaderValidationTest {
     // --- plumbing ---
 
     private static WebServer server() {
-        return WebServerBuilder.builder()
-            .config(TestServerConfig.loopback())
-            .route(Route.get("/", ctx -> ctx.send(200, "ok")))
-            .build();
+        return WebServer.create(TestHttp.engine(),
+            TestServerConfig.loopback(), RequestComponents.of(Route.get("/", ctx -> ctx.send(200, "ok"))));
     }
 
     private static void assertGoawayProtocolError(byte[] block, String what)
             throws Exception {
-        WebServer server = server();
+        var server = server();
         server.start();
         try {
             try (var socket = openH2(server.port())) {

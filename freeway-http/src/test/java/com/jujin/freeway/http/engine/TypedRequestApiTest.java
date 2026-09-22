@@ -7,7 +7,8 @@ import com.jujin.freeway.commons.validation.NotNull;
 import com.jujin.freeway.commons.validation.Size;
 import com.jujin.freeway.http.HttpServerConfig;
 import com.jujin.freeway.http.WebServer;
-import com.jujin.freeway.http.WebServerBuilder;
+import com.jujin.freeway.http.RequestComponents;
+import com.jujin.freeway.http.TestHttp;
 import com.jujin.freeway.http.route.Route;
 
 import java.net.ServerSocket;
@@ -48,12 +49,8 @@ class TypedRequestApiTest {
     }
 
     private static WebServer server(int port, Route... routes) {
-        var builder = WebServerBuilder.builder()
-            .config(TestServerConfig.loopback(port));
-        for (Route route : routes) {
-            builder.route(route);
-        }
-        return builder.build();
+        return WebServer.create(TestHttp.engine(),
+            TestServerConfig.loopback(port), RequestComponents.of(routes));
     }
 
     private static HttpResponse<String> send(int port, HttpRequest request) throws Exception {

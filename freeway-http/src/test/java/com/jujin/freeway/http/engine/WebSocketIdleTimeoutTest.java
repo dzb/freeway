@@ -12,7 +12,8 @@ import org.junit.jupiter.api.Test;
 
 import com.jujin.freeway.http.HttpServerConfig;
 import com.jujin.freeway.http.WebServer;
-import com.jujin.freeway.http.WebServerBuilder;
+import com.jujin.freeway.http.RequestComponents;
+import com.jujin.freeway.http.TestHttp;
 import com.jujin.freeway.http.websocket.WebSocketListener;
 import com.jujin.freeway.http.websocket.WebSocketRoute;
 
@@ -33,14 +34,12 @@ class WebSocketIdleTimeoutTest {
     @Test
     void idleWebSocketSurvivesReadTimeout() throws Exception {
         // 1s read timeout — far below the idle gap this test enforces.
-        WebServer server = WebServerBuilder.builder()
-            .config(HttpServerConfig.defaults()
+        var server = WebServer.create(TestHttp.engine(),
+            HttpServerConfig.defaults()
                 .withHost("127.0.0.1")
                 .withPort(0)
-                .withReadTimeout(Duration.ofSeconds(1))
-                )
-            .webSocketRoute(WebSocketRoute.of("/ws", session -> WebSocketListener.NOOP))
-            .build();
+                .withReadTimeout(Duration.ofSeconds(1)), RequestComponents.of()
+                .withWebSockets(WebSocketRoute.of("/ws", session -> WebSocketListener.NOOP)));
         server.start();
         try (Socket socket = new Socket("127.0.0.1", server.port())) {
             socket.setSoTimeout(10_000);
@@ -85,13 +84,12 @@ class WebSocketIdleTimeoutTest {
         // gap the client sends a text frame and the endpoint's onText must
         // fire (the read loop is alive, not a zombie that only answers pings).
         var echoed = new java.util.concurrent.atomic.AtomicReference<String>();
-        WebServer server = WebServerBuilder.builder()
-            .config(HttpServerConfig.defaults()
+        var server = WebServer.create(TestHttp.engine(),
+            HttpServerConfig.defaults()
                 .withHost("127.0.0.1")
                 .withPort(0)
-                .withReadTimeout(Duration.ofSeconds(1))
-                )
-            .webSocketRoute(WebSocketRoute.of("/ws", session -> new WebSocketListener() {
+                .withReadTimeout(Duration.ofSeconds(1)), RequestComponents.of()
+                .withWebSockets(WebSocketRoute.of("/ws", session -> new WebSocketListener() {
                 @Override
                 public void onText(String text) {
                     echoed.set(text);
@@ -100,8 +98,7 @@ class WebSocketIdleTimeoutTest {
                     } catch (IOException ignored) {
                     }
                 }
-            }))
-            .build();
+            })));
         server.start();
         try (Socket socket = new Socket("127.0.0.1", server.port())) {
             socket.setSoTimeout(10_000);

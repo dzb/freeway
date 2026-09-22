@@ -128,4 +128,48 @@ class SymbolSpecTest {
         assertEquals(7, spec.parse("7", coercer));
         assertEquals(1, invocations.get());
     }
+
+    // ── orDefault: the overlay read a value type assembles itself with ──
+
+    private static SymbolProvider tier(String key, String value) {
+        return SymbolProvider.of(() -> java.util.Map.of(key, value), SymbolProvider.TIER_FILES);
+    }
+
+    private static final String OVERLAY_KEY = "freeway.test.overlay.timeout";
+
+    @Test
+    void overlayDefaultAnswersWhenTheKeyIsAbsent() {
+        SymbolSource symbols = SymbolSource.of(new CoercerDefault());
+        var spec = SymbolSpec.of(OVERLAY_KEY, Duration.class, Duration.ofHours(9));
+
+        // The declared default (9h) is out of the picture entirely: the value
+        // being built is what survives an unset key, which is the whole point —
+        // a key table that also states defaults is a second owner of them.
+        assertEquals(Duration.ofSeconds(30),
+            symbols.resolve(spec.orDefault(Duration.ofSeconds(30))));
+    }
+
+    @Test
+    void overlayDefaultAnswersWhenTheKeyIsBlank() {
+        SymbolSource symbols = SymbolSource.of(new CoercerDefault(),
+            tier(OVERLAY_KEY, "  "));
+
+        assertEquals(Duration.ofSeconds(30),
+            symbols.resolve(spec().orDefault(Duration.ofSeconds(30))));
+    }
+
+    @Test
+    void presentKeyWinsAndTypesThroughTheChainCoercer() {
+        SymbolSource symbols = SymbolSource.of(new CoercerDefault(),
+            tier(OVERLAY_KEY, "PT5S"));
+
+        assertEquals(Duration.ofSeconds(5),
+            symbols.resolve(spec().orDefault(Duration.ofSeconds(30))),
+            "a present value is parsed by the chain's Coercer, so contributed "
+                + "CoerceRules reach the overlay path too");
+    }
+
+    private static SymbolSpec<Duration> spec() {
+        return SymbolSpec.of(OVERLAY_KEY, Duration.class, null);
+    }
 }

@@ -7,7 +7,6 @@ Examples below are minimal snippets. They omit imports and app-specific domain t
 - `HttpModule`
 - `HttpEngine`
 - `FreewayHttpEngine`
-- `WebServerBuilder`
 - `WebServer`
 - `HttpContext`
 - `Route`, `RouteGroup`, `WebSocketRoute`, `WebSocketGroup`
@@ -64,7 +63,8 @@ binder.contribute(StaticResourceMount.class)
 
 - `HttpModule` automatically contributes a `RuntimeHook` that starts and stops the server — no manual hook registration needed.
 - `HealthCheck` is in `com.jujin.freeway.http.filter`.
-- Standalone HTTP uses `WebServerBuilder.builder()`.
+- `WebServer.create(engine, config, components[, eventSink])` 是唯一的派生点：独立构建零容器（引擎自己 `new FreewayHttpEngine(Wiring.defaults(json, coercer))`，部件用 `RequestComponents.of(routes).withFilter(...)/.withCors(...)/.withStaticFiles(...)` 累加）。
+- 容器路径由 `HttpModule` 走同一个 `create`：键由值类型自己读（`HttpServerConfig.from` / `CorsFilter.from` / `HealthFilter.from` / `SslSettings.from`），路由/过滤器/静态资源/异常映射用 `contribute(...)`；要换引擎或引擎契约用 `bind(HttpEngine.class)` / `bind(HttpServerConfig.class)` 的 `.primary()`。
 - Engine selection: `HttpModule` binds `FreewayHttpEngine` (default); add an extension module (Undertow/Jetty) to override via `.primary()`.
 - TLS hot reload is event-driven (WatchService, debounced) with the poll at `ssl.reload-interval` as fallback; either layer alone drives the same snapshot comparison.
 - HTTP/2 rapid-reset guard: cancels arriving before the server responded, past `h2.reset-burst-limit` inside `h2.reset-window`, trip the connection with `GOAWAY(ENHANCE_YOUR_CALM)`. Post-response cancels never count.
