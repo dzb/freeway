@@ -6,6 +6,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
@@ -160,6 +162,25 @@ public final class RouteIndex {
         RouteMatch result = matchTrie(root, rawPath);
         if (result != null || !"HEAD".equals(key)) return result;
         return matchTrie(methodRoots.get("GET"), rawPath);
+    }
+
+    /**
+     * Methods whose tries recognize {@code path} — the {@code Allow} data for
+     * a 405 when {@link #match} missed on the method. Empty means a plain
+     * 404. {@code HEAD} rides along with {@code GET}, mirroring match();
+     * sorted for a stable header, walked only on the miss path.
+     */
+    public Set<String> allowedMethods(String path) {
+        TreeSet<String> allowed = new TreeSet<>();
+        for (Map.Entry<String, TrieNode> root : methodRoots.entrySet()) {
+            if (matchTrie(root.getValue(), path) != null) {
+                allowed.add(root.getKey());
+            }
+        }
+        if (allowed.contains("GET")) {
+            allowed.add("HEAD");
+        }
+        return allowed;
     }
 
     /** Matches raw path segments after decoding each segment independently. */

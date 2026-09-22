@@ -1,6 +1,7 @@
 package com.jujin.freeway.http.route;
 
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.Test;
@@ -30,6 +31,27 @@ class RouteIndexTest {
         RouteIndex.RouteMatch match = registry.match("GET", "/users/42");
         assertNotNull(match);
         assertEquals("42", match.pathVariables().get("id"));
+    }
+
+    @Test
+    void allowedMethodsListsTheMethodsThatRecognizeThePath() {
+        RouteIndex registry = new RouteIndex(List.of(
+            Route.get("/users", ctx -> ctx.send(200, "ok")),
+            Route.post("/users", ctx -> ctx.send(201, "created")),
+            Route.get("/users/{id}", ctx -> ctx.send(200, "ok"))), List.of());
+
+        // HEAD rides along with GET — the same fallback match() applies.
+        assertEquals(Set.of("GET", "HEAD", "POST"),
+            registry.allowedMethods("/users"));
+        assertEquals(Set.of("GET", "HEAD"),
+            registry.allowedMethods("/users/42"));
+        // Path no method recognizes: the caller answers 404, not 405.
+        assertTrue(registry.allowedMethods("/absent").isEmpty());
+        // Method-constrained routes only claim paths their constraint accepts.
+        RouteIndex constrained = new RouteIndex(List.of(
+            Route.get("/items/{id:\\d+}", ctx -> ctx.send(200, "number"))), List.of());
+        assertTrue(constrained.allowedMethods("/items/42").contains("GET"));
+        assertTrue(constrained.allowedMethods("/items/abc").isEmpty());
     }
 
     @Test

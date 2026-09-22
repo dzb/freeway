@@ -73,6 +73,11 @@ class HttpServerStandaloneTest {
             assertTrue(server.isRunning());
             assertEquals("pong", get(server.port(), "/ping").body());
             assertEquals(404, get(server.port(), "/absent").statusCode());
+            // Known path, wrong method: 405 carrying Allow (RFC 9110), not 404.
+            HttpResponse<String> wrongMethod =
+                post(server.port(), "/ping", "hi");
+            assertEquals(405, wrongMethod.statusCode());
+            assertEquals("GET, HEAD", wrongMethod.headers().firstValue("Allow").orElse(null));
             assertEquals(413, post(server.port(), "/boom", "far too large").statusCode(),
                 "the framework's own mapping answers on the standalone path as well");
         } finally {

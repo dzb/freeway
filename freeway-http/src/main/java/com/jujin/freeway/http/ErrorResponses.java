@@ -13,6 +13,8 @@ public final class ErrorResponses {
 
     private static final byte[] NOT_FOUND =
         "Not Found".getBytes(StandardCharsets.UTF_8);
+    private static final byte[] METHOD_NOT_ALLOWED =
+        "Method Not Allowed".getBytes(StandardCharsets.UTF_8);
     private static final byte[] INTERNAL_ERROR =
         "Internal Server Error".getBytes(StandardCharsets.UTF_8);
 
@@ -22,6 +24,20 @@ public final class ErrorResponses {
         response.setStatus(HttpStatus.NOT_FOUND)
             .setHeader("Content-Type", MediaTypes.TEXT_PLAIN_UTF8)
             .output(NOT_FOUND);
+    }
+
+    /**
+     * RFC 9110 requires {@code Allow} on a 405 — it answers "why did POST
+     * 404?".
+     *
+     * @param allow comma-separated methods, e.g. {@code "GET, HEAD"}
+     */
+    public static void methodNotAllowed(HttpResponse response, String allow)
+            throws IOException {
+        response.setStatus(HttpStatus.METHOD_NOT_ALLOWED)
+            .setHeader("Content-Type", MediaTypes.TEXT_PLAIN_UTF8)
+            .setHeader("Allow", allow)
+            .output(METHOD_NOT_ALLOWED);
     }
 
     public static void internalError(HttpResponse response) throws IOException {
