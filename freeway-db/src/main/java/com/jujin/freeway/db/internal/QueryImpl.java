@@ -87,7 +87,7 @@ final class QueryImpl implements Query {
             }
         } catch (SQLException e) {
             LOG.warn("Query list failed: {}", originalSql, e);
-            throw new SqlException("Query failed: " + e.getMessage(), e);
+            throw new SqlException(failureMessage("Query", e), e);
         }
     }
 
@@ -104,7 +104,7 @@ final class QueryImpl implements Query {
             }
         } catch (SQLException e) {
             LOG.warn("Query one failed: {}", originalSql, e);
-            throw new SqlException("Query failed: " + e.getMessage(), e);
+            throw new SqlException(failureMessage("Query", e), e);
         }
     }
 
@@ -141,10 +141,7 @@ final class QueryImpl implements Query {
                         return false;
                     } catch (SQLException e) {
                         resources.close();
-                        throw new SqlException(
-                            "Stream query failed: " + e.getMessage(),
-                            e
-                        );
+                        throw new SqlException(failureMessage("Stream query", e), e);
                     } catch (Throwable e) {
                         // Mapping failures, consumer exceptions, AND Errors
                         // must release the ResultSet and pooled connection;
@@ -168,7 +165,7 @@ final class QueryImpl implements Query {
             );
         } catch (SQLException e) {
             LOG.warn("Stream query failed: {}", originalSql, e);
-            throw new SqlException("Stream query failed: " + e.getMessage(), e);
+            throw new SqlException(failureMessage("Stream query", e), e);
         } finally {
             if (!returned) {
                 if (rs != null) {
@@ -199,8 +196,30 @@ final class QueryImpl implements Query {
             return new ExecuteResult(rows, key);
         } catch (SQLException e) {
             LOG.warn("Execute failed: {}", originalSql, e);
-            throw new SqlException("Update failed: " + e.getMessage(), e);
+            throw new SqlException(failureMessage("Update", e), e);
         }
+    }
+
+    /**
+     * Driver text plus where it failed — SQL start fragment and parameter
+     * count — so a caught exception alone still points at the statement,
+     * as the composition-time errors in this file already do.
+     */
+    private String failureMessage(String what, SQLException e) {
+        String sql = originalSql.strip();
+        if (sql.length() > 160) {
+            sql = sql.substring(0, 160) + "...";
+        }
+        return what + " failed: " + e.getMessage()
+            + ". SQL: " + sql
+            + ". Params: " + paramCount() + " value(s)";
+    }
+
+    /** Values bound (or about to be), after collection expansion. */
+    private int paramCount() {
+        if (expandedFlatParams != null) return expandedFlatParams.length;
+        if (!namedParams.isEmpty()) return namedParams.size();
+        return positionalParams.length;
     }
 
     private void bindAll(PreparedStatement stmt) throws SQLException {

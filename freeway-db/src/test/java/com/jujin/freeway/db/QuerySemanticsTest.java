@@ -144,4 +144,28 @@ class QuerySemanticsTest {
             assertEquals("?", value);
         }
     }
+
+    @Test
+    void failureMessageCarriesSqlFragmentAndParamCount() {
+        // The SQLException wrapper must carry the SQL like the composition-
+        // time errors do — a caught exception alone should point at it.
+        String dbName = "freeway_query_jdbc_fail_" + UUID.randomUUID().toString().replace('-', '_');
+        Database db = new DatabaseBuilder()
+            .config(PoolConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
+            .build();
+
+        try (db) {
+            SqlException ex = assertThrows(
+                SqlException.class,
+                () -> db.query("select id from no_such_table where id = ?", 42)
+                    .list(Integer.class)
+            );
+            assertTrue(ex.getMessage().contains("Query failed"),
+                "driver-facing prefix must survive, got: " + ex.getMessage());
+            assertTrue(ex.getMessage().contains("SQL: select id from no_such_table"),
+                "message must carry the SQL start fragment, got: " + ex.getMessage());
+            assertTrue(ex.getMessage().contains("Params: 1 value(s)"),
+                "message must carry the bound parameter count, got: " + ex.getMessage());
+        }
+    }
 }
