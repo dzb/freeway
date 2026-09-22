@@ -82,6 +82,19 @@ builder 不是第二个入口而是第二个组装根：自带一份默认值、
   `enabled()/healthPath()/healthCheck()` 读取与 `withPath/withCheck`、`CorsFilter` 的七个字段读取。
 - 测试：`HttpServerStandaloneTest`（零容器构建并服务、mapper 优先级、withers 全部生效）、
   `HttpModuleErrorHandlerOrderTest`（容器路径的同一条优先级）。
+- `freeway-http` 每个包的 `package-info.java`：根包声明合同面四组（装配半、接缝数据半、TLS 契约、
+  共享词表）与稳定性口径，`engine*` 声明放置规则（会话桥归 `engine`、纯帧编解码归 `http2`/`ws`、
+  全部无稳定性承诺），`route`/`filter`/`body`/`websocket`/`sse`/`staticfile`/`event` 声明应用面角色；
+  `internal/package-info` 里早已过期的描述（config snapshot 与 TLS builders 迁走后）一并改正。
+- `RequestViewTest` 钉住 HTTP/WS 共享读面：`HttpRequest` 与 `WebSocketSession` 都 `extends
+  RequestView`，且读面恰好是那 10 个只读访问器——给共享面加方法意味着两个半边同时继承。
+- 角色核验结论（合并/消融/移除评估均不成立）：`engine` 四个 public 全有跨包角色——
+  `HttpResponseWriter` 由 `engine.http2.Http2ResponseWriter` 跨包实现、`ResponseFraming` 与
+  `HttpContextImpl` 被 ext 适配器与 benchmark 复用、`FreewayHttpEngine` 是 `HttpModule` 的绑定物，
+  零降级；`RequestView` 是交换与 WS 会话的共同只读读面（2 个继承者），消融它等于两个接口各自
+  重述 10 个声明（第二个所有者），移除它则 WS 会话要么复制声明、要么谎称自己是 `HttpRequest`；
+  `ErrorResponses` 有 5 个调用点（`HttpServer`×3、`Http1xSession`、`StaticResourceMount`），
+  消融即 404/500 的正文与头在 5 处各写一遍——正是它的防漂移承诺所阻止的事。
 
 ### Removed
 
