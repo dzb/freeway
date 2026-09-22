@@ -174,7 +174,7 @@ freeway-http/
 │   ├── HttpPipeline.java ← record，处理声明（HttpServer.create 是唯一推导）
 │   └── ...
 ├── freeway-http-ioc/（概念上）
-│   └── HttpModule.java      ← 唯一的容器感知点（1.5.4 删掉了与之并存的第二条装配根 WebServerBuilder）
+│   └── HttpModule.java      ← 唯一的容器感知点（1.5.5 删掉了与之并存的第二条装配根 WebServerBuilder）
 ```
 
 `RouteIndex` 不知道 `Container`，`DatabaseImpl` 不知道 `Container`。IoC 属于 Module，不属于核心实现。这是一个**架构上的分层策略，不是接口约定，而是设计文化**。

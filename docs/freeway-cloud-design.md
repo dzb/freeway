@@ -239,7 +239,7 @@ public record Health(boolean live, boolean ready, Instant lastSeen) {
   instanceId 默认派生，可用 `registry.service-instance-id` 钉住。
 - **身份的两个 auto**（值写不出来，只能推导，且启动时打一行说明选了哪个）：
   `registry.service-scheme=auto`（默认）跟随 HTTP 服务器是否启用 TLS
-  （`HttpServer.secure()`，1.5.4 起转述 `HttpEngine.secure()`：谁终止 TLS 谁回答，
+  （`HttpServer.secure()`，1.5.5 起转述 `HttpEngine.secure()`：谁终止 TLS 谁回答，
   适配器引擎忽略 `freeway.http.ssl.*` 也不会把 https 节点注册成 `http://`）——
   注册的 `http/https` 与网格拨号的 `ws/wss` 出自
   同一次推导，开 TLS 不会漏改而注册出 `http://`；`registry.service-host=auto`

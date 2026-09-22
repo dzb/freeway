@@ -86,7 +86,7 @@ transitively) plus JUnit at test scope. Anything else belongs in an ext adapter.
   container face (keys → value types, contributions → parts), and a caller with
   no container calls `create` directly — the standalone `WebServerBuilder` that
   duplicated that root, and the `HttpModuleConfig` snapshot that restated the
-  value types' defaults a second time, are both gone (see CHANGELOG 1.5.4).
+  value types' defaults a second time, are both gone (see CHANGELOG 1.5.5).
   One verb per role: `FreewayApp.create` replaced `FreewayApp.of` and
   `FlowEngine.create` replaced `FlowEngine.newInstance`, so the entry points no
   longer disagree with `Freeway.create` next to them.
