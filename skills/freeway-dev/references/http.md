@@ -22,7 +22,7 @@ Examples below are minimal snippets. They omit imports and app-specific domain t
 - `freeway.http.cors.*`
 - `freeway.http.health.enabled`
 - `freeway.http.health.path`
-- `freeway.http.h2.reset-burst-limit` (default 200, `0` disables)
+- `freeway.http.h2.reset-burst-limit` (default 200, `0` disables; built-in engine only — `HttpModule` wires it into `FreewayHttpEngine.Wiring`)
 - `freeway.http.h2.reset-window` (default 10s)
 - `freeway.http.ssl.reload-interval` (`0` disables hot reload)
 

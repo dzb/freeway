@@ -21,7 +21,7 @@ import java.util.concurrent.locks.LockSupport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.jujin.freeway.http.HttpServerConfig;
+import com.jujin.freeway.http.engine.FreewayHttpEngine;
 import com.jujin.freeway.http.engine.http2.hpack.HPackContext;
 import com.jujin.freeway.http.engine.http2.hpack.HeaderFields;
 
@@ -122,8 +122,8 @@ public final class Http2Connection {
                            ExecutorService executor, StreamHandler handler,
                            int readTimeoutMillis) {
         this(socket, inputStream, outputStream, executor, handler, readTimeoutMillis,
-            HttpServerConfig.DEFAULT_H2_RESET_BURST_LIMIT,
-            HttpServerConfig.DEFAULT_H2_RESET_WINDOW);
+            FreewayHttpEngine.DEFAULT_H2_RESET_BURST_LIMIT,
+            FreewayHttpEngine.DEFAULT_H2_RESET_WINDOW);
     }
 
     /**

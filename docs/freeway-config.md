@@ -312,6 +312,9 @@ CLI 参数（`--freeway.config.file=...`）同样无效——启动时会打 WAR
 
 #### HTTP/2
 
+> 这两键归内置引擎：`HttpModule` 读取后接入 `FreewayHttpEngine.Wiring`，
+> 不再进 `HttpServerConfig`；若激活的是第三方引擎且值被调优，启动时 WARN 点名归属。
+
 | 键 | 档 | 类型 | 默认值 | 必填 | 说明 |
 |----|------|------|--------|------|------|
 | `freeway.http.h2.reset-burst-limit` | 调优 | Integer | `200` | 否 | 入站 RST 突发熔断：窗口内未响应即取消超过此数即 GOAWAY(ENHANCE_YOUR_CALM) 并拆连接（`0` = 整个防护关闭） |

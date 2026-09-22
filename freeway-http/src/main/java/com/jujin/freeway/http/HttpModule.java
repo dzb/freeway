@@ -1,6 +1,7 @@
 package com.jujin.freeway.http;
 
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
@@ -51,6 +52,16 @@ public final class HttpModule implements ModuleEx {
      *  the access log is a filter the module contributes, not a field of anything. */
     private static final SymbolSpec<Boolean> ACCESS_LOG_ENABLED =
         SymbolSpec.of(HttpConfigKeys.ACCESS_LOG_ENABLED, Boolean.class, false);
+    // The built-in engine's own knobs: read here (the module owns the keys),
+    // pushed into the engine's Wiring below — HttpServerConfig does not carry
+    // fields a third-party engine cannot apply.
+    private static final SymbolSpec<Integer> H2_RESET_BURST_LIMIT =
+        SymbolSpec.of(HttpConfigKeys.H2_RESET_BURST_LIMIT, Integer.class,
+            FreewayHttpEngine.DEFAULT_H2_RESET_BURST_LIMIT);
+    private static final SymbolSpec<Duration> H2_RESET_WINDOW =
+        SymbolSpec.of(HttpConfigKeys.H2_RESET_WINDOW, Duration.class,
+            FreewayHttpEngine.DEFAULT_H2_RESET_WINDOW);
+
     private volatile SslReloader sslReloader;
 
     @Override
@@ -87,12 +98,17 @@ public final class HttpModule implements ModuleEx {
             var json = container.get(JsonCodec.class);
             var coercer = container.get(Coercer.class);
             var metrics = container.get(Metrics.class);
+            var symbols = container.get(SymbolSource.class);
+            int h2Burst = symbols.resolve(H2_RESET_BURST_LIMIT);
+            Duration h2Window = symbols.resolve(H2_RESET_WINDOW);
 
             SslSettings ssl = container.get(SslSettings.class);
             if (!ssl.enabled()) {
                 LOG.debug("SSL disabled, using plain HTTP engine");
                 return new FreewayHttpEngine(
-                    FreewayHttpEngine.Wiring.defaults(json, coercer).withMetrics(metrics));
+                    FreewayHttpEngine.Wiring.defaults(json, coercer)
+                        .withMetrics(metrics)
+                        .withH2Reset(h2Burst, h2Window));
             }
 
             LOG.info("Initializing HTTPS engine from keystore {} (type={}, http2={}, clientAuth={})",
@@ -104,7 +120,8 @@ public final class HttpModule implements ModuleEx {
                 FreewayHttpEngine.Wiring.defaults(json, coercer)
                     .withSsl(sslContext, ssl.http2())
                     .withSslParameters(sslParameters)
-                    .withMetrics(metrics));
+                    .withMetrics(metrics)
+                    .withH2Reset(h2Burst, h2Window));
         });
 
         // HttpEngine — bind to FreewayHttpEngine. Extension modules bind their
@@ -151,6 +168,9 @@ public final class HttpModule implements ModuleEx {
             @Override
             public void start(Container container) {
                 SslSettings ssl = container.get(SslSettings.class);
+                if (!isBuiltinEngineActive(container)) {
+                    reportIgnoredH2Guard(container.get(SymbolSource.class));
+                }
                 container.get(HttpServer.class).start();
                 if (ssl.enabled() && ssl.reloadInterval() != null
                         && !ssl.reloadInterval().isZero()) {
@@ -218,6 +238,25 @@ public final class HttpModule implements ModuleEx {
      */
     static boolean isBuiltinEngineActive(Container container) {
         return container.isActiveBinding(HttpEngine.class, Builtin.class);
+    }
+
+    /**
+     * Loudness for keys that stopped taking effect: {@code freeway.http.h2.*}
+     * guards only the built-in engine, so a tuned value under a third-party
+     * engine would otherwise be silently ignored. Default-valued keys are
+     * harmless to ignore (the guard is unchanged) and not reported — only a
+     * tuned value is, naming where the key now lives.
+     */
+    private static void reportIgnoredH2Guard(SymbolSource symbols) {
+        int burst = symbols.resolve(H2_RESET_BURST_LIMIT);
+        Duration window = symbols.resolve(H2_RESET_WINDOW);
+        if (burst != FreewayHttpEngine.DEFAULT_H2_RESET_BURST_LIMIT
+                || !FreewayHttpEngine.DEFAULT_H2_RESET_WINDOW.equals(window)) {
+            LOG.warn("freeway.http.h2.* guards only the built-in FreewayHttpEngine and the "
+                + "active HttpEngine is not built in — the tuned value has no effect here; "
+                + "the active engine module owns its own guard (built-in path: HttpModule "
+                + "wires these keys into FreewayHttpEngine.Wiring automatically)");
+        }
     }
 
 }

@@ -36,8 +36,6 @@ class HttpServerConfigTest {
         assertEquals(HttpServerConfig.DEFAULT_WRITE_TIMEOUT, defaults.writeTimeout());
         assertEquals(HttpServerConfig.DEFAULT_MAX_CONNECTIONS, defaults.maxConnections());
         assertEquals(HttpServerConfig.CompressionConfig.DEFAULT, defaults.compression());
-        assertEquals(HttpServerConfig.DEFAULT_H2_RESET_BURST_LIMIT, defaults.h2ResetBurstLimit());
-        assertEquals(HttpServerConfig.DEFAULT_H2_RESET_WINDOW, defaults.h2ResetWindow());
     }
 
     @Test
@@ -55,9 +53,7 @@ class HttpServerConfigTest {
             .withWriteTimeout(Duration.ofSeconds(7))
             .withCompression(new HttpServerConfig.CompressionConfig(false, 0))
             .withReceiveBufferSize(4096)
-            .withSendBufferSize(8192)
-            .withH2ResetBurstLimit(50)
-            .withH2ResetWindow(Duration.ofSeconds(5));
+            .withSendBufferSize(8192);
 
         assertEquals("0.0.0.0", cfg.host());
         assertEquals(9090, cfg.port());
@@ -70,8 +66,6 @@ class HttpServerConfigTest {
         assertEquals(new HttpServerConfig.CompressionConfig(false, 0), cfg.compression());
         assertEquals(4096, cfg.receiveBufferSize());
         assertEquals(8192, cfg.sendBufferSize());
-        assertEquals(50, cfg.h2ResetBurstLimit());
-        assertEquals(Duration.ofSeconds(5), cfg.h2ResetWindow());
 
         // A wither returns a new value: the record stays immutable, so a config
         // handed to a server cannot be changed under it.
@@ -87,9 +81,6 @@ class HttpServerConfigTest {
         assertThrows(IllegalArgumentException.class, () -> base.withMaxBodySize(0));
         assertThrows(IllegalArgumentException.class, () -> base.withPort(70_000));
         assertThrows(IllegalArgumentException.class, () -> base.withBacklog(-1));
-        assertThrows(IllegalArgumentException.class, () -> base.withH2ResetBurstLimit(-1));
-        assertThrows(IllegalArgumentException.class,
-            () -> base.withH2ResetWindow(Duration.ofSeconds(-1)));
     }
 
     @Test
@@ -101,9 +92,7 @@ class HttpServerConfigTest {
             HttpServerConfig.DEFAULT_BACKLOG, HttpServerConfig.DEFAULT_SHUTDOWN_GRACE,
             HttpServerConfig.DEFAULT_MAX_BODY_SIZE, HttpServerConfig.DEFAULT_READ_TIMEOUT,
             HttpServerConfig.DEFAULT_MAX_CONNECTIONS, HttpServerConfig.DEFAULT_WRITE_TIMEOUT,
-            HttpServerConfig.CompressionConfig.DEFAULT, 0, 0,
-            HttpServerConfig.DEFAULT_H2_RESET_BURST_LIMIT,
-            HttpServerConfig.DEFAULT_H2_RESET_WINDOW);
+            HttpServerConfig.CompressionConfig.DEFAULT, 0, 0);
 
         assertEquals(canonical, HttpServerConfig.defaults());
         assertSame(HttpServerConfig.CompressionConfig.DEFAULT,

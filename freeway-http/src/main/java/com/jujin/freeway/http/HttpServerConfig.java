@@ -34,11 +34,6 @@ import com.jujin.freeway.ioc.symbol.SymbolSpec;
  *                          (0 = OS default)
  * @param sendBufferSize    desired SO_SNDBUF for accepted sockets
  *                          (0 = OS default)
- * @param h2ResetBurstLimit HTTP/2 inbound-RST burst guard: cancels arriving
- *                          before the server responded, beyond this count
- *                          within {@code h2ResetWindow}, trip the connection
- *                          with GOAWAY(ENHANCE_YOUR_CALM) (0 disables)
- * @param h2ResetWindow     sliding window for the reset burst guard
  */
 public record HttpServerConfig(
     String host,
@@ -51,9 +46,7 @@ public record HttpServerConfig(
     Duration writeTimeout,
     CompressionConfig compression,
     int receiveBufferSize,
-    int sendBufferSize,
-    int h2ResetBurstLimit,
-    Duration h2ResetWindow
+    int sendBufferSize
 ) {
     public static final String DEFAULT_HOST = "127.0.0.1";
     public static final int DEFAULT_PORT = 8080;
@@ -63,8 +56,6 @@ public record HttpServerConfig(
     public static final Duration DEFAULT_READ_TIMEOUT = Duration.ofSeconds(30);
     public static final Duration DEFAULT_WRITE_TIMEOUT = Duration.ofSeconds(30);
     public static final int DEFAULT_MAX_CONNECTIONS = 0;
-    public static final int DEFAULT_H2_RESET_BURST_LIMIT = 200;
-    public static final Duration DEFAULT_H2_RESET_WINDOW = Duration.ofSeconds(10);
 
     public HttpServerConfig {
         host = host == null || host.isBlank() ? "127.0.0.1" : host;
@@ -98,14 +89,6 @@ public record HttpServerConfig(
         if (receiveBufferSize < 0 || sendBufferSize < 0) {
             throw new IllegalArgumentException(
                 "socket buffer sizes must be >= 0");
-        }
-        if (h2ResetBurstLimit < 0) {
-            throw new IllegalArgumentException(
-                "h2ResetBurstLimit must be >= 0: " + h2ResetBurstLimit);
-        }
-        if (h2ResetWindow == null || h2ResetWindow.isNegative()) {
-            throw new IllegalArgumentException(
-                "h2ResetWindow must be non-negative: " + h2ResetWindow);
         }
     }
 
@@ -155,8 +138,7 @@ public record HttpServerConfig(
         return new HttpServerConfig(
             DEFAULT_HOST, DEFAULT_PORT, DEFAULT_BACKLOG, DEFAULT_SHUTDOWN_GRACE,
             DEFAULT_MAX_BODY_SIZE, DEFAULT_READ_TIMEOUT, DEFAULT_MAX_CONNECTIONS,
-            DEFAULT_WRITE_TIMEOUT, CompressionConfig.DEFAULT, 0, 0,
-            DEFAULT_H2_RESET_BURST_LIMIT, DEFAULT_H2_RESET_WINDOW);
+            DEFAULT_WRITE_TIMEOUT, CompressionConfig.DEFAULT, 0, 0);
     }
 
     // ── Key declarations: name and type only ──
@@ -185,15 +167,16 @@ public record HttpServerConfig(
         SymbolSpec.of(HttpConfigKeys.SERVER_RECEIVE_BUFFER, Integer.class, null);
     private static final SymbolSpec<Integer> SEND_BUFFER =
         SymbolSpec.of(HttpConfigKeys.SERVER_SEND_BUFFER, Integer.class, null);
-    private static final SymbolSpec<Integer> H2_RESET_BURST_LIMIT =
-        SymbolSpec.of(HttpConfigKeys.H2_RESET_BURST_LIMIT, Integer.class, null);
-    private static final SymbolSpec<Duration> H2_RESET_WINDOW =
-        SymbolSpec.of(HttpConfigKeys.H2_RESET_WINDOW, Duration.class, null);
 
     /**
      * This configuration as {@code freeway.http.server.*} answers it: start from
      * {@link #defaults()} and overlay one key per knob, each line naming only
      * its key and its field and defaulting back to the value already there.
+     *
+     * <p>{@code freeway.http.h2.*} is not carried: the reset guard belongs to
+     * the built-in engine — {@code HttpModule} reads those keys into
+     * {@code FreewayHttpEngine.Wiring}; a standalone caller passes
+     * {@code withH2Reset} directly.
      */
     public static HttpServerConfig from(SymbolSource symbols) {
         HttpServerConfig cfg = defaults();
@@ -208,8 +191,6 @@ public record HttpServerConfig(
         cfg = cfg.withCompression(CompressionConfig.from(symbols));
         cfg = cfg.withReceiveBufferSize(symbols.resolve(RECEIVE_BUFFER.orDefault(cfg.receiveBufferSize())));
         cfg = cfg.withSendBufferSize(symbols.resolve(SEND_BUFFER.orDefault(cfg.sendBufferSize())));
-        cfg = cfg.withH2ResetBurstLimit(symbols.resolve(H2_RESET_BURST_LIMIT.orDefault(cfg.h2ResetBurstLimit())));
-        cfg = cfg.withH2ResetWindow(symbols.resolve(H2_RESET_WINDOW.orDefault(cfg.h2ResetWindow())));
         return cfg;
     }
 
@@ -217,90 +198,76 @@ public record HttpServerConfig(
     public HttpServerConfig withHost(String host) {
         return new HttpServerConfig(host, port, backlog, shutdownGrace,
             maxBodySize, readTimeout, maxConnections, writeTimeout, compression,
-            receiveBufferSize, sendBufferSize, h2ResetBurstLimit, h2ResetWindow);
+            receiveBufferSize, sendBufferSize);
     }
 
     /** Same configuration with {@link #port} replaced. */
     public HttpServerConfig withPort(int port) {
         return new HttpServerConfig(host, port, backlog, shutdownGrace,
             maxBodySize, readTimeout, maxConnections, writeTimeout, compression,
-            receiveBufferSize, sendBufferSize, h2ResetBurstLimit, h2ResetWindow);
+            receiveBufferSize, sendBufferSize);
     }
 
     /** Same configuration with {@link #backlog} replaced. */
     public HttpServerConfig withBacklog(int backlog) {
         return new HttpServerConfig(host, port, backlog, shutdownGrace,
             maxBodySize, readTimeout, maxConnections, writeTimeout, compression,
-            receiveBufferSize, sendBufferSize, h2ResetBurstLimit, h2ResetWindow);
+            receiveBufferSize, sendBufferSize);
     }
 
     /** Same configuration with {@link #shutdownGrace} replaced. */
     public HttpServerConfig withShutdownGrace(Duration shutdownGrace) {
         return new HttpServerConfig(host, port, backlog, shutdownGrace,
             maxBodySize, readTimeout, maxConnections, writeTimeout, compression,
-            receiveBufferSize, sendBufferSize, h2ResetBurstLimit, h2ResetWindow);
+            receiveBufferSize, sendBufferSize);
     }
 
     /** Same configuration with {@link #maxBodySize} replaced. */
     public HttpServerConfig withMaxBodySize(long maxBodySize) {
         return new HttpServerConfig(host, port, backlog, shutdownGrace,
             maxBodySize, readTimeout, maxConnections, writeTimeout, compression,
-            receiveBufferSize, sendBufferSize, h2ResetBurstLimit, h2ResetWindow);
+            receiveBufferSize, sendBufferSize);
     }
 
     /** Same configuration with {@link #readTimeout} replaced. */
     public HttpServerConfig withReadTimeout(Duration readTimeout) {
         return new HttpServerConfig(host, port, backlog, shutdownGrace,
             maxBodySize, readTimeout, maxConnections, writeTimeout, compression,
-            receiveBufferSize, sendBufferSize, h2ResetBurstLimit, h2ResetWindow);
+            receiveBufferSize, sendBufferSize);
     }
 
     /** Same configuration with {@link #maxConnections} replaced. */
     public HttpServerConfig withMaxConnections(int maxConnections) {
         return new HttpServerConfig(host, port, backlog, shutdownGrace,
             maxBodySize, readTimeout, maxConnections, writeTimeout, compression,
-            receiveBufferSize, sendBufferSize, h2ResetBurstLimit, h2ResetWindow);
+            receiveBufferSize, sendBufferSize);
     }
 
     /** Same configuration with {@link #writeTimeout} replaced. */
     public HttpServerConfig withWriteTimeout(Duration writeTimeout) {
         return new HttpServerConfig(host, port, backlog, shutdownGrace,
             maxBodySize, readTimeout, maxConnections, writeTimeout, compression,
-            receiveBufferSize, sendBufferSize, h2ResetBurstLimit, h2ResetWindow);
+            receiveBufferSize, sendBufferSize);
     }
 
     /** Same configuration with {@link #compression} replaced. */
     public HttpServerConfig withCompression(CompressionConfig compression) {
         return new HttpServerConfig(host, port, backlog, shutdownGrace,
             maxBodySize, readTimeout, maxConnections, writeTimeout, compression,
-            receiveBufferSize, sendBufferSize, h2ResetBurstLimit, h2ResetWindow);
+            receiveBufferSize, sendBufferSize);
     }
 
     /** Same configuration with {@link #receiveBufferSize} replaced. */
     public HttpServerConfig withReceiveBufferSize(int receiveBufferSize) {
         return new HttpServerConfig(host, port, backlog, shutdownGrace,
             maxBodySize, readTimeout, maxConnections, writeTimeout, compression,
-            receiveBufferSize, sendBufferSize, h2ResetBurstLimit, h2ResetWindow);
+            receiveBufferSize, sendBufferSize);
     }
 
     /** Same configuration with {@link #sendBufferSize} replaced. */
     public HttpServerConfig withSendBufferSize(int sendBufferSize) {
         return new HttpServerConfig(host, port, backlog, shutdownGrace,
             maxBodySize, readTimeout, maxConnections, writeTimeout, compression,
-            receiveBufferSize, sendBufferSize, h2ResetBurstLimit, h2ResetWindow);
-    }
-
-    /** Same configuration with {@link #h2ResetBurstLimit} replaced. */
-    public HttpServerConfig withH2ResetBurstLimit(int h2ResetBurstLimit) {
-        return new HttpServerConfig(host, port, backlog, shutdownGrace,
-            maxBodySize, readTimeout, maxConnections, writeTimeout, compression,
-            receiveBufferSize, sendBufferSize, h2ResetBurstLimit, h2ResetWindow);
-    }
-
-    /** Same configuration with {@link #h2ResetWindow} replaced. */
-    public HttpServerConfig withH2ResetWindow(Duration h2ResetWindow) {
-        return new HttpServerConfig(host, port, backlog, shutdownGrace,
-            maxBodySize, readTimeout, maxConnections, writeTimeout, compression,
-            receiveBufferSize, sendBufferSize, h2ResetBurstLimit, h2ResetWindow);
+            receiveBufferSize, sendBufferSize);
     }
 }

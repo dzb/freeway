@@ -7,6 +7,7 @@ import java.nio.channels.AsynchronousCloseException;
 import java.nio.channels.ClosedChannelException;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
+import java.time.Duration;
 import java.util.Objects;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -53,15 +54,22 @@ public final class FreewayHttpEngine implements HttpEngine {
         SocketChannel accept() throws IOException;
     }
 
+    /** Default {@link Wiring#withH2Reset(int, Duration)}: RST burst count (0 disables). */
+    public static final int DEFAULT_H2_RESET_BURST_LIMIT = 200;
+    /** Default {@link Wiring#withH2Reset(int, Duration)}: guard sliding window. */
+    public static final Duration DEFAULT_H2_RESET_WINDOW = Duration.ofSeconds(10);
+
     private final JsonCodec jsonCodec;
     private final Coercer coercer;
     private volatile SSLContext sslContext;
     private final boolean http2OverSsl;
     private final SSLParameters sslParameters;
     private final Metrics metrics;
+    private final int h2ResetBurstLimit;
+    private final Duration h2ResetWindow;
 
     /**
-     * Optional wiring for the built-in engine: the four knobs an embedder may
+     * Optional wiring for the built-in engine: the knobs an embedder may
      * vary, with production-safe defaults. It replaced five positional
      * constructors whose steps were not a ladder (one step added metrics, the
      * next silently reset it), so a call site could not tell what it was
@@ -78,35 +86,53 @@ public final class FreewayHttpEngine implements HttpEngine {
         SSLContext sslContext,
         boolean http2OverSsl,
         SSLParameters sslParameters,
-        Metrics metrics
+        Metrics metrics,
+        int h2ResetBurstLimit,
+        Duration h2ResetWindow
     ) {
         public Wiring {
             jsonCodec = Objects.requireNonNull(jsonCodec, "jsonCodec");
             coercer = Objects.requireNonNull(coercer, "coercer");
             metrics = metrics == null ? NoopMetrics.INSTANCE : metrics;
+            if (h2ResetBurstLimit < 0) {
+                throw new IllegalArgumentException(
+                    "h2ResetBurstLimit must be >= 0: " + h2ResetBurstLimit);
+            }
+            if (h2ResetWindow == null || h2ResetWindow.isNegative()) {
+                throw new IllegalArgumentException(
+                    "h2ResetWindow must be non-negative: " + h2ResetWindow);
+            }
         }
 
         /** Plain HTTP engine: no TLS, no HTTP/2 over TLS, noop metrics. */
         public static Wiring defaults(JsonCodec jsonCodec, Coercer coercer) {
-            return new Wiring(jsonCodec, coercer, null, false, null, NoopMetrics.INSTANCE);
+            return new Wiring(jsonCodec, coercer, null, false, null, NoopMetrics.INSTANCE,
+                DEFAULT_H2_RESET_BURST_LIMIT, DEFAULT_H2_RESET_WINDOW);
         }
 
         /** TLS termination, optionally negotiating HTTP/2 over ALPN. */
         public Wiring withSsl(SSLContext sslContext, boolean http2OverSsl) {
             return new Wiring(jsonCodec, coercer, sslContext, http2OverSsl,
-                sslParameters, metrics);
+                sslParameters, metrics, h2ResetBurstLimit, h2ResetWindow);
         }
 
         /** Per-socket TLS parameters (client auth, cipher/protocol narrowing). */
         public Wiring withSslParameters(SSLParameters sslParameters) {
             return new Wiring(jsonCodec, coercer, sslContext, http2OverSsl,
-                sslParameters, metrics);
+                sslParameters, metrics, h2ResetBurstLimit, h2ResetWindow);
         }
 
         /** Metrics sink; {@code null} restores the noop implementation. */
         public Wiring withMetrics(Metrics metrics) {
             return new Wiring(jsonCodec, coercer, sslContext, http2OverSsl,
-                sslParameters, metrics);
+                sslParameters, metrics, h2ResetBurstLimit, h2ResetWindow);
+        }
+
+        /** The built-in HTTP/2 inbound-RST burst guard ({@code freeway.http.h2.*}:
+         *  counts read from {@code HttpModule}, or set directly here). */
+        public Wiring withH2Reset(int h2ResetBurstLimit, Duration h2ResetWindow) {
+            return new Wiring(jsonCodec, coercer, sslContext, http2OverSsl,
+                sslParameters, metrics, h2ResetBurstLimit, h2ResetWindow);
         }
     }
 
@@ -119,12 +145,18 @@ public final class FreewayHttpEngine implements HttpEngine {
         this.http2OverSsl = wiring.http2OverSsl();
         this.sslParameters = wiring.sslParameters();
         this.metrics = wiring.metrics();
+        this.h2ResetBurstLimit = wiring.h2ResetBurstLimit();
+        this.h2ResetWindow = wiring.h2ResetWindow();
     }
 
     public SSLContext sslContext() { return sslContext; }
     public boolean http2OverSsl() { return http2OverSsl; }
     public SSLParameters sslParameters() { return sslParameters; }
     Metrics metrics() { return metrics; }
+
+    /** The built-in HTTP/2 reset guard this engine runs with. */
+    int h2ResetBurstLimit() { return h2ResetBurstLimit; }
+    Duration h2ResetWindow() { return h2ResetWindow; }
 
     /** A context was wired (or later reloaded) into this engine, so the
      *  sockets it accepts are TLS. Read on every call: {@link #reload} can

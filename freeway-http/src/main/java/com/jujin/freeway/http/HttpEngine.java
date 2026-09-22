@@ -8,30 +8,24 @@ import java.io.IOException;
  *
  * <p><b>Honor contract.</b> {@code config} is the server's transport
  * declaration and reaches every engine unchanged; each engine maps it onto
- * its own facilities in three tiers:
+ * its own facilities in two tiers:
  * <ul>
  *   <li><b>Must honor</b> — {@code host}, {@code port}, {@code backlog},
  *       {@code shutdownGrace}: the server's address and lifecycle, plus
  *       {@code readTimeout}, {@code writeTimeout}, {@code receiveBufferSize},
  *       {@code sendBufferSize} and {@code maxConnections} wherever the engine
  *       has a counterpart (the built-in engine has one for all five).</li>
- *   <li><b>Per-exchange policy, state-shaped</b> — {@code maxBodySize}: the
+ *   <li><b>Per-exchange policy</b> — state-shaped: {@code maxBodySize}, the
  *       engine initializes {@link HttpContext#setMaxBodySize} on every exchange
- *       it creates (the built-in engine does so at session start), and
- *       enforcement lives in the shared {@link AbstractHttpContext#readBody},
- *       so 413 accounting is identical across engines. The setter stays on the
- *       seam because a filter may legitimately narrow the limit further.</li>
- *   <li><b>Per-exchange policy, wire-adjacent</b> — {@code compression}:
+ *       it creates (the built-in engine does so at session start), enforcement
+ *       lives in the shared {@link AbstractHttpContext#readBody}, so 413
+ *       accounting is identical across engines, and a filter may legitimately
+ *       narrow the limit further; wire-adjacent: {@code compression}, whose
  *       execution <em>is</em> transport, so it runs in the engine's own output
  *       path over the shared {@link Compression} primitives (q-value
- *       negotiation), and an adapter configures its own transport's gzip from
- *       the same field. Deliberately not a seam setter — that would relocate
- *       state without moving execution — and deliberately not a pipeline
- *       filter — that would require buffering every response.</li>
- *   <li><b>Engine-private</b> — {@code h2ResetBurstLimit} / {@code
- *       h2ResetWindow} guard the built-in HTTP/2 implementation; an engine
- *       without that guard must report a non-default setting at startup
- *       rather than ignore it.</li>
+ *       negotiation) — deliberately not a seam setter (that relocates state,
+ *       not execution) and not a pipeline filter (that would buffer every
+ *       response).</li>
  * </ul>
  * A field the engine cannot apply must say so at startup — never silently.
  */

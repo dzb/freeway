@@ -92,7 +92,9 @@ public final class HttpConfigKeys {
     public static final String SERVER_SEND_BUFFER    = PREFIX + ".server.send-buffer-size";
     /** Inbound RST_STREAM burst guard: cancels arriving before the server
      *  responded, beyond this count within the reset window, trip the
-     *  connection with GOAWAY(ENHANCE_YOUR_CALM) (0 disables the guard). */
+     *  connection with GOAWAY(ENHANCE_YOUR_CALM) (0 disables the guard).
+     *  Engine-private: {@code HttpModule} reads it into the built-in engine's
+     *  {@code Wiring}; a third-party engine reports a non-default at startup. */
     public static final String H2_RESET_BURST_LIMIT = PREFIX + ".h2.reset-burst-limit";
     /** Sliding window for the reset burst guard (default 10s). A no-op while
      *  {@link #H2_RESET_BURST_LIMIT} is 0 — the guard returns before reading it. */
