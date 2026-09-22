@@ -19,7 +19,6 @@ import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.http.engine.FreewayHttpEngine;
 import com.jujin.freeway.http.SslContexts;
 import com.jujin.freeway.http.SslSettings;
-import com.jujin.freeway.http.internal.SslReloader;
 import com.jujin.freeway.http.filter.AccessLogFilter;
 import com.jujin.freeway.http.filter.CorsFilter;
 import com.jujin.freeway.http.filter.ErrorHandler;
@@ -61,8 +60,6 @@ public final class HttpModule implements ModuleEx {
     private static final SymbolSpec<Duration> H2_RESET_WINDOW =
         SymbolSpec.of(HttpConfigKeys.H2_RESET_WINDOW, Duration.class,
             FreewayHttpEngine.DEFAULT_H2_RESET_WINDOW);
-
-    private volatile SslReloader sslReloader;
 
     @Override
     public void bind(Binder binder) {
@@ -116,12 +113,20 @@ public final class HttpModule implements ModuleEx {
             SSLContext sslContext = SslContexts.build(ssl);
             SSLParameters sslParameters = SslContexts.parameters(ssl);
             LOG.info("HTTPS engine initialized — TLS via JDK SSLContext");
-            return new FreewayHttpEngine(
-                FreewayHttpEngine.Wiring.defaults(json, coercer)
-                    .withSsl(sslContext, ssl.http2())
-                    .withSslParameters(sslParameters)
-                    .withMetrics(metrics)
-                    .withH2Reset(h2Burst, h2Window));
+            var wiring = FreewayHttpEngine.Wiring.defaults(json, coercer)
+                .withSsl(sslContext, ssl.http2())
+                .withSslParameters(sslParameters)
+                .withMetrics(metrics)
+                .withH2Reset(h2Burst, h2Window);
+            if (ssl.reloadInterval() != null && !ssl.reloadInterval().isZero()) {
+                wiring = wiring.withSslReload(new FreewayHttpEngine.Wiring.SslReload(
+                    Path.of(ssl.keyStorePath()),
+                    ssl.trustStorePath() != null ? Path.of(ssl.trustStorePath()) : null,
+                    ssl.sniDirectory() != null ? Path.of(ssl.sniDirectory()) : null,
+                    ssl.reloadInterval(),
+                    () -> SslContexts.build(ssl)));
+            }
+            return new FreewayHttpEngine(wiring);
         });
 
         // HttpEngine — bind to FreewayHttpEngine. Extension modules bind their
@@ -168,47 +173,25 @@ public final class HttpModule implements ModuleEx {
             @Override
             public void start(Container container) {
                 SslSettings ssl = container.get(SslSettings.class);
-                if (!isBuiltinEngineActive(container)) {
+                boolean builtinEngine = isBuiltinEngineActive(container);
+                if (!builtinEngine) {
                     reportIgnoredH2Guard(container.get(SymbolSource.class));
                 }
                 container.get(HttpServer.class).start();
-                if (ssl.enabled() && ssl.reloadInterval() != null
+                // The built-in engine starts its own reloader inside
+                // HttpServer.start() (Wiring.SslReload rides the engine), so
+                // only the non-built-in case needs telling here.
+                if (!builtinEngine && ssl.enabled() && ssl.reloadInterval() != null
                         && !ssl.reloadInterval().isZero()) {
-                    if (isBuiltinEngineActive(container)) {
-                        // The built-in engine is the one HttpServer started, so
-                        // reloading its SSLContext actually rotates the live
-                        // server's certificate material.
-                        sslReloader = new SslReloader(
-                            container.get(FreewayHttpEngine.class),
-                            Path.of(ssl.keyStorePath()),
-                            ssl.trustStorePath() != null
-                                ? Path.of(ssl.trustStorePath()) : null,
-                            ssl.sniDirectory() != null
-                                ? Path.of(ssl.sniDirectory()) : null,
-                            ssl.reloadInterval(),
-                            () -> SslContexts.build(ssl));
-                        try {
-                            sslReloader.start();
-                        } catch (RuntimeException ex) {
-                            sslReloader.close();
-                            sslReloader = null;
-                            container.get(HttpServer.class).stop();
-                            throw ex;
-                        }
-                    } else {
-                        LOG.info("TLS hot reload skipped: the active HttpEngine is not "
-                            + "the built-in FreewayHttpEngine — rotating certificate "
-                            + "material is the active engine module's responsibility");
-                    }
+                    LOG.info("TLS hot reload skipped: the active HttpEngine is not "
+                        + "the built-in FreewayHttpEngine — rotating certificate "
+                        + "material is the active engine module's responsibility");
                 }
             }
 
             @Override
             public void stop(Container container) {
-                if (sslReloader != null) {
-                    sslReloader.close();
-                    sslReloader = null;
-                }
+                // The engine's handle closes its own reloader while stopping.
                 container.get(HttpServer.class).stop();
             }
         });
@@ -231,7 +214,7 @@ public final class HttpModule implements ModuleEx {
      * True when the HttpEngine the container resolves ({@code primary()}
      * wins over the built-in binding) is this module's built-in binding —
      * i.e. the engine HttpServer started is the {@code FreewayHttpEngine}
-     * whose {@code reload(SSLContext)} the {@link SslReloader} drives.
+     * that drives its own certificate hot reload from {@code Wiring.SslReload}.
      * Probed through the binding's marker (no instance realization), so an
      * ext engine module selected via {@code .primary()} answers false
      * without ever constructing the built-in engine.

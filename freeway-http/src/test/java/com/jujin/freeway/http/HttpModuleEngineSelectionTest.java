@@ -21,9 +21,10 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * TLS hot reload assembly: the {@code SslReloader} must only be started when
- * the built-in {@code FreewayHttpEngine} is the engine actually serving.
- * An ext engine selected via {@code primary()} (e.g. an Undertow/Jetty
+ * TLS hot reload assembly: the {@code SslReloader} must only run when the
+ * built-in {@code FreewayHttpEngine} is the engine actually serving — it now
+ * starts from the engine's own {@code start()} (via {@code Wiring.SslReload}),
+ * so an ext engine selected via {@code primary()} (e.g. an Undertow/Jetty
  * adapter) must NOT silently reload a never-started built-in engine.
  */
 class HttpModuleEngineSelectionTest {

@@ -1,4 +1,4 @@
-package com.jujin.freeway.http.internal;
+package com.jujin.freeway.http.engine;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,16 +30,17 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
-import com.jujin.freeway.http.engine.FreewayHttpEngine;
-
 /**
  * Watches keystore mtime/size/digest and swaps a freshly built SSLContext into
  * the engine when certificate material changes. The SSL context builder is
  * injected so this class stays inside the engine and never reaches back into
  * the IoC assembly layer. The scheduler/stamp-injecting constructor is a test
  * seam for package-local tests; production uses the default constructor.
- * Public only so the IoC assembly layer ({@code HttpModule}) can construct
- * it — not part of the application API.
+ *
+ * <p>Package-private to {@code engine}: {@link FreewayHttpEngine#start}
+ * constructs and starts it from its {@code Wiring.SslReload} inputs and the
+ * returned handle closes it — the module pushes the inputs down and never
+ * touches the reloader itself. No stability promise.
  *
  * <p>Change detection is two-layer: a {@link WatchService} on the keystore
  * parent directories triggers an event-driven {@link #check()} (debounced so
@@ -49,7 +50,7 @@ import com.jujin.freeway.http.engine.FreewayHttpEngine;
  * the same snapshot comparison, so a missed watch event only delays the
  * reload to the next poll instead of losing it.
  */
-public final class SslReloader implements AutoCloseable {
+final class SslReloader implements AutoCloseable {
 
     private static final Logger LOG = LoggerFactory.getLogger(SslReloader.class);
 

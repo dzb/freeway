@@ -7,11 +7,13 @@ import java.nio.channels.AsynchronousCloseException;
 import java.nio.channels.ClosedChannelException;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Objects;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.LockSupport;
+import java.util.function.Supplier;
 
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLParameters;
@@ -64,6 +66,7 @@ public final class FreewayHttpEngine implements HttpEngine {
     private volatile SSLContext sslContext;
     private final boolean http2OverSsl;
     private final SSLParameters sslParameters;
+    private final Wiring.SslReload sslReload;
     private final Metrics metrics;
     private final int h2ResetBurstLimit;
     private final Duration h2ResetWindow;
@@ -86,6 +89,7 @@ public final class FreewayHttpEngine implements HttpEngine {
         SSLContext sslContext,
         boolean http2OverSsl,
         SSLParameters sslParameters,
+        SslReload sslReload,
         Metrics metrics,
         int h2ResetBurstLimit,
         Duration h2ResetWindow
@@ -106,33 +110,65 @@ public final class FreewayHttpEngine implements HttpEngine {
 
         /** Plain HTTP engine: no TLS, no HTTP/2 over TLS, noop metrics. */
         public static Wiring defaults(JsonCodec jsonCodec, Coercer coercer) {
-            return new Wiring(jsonCodec, coercer, null, false, null, NoopMetrics.INSTANCE,
+            return new Wiring(jsonCodec, coercer, null, false, null, null, NoopMetrics.INSTANCE,
                 DEFAULT_H2_RESET_BURST_LIMIT, DEFAULT_H2_RESET_WINDOW);
         }
 
         /** TLS termination, optionally negotiating HTTP/2 over ALPN. */
         public Wiring withSsl(SSLContext sslContext, boolean http2OverSsl) {
             return new Wiring(jsonCodec, coercer, sslContext, http2OverSsl,
-                sslParameters, metrics, h2ResetBurstLimit, h2ResetWindow);
+                sslParameters, sslReload, metrics, h2ResetBurstLimit, h2ResetWindow);
         }
 
         /** Per-socket TLS parameters (client auth, cipher/protocol narrowing). */
         public Wiring withSslParameters(SSLParameters sslParameters) {
             return new Wiring(jsonCodec, coercer, sslContext, http2OverSsl,
-                sslParameters, metrics, h2ResetBurstLimit, h2ResetWindow);
+                sslParameters, sslReload, metrics, h2ResetBurstLimit, h2ResetWindow);
         }
 
         /** Metrics sink; {@code null} restores the noop implementation. */
         public Wiring withMetrics(Metrics metrics) {
             return new Wiring(jsonCodec, coercer, sslContext, http2OverSsl,
-                sslParameters, metrics, h2ResetBurstLimit, h2ResetWindow);
+                sslParameters, sslReload, metrics, h2ResetBurstLimit, h2ResetWindow);
         }
 
         /** The built-in HTTP/2 inbound-RST burst guard ({@code freeway.http.h2.*}:
          *  counts read from {@code HttpModule}, or set directly here). */
         public Wiring withH2Reset(int h2ResetBurstLimit, Duration h2ResetWindow) {
             return new Wiring(jsonCodec, coercer, sslContext, http2OverSsl,
-                sslParameters, metrics, h2ResetBurstLimit, h2ResetWindow);
+                sslParameters, sslReload, metrics, h2ResetBurstLimit, h2ResetWindow);
+        }
+
+        /** Certificate hot-reload inputs: watched material plus the builder
+         *  that rebuilds a context from it. {@code null} — the default —
+         *  disables reload. Requires {@link #withSsl}: a reloader without an
+         *  initial context cannot serve HTTPS. */
+        public Wiring withSslReload(SslReload sslReload) {
+            return new Wiring(jsonCodec, coercer, sslContext, http2OverSsl,
+                sslParameters, sslReload, metrics, h2ResetBurstLimit, h2ResetWindow);
+        }
+
+        /** Inputs for the engine's own certificate hot reload: the watched
+         *  keystore/truststore/SNI directory, the poll interval (watch events
+         *  drive the same check), and the builder that produces a fresh
+         *  context. The module reads the {@code freeway.http.ssl.*} keys and
+         *  hands the parts down; the engine never touches config. */
+        public record SslReload(
+            Path keyStorePath,
+            Path trustStorePath,
+            Path sniDirectory,
+            Duration reloadInterval,
+            Supplier<SSLContext> contextBuilder
+        ) {
+            public SslReload {
+                keyStorePath = Objects.requireNonNull(keyStorePath, "keyStorePath");
+                reloadInterval = Objects.requireNonNull(reloadInterval, "reloadInterval");
+                contextBuilder = Objects.requireNonNull(contextBuilder, "contextBuilder");
+                if (reloadInterval.isZero() || reloadInterval.isNegative()) {
+                    throw new IllegalArgumentException(
+                        "reloadInterval must be positive: " + reloadInterval);
+                }
+            }
         }
     }
 
@@ -144,6 +180,7 @@ public final class FreewayHttpEngine implements HttpEngine {
         this.sslContext = wiring.sslContext();
         this.http2OverSsl = wiring.http2OverSsl();
         this.sslParameters = wiring.sslParameters();
+        this.sslReload = wiring.sslReload();
         this.metrics = wiring.metrics();
         this.h2ResetBurstLimit = wiring.h2ResetBurstLimit();
         this.h2ResetWindow = wiring.h2ResetWindow();
@@ -178,6 +215,27 @@ public final class FreewayHttpEngine implements HttpEngine {
         Objects.requireNonNull(config, "config");
         Objects.requireNonNull(handler, "handler");
 
+        // Certificate hot reload is this engine's own lifecycle: started here
+        // (before the listener, so unwatchable material fails startup before
+        // binding) and closed by the handle it rides out on.
+        if (sslReload != null && sslContext == null) {
+            throw new IllegalStateException(
+                "Wiring.SslReload requires withSsl(...) — a hot reload without an"
+                + " initial SSLContext cannot serve HTTPS");
+        }
+        SslReloader reloader = null;
+        if (sslReload != null) {
+            reloader = new SslReloader(this, sslReload.keyStorePath(),
+                sslReload.trustStorePath(), sslReload.sniDirectory(),
+                sslReload.reloadInterval(), sslReload.contextBuilder());
+            try {
+                reloader.start();
+            } catch (RuntimeException e) {
+                reloader.close();
+                throw e;
+            }
+        }
+
         // Channel-based listener so accepted sockets expose their
         // SocketChannel — required for the sendfile fast path.
         var ss = ServerSocketChannel.open();
@@ -186,6 +244,7 @@ public final class FreewayHttpEngine implements HttpEngine {
             ss.bind(new InetSocketAddress(config.host(), config.port()), config.backlog());
         } catch (IOException | RuntimeException e) {
             try { ss.close(); } catch (IOException ignored) {}
+            if (reloader != null) reloader.close();
             throw e;
         }
         int port = ss.socket().getLocalPort();
@@ -252,7 +311,7 @@ public final class FreewayHttpEngine implements HttpEngine {
 
         String scheme = sslContext != null ? "https" : "http";
         LOG.info("Freeway HTTP engine ({}) started on {}:{}", scheme, config.host(), port);
-        return new HttpServerHandleImpl(ss.socket(), acceptor,
+        return new HttpServerHandleImpl(ss.socket(), acceptor, reloader,
             config.shutdownGrace(), finished, registry, config.host(), port);
     }
 }

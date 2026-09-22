@@ -45,6 +45,7 @@ builder 不是第二个入口而是第二个组装根：自带一份默认值、
 | `RequestComponents`（类型名） | `HttpPipeline`：服务器四个锚点之一（`HttpEngine` 能力 / `HttpServerConfig` 传输声明 / `HttpPipeline` 处理声明 / `HttpServer` 派生）——引擎无关的声明，在 `engine.start` 之前被 `create` 编译成 `ExchangeHandler`，三方引擎只见接缝 |
 | `pipeline.withErrorMapper(…)` | `withErrorHandlers(…)`：类型早在 `ExceptionMapper`→`ErrorHandler` 改名时就换了，wither 补齐——两个活名字只剩一个 |
 | `HttpServerConfig.h2ResetBurstLimit` / `h2ResetWindow`（字段与 wither） | `FreewayHttpEngine.Wiring.withH2Reset(burst, window)`：引擎私有旋钮归能力侧；键不变（`freeway.http.h2.*`），容器路径由 `HttpModule` 自动接线，独立路径直传 `Wiring` |
+| `com.jujin.freeway.http.internal.SslReloader` | `com.jujin.freeway.http.engine.SslReloader`：热重载的驱动方由 `HttpModule` 生命周期钩子改为 `FreewayHttpEngine.start` 自驱（输入经 `Wiring.SslReload` 下推），类回引擎包、降包私有 |
 
 行为变化（无需改调用点，但值得知道）：
 
@@ -62,6 +63,11 @@ builder 不是第二个入口而是第二个组装根：自带一份默认值、
 - `HttpServerConfig` 不再携带 `freeway.http.h2.*`：第三方引擎收到的 config 从此每个
   字段都对它适用；调优值配非内置引擎在启动时 WARN 点名归属，`from(...)` 对这两键
   只指路不携带。
+- TLS 热重载自驱：`Wiring.SslReload` 承载被监视的证书材料与重建器，引擎在
+  `start()` 里先于监听端口启动 reloader（材料不可读即启动失败、不占端口），
+  返回的 handle 在 `close()` 时先停观察再排水；`HttpModule` 不再装配 reloader，
+  只在非内置引擎激活且配置了 reload 时打跳过提示。接缝上的 `FreewayHttpEngine`
+  引用由 2 处降为 1 处（仅 `HttpModule` 的 builtin 绑定）。
 - `HealthFilter` 的 `healthCheck` 不再接受 `null`（构造期 `requireNonNull`）：关闭的探针此前会留一个
   每次请求都可能 NPE 的字段。默认路径成为 `HealthFilter.DEFAULT_PATH`，`normalize` 与 `defaults()`
   不再各写一个 `"/healthz"`。

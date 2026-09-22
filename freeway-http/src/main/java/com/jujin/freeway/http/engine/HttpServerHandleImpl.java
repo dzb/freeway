@@ -19,6 +19,7 @@ final class HttpServerHandleImpl implements HttpServerHandle {
 
     private final ServerSocket serverSocket;
     private final Thread acceptor;
+    private final SslReloader sslReloader;
     private final Duration shutdownGrace;
     private final AtomicBoolean finished;
     private final ConnectionRegistry registry;
@@ -26,11 +27,13 @@ final class HttpServerHandleImpl implements HttpServerHandle {
     private final int port;
 
     public HttpServerHandleImpl(ServerSocket serverSocket, Thread acceptor,
+                 SslReloader sslReloader,
                  Duration shutdownGrace, AtomicBoolean finished,
                  ConnectionRegistry registry,
                  String host, int port) {
         this.serverSocket = serverSocket;
         this.acceptor = acceptor;
+        this.sslReloader = sslReloader;
         this.shutdownGrace = shutdownGrace;
         this.finished = finished;
         this.registry = registry;
@@ -48,6 +51,9 @@ final class HttpServerHandleImpl implements HttpServerHandle {
     public void close() {
         finished.set(true);
         registry.beginShutdown();
+        // Stop watching certificate material before draining: no reload may
+        // land mid-shutdown. Nullable — plain-HTTP wiring has none.
+        if (sslReloader != null) sslReloader.close();
         try { serverSocket.close(); } catch (IOException ignored) {}
         // Announce shutdown to HTTP/2 peers (GOAWAY) before the grace window
         // so they stop opening new streams and can retry elsewhere.
