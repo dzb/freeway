@@ -207,9 +207,11 @@ class ExtensionAggregationTest {
 
         Throwable root = ex;
         while (root.getCause() != null) root = root.getCause();
-        assertTrue(
-            root.getMessage().contains("Contribution order cycle detected"),
-            "Expected cycle detection message, got: " + root.getMessage()
+        assertEquals(
+            "Contribution order cycle detected for extension AppFeature: "
+                + "'first' → 'second' → 'first'",
+            root.getMessage(),
+            "the message must name the extension point and the cycle members"
         );
     }
 

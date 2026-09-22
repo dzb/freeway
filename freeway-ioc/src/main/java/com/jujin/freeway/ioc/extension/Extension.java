@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -278,13 +279,93 @@ public final class Extension<V> {
         }
 
         if (ordered.size() != entries.size()) {
+            // Kahn stalled, so the unprocessed subgraph contains at least one
+            // cycle — name its members, or the error only says which
+            // extension point to stare at.
+            Set<Entry> placed = new HashSet<>(ordered);
+            List<Entry> remaining = new ArrayList<>();
+            for (Entry e : entries) {
+                if (!placed.contains(e)) remaining.add(e);
+            }
             throw new IllegalStateException(
-                "Contribution order cycle detected for extension " + entryType.getSimpleName()
+                "Contribution order cycle detected for extension "
+                    + entryType.getSimpleName()
+                    + ": "
+                    + describeCycle(findCycle(outgoing, remaining))
             );
         }
         List<V> values = new ArrayList<>(ordered.size());
         for (Entry e : ordered) values.add(e.value);
         return List.copyOf(values);
+    }
+
+    /**
+     * One cycle among {@code remaining}, found by DFS on the stalled
+     * subgraph; empty only if there is none (a Kahn stall guarantees one).
+     * An instance method because {@code Entry} captures the type variable
+     * {@code V}, which a static context cannot reference.
+     */
+    private List<Entry> findCycle(
+        Map<Entry, Set<Entry>> outgoing,
+        List<Entry> remaining
+    ) {
+        Set<Entry> left = new HashSet<>(remaining);
+        Set<Entry> done = new HashSet<>();
+        List<Entry> path = new ArrayList<>();
+        Set<Entry> onPath = new HashSet<>();
+        for (Entry start : remaining) {
+            if (done.contains(start)) continue;
+            List<Entry> cycle = dfs(start, outgoing, left, done, path, onPath);
+            if (!cycle.isEmpty()) return cycle;
+        }
+        return List.of();
+    }
+
+    private List<Entry> dfs(
+        Entry node,
+        Map<Entry, Set<Entry>> outgoing,
+        Set<Entry> left,
+        Set<Entry> done,
+        List<Entry> path,
+        Set<Entry> onPath
+    ) {
+        onPath.add(node);
+        path.add(node);
+        for (Entry next : outgoing.getOrDefault(node, Set.of())) {
+            if (!left.contains(next)) continue;
+            if (onPath.contains(next)) {
+                return new ArrayList<>(
+                    path.subList(path.indexOf(next), path.size()));
+            }
+            if (!done.contains(next)) {
+                List<Entry> cycle = dfs(next, outgoing, left, done, path, onPath);
+                if (!cycle.isEmpty()) return cycle;
+            }
+        }
+        onPath.remove(node);
+        path.remove(path.size() - 1);
+        done.add(node);
+        return List.of();
+    }
+
+    /**
+     * The cycle as {@code 'a' → 'b' → 'a'} — first member repeated to show
+     * the closure; id-less entries (defensive only) show their value type.
+     */
+    private String describeCycle(List<Entry> cycle) {
+        if (cycle.isEmpty()) return "(cycle members could not be resolved)";
+        StringBuilder sb = new StringBuilder();
+        for (Entry e : cycle) {
+            if (sb.length() > 0) sb.append(" → ");
+            sb.append(member(e));
+        }
+        return sb.append(" → ").append(member(cycle.get(0))).toString();
+    }
+
+    private String member(Entry e) {
+        return e.id != null
+            ? "'" + e.id + "'"
+            : "<" + e.value.getClass().getName() + ">";
     }
 
     private void addEdge(

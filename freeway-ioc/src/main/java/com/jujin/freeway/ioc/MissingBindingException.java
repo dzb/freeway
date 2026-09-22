@@ -14,4 +14,12 @@ public final class MissingBindingException extends IllegalArgumentException {
     public MissingBindingException(String message) {
         super(message);
     }
+
+    /**
+     * A failure re-thrown with injection-point context appended to the
+     * message; the cause keeps the original throw site's stack trace.
+     */
+    public MissingBindingException(String message, Throwable cause) {
+        super(message, cause);
+    }
 }

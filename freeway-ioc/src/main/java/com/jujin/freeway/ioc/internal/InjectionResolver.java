@@ -43,9 +43,36 @@ final class InjectionResolver {
     Object[] resolveArguments(Class<?> ownerType, List<BeanParameter> parameters) {
         Object[] args = new Object[parameters.size()];
         for (int i = 0; i < parameters.size(); i++) {
-            args[i] = resolveParameter(ownerType, parameters.get(i));
+            try {
+                args[i] = resolveParameter(ownerType, parameters.get(i));
+            } catch (MissingBindingException e) {
+                // Parameter names need -parameters, which the build does not
+                // enable — the index and declared type identify the point.
+                throw requiredBy(
+                    e,
+                    "constructor parameter #" + (i + 1)
+                        + " (" + parameters.get(i).type() + ")",
+                    ownerType
+                );
+            }
         }
         return args;
+    }
+
+    /**
+     * Re-wraps a missing binding with its injection point; nested
+     * construction appends one level per frame:
+     * {@code missing — point on inner — point on outer}.
+     */
+    private static MissingBindingException requiredBy(
+        MissingBindingException e,
+        String point,
+        Class<?> ownerType
+    ) {
+        return new MissingBindingException(
+            e.getMessage() + " — required by " + point + " on " + ownerType.getName(),
+            e
+        );
     }
 
     void injectFields(Object instance) {
@@ -77,13 +104,18 @@ final class InjectionResolver {
                 }
                 continue;
             }
-            Object value = resolveValue(
-                ownerType,
-                of(property),
-                property.type(),
-                Types.rawClass(property.type()),
-                false
-            );
+            Object value;
+            try {
+                value = resolveValue(
+                    ownerType,
+                    of(property),
+                    property.type(),
+                    Types.rawClass(property.type()),
+                    false
+                );
+            } catch (MissingBindingException e) {
+                throw requiredBy(e, "field '" + property.name() + "'", ownerType);
+            }
             if (value == null) {
                 continue;
             }

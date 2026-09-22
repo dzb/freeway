@@ -286,10 +286,64 @@ class ContainerBindingTest {
         while (t != null) {
             if (t.getMessage() != null && t.getMessage().contains("Circular dependency")) {
                 found = true;
+                // The path runs from the first occurrence of the re-entered
+                // key through the frames that closed the cycle: A → B → A.
+                assertTrue(t.getMessage().contains(" → "),
+                    "cycle message must print the realization path: " + t.getMessage());
+                assertTrue(t.getMessage().contains(CycleA.class.getName()),
+                    "cycle path must name CycleA: " + t.getMessage());
+                assertTrue(t.getMessage().contains(CycleB.class.getName()),
+                    "cycle path must name CycleB: " + t.getMessage());
                 break;
             }
             t = t.getCause();
         }
         assertTrue(found, "expected circular dependency in cause chain, got: " + ex);
+    }
+
+    @Test
+    void missingConstructorDependencyNamesTheInjectionPoint() {
+        Container empty = Freeway.create();
+
+        // create() wraps realize-time failures in RuntimeException — the
+        // structured diagnostic must still surface in the cause chain.
+        RuntimeException ex = assertThrows(
+            RuntimeException.class, () -> empty.create(CheckoutService.class));
+        MissingBindingException missing =
+            findCause(ex, MissingBindingException.class);
+        assertTrue(missing.getMessage().contains("No service registered for type"),
+            missing.getMessage());
+        assertTrue(missing.getMessage().contains("constructor parameter #1"),
+            missing.getMessage());
+        assertTrue(missing.getMessage().contains(CheckoutService.class.getName()),
+            missing.getMessage());
+    }
+
+    @Test
+    void missingFieldDependencyNamesTheInjectionPoint() {
+        Container empty = Freeway.create();
+
+        RuntimeException ex = assertThrows(
+            RuntimeException.class, () -> empty.create(NamedCheckoutService.class));
+        MissingBindingException missing =
+            findCause(ex, MissingBindingException.class);
+        assertTrue(missing.getMessage().contains("No service registered for type"),
+            missing.getMessage());
+        assertTrue(missing.getMessage().contains("field 'gateway'"),
+            missing.getMessage());
+        assertTrue(missing.getMessage().contains(NamedCheckoutService.class.getName()),
+            missing.getMessage());
+    }
+
+    private static <T extends Throwable> T findCause(Throwable ex, Class<T> type) {
+        Throwable t = ex;
+        while (t != null) {
+            if (type.isInstance(t)) {
+                return type.cast(t);
+            }
+            t = t.getCause();
+        }
+        throw new AssertionError(
+            "expected " + type.getSimpleName() + " in cause chain, got: " + ex, ex);
     }
 }

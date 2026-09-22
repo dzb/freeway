@@ -2,7 +2,7 @@ package com.jujin.freeway.ioc.internal;
 
 import com.jujin.freeway.commons.scoped.ScopedCache;
 import com.jujin.freeway.ioc.Scope;
-import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
@@ -35,8 +35,9 @@ final class ServiceRuntime {
     private final ProxyFactoryImpl proxyFactory;
     private final Map<ServiceKey, Object> serviceCache;
     private final Map<ServiceKey, Object> targetCache;
-    private final ThreadLocal<Set<ServiceKey>> realizeStack =
-        ThreadLocal.withInitial(HashSet::new);
+    /** Insertion-ordered so a cycle failure can print the realization path. */
+    private final ThreadLocal<LinkedHashSet<ServiceKey>> realizeStack =
+        ThreadLocal.withInitial(LinkedHashSet::new);
     private final ContainerImpl container;
 
     ServiceRuntime(
@@ -137,6 +138,8 @@ final class ServiceRuntime {
         if (!ScopedCache.isActive()) {
             throw new IllegalStateException(
                 "No open scope for type " + binding.type().getName()
+                    + " — wrap the call in"
+                    + " container.get(Scoping.class).within(() -> ...)"
             );
         }
         ServiceKey key = new ServiceKey(binding.type(), binding.id());
@@ -153,15 +156,42 @@ final class ServiceRuntime {
      * instead of recursing forever; the guard is always released.
      */
     private <T> T withCycleGuard(ServiceKey key, Supplier<T> work) {
-        Set<ServiceKey> stack = realizeStack.get();
+        LinkedHashSet<ServiceKey> stack = realizeStack.get();
         if (!stack.add(key)) {
-            throw new IllegalStateException("Circular dependency detected: " + key);
+            throw new IllegalStateException(
+                "Circular dependency detected: " + cyclePath(stack, key)
+            );
         }
         try {
             return work.get();
         } finally {
             stack.remove(key);
         }
+    }
+
+    /**
+     * Path from the first occurrence of {@code key} to the re-entry closing
+     * the cycle: {@code A → B → A}. Outer frames left out.
+     */
+    private static String cyclePath(Set<ServiceKey> stack, ServiceKey key) {
+        StringBuilder path = new StringBuilder();
+        boolean inCycle = false;
+        for (ServiceKey frame : stack) {
+            if (!inCycle && !frame.equals(key)) {
+                continue;
+            }
+            inCycle = true;
+            appendFrame(path, frame);
+        }
+        appendFrame(path, key);
+        return path.toString();
+    }
+
+    private static void appendFrame(StringBuilder path, ServiceKey frame) {
+        if (path.length() > 0) {
+            path.append(" → ");
+        }
+        path.append(frame.type().getName()).append(" (id ").append(frame.id()).append(')');
     }
 
     private static void requireAdviceSupported(BindingImpl<?> binding) {

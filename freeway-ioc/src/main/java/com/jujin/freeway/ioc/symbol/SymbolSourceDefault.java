@@ -80,7 +80,28 @@ final class SymbolSourceDefault implements SymbolSource {
         // this top-level miss carries it — an unknown symbol nested inside
         // another value's expansion (expand() below) stays a plain IAE and
         // propagates instead of degrading to the default.
-        throw new UnknownSymbolException(name);
+        throw new UnknownSymbolException(name, sourcesSummary());
+    }
+
+    /**
+     * Which sources the miss went through, so "no tier holds this key"
+     * reads differently from "the chain is empty". Providers expose
+     * {@code order()} but no key enumeration, so no near-miss suggestions.
+     */
+    private String sourcesSummary() {
+        List<SymbolProvider> consulted = orderedProviders();
+        if (consulted.isEmpty()) {
+            return " — the config chain has no sources at all";
+        }
+        StringBuilder orders = new StringBuilder();
+        for (SymbolProvider provider : consulted) {
+            if (orders.length() > 0) {
+                orders.append(", ");
+            }
+            orders.append(provider.order());
+        }
+        return " — no value in any of " + consulted.size()
+            + " configured sources (orders " + orders + ")";
     }
 
     private String raw(String name) {
@@ -210,7 +231,9 @@ final class SymbolSourceDefault implements SymbolSource {
                 value = defaultValue;
             }
             if (value == null) {
-                throw new IllegalArgumentException("Unknown symbol: " + symbol);
+                throw new IllegalArgumentException(
+                    "Unknown symbol: " + symbol + sourcesSummary()
+                );
             }
             out.append(expand(value, depth + 1));
             i = end + 1;

@@ -11,6 +11,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * {@link SymbolSource#of} — the chain a container-less caller assembles, the
@@ -62,7 +63,12 @@ class SymbolSourceOfTest {
 
         UnknownSymbolException error =
             assertThrows(UnknownSymbolException.class, () -> symbols.resolve(KEY));
-        assertEquals("Unknown symbol: " + KEY, error.getMessage());
+        // The miss names the key first, then the sources consulted —
+        // standalone() here is a chain of one (the system-properties tier).
+        assertTrue(error.getMessage().startsWith("Unknown symbol: " + KEY),
+            error.getMessage());
+        assertTrue(error.getMessage().contains("configured sources (orders 5)"),
+            error.getMessage());
         assertEquals("fallback", symbols.resolve(KEY, "fallback"));
         assertNull(symbols.resolve(KEY, null));
     }

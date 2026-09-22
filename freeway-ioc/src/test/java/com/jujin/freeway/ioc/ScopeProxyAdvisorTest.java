@@ -307,7 +307,10 @@ class ScopeProxyAdvisorTest {
         );
         Scoping scoping = container.get(Scoping.class);
 
-        assertThrows(IllegalStateException.class, () -> container.get(ScopedCounter.class));
+        IllegalStateException noScope = assertThrows(IllegalStateException.class,
+            () -> container.get(ScopedCounter.class));
+        assertTrue(noScope.getMessage().contains("container.get(Scoping.class).within"),
+            "the message must name the fix, got: " + noScope.getMessage());
 
         AtomicReference<ScopedCounter> firstHolder = new AtomicReference<>();
         scoping.within(() -> {

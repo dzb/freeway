@@ -17,7 +17,12 @@ public final class UnknownSymbolException extends IllegalArgumentException {
 
     /** @param name the symbol that no provider could resolve */
     public UnknownSymbolException(String name) {
-        super("Unknown symbol: " + name);
+        this(name, "");
+    }
+
+    /** @param detail appended after the key — which sources were consulted */
+    UnknownSymbolException(String name, String detail) {
+        super("Unknown symbol: " + name + detail);
         this.name = java.util.Objects.requireNonNull(name, "name");
     }
 
