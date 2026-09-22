@@ -107,6 +107,15 @@ public final class CloudConfigKeys {
     public static final String STORAGE_BASE_PATH_DEFAULT = "cloud-storage";
     public static final String REGISTRY_SERVICE_ID   = PREFIX + ".registry.service-id";
     /**
+     * Generic service-name fallback in the registry identity chain
+     * ({@link #REGISTRY_SERVICE_ID} unset → this key → {@link #APP_NAME_DEFAULT}).
+     * Outside {@link #PREFIX} on purpose: cloud registration is its only
+     * reader, and it is distinct from JVM {@code -D app.name} (log file name).
+     */
+    public static final String APP_NAME = "freeway.app.name";
+    /** Value used when neither {@link #REGISTRY_SERVICE_ID} nor {@link #APP_NAME} is set. */
+    public static final String APP_NAME_DEFAULT = "freeway-app";
+    /**
      * Host other nodes should use to reach this instance.
      *
      * <p>{@code auto} (the default) picks a routable local address: the

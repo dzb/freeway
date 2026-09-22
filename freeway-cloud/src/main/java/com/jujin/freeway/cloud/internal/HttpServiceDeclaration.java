@@ -69,7 +69,7 @@ public final class HttpServiceDeclaration implements ServiceDeclaration {
         }
         SymbolSource symbols = container.get(SymbolSource.class);
         String serviceId = symbols.resolve(CloudConfigKeys.REGISTRY_SERVICE_ID,
-            symbols.resolve("freeway.app.name", "freeway-app"));
+            symbols.resolve(CloudConfigKeys.APP_NAME, CloudConfigKeys.APP_NAME_DEFAULT));
         String scheme = ServiceIdentity.scheme(
             symbols.resolve(SERVICE_SCHEME), server.secure(), serviceId);
         String host = ServiceIdentity.host(

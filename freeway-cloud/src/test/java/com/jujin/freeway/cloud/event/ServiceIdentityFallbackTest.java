@@ -28,9 +28,6 @@ import org.junit.jupiter.api.Test;
  */
 class ServiceIdentityFallbackTest {
 
-    /** App-level key (boot config domain), used verbatim by HttpServiceDeclaration. */
-    private static final String APP_NAME_KEY = "freeway.app.name";
-
     @BeforeEach
     void randomPort() {
         System.setProperty(HttpConfigKeys.SERVER_PORT, "0"); // random free port per test
@@ -40,13 +37,13 @@ class ServiceIdentityFallbackTest {
     void clearProperties() {
         System.clearProperty(HttpConfigKeys.SERVER_PORT);
         System.clearProperty(CloudConfigKeys.REGISTRY_SERVICE_ID);
-        System.clearProperty(APP_NAME_KEY);
+        System.clearProperty(CloudConfigKeys.APP_NAME);
         System.clearProperty(CloudConfigKeys.EVENT_ENABLED);
     }
 
     @Test
     void appNameOnlyKeepsRegistrationAndMeshIdentitiesInLockstep() {
-        System.setProperty(APP_NAME_KEY, "myapp");
+        System.setProperty(CloudConfigKeys.APP_NAME, "myapp");
         try (AppRuntime app = appWithEvents()) {
             assertEquals("myapp", app.get(PeerHub.class).serviceId(),
                 "mesh origin must fall back to freeway.app.name");
@@ -57,7 +54,7 @@ class ServiceIdentityFallbackTest {
 
     @Test
     void registryServiceIdOverridesAppNameForBothIdentities() {
-        System.setProperty(APP_NAME_KEY, "myapp");
+        System.setProperty(CloudConfigKeys.APP_NAME, "myapp");
         System.setProperty(CloudConfigKeys.REGISTRY_SERVICE_ID, "custom");
         try (AppRuntime app = appWithEvents()) {
             assertEquals("custom", app.get(PeerHub.class).serviceId(),
