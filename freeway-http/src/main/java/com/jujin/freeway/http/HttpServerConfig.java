@@ -16,7 +16,9 @@ import com.jujin.freeway.ioc.symbol.SymbolSpec;
  * @param port              listen port (0 selects an ephemeral port)
  * @param backlog           accept backlog (0 uses the platform default)
  * @param shutdownGrace     grace period for in-flight requests on shutdown
- * @param maxBodySize       maximum request body size in bytes
+ * @param maxBodySize       maximum request body size in bytes — per-exchange
+ *                          policy, state-shaped: engines push it into each
+ *                          exchange (honor tiers on {@link HttpEngine#start})
  * @param readTimeout       socket read idle timeout (zero disables); applied
  *                          to request reads, TLS handshakes, HTTP/2 frames,
  *                          and keep-alive waits
@@ -24,7 +26,10 @@ import com.jujin.freeway.ioc.symbol.SymbolSpec;
  *                          excess connections are rejected at accept time
  * @param writeTimeout      per-socket-write timeout (zero disables); a write
  *                          blocked longer than this closes the connection
- * @param compression       gzip response-compression policy
+ * @param compression       gzip response-compression policy — per-exchange
+ *                          policy, wire-adjacent: executed by the engine's
+ *                          output path over shared {@link Compression}
+ *                          primitives (honor tiers on {@link HttpEngine#start})
  * @param receiveBufferSize desired SO_RCVBUF for accepted sockets
  *                          (0 = OS default)
  * @param sendBufferSize    desired SO_SNDBUF for accepted sockets

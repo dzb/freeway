@@ -5,6 +5,12 @@ import com.jujin.freeway.http.websocket.WebSocketMatch;
 /**
  * Handles incoming HTTP exchanges. Also supports optional WebSocket
  * upgrade negotiation.
+ *
+ * <p>This is the seam's <em>behaviour half</em>: the engine asks it how to
+ * answer; the exchange it answers with is the seam's data half,
+ * {@link HttpContext}. {@link HttpServer#create} compiles an
+ * {@link HttpPipeline} into one of these before {@code engine.start}, so an
+ * engine implements transport and never sees routes, filters or config keys.
  */
 @FunctionalInterface
 public interface ExchangeHandler {

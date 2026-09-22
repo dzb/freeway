@@ -86,7 +86,16 @@ freeway-commons         zero deps
   `HttpServerConfig` bindings with `.primary()` — there is no second wiring to
   drift from the first. The transport verdict is the engine's (`HttpEngine.secure()`),
   so `HttpServer.secure()` reports what is actually terminating TLS rather than
-  re-deriving a config presence rule. Route path variables use `:name` or
+  re-deriving a config presence rule. Structurally the server has two halves:
+  the **assembly half** before start — four anchors: `HttpEngine` (capability),
+  `HttpServerConfig` (transport declaration), `HttpPipeline` (handling
+  declaration), `HttpServer` (the one derivation) — and the **runtime half**
+  during handle: the seam, `ExchangeHandler` (behaviour) + `HttpContext`
+  (data). The two declarations cross the seam in opposite directions: config
+  rides `engine.start(config, handler)` down into the engine, the pipeline is
+  compiled into the `ExchangeHandler` above it and never crosses intact, and
+  `HttpContext` is where both meet per request (writers partitioned by phase).
+  Route path variables use `:name` or
   `{name}`, with `{name:regex}` for constraints.
 - **DB** — `Database` is the entry point: named params (`:name`/`$name`),
   programmatic transactions, built-in pooling, dialect auto-detection from the

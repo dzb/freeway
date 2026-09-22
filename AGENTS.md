@@ -183,6 +183,12 @@ comment.
   skip).
 - **SQL parameters**: respect strings, comments, PostgreSQL `::` casts, and
   repeated named parameters.
+- **Adapters**: a third-party engine's contract tests must pin the
+  contract-typed edges no type enforces — `maxBodySize` accounting through the
+  shared `AbstractHttpContext.readBody` (413), gzip negotiation through the
+  shared `Compression`, `ExchangeHandler.websocket` consulted for every
+  upgrade candidate, and every `HttpServerConfig` field honored or reported
+  at startup.
 
 ## Commit Rules
 

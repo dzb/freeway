@@ -15,12 +15,19 @@ import java.io.IOException;
  *       {@code readTimeout}, {@code writeTimeout}, {@code receiveBufferSize},
  *       {@code sendBufferSize} and {@code maxConnections} wherever the engine
  *       has a counterpart (the built-in engine has one for all five).</li>
- *   <li><b>Per-exchange policy</b> — {@code maxBodySize} and
- *       {@code compression} are applied by the engine to every exchange it
- *       creates (the built-in engine pushes both into its context at session
- *       start) and enforced with the shared helpers
- *       ({@link AbstractHttpContext#readBody}, {@link Compression}) so body
- *       accounting and q-value negotiation match across engines.</li>
+ *   <li><b>Per-exchange policy, state-shaped</b> — {@code maxBodySize}: the
+ *       engine initializes {@link HttpContext#setMaxBodySize} on every exchange
+ *       it creates (the built-in engine does so at session start), and
+ *       enforcement lives in the shared {@link AbstractHttpContext#readBody},
+ *       so 413 accounting is identical across engines. The setter stays on the
+ *       seam because a filter may legitimately narrow the limit further.</li>
+ *   <li><b>Per-exchange policy, wire-adjacent</b> — {@code compression}:
+ *       execution <em>is</em> transport, so it runs in the engine's own output
+ *       path over the shared {@link Compression} primitives (q-value
+ *       negotiation), and an adapter configures its own transport's gzip from
+ *       the same field. Deliberately not a seam setter — that would relocate
+ *       state without moving execution — and deliberately not a pipeline
+ *       filter — that would require buffering every response.</li>
  *   <li><b>Engine-private</b> — {@code h2ResetBurstLimit} / {@code
  *       h2ResetWindow} guard the built-in HTTP/2 implementation; an engine
  *       without that guard must report a non-default setting at startup
