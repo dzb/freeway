@@ -50,4 +50,49 @@ public final class MediaTypes {
             || lower.startsWith("application/xhtml+xml")
             || lower.startsWith("image/svg+xml");
     }
+
+    /**
+     * The Content-Type for a file name, by extension — the one extension
+     * table, read by the static-file server and by any adapter that maps
+     * names to media types, so an added extension has a single place to
+     * land. Unknown names get {@link #OCTET_STREAM}. Text types carry
+     * {@code charset=utf-8}.
+     */
+    public static String contentType(String name) {
+        String lower = name.toLowerCase(Locale.ROOT);
+        if (lower.endsWith(".html") || lower.endsWith(".htm")) {
+            return "text/html; charset=utf-8";
+        }
+        if (lower.endsWith(".css")) {
+            return "text/css; charset=utf-8";
+        }
+        if (lower.endsWith(".js") || lower.endsWith(".mjs")) {
+            return "application/javascript; charset=utf-8";
+        }
+        if (lower.endsWith(".json")) {
+            return JSON_UTF8;
+        }
+        if (lower.endsWith(".txt")) {
+            return TEXT_PLAIN_UTF8;
+        }
+        if (lower.endsWith(".xml")) {
+            return "application/xml; charset=utf-8";
+        }
+        if (lower.endsWith(".svg")) {
+            return "image/svg+xml; charset=utf-8";
+        }
+        if (lower.endsWith(".png")) {
+            return "image/png";
+        }
+        if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) {
+            return "image/jpeg";
+        }
+        if (lower.endsWith(".gif")) {
+            return "image/gif";
+        }
+        if (lower.endsWith(".ico")) {
+            return "image/x-icon";
+        }
+        return OCTET_STREAM;
+    }
 }

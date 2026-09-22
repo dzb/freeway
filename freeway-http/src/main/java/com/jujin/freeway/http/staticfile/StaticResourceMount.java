@@ -19,7 +19,6 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.Arrays;
 import java.util.HashSet;
-import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 
@@ -180,7 +179,7 @@ public final class StaticResourceMount {
     private boolean serveBytes(HttpRequest request, HttpResponse response,
                                AssetMeta meta, String relative,
                                long start, long length) throws IOException {
-        response.setHeader("Content-Type", contentType(meta.name()));
+        response.setHeader("Content-Type", MediaTypes.contentType(meta.name()));
         response.setHeader("X-Content-Type-Options", "nosniff");
         if ("HEAD".equalsIgnoreCase(request.method())) {
             // No body needed — report the headers (and real size) without
@@ -497,44 +496,6 @@ public final class StaticResourceMount {
             if (n > 0) remaining -= n;
             return n;
         }
-    }
-
-    private static String contentType(String name) {
-        String lower = name.toLowerCase(Locale.ROOT);
-        if (lower.endsWith(".html") || lower.endsWith(".htm")) {
-            return "text/html; charset=utf-8";
-        }
-        if (lower.endsWith(".css")) {
-            return "text/css; charset=utf-8";
-        }
-        if (lower.endsWith(".js") || lower.endsWith(".mjs")) {
-            return "application/javascript; charset=utf-8";
-        }
-        if (lower.endsWith(".json")) {
-            return MediaTypes.JSON_UTF8;
-        }
-        if (lower.endsWith(".txt")) {
-            return MediaTypes.TEXT_PLAIN_UTF8;
-        }
-        if (lower.endsWith(".xml")) {
-            return "application/xml; charset=utf-8";
-        }
-        if (lower.endsWith(".svg")) {
-            return "image/svg+xml; charset=utf-8";
-        }
-        if (lower.endsWith(".png")) {
-            return "image/png";
-        }
-        if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) {
-            return "image/jpeg";
-        }
-        if (lower.endsWith(".gif")) {
-            return "image/gif";
-        }
-        if (lower.endsWith(".ico")) {
-            return "image/x-icon";
-        }
-        return MediaTypes.OCTET_STREAM;
     }
 
     private static String normalizeMount(String mountPath) {

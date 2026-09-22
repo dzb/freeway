@@ -48,13 +48,13 @@ public final class HttpModule implements ModuleEx {
     private static final Logger LOG = LoggerFactory.getLogger(HttpModule.class);
     public static final String SERVER_HOOK = "freeway.http.server";
 
-    /** The one key this module reads on its own rather than through a value type:
-     *  the access log is a filter the module contributes, not a field of anything. */
+    // Read here rather than through a value type: the access log is a filter
+    // the module contributes, not a field of anything — no value type owns it.
     private static final SymbolSpec<Boolean> ACCESS_LOG_ENABLED =
         SymbolSpec.of(HttpConfigKeys.ACCESS_LOG_ENABLED, Boolean.class, false);
-    // The built-in engine's own knobs: read here (the module owns the keys),
-    // pushed into the engine's Wiring below — HttpServerConfig does not carry
-    // fields a third-party engine cannot apply.
+    // The built-in engine's own knobs: also read here (the module owns the
+    // keys), pushed into the engine's Wiring below — HttpServerConfig does not
+    // carry fields a third-party engine cannot apply.
     private static final SymbolSpec<Integer> H2_RESET_BURST_LIMIT =
         SymbolSpec.of(HttpConfigKeys.H2_RESET_BURST_LIMIT, Integer.class,
             FreewayHttpEngine.DEFAULT_H2_RESET_BURST_LIMIT);

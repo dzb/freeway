@@ -95,6 +95,9 @@ builder 不是第二个入口而是第二个组装根：自带一份默认值、
   重述 10 个声明（第二个所有者），移除它则 WS 会话要么复制声明、要么谎称自己是 `HttpRequest`；
   `ErrorResponses` 有 5 个调用点（`HttpServer`×3、`Http1xSession`、`StaticResourceMount`），
   消融即 404/500 的正文与头在 5 处各写一遍——正是它的防漂移承诺所阻止的事。
+- `MediaTypes.contentType(文件名)`：扩展名 → Content-Type 表收进共享词表（`MediaTypes`
+  javadoc 承诺的唯一分类源），静态资源服务器改从这里读——`StaticResourceMount` 原来私有
+  同一张表，新增扩展名从此只落一处。
 
 ### Removed
 
@@ -130,6 +133,9 @@ builder 不是第二个入口而是第二个组装根：自带一份默认值、
   契约要量"应用真正拿到的那个服务器"，那里 `Metrics`/`CorsFilter`/`HealthFilter` 的默认仍来自键。
 - AGENTS 的命名段改写（builder 不得持有默认值；`withX` 为写、裸名词为读），`docs/ARCHITECTURE.md`
   与 `freeway-http/README.md`、`docs/DEVELOPER-GUIDE.md`、skills 两份随之更新。
+- 两处失真声明纠正：根包 `package-info` 不再称 `ExchangeMetaDefault` 可替换——两处 `new`
+  直构、容器从不查考它，绑 `.primary()` 不会被尊重；`HttpModule` 的 ACCESS_LOG 注释不再
+  自称"本模块自读的唯一键"（同读的还有 `freeway.http.h2.*` 两键），相邻 spec 注释风格一并统一。
 
 ## [1.5.3] - 2026-09-20
 
