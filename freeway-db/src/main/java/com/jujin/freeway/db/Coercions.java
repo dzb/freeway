@@ -27,7 +27,8 @@ final class Coercions {
 
     /**
      * A CoercerDefault carrying the JDBC rules (Date/Timestamp/Time →
-     * java.time) that the DatabaseBuilder and IoC paths always contribute.
+     * java.time) that the standalone {@code Database.create} and IoC paths
+     * always contribute.
      */
     static Coercer jdbcCoercer() {
         CoercerDefault coercer = new CoercerDefault();

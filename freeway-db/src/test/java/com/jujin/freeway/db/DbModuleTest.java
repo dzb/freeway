@@ -225,12 +225,8 @@ class DbModuleTest {
 
     @Test
     void dbHubWrapsNamedDatabaseContributions() {
-        Database primary = new DatabaseBuilder()
-            .config(PoolConfig.defaults("jdbc:h2:mem:primary_" + UUID.randomUUID().toString().replace('-', '_') + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
-            .build();
-        Database audit = new DatabaseBuilder()
-            .config(PoolConfig.defaults("jdbc:h2:mem:audit_" + UUID.randomUUID().toString().replace('-', '_') + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
-            .build();
+        Database primary = Database.create(PoolConfig.defaults("jdbc:h2:mem:primary_" + UUID.randomUUID().toString().replace('-', '_') + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""));
+        Database audit = Database.create(PoolConfig.defaults("jdbc:h2:mem:audit_" + UUID.randomUUID().toString().replace('-', '_') + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""));
 
         try {
             Container container = Freeway.create(
@@ -273,10 +269,8 @@ class DbModuleTest {
     @Test
     void userPrimaryContributionWinsOverAutoRegistration() {
         String dbName = "freeway_hub_user_primary_" + UUID.randomUUID().toString().replace('-', '_');
-        Database custom = new DatabaseBuilder()
-            .config(PoolConfig.defaults(
-                "jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
-            .build();
+        Database custom = Database.create(PoolConfig.defaults(
+                "jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""));
 
         try {
             Container container = Freeway.create(

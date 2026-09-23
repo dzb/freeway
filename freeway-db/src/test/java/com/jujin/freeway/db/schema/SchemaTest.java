@@ -7,7 +7,6 @@ import com.jujin.freeway.db.dialect.PostgresDialect;
 
 import com.jujin.freeway.commons.validation.NotNull;
 import com.jujin.freeway.db.Database;
-import com.jujin.freeway.db.DatabaseBuilder;
 import com.jujin.freeway.db.PoolConfig;
 import com.jujin.freeway.db.SqlException;
 import org.junit.jupiter.api.Test;
@@ -28,9 +27,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class SchemaTest {
 
-    private static DatabaseBuilder builder(String name) {
-        return new DatabaseBuilder()
-            .config(PoolConfig.defaults(
+    private static Database.Wiring builder(String name) {
+        return Database.Wiring.defaults(PoolConfig.defaults(
                 "jdbc:h2:mem:" + uniqueName(name) + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
                 "sa", ""));
     }
@@ -41,7 +39,7 @@ class SchemaTest {
 
     @Test
     void ensureAndDropWithoutExplicitDialect() {
-        Database db = builder("nodialect").build();
+        Database db = Database.create(builder("nodialect"));
         try (db) {
             // The database carries its dialect — no explicit Dialect needed.
             int created = Schema.ensure(db, User.class);
@@ -106,7 +104,7 @@ class SchemaTest {
 
     @Test
     void ensureCreatesTableWhenNotExists() {
-        Database db = builder("ensure_create").build();
+        Database db = Database.create(builder("ensure_create"));
         try (db) {
             int applied = Schema.ensure(db, User.class);
             assertEquals(1, applied, "should create 1 table");
@@ -125,7 +123,7 @@ class SchemaTest {
 
     @Test
     void ensureCreatesMultipleTables() {
-        Database db = builder("ensure_multi").build();
+        Database db = Database.create(builder("ensure_multi"));
         try (db) {
             int applied = Schema.ensure(db, User.class, Post.class);
             assertEquals(2, applied);
@@ -139,7 +137,7 @@ class SchemaTest {
 
     @Test
     void ensureIsIdempotent() {
-        Database db = builder("ensure_idempotent").build();
+        Database db = Database.create(builder("ensure_idempotent"));
         try (db) {
             int first = Schema.ensure(db, User.class);
             assertEquals(1, first);
@@ -151,7 +149,7 @@ class SchemaTest {
 
     @Test
     void ensureIdempotentAcrossMultipleTables() {
-        Database db = builder("ensure_idem_multi").build();
+        Database db = Database.create(builder("ensure_idem_multi"));
         try (db) {
             Schema.ensure(db, User.class, Post.class);
 
@@ -164,7 +162,7 @@ class SchemaTest {
 
     @Test
     void ensureAddsMissingColumn() {
-        Database db = builder("ensure_addcol").build();
+        Database db = Database.create(builder("ensure_addcol"));
         try (db) {
             // 先建一个只有 id+name 的表（模拟旧版实体）
             db.execute("""
@@ -189,7 +187,7 @@ class SchemaTest {
 
     @Test
     void ensureDoesNotRemoveExistingColumns() {
-        Database db = builder("ensure_nodrop").build();
+        Database db = Database.create(builder("ensure_nodrop"));
         try (db) {
             // 建表时有 extra_col，新实体没有这个列
             db.execute("""
@@ -211,7 +209,7 @@ class SchemaTest {
 
     @Test
     void ensureRejectsAddingPrimaryKeyColumnToExistingTable() {
-        Database db = builder("ensure_reject_pk").build();
+        Database db = Database.create(builder("ensure_reject_pk"));
         try (db) {
             // 表已存在但没有 id 主键列（模拟缺失 @Id 列的旧表）
             db.execute("""
@@ -230,7 +228,7 @@ class SchemaTest {
 
     @Test
     void ensureRejectsAddingGeneratedColumnToExistingTable() {
-        Database db = builder("ensure_reject_generated").build();
+        Database db = Database.create(builder("ensure_reject_generated"));
         try (db) {
             // 表已存在但没有自增 id 列
             db.execute("""
@@ -248,7 +246,7 @@ class SchemaTest {
 
     @Test
     void ensureStillAddsPlainNullableColumnToExistingTable() {
-        Database db = builder("ensure_plain_add").build();
+        Database db = Database.create(builder("ensure_plain_add"));
         try (db) {
             // 表已存在，缺一个普通可空列 —— 仍走 ALTER ADD COLUMN
             db.execute("""
@@ -270,7 +268,7 @@ class SchemaTest {
 
     @Test
     void ensureRespectsTableAnnotation() {
-        Database db = builder("ensure_tableann").build();
+        Database db = Database.create(builder("ensure_tableann"));
         try (db) {
             int applied = Schema.ensure(db, AnnotatedUser.class);
             assertEquals(1, applied, "should create table");
@@ -288,7 +286,7 @@ class SchemaTest {
 
     @Test
     void ensureHandlesExplicitMixedCaseNames() {
-        Database db = builder("ensure_mixed_case").build();
+        Database db = Database.create(builder("ensure_mixed_case"));
         try (db) {
             int first = Schema.ensure(db, MixedCaseUser.class);
             assertEquals(1, first, "should create table");
@@ -309,7 +307,7 @@ class SchemaTest {
 
     @Test
     void ensureCreatesNotNullColumns() {
-        Database db = builder("ensure_notnull").build();
+        Database db = Database.create(builder("ensure_notnull"));
         try (db) {
             Schema.ensure(db, NotNullUser.class);
 
@@ -328,7 +326,7 @@ class SchemaTest {
 
     @Test
     void ensureCreatesVarcharWithSize() {
-        Database db = builder("ensure_size").build();
+        Database db = Database.create(builder("ensure_size"));
         try (db) {
             Schema.ensure(db, SizedUser.class);
 
@@ -342,7 +340,7 @@ class SchemaTest {
 
     @Test
     void dropRemovesTable() {
-        Database db = builder("drop_table").build();
+        Database db = Database.create(builder("drop_table"));
         try (db) {
             Schema.ensure(db, User.class);
             Schema.drop(db, User.class);
@@ -354,7 +352,7 @@ class SchemaTest {
 
     @Test
     void dropIsIdempotent() {
-        Database db = builder("drop_idempotent").build();
+        Database db = Database.create(builder("drop_idempotent"));
         try (db) {
             Schema.ensure(db, User.class);
             Schema.drop(db, User.class);
@@ -367,7 +365,7 @@ class SchemaTest {
 
     @Test
     void fullLifecycleCreateReadInsert() {
-        Database db = builder("lifecycle").build();
+        Database db = Database.create(builder("lifecycle"));
         try (db) {
             // 1. 建表
             Schema.ensure(db, User.class);
@@ -398,7 +396,7 @@ class SchemaTest {
 
     @Test
     void ensureCreatesIndexOnNewTable() {
-        Database db = builder("ensure_idx_new").build();
+        Database db = Database.create(builder("ensure_idx_new"));
         try (db) {
             int applied = Schema.ensure(db, IndexedUser.class);
             assertEquals(1, applied, "should create 1 table (indexes not counted)");
@@ -415,7 +413,7 @@ class SchemaTest {
 
     @Test
     void ensureCreatesIndexOnExistingTable() {
-        Database db = builder("ensure_idx_existing").build();
+        Database db = Database.create(builder("ensure_idx_existing"));
         try (db) {
             // 先建表（无索引）
             db.execute("""
@@ -439,7 +437,7 @@ class SchemaTest {
 
     @Test
     void ensureIndexIsIdempotent() {
-        Database db = builder("ensure_idx_idempotent").build();
+        Database db = Database.create(builder("ensure_idx_idempotent"));
         try (db) {
             Schema.ensure(db, IndexedUser.class);
             // 第二次 ensure 不应重复创建索引
@@ -450,7 +448,7 @@ class SchemaTest {
 
     @Test
     void ensureCreatesIndexOnRenamedColumn() {
-        Database db = builder("ensure_idx_renamed").build();
+        Database db = Database.create(builder("ensure_idx_renamed"));
         try (db) {
             // @Index + @Column rename must index the real column; a missing
             // column would make the CREATE INDEX statement fail on H2.

@@ -1,7 +1,6 @@
 package com.jujin.freeway.db.internal;
 
 import com.jujin.freeway.db.Database;
-import com.jujin.freeway.db.DatabaseBuilder;
 import com.jujin.freeway.db.DatabaseStats;
 import com.jujin.freeway.db.Pool;
 import com.jujin.freeway.db.PoolConfig;
@@ -297,11 +296,7 @@ class PoolInvalidateTest {
             RecordingPool pool = new RecordingPool(
                 new PoolDefault(config("jdbc:freeway-restore-tx:tx", 1))
             );
-            Database db = new DatabaseBuilder()
-                .config(config("jdbc:freeway-restore-tx:tx", 1))
-                .pool(pool)
-                .dialect(new H2Dialect())
-                .build();
+            Database db = Database.create(Database.Wiring.defaults(config("jdbc:freeway-restore-tx:tx", 1)).withPool(pool).withDialect(new H2Dialect()));
             try (db) {
                 db.execute("create table t (id int)");
 
@@ -351,11 +346,7 @@ class PoolInvalidateTest {
             RecordingPool pool = new RecordingPool(
                 new PoolDefault(config("jdbc:freeway-restore-batch:batch", 1))
             );
-            Database db = new DatabaseBuilder()
-                .config(config("jdbc:freeway-restore-batch:batch", 1))
-                .pool(pool)
-                .dialect(new H2Dialect())
-                .build();
+            Database db = Database.create(Database.Wiring.defaults(config("jdbc:freeway-restore-batch:batch", 1)).withPool(pool).withDialect(new H2Dialect()));
             try (db) {
                 db.execute("create table t (id int)");
 

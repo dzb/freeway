@@ -2,7 +2,6 @@ package com.jujin.freeway.db.schema;
 
 import com.jujin.freeway.db.BatchQuery;
 import com.jujin.freeway.db.Database;
-import com.jujin.freeway.db.DatabaseBuilder;
 import com.jujin.freeway.db.DatabaseStats;
 import com.jujin.freeway.db.ExecuteResult;
 import com.jujin.freeway.db.IsolationLevel;
@@ -79,10 +78,8 @@ class SchemaTransactionalDdlGuardTest {
         // H2 in PostgreSQL mode has transactional DDL — wrapping ensure() in a
         // user transaction is safe and commits atomically.
         String dbName = "fw_schema_tx_" + UUID.randomUUID().toString().replace('-', '_');
-        Database db = new DatabaseBuilder()
-            .config(PoolConfig.defaults(
-                "jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
-            .build();
+        Database db = Database.create(PoolConfig.defaults(
+                "jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""));
         try (db) {
             db.transaction(() -> {
                 int applied = Schema.ensure(db, User.class);

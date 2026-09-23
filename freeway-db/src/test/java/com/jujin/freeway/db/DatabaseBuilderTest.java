@@ -3,6 +3,7 @@ import java.time.Duration;
 
 import com.jujin.freeway.db.PooledConnection;
 import com.jujin.freeway.commons.coercion.CoercerDefault;
+import com.jujin.freeway.db.dialect.Dialect;
 import com.jujin.freeway.db.dialect.H2Dialect;
 import com.jujin.freeway.db.dialect.MySqlDialect;
 import java.time.LocalDateTime;
@@ -15,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class DatabaseBuilderTest {
+class DatabaseCreateTest {
     @Test
     void overlaysAnExistingConfig() {
         String dbName = "freeway_builder_overlay_" + UUID.randomUUID().toString().replace('-', '_');
@@ -32,7 +33,7 @@ class DatabaseBuilderTest {
             base.queryTimeout()
         );
 
-        Database db = new DatabaseBuilder().config(modified).build();
+        Database db = Database.create(modified);
 
         try (db) {
             assertEquals(6, db.stats().maxSize());
@@ -55,18 +56,16 @@ class DatabaseBuilderTest {
             Duration.ZERO
         );
 
-        Database db = new DatabaseBuilder().config(modified).build();
+        Database db = Database.create(modified);
         try (db) {
             assertTrue(db.ping(), "zero query timeout must be accepted and usable");
         }
     }
 
     @Test
-    void standaloneBuilderUsesDefaultCoercion() {
+    void standaloneCreateUsesDefaultCoercion() {
         String dbName = "freeway_builder_coercion_" + UUID.randomUUID().toString().replace('-', '_');
-        Database db = new DatabaseBuilder()
-            .config(PoolConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
-            .build();
+        Database db = Database.create(PoolConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""));
 
         try (db) {
             db.execute("create table t (v decimal(10,0))");
@@ -78,12 +77,9 @@ class DatabaseBuilderTest {
     }
 
     @Test
-    void standaloneBuilderAcceptsManualRowMapper() {
+    void standaloneCreateAcceptsManualRowMapper() {
         String dbName = "freeway_builder_mapper_" + UUID.randomUUID().toString().replace('-', '_');
-        Database db = new DatabaseBuilder()
-            .config(PoolConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
-            .rowMapper(Marker.class, (rs, rowNum) -> new Marker(rs.getString(1)))
-            .build();
+        Database db = Database.create(Database.Wiring.defaults(PoolConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", "")).withRowMapper(Marker.class, (rs, rowNum) -> new Marker(rs.getString(1))));
 
         try (db) {
             List<Marker> markers = db.query("select 'manual'").list(Marker.class);
@@ -94,11 +90,8 @@ class DatabaseBuilderTest {
     @Test
     void customCoercerRetainsJdbcDefaultRules() {
         String dbName = "freeway_builder_jdbc_rules_" + UUID.randomUUID().toString().replace('-', '_');
-        Database db = new DatabaseBuilder()
-            .config(PoolConfig.defaults(
-                "jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
-            .coercer(new CoercerDefault())
-            .build();
+        Database db = Database.create(Database.Wiring.defaults(PoolConfig.defaults(
+                "jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", "")).withCoercer(new CoercerDefault()));
 
         try (db) {
             db.execute("create table t (ts timestamp)");
@@ -114,10 +107,7 @@ class DatabaseBuilderTest {
     @Test
     void customDialectIsUsed() {
         String dbName = "freeway_builder_dialect_" + UUID.randomUUID().toString().replace('-', '_');
-        Database db = new DatabaseBuilder()
-            .config(PoolConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
-            .dialect(new MySqlDialect())
-            .build();
+        Database db = Database.create(Database.Wiring.defaults(PoolConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", "")).withDialect(new MySqlDialect()));
         try (db) {
             assertEquals("mysql", db.dialect().dialectId());
             assertFalse(db.dialect().supportsReturning());
@@ -135,23 +125,16 @@ class DatabaseBuilderTest {
 
     @Test
     void explicitDialectOverridesUrlDetection() {
-        Database db = new DatabaseBuilder()
-            .config(PoolConfig.defaults("jdbc:mysql://localhost:3306/app", "sa", ""))
-            .dialect(new H2Dialect())
-            .pool(new StubPool())
-            .build();
+        Database db = Database.create(Database.Wiring.defaults(PoolConfig.defaults("jdbc:mysql://localhost:3306/app", "sa", "")).withDialect(new H2Dialect()).withPool(new StubPool()));
         try (db) {
             assertEquals("h2", db.dialect().dialectId(),
-                "explicit .dialect(...) must win over URL auto-detection");
+                "explicit withDialect(...) must win over URL auto-detection");
         }
     }
 
     private static void assertDialectForUrl(String url, String expectedId) {
         // StubPool: the URL is only a dialect hint here, never a real connection.
-        Database db = new DatabaseBuilder()
-            .config(PoolConfig.defaults(url, "sa", ""))
-            .pool(new StubPool())
-            .build();
+        Database db = Database.create(Database.Wiring.defaults(PoolConfig.defaults(url, "sa", "")).withPool(new StubPool()));
         try (db) {
             assertEquals(expectedId, db.dialect().dialectId(),
                 "URL '" + url + "' must resolve to dialect '" + expectedId + "'");
@@ -163,47 +146,44 @@ class DatabaseBuilderTest {
     @Test
     void unknownUrlSchemeThrowsWithGuidance() {
         IllegalStateException oracle = assertThrows(IllegalStateException.class,
-            () -> DatabaseBuilder.dialectForUrl("jdbc:oracle:thin:@localhost:1521:xe"));
+            () -> Dialect.of("jdbc:oracle:thin:@localhost:1521:xe"));
         assertTrue(oracle.getMessage().contains("jdbc:oracle"),
             "message must name the offending URL: " + oracle.getMessage());
         assertTrue(oracle.getMessage().contains("freeway.db.dialect"),
             "message must point at the dialect config key: " + oracle.getMessage());
 
         IllegalStateException sqlserver = assertThrows(IllegalStateException.class,
-            () -> DatabaseBuilder.dialectForUrl("jdbc:sqlserver://localhost:1433;databaseName=app"));
+            () -> Dialect.of("jdbc:sqlserver://localhost:1433;databaseName=app"));
         assertTrue(sqlserver.getMessage().contains("jdbc:sqlserver"),
             "message must name the offending URL: " + sqlserver.getMessage());
     }
 
     @Test
-    void buildWithUnknownUrlThrowsBeforeAnyConnection() {
-        DatabaseBuilder builder = new DatabaseBuilder()
-            .config(PoolConfig.defaults("jdbc:oracle:thin:@localhost:1521:xe", "sa", ""))
-            .pool(new StubPool());
-        IllegalStateException ex = assertThrows(IllegalStateException.class, builder::build);
+    void createWithUnknownUrlThrowsBeforeAnyConnection() {
+        Database.Wiring wiring = Database.Wiring.defaults(
+                PoolConfig.defaults("jdbc:oracle:thin:@localhost:1521:xe", "sa", ""))
+            .withPool(new StubPool());
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+            () -> Database.create(wiring));
         assertTrue(ex.getMessage().contains("freeway.db.dialect"),
-            "build() must surface the guidance: " + ex.getMessage());
+            "create() must surface the guidance: " + ex.getMessage());
     }
 
     @Test
     void nullAndBlankUrlDefaultToPostgres() {
-        assertEquals("postgresql", DatabaseBuilder.dialectForUrl(null).dialectId());
-        assertEquals("postgresql", DatabaseBuilder.dialectForUrl("").dialectId());
-        assertEquals("postgresql", DatabaseBuilder.dialectForUrl("   ").dialectId());
+        assertEquals("postgresql", Dialect.of(null).dialectId());
+        assertEquals("postgresql", Dialect.of("").dialectId());
+        assertEquals("postgresql", Dialect.of("   ").dialectId());
     }
 
     @Test
     void h2MemUrlResolvesWithoutThrowing() {
-        assertEquals("h2", DatabaseBuilder.dialectForUrl("jdbc:h2:mem:plain").dialectId());
+        assertEquals("h2", Dialect.of("jdbc:h2:mem:plain").dialectId());
     }
 
     @Test
     void customSchemeWithExplicitDialectIsUsable() {
-        Database db = new DatabaseBuilder()
-            .config(PoolConfig.defaults("jdbc:custom:whatever", "sa", ""))
-            .dialect(new MySqlDialect())
-            .pool(new StubPool())
-            .build();
+        Database db = Database.create(Database.Wiring.defaults(PoolConfig.defaults("jdbc:custom:whatever", "sa", "")).withDialect(new MySqlDialect()).withPool(new StubPool()));
         try (db) {
             assertEquals("mysql", db.dialect().dialectId(),
                 "an explicit dialect must make a custom URL scheme usable");
@@ -246,11 +226,7 @@ class DatabaseBuilderTest {
     }
 
     private static Database mysqlDb() {
-        return new DatabaseBuilder()
-            .config(PoolConfig.defaults("jdbc:mysql://localhost:3306/app", "sa", ""))
-            .dialect(new MySqlDialect())
-            .pool(new StubPool())
-            .build();
+        return Database.create(Database.Wiring.defaults(PoolConfig.defaults("jdbc:mysql://localhost:3306/app", "sa", "")).withDialect(new MySqlDialect()).withPool(new StubPool()));
     }
 
     @Test
@@ -260,10 +236,7 @@ class DatabaseBuilderTest {
             "jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""
         );
 
-        Database db = new DatabaseBuilder()
-            .config(config)
-            .pool(new StubPool())
-            .build();
+        Database db = Database.create(Database.Wiring.defaults(config).withPool(new StubPool()));
 
         try (db) {
             assertEquals(Integer.MAX_VALUE, db.stats().maxSize());

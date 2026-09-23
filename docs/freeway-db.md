@@ -19,9 +19,7 @@
 
   ```java
   // 1. 构建数据库
-  Database db = new DatabaseBuilder()
-      .config(PoolConfig.defaults("jdbc:...", "user", "pass"))
-      .build();
+  Database db = Database.create(PoolConfig.defaults("jdbc:...", "user", "pass"));
 
   // 2. 原始查询
   List<User> users = db.query("SELECT * FROM users WHERE status = ?", 1).list(User.class);
@@ -192,11 +190,9 @@ Schema.ensure(db, User.class);
 ### 3.1 直接构建
 
 ```java
-Database db = new DatabaseBuilder()
-    .config(PoolConfig.defaults(
+Database db = Database.create(PoolConfig.defaults(
         "jdbc:h2:mem:mydb;MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
-        "sa", ""))
-    .build();
+        "sa", ""));
 ```
 
 ### 3.2 IoC 模块方式
@@ -230,9 +226,9 @@ Database def = hub.primary();
 
 ### 3.4 方言检测与选择
 
-- **URL 自动检测**（`DatabaseBuilder.dialectForUrl`，大小写不敏感）：`jdbc:mysql` / `jdbc:mariadb` → MySQL；`jdbc:sqlite` → SQLite；`jdbc:h2` → H2（`MODE=PostgreSQL` → PostgreSQL，`MODE=MySQL` / `MODE=MariaDB` → MySQL）；`jdbc:postgresql` → PostgreSQL。
+- **URL 自动检测**（`Dialect.of`）：`jdbc:mysql` / `jdbc:mariadb` → MySQL；`jdbc:sqlite` → SQLite；`jdbc:h2` → H2（`MODE=PostgreSQL` → PostgreSQL，`MODE=MySQL` / `MODE=MariaDB` → MySQL）；`jdbc:postgresql` → PostgreSQL。
 - URL 为 `null` 或空白 → 默认 PostgreSQL。
-- **未知 JDBC URL 启动失败（fail-fast）**：识别不了的 scheme（如 `jdbc:oracle:...`）**不再静默回退 PostgreSQL**，直接抛 `IllegalStateException`（消息带 `freeway.db.dialect` 指引）——独立构建用 `.dialect(new XxxDialect())` 显式指定，IoC 方式配置 `freeway.db.dialect=xxx`。静默回退会让错误方言在运行时把 PG 语法（`ON CONFLICT`、`pg_indexes`）发给目标库才暴露，所以改为启动即失败。
+- **未知 JDBC URL 启动失败（fail-fast）**：识别不了的 scheme（如 `jdbc:oracle:...`）**不再静默回退 PostgreSQL**，直接抛 `IllegalStateException`（消息带 `freeway.db.dialect` 指引）——独立构建用 `Database.create` 的 `withDialect(new XxxDialect())` 显式指定，IoC 方式配置 `freeway.db.dialect=xxx`。静默回退会让错误方言在运行时把 PG 语法（`ON CONFLICT`、`pg_indexes`）发给目标库才暴露，所以改为启动即失败。
 - IoC 下 `freeway.db.dialect` 显式配置优先于 URL 检测。
 
 ---
@@ -496,9 +492,7 @@ record User(@Id @Generated Long id, @Column String name, @Column Integer age) {
 }
 
 // 2. 建库 + 建表
-Database db = new DatabaseBuilder()
-    .config(PoolConfig.defaults("jdbc:h2:mem:demo;MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
-    .build();
+Database db = Database.create(PoolConfig.defaults("jdbc:h2:mem:demo;MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""));
 Schema.ensure(db, User.class);
 Orm orm = Orm.of(db);
 
@@ -544,7 +538,7 @@ db.close();  // Database 实现了 AutoCloseable
 | 抽象方法（必须实现） | 5 | 编译器强制，不实现无法编译 |
 | 默认方法（必须覆写） | ~6 | 默认值是 PG 偏好，不覆写会出 bug |
 | 默认方法（按需覆写） | 4-6 | 视数据库特性而定（含 `backslashEscapesStrings`/`supportsTransactionalDdl`） |
-| 注册点 | 2 | `DbModule.bind()` + `DatabaseBuilder.dialectForUrl()`（`detectDialect` 委托） |
+| 注册点 | 2 | `DbModule.bind()` + `Dialect.of()`（`detectDialect` 委托） |
 
 新增一个方言预计工作量约 **100-150 行代码 + 测试**。
 
@@ -882,14 +876,14 @@ binder.bind(Dialect.class).to(OracleDialect.class).id("oracle");
 ### 5.2 添加 URL 检测
 
 ```java
-// DatabaseBuilder.dialectForUrl() 中（DbModule.detectDialect 委托给它）
+// Dialect.of() 中（DbModule.detectDialect 委托给它）
 if (url.contains("jdbc:oracle")) return new OracleDialect();
 ```
 
-URL 检测的唯一实现在 `DatabaseBuilder.dialectForUrl(String)`（大小写不敏感）——
-独立使用（`DatabaseBuilder`）和 IoC 使用（`DbModule`）共用同一处，新增方言只需改这一个方法。
+URL 检测的唯一实现在 `Dialect.of(String)`（大小写不敏感）——
+独立使用（`Database.create`）和 IoC 使用（`DbModule`）共用同一处，新增方言只需改这一个方法。
 
-**未知 scheme 会 fail-fast**：`dialectForUrl` 对无法识别的 JDBC URL（如 `jdbc:oracle:...`）抛 `IllegalStateException`，消息带 `freeway.db.dialect` 指引——**不再静默回退 PostgreSQL**（静默回退会在运行时把 PG 语法发给目标库才暴露错误）。仅当 URL 为 `null` 或空白时才默认返回 `PostgresDialect`。注意 H2 的 MODE 分支：`MODE=PostgreSQL` → PG、`MODE=MySQL`/`MODE=MariaDB` → MySQL。新增方言时在此方法里加上对应的 URL 前缀匹配。
+**未知 scheme 会 fail-fast**：`Dialect.of` 对无法识别的 JDBC URL（如 `jdbc:oracle:...`）抛 `IllegalStateException`，消息带 `freeway.db.dialect` 指引——**不再静默回退 PostgreSQL**（静默回退会在运行时把 PG 语法发给目标库才暴露错误）。仅当 URL 为 `null` 或空白时才默认返回 `PostgresDialect`。注意 H2 的 MODE 分支：`MODE=PostgreSQL` → PG、`MODE=MySQL`/`MODE=MariaDB` → MySQL。新增方言时在此方法里加上对应的 URL 前缀匹配。
 
 ---
 
@@ -1062,7 +1056,7 @@ public final class XxxDialect implements Dialect {
 - [ ] `supportsTransactionalDdl()` 按需覆写（MySQL：DDL 不参与事务 → `false`）
 - [ ] `effectiveSchema()` 按需覆写
 - [ ] `DbModule.bind()` 注册（`id` 与 `dialectId()` 一致）
-- [ ] `DatabaseBuilder.dialectForUrl()` URL 检测（大小写不敏感；未知 scheme 会 fail-fast）
+- [ ] `Dialect.of()` URL 检测（大小写不敏感；未知 scheme 会 fail-fast）
 - [ ] `dialectId()` 单测
 - [ ] `upsertClause()` 单测
 - [ ] DDL 生成集成测试

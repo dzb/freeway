@@ -21,7 +21,7 @@ Examples below are minimal snippets. They omit imports and app-specific domain t
 
 ```java
 PoolConfig config = PoolConfig.defaults("jdbc:h2:mem:test", "sa", "");
-Database db = new DatabaseBuilder().config(config).build();
+Database db = Database.create(config);
 Orm orm = Orm.of(db);
 ```
 

@@ -582,7 +582,7 @@ class SqlTest {
 
     @Test
     void integrationSelect() {
-        var db = builder("sql_integ_select").build();
+        var db = Database.create(builder("sql_integ_select"));
         try (db) {
             db.execute("create table t_user (id bigint primary key, name varchar(16), status int)");
             db.execute("insert into t_user values (1, 'alpha', 1), (2, 'beta', 0)");
@@ -596,7 +596,7 @@ class SqlTest {
 
     @Test
     void integrationSelectNamed() {
-        var db = builder("sql_integ_named").build();
+        var db = Database.create(builder("sql_integ_named"));
         try (db) {
             db.execute("create table t_user (id bigint primary key, name varchar(16))");
             db.execute("insert into t_user values (1, 'alpha')");
@@ -610,7 +610,7 @@ class SqlTest {
 
     @Test
     void integrationDynamicWhere() {
-        var db = builder("sql_integ_dynamic").build();
+        var db = Database.create(builder("sql_integ_dynamic"));
         try (db) {
             db.execute("create table t_user (id bigint primary key, name varchar(16), age int)");
             db.execute("insert into t_user values (1, 'alpha', 25), (2, 'beta', 30)");
@@ -631,7 +631,7 @@ class SqlTest {
 
     @Test
     void integrationInsert() {
-        var db = builder("sql_integ_insert").build();
+        var db = Database.create(builder("sql_integ_insert"));
         try (db) {
             db.execute("create table t_user (id bigint primary key, name varchar(16))");
 
@@ -646,7 +646,7 @@ class SqlTest {
 
     @Test
     void integrationUpdate() {
-        var db = builder("sql_integ_update").build();
+        var db = Database.create(builder("sql_integ_update"));
         try (db) {
             db.execute("create table t_user (id bigint primary key, name varchar(16))");
             db.execute("insert into t_user values (1, 'oldname')");
@@ -662,7 +662,7 @@ class SqlTest {
 
     @Test
     void integrationDelete() {
-        var db = builder("sql_integ_delete").build();
+        var db = Database.create(builder("sql_integ_delete"));
         try (db) {
             db.execute("create table t_user (id bigint primary key, name varchar(16))");
             db.execute("insert into t_user values (1, 'goner'), (2, 'keeper')");
@@ -679,7 +679,7 @@ class SqlTest {
     @Test
     void integrationJava25TextBlock() {
         // Java 25 文本块支持 —— 纯字符串构造即可，无特殊 API 变更
-        var db = builder("sql_integ_textblock").build();
+        var db = Database.create(builder("sql_integ_textblock"));
         try (db) {
             db.execute("create table t_user (id bigint primary key, name varchar(16))");
             db.execute("insert into t_user values (1, 'hello')");
@@ -695,7 +695,7 @@ class SqlTest {
     void integrationExecuteAndQuerySqlBuilder() {
         // The Sql convenience methods must validate against the dialect and
         // still execute normally on a returning-capable database.
-        var db = builder("sql_integ_sql_builder").build();
+        var db = Database.create(builder("sql_integ_sql_builder"));
         try (db) {
             db.execute("create table t_user (id bigint primary key, name varchar(16))");
 
@@ -720,9 +720,8 @@ class SqlTest {
 
     // ====================== 辅助 ======================
 
-    private static DatabaseBuilder builder(String name) {
-        return new DatabaseBuilder()
-            .config(PoolConfig.defaults("jdbc:h2:mem:" + name + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""));
+    private static Database.Wiring builder(String name) {
+        return Database.Wiring.defaults(PoolConfig.defaults("jdbc:h2:mem:" + name + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""));
     }
 
     public record IdName(long id, String name) {

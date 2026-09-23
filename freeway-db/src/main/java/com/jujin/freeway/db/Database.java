@@ -1,6 +1,13 @@
 package com.jujin.freeway.db;
 
+import com.jujin.freeway.commons.coercion.Coercer;
+import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.db.dialect.Dialect;
+import com.jujin.freeway.db.internal.DatabaseImpl;
+import com.jujin.freeway.db.internal.RowMapperResolver;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Objects;
 
 /**
  * Primary data-access interface. Each {@code Database} wraps a JDBC connection
@@ -8,17 +15,120 @@ import com.jujin.freeway.db.dialect.Dialect;
  *
  * <p>Usage:
  * <pre>{@code
- * var db = DatabaseBuilder.from(config).build();
+ * var db = Database.create(config);
  * List<User> users = db.query("SELECT * FROM users WHERE active = ?", true).list(User.class);
  * db.transaction(() -> {
  *     db.execute("UPDATE users SET name = ? WHERE id = ?", name, id);
  * });
  * }</pre>
  *
- * @see DatabaseBuilder
  * @see PoolConfig
  */
 public interface Database extends AutoCloseable {
+
+    // ====================== assembly ======================
+
+    /**
+     * Assembles a standalone {@code Database} — the one derivation point for
+     * callers without a container (the container face is {@code DbModule}).
+     * Standard parts: a fresh coercer carrying the JDBC coercion rules, the
+     * dialect detected from the config's URL ({@link Dialect#of(String)}),
+     * the standard pool, and no custom row mappers. Override any part
+     * through {@link Wiring}.
+     *
+     * <pre>{@code
+     * Database db = Database.create(PoolConfig.defaults(url, user, pass));
+     * }</pre>
+     */
+    static Database create(PoolConfig config) {
+        return create(Wiring.defaults(config));
+    }
+
+    /**
+     * The full assembly. Coercion rules land exactly as on the container
+     * path: a caller-supplied {@link CoercerDefault} receives any missing
+     * JDBC rules but keeps its own rules' priority; the dialect is
+     * {@code wiring.dialect()} when given and URL-detected otherwise. An
+     * unknown URL scheme fails here — before any connection is opened —
+     * with guidance naming the fix.
+     */
+    static Database create(Wiring wiring) {
+        Objects.requireNonNull(wiring, "wiring");
+        PoolConfig config = wiring.config();
+        Coercer effective = wiring.coercer();
+        if (effective == null) {
+            effective = Coercions.jdbcCoercer();
+        } else if (effective instanceof CoercerDefault cd) {
+            // A custom CoercerDefault must not silently lose the JDBC rules
+            // (Date/Timestamp/Time → java.time) that the IoC path
+            // always contributes. Caller-registered rules keep priority.
+            for (var rule : Coercions.jdbcDefaults()) {
+                cd.registerIfAbsent(rule);
+            }
+        }
+        Dialect dialect = wiring.dialect() != null
+            ? wiring.dialect()
+            : Dialect.of(config.url());
+        return new DatabaseImpl(
+            config,
+            new RowMapperResolver(effective, wiring.rowMappers(), Map.of()),
+            wiring.pool(),
+            dialect
+        );
+    }
+
+    /**
+     * Parts handed to {@link #create(Wiring)}: {@code config} is required,
+     * the rest are {@code null} unless overridden — a {@code null} means
+     * "apply the standard assembly's default", and the defaults themselves
+     * live with {@code create} (and {@code DbModule}), never re-stated here.
+     */
+    record Wiring(
+        PoolConfig config,
+        Coercer coercer,
+        Pool pool,
+        Dialect dialect,
+        Map<Class<?>, RowMapper<?>> rowMappers
+    ) {
+        public Wiring {
+            Objects.requireNonNull(config, "config");
+            rowMappers = rowMappers == null ? Map.of() : Map.copyOf(rowMappers);
+        }
+
+        /** The required part only; every other part takes its standard default. */
+        public static Wiring defaults(PoolConfig config) {
+            return new Wiring(config, null, null, null, null);
+        }
+
+        /** Custom coercer; missing JDBC rules are still added (see {@code create}). */
+        public Wiring withCoercer(Coercer value) {
+            return new Wiring(config, value, pool, dialect, rowMappers);
+        }
+
+        /** Bring-your-own pool (e.g. an adapter pool); {@code null} → standard pool. */
+        public Wiring withPool(Pool value) {
+            return new Wiring(config, coercer, value, dialect, rowMappers);
+        }
+
+        /** Explicit dialect — wins over URL detection and makes any URL scheme usable. */
+        public Wiring withDialect(Dialect value) {
+            return new Wiring(config, coercer, pool, value, rowMappers);
+        }
+
+        /** Adds a per-type row mapper; duplicate registration for a type fails. */
+        public <T> Wiring withRowMapper(Class<T> type, RowMapper<? extends T> mapper) {
+            Class<T> t = Objects.requireNonNull(type, "type");
+            RowMapper<?> m = Objects.requireNonNull(mapper, "mapper");
+            if (rowMappers.containsKey(t)) {
+                throw new IllegalStateException(
+                    "Duplicate row mapper registration for " + t.getName()
+                );
+            }
+            Map<Class<?>, RowMapper<?>> next = new LinkedHashMap<>(rowMappers);
+            next.put(t, m);
+            return new Wiring(config, coercer, pool, dialect, next);
+        }
+    }
 
     /**
      * Returns the SQL dialect associated with this database.

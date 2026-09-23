@@ -2,7 +2,7 @@
  * DB internals — <strong>no stability promise</strong> across releases.
  *
  * <p>{@code internal} is part of Freeway, not a visibility gate: the root
- * assemblers ({@code DatabaseBuilder}, {@code DbModule}) and the
+ * assembly faces ({@code Database.create}, {@code DbModule}) and the
  * {@code DatabaseRegistry.of(Map)} factory construct the classes here; several stay
  * {@code package-private} (reachable only via their root interfaces). {@code PoolDefault} lives here by design — it is
  * substituted from outside via {@code .primary()} on {@code Pool} and

@@ -3,7 +3,6 @@ import java.net.URL;
 
 import com.jujin.freeway.db.Database;
 import java.sql.SQLException;
-import com.jujin.freeway.db.DatabaseBuilder;
 import com.jujin.freeway.db.DbConfigKeys;
 import com.jujin.freeway.db.PoolConfig;
 import com.jujin.freeway.db.DbModule;
@@ -175,14 +174,11 @@ class MigrationRunnerTest {
 
         ClassLoader previous = Thread.currentThread().getContextClassLoader();
         try (URLClassLoader loader = new URLClassLoader(new URL[] { tempDir.toUri().toURL() }, null);
-             Database db = new DatabaseBuilder()
-                 .config(PoolConfig.defaults(
+             Database db = Database.create(Database.Wiring.defaults(PoolConfig.defaults(
                      "jdbc:h2:mem:freeway_mysql_guard_" + UUID.randomUUID().toString().replace('-', '_') + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
                      "sa",
                      ""
-                 ))
-                 .dialect(new MySqlDialect())
-                 .build()) {
+                 )).withDialect(new MySqlDialect()))) {
             Thread.currentThread().setContextClassLoader(loader);
             MigrationRunner runner = new MigrationRunner(db, MigrationRunner.Options.defaults());
 
@@ -215,14 +211,11 @@ class MigrationRunnerTest {
 
         ClassLoader previous = Thread.currentThread().getContextClassLoader();
         try (URLClassLoader loader = new URLClassLoader(new URL[] { tempDir.toUri().toURL() }, null);
-             Database db = new DatabaseBuilder()
-                 .config(PoolConfig.defaults(
+             Database db = Database.create(Database.Wiring.defaults(PoolConfig.defaults(
                      "jdbc:h2:mem:freeway_mysql_dml_" + UUID.randomUUID().toString().replace('-', '_') + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
                      "sa",
                      ""
-                 ))
-                 .dialect(new MySqlDialect())
-                 .build()) {
+                 )).withDialect(new MySqlDialect()))) {
             Thread.currentThread().setContextClassLoader(loader);
             // Target table pre-created: the DDL to create it would itself be
             // rejected on this dialect, and this test only exercises DML.
@@ -248,13 +241,11 @@ class MigrationRunnerTest {
 
         ClassLoader previous = Thread.currentThread().getContextClassLoader();
         try (URLClassLoader loader = new URLClassLoader(new URL[] { tempDir.toUri().toURL() }, null);
-             Database db = new DatabaseBuilder()
-                 .config(PoolConfig.defaults(
+             Database db = Database.create(PoolConfig.defaults(
                      "jdbc:h2:mem:freeway_migration_large_" + UUID.randomUUID().toString().replace('-', '_') + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
                      "sa",
                      ""
-                 ))
-                 .build()) {
+                 ))) {
             Thread.currentThread().setContextClassLoader(loader);
             MigrationRunner runner = new MigrationRunner(db, MigrationRunner.Options.defaults());
 
@@ -813,13 +804,11 @@ class MigrationRunnerTest {
 
     private static Database tempDb(String name) {
         String dbName = name + "_" + UUID.randomUUID().toString().replace('-', '_');
-        return new DatabaseBuilder()
-            .config(PoolConfig.defaults(
+        return Database.create(PoolConfig.defaults(
                 "jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
                 "sa",
                 ""
-            ))
-            .build();
+            ));
     }
 
     private static void restore(String key, String value) {

@@ -17,7 +17,7 @@ class NamedParamEdgeCaseTest {
     @Test
     void namedParameters() {
         String dbName = uniqueDb("named");
-        Database db = builder(dbName).build();
+        Database db = Database.create(builder(dbName));
         try (db) {
             db.execute("create table t (id bigint primary key, name varchar(16))");
             db.execute("insert into t values (1, 'alpha'), (2, 'beta')");
@@ -34,7 +34,7 @@ class NamedParamEdgeCaseTest {
     @Test
     void namedParametersWithCollectionExpansion() {
         String dbName = uniqueDb("named_coll");
-        Database db = builder(dbName).build();
+        Database db = Database.create(builder(dbName));
         try (db) {
             db.execute("create table t (id bigint primary key, name varchar(16))");
             db.execute("insert into t values (1, 'a'), (2, 'b'), (3, 'c')");
@@ -51,7 +51,7 @@ class NamedParamEdgeCaseTest {
     @Test
     void namedCollectionExpansionIgnoresQuestionMarksInStringsAndComments() {
         String dbName = uniqueDb("named_coll_question");
-        Database db = builder(dbName).build();
+        Database db = Database.create(builder(dbName));
         try (db) {
             db.execute("create table t (id bigint primary key, name varchar(16))");
             db.execute("insert into t values (1, 'a'), (2, 'b'), (3, 'c')");
@@ -77,7 +77,7 @@ class NamedParamEdgeCaseTest {
     @Test
     void namedParametersUsedMultipleTimes() {
         String dbName = uniqueDb("named_multi");
-        Database db = builder(dbName).build();
+        Database db = Database.create(builder(dbName));
         try (db) {
             db.execute("create table t (x bigint, y bigint)");
             db.execute("insert into t values (10, 20), (10, 30)");
@@ -95,7 +95,7 @@ class NamedParamEdgeCaseTest {
     @Test
     void repeatedNamedParametersRejectDifferentValuesWhenFirstIsNull() {
         String dbName = uniqueDb("named_multi_null");
-        Database db = builder(dbName).build();
+        Database db = Database.create(builder(dbName));
         try (db) {
             db.execute("create table t (x bigint, y bigint)");
 
@@ -108,7 +108,7 @@ class NamedParamEdgeCaseTest {
     @Test
     void namedParameterRejectsMissingKeys() {
         String dbName = uniqueDb("named_missing");
-        Database db = builder(dbName).build();
+        Database db = Database.create(builder(dbName));
         try (db) {
             db.execute("create table t (id bigint)");
 
@@ -120,7 +120,7 @@ class NamedParamEdgeCaseTest {
     @Test
     void namedParameterRejectsExtraKeys() {
         String dbName = uniqueDb("named_extra");
-        Database db = builder(dbName).build();
+        Database db = Database.create(builder(dbName));
         try (db) {
             db.execute("create table t (id bigint)");
             db.execute("insert into t values (1)");
@@ -136,7 +136,7 @@ class NamedParamEdgeCaseTest {
     @Test
     void sqlWithStringLiteralContainingDollar() {
         String dbName = uniqueDb("named_literal");
-        Database db = builder(dbName).build();
+        Database db = Database.create(builder(dbName));
         try (db) {
             db.execute("create table t (id bigint, label varchar(32))");
             db.execute("insert into t values (1, 'a$b')");
@@ -157,7 +157,7 @@ class NamedParamEdgeCaseTest {
     @Test
     void namedParametersInBatch() {
         String dbName = uniqueDb("named_batch");
-        Database db = builder(dbName).build();
+        Database db = Database.create(builder(dbName));
         try (db) {
             db.execute("create table t (id bigint primary key, label varchar(16))");
 
@@ -183,7 +183,7 @@ class NamedParamEdgeCaseTest {
     @Test
     void namedBatchRejectsMissingKeys() {
         String dbName = uniqueDb("named_batch_missing");
-        Database db = builder(dbName).build();
+        Database db = Database.create(builder(dbName));
         try (db) {
             db.execute("create table t (id bigint, label varchar(16))");
 
@@ -197,7 +197,7 @@ class NamedParamEdgeCaseTest {
     @Test
     void mixedPositionalAndNamedRejected() {
         String dbName = uniqueDb("mixed_reject");
-        Database db = builder(dbName).build();
+        Database db = Database.create(builder(dbName));
         try (db) {
             db.execute("create table t (id bigint)");
 
@@ -210,7 +210,7 @@ class NamedParamEdgeCaseTest {
     @Test
     void mixedPositionalAndNamedRejectedInBatch() {
         String dbName = uniqueDb("mixed_batch_reject");
-        Database db = builder(dbName).build();
+        Database db = Database.create(builder(dbName));
         try (db) {
             db.execute("create table t (id bigint, label varchar(16))");
 
@@ -226,7 +226,7 @@ class NamedParamEdgeCaseTest {
     @Test
     void executeWithColonNamedParams() {
         String dbName = uniqueDb("execute_colon");
-        Database db = builder(dbName).build();
+        Database db = Database.create(builder(dbName));
         try (db) {
             db.execute("create table t (id bigint primary key, label varchar(16))");
             // :name 配合位置参数 → 自动按声明顺序绑定
@@ -241,7 +241,7 @@ class NamedParamEdgeCaseTest {
     @Test
     void executeWithDollarNamedParams() {
         String dbName = uniqueDb("execute_dollar");
-        Database db = builder(dbName).build();
+        Database db = Database.create(builder(dbName));
         try (db) {
             db.execute("create table t (id bigint primary key, label varchar(16))");
             // $name 配合位置参数 → 自动按声明顺序绑定
@@ -256,7 +256,7 @@ class NamedParamEdgeCaseTest {
     @Test
     void executeWithNamedParamsCountMismatch() {
         String dbName = uniqueDb("execute_mismatch");
-        Database db = builder(dbName).build();
+        Database db = Database.create(builder(dbName));
         try (db) {
             db.execute("create table t (id bigint primary key, label varchar(16))");
 
@@ -269,7 +269,7 @@ class NamedParamEdgeCaseTest {
     @Test
     void queryWithNamedPositionalParams() {
         String dbName = uniqueDb("query_namedPos");
-        Database db = builder(dbName).build();
+        Database db = Database.create(builder(dbName));
         try (db) {
             db.execute("create table t (id bigint primary key, name varchar(16))");
             db.execute("insert into t values (1, 'alpha'), (2, 'beta')");
@@ -286,7 +286,7 @@ class NamedParamEdgeCaseTest {
     @Test
     void queryExecuteWithNamedParams() {
         String dbName = uniqueDb("query_exec_named");
-        Database db = builder(dbName).build();
+        Database db = Database.create(builder(dbName));
         try (db) {
             db.execute("create table t (id bigint primary key, label varchar(16))");
 
@@ -305,9 +305,8 @@ class NamedParamEdgeCaseTest {
 
     // ====================== 辅助 ======================
 
-    private static DatabaseBuilder builder(String name) {
-        return new DatabaseBuilder()
-            .config(PoolConfig.defaults("jdbc:h2:mem:" + name + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""));
+    private static Database.Wiring builder(String name) {
+        return Database.Wiring.defaults(PoolConfig.defaults("jdbc:h2:mem:" + name + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""));
     }
 
     private static String uniqueDb(String prefix) {

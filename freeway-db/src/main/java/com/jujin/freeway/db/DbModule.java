@@ -261,7 +261,7 @@ public final class DbModule implements ModuleEx {
      *
      * <p>An explicit {@code freeway.db.dialect} always wins. Without one, an
      * unrecognized JDBC URL scheme (e.g. {@code jdbc:oracle:...}) makes URL
-     * detection throw with guidance (see {@link DatabaseBuilder#dialectForUrl})
+     * detection throw with guidance (see {@link Dialect#of(String)})
      * instead of silently falling back to PostgreSQL — the container fails
      * fast at startup rather than emitting wrong-dialect SQL at runtime.
      */
@@ -286,6 +286,6 @@ public final class DbModule implements ModuleEx {
 
     static String detectDialect(SymbolSource s) {
         String url = s.resolve(DbConfigKeys.URL, "");
-        return DatabaseBuilder.dialectForUrl(url).dialectId();
+        return Dialect.of(url).dialectId();
     }
 }

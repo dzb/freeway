@@ -2,7 +2,6 @@ package com.jujin.freeway.db.schema;
 
 import com.jujin.freeway.db.BatchQuery;
 import com.jujin.freeway.db.Database;
-import com.jujin.freeway.db.DatabaseBuilder;
 import com.jujin.freeway.db.DatabaseStats;
 import com.jujin.freeway.db.ExecuteResult;
 import com.jujin.freeway.db.IsolationLevel;
@@ -35,11 +34,8 @@ class SchemaIntrospectionFailureTest {
         // exist in H2's PostgreSQL compatibility mode. The failure must skip
         // the index DDL phase rather than treat the table as index-free.
         String dbName = "fw_schema_intro_" + UUID.randomUUID().toString().replace('-', '_');
-        Database db = new DatabaseBuilder()
-            .config(PoolConfig.defaults(
-                "jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
-            .dialect(new PgIndexesDialect())
-            .build();
+        Database db = Database.create(Database.Wiring.defaults(PoolConfig.defaults(
+                "jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", "")).withDialect(new PgIndexesDialect()));
         try (db) {
             int applied = Schema.ensure(db, IndexedEntity.class);
             assertEquals(1, applied, "table creation must still happen");

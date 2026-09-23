@@ -13,7 +13,6 @@ import org.junit.jupiter.api.Test;
 
 import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.db.Database;
-import com.jujin.freeway.db.DatabaseBuilder;
 import com.jujin.freeway.db.PoolConfig;
 import com.jujin.freeway.db.RowMapper;
 import com.jujin.freeway.db.SqlException;
@@ -32,7 +31,7 @@ class RowMapperTest {
     @Test
     void recordMappingWithExactColumnNames() {
         String dbName = uniqueDb("record_exact");
-        Database db = builder(dbName).build();
+        Database db = Database.create(builder(dbName));
         try (db) {
             db.execute("create table t (id bigint primary key, name varchar(16) not null)");
             db.execute("insert into t values (1, 'hello')");
@@ -46,7 +45,7 @@ class RowMapperTest {
     @Test
     void recordMappingWithSnakeCaseColumns() {
         String dbName = uniqueDb("record_snake");
-        Database db = builder(dbName).build();
+        Database db = Database.create(builder(dbName));
         try (db) {
             db.execute("create table t (user_id bigint primary key, full_name varchar(16) not null)");
             db.execute("insert into t values (1, 'Alice')");
@@ -61,7 +60,7 @@ class RowMapperTest {
     @Test
     void recordMappingCaseInsensitive() {
         String dbName = uniqueDb("record_case");
-        Database db = builder(dbName).build();
+        Database db = Database.create(builder(dbName));
         try (db) {
             db.execute("create table t (\"MY_ID\" bigint primary key, \"LABEL\" varchar(16) not null)");
             db.execute("insert into t values (42, 'test')");
@@ -76,7 +75,7 @@ class RowMapperTest {
     @Test
     void recordMappingPartialColumnsUsesDefaults() {
         String dbName = uniqueDb("record_partial");
-        Database db = builder(dbName).build();
+        Database db = Database.create(builder(dbName));
         try (db) {
             db.execute("create table t (id bigint primary key, label varchar(16), amount bigint)");
             db.execute("insert into t (id, label) values (1, 'partial')");
@@ -94,7 +93,7 @@ class RowMapperTest {
     @Test
     void beanMappingWithExactColumnNames() {
         String dbName = uniqueDb("bean_exact");
-        Database db = builder(dbName).build();
+        Database db = Database.create(builder(dbName));
         try (db) {
             db.execute("create table t (id bigint primary key, name varchar(16) not null)");
             db.execute("insert into t values (1, 'hello')");
@@ -108,7 +107,7 @@ class RowMapperTest {
     @Test
     void beanMappingWithSnakeCaseColumns() {
         String dbName = uniqueDb("bean_snake");
-        Database db = builder(dbName).build();
+        Database db = Database.create(builder(dbName));
         try (db) {
             db.execute("create table t (user_id bigint primary key, full_name varchar(16) not null)");
             db.execute("insert into t values (1, 'Bob')");
@@ -123,7 +122,7 @@ class RowMapperTest {
     @Test
     void beanMappingWithoutSettersUsesFields() {
         String dbName = uniqueDb("bean_fields");
-        Database db = builder(dbName).build();
+        Database db = Database.create(builder(dbName));
         try (db) {
             db.execute("create table t (id bigint primary key, name varchar(16) not null)");
             db.execute("insert into t values (7, 'field')");
@@ -138,7 +137,7 @@ class RowMapperTest {
     @Test
     void beanMappingSkipsMissingColumns() {
         String dbName = uniqueDb("bean_missing");
-        Database db = builder(dbName).build();
+        Database db = Database.create(builder(dbName));
         try (db) {
             db.execute("create table t (id bigint primary key, name varchar(16))");
             db.execute("insert into t (id) values (1)");
@@ -154,7 +153,7 @@ class RowMapperTest {
     @Test
     void simpleTypesStringAndInteger() {
         String dbName = uniqueDb("simple_str_int");
-        Database db = builder(dbName).build();
+        Database db = Database.create(builder(dbName));
         try (db) {
             db.execute("create table t (s varchar(16), i int)");
             db.execute("insert into t values ('abc', 42)");
@@ -168,7 +167,7 @@ class RowMapperTest {
     @Test
     void simpleTypesLongAndDouble() {
         String dbName = uniqueDb("simple_long_dbl");
-        Database db = builder(dbName).build();
+        Database db = Database.create(builder(dbName));
         try (db) {
             db.execute("create table t (l bigint, d double)");
             db.execute("insert into t values (9999999999, 3.14)");
@@ -181,7 +180,7 @@ class RowMapperTest {
     @Test
     void simpleTypesBigDecimalAndBigInteger() {
         String dbName = uniqueDb("simple_big");
-        Database db = builder(dbName).build();
+        Database db = Database.create(builder(dbName));
         try (db) {
             db.execute("create table t (bd decimal(30,10), bi decimal(30))");
             db.execute("insert into t values (1234567890.123456789, 9876543210987654321)");
@@ -196,7 +195,7 @@ class RowMapperTest {
     @Test
     void simpleTypesTemporal() {
         String dbName = uniqueDb("simple_temporal");
-        Database db = builder(dbName).build();
+        Database db = Database.create(builder(dbName));
         try (db) {
             db.execute("create table t (d date, ts timestamp, t2 time)");
             db.execute("insert into t values (DATE '2024-06-15', TIMESTAMP '2024-06-15 10:30:00', TIME '14:45:00')");
@@ -213,7 +212,7 @@ class RowMapperTest {
     @Test
     void simpleTypesLocalDateTimeAndUuid() {
         String dbName = uniqueDb("simple_ldt_uuid");
-        Database db = builder(dbName).build();
+        Database db = Database.create(builder(dbName));
         try (db) {
             db.execute("create table t (ts timestamp, uid uuid)");
             db.execute("insert into t values (TIMESTAMP '2025-01-01 00:00:00', '550e8400-e29b-41d4-a716-446655440000')");
@@ -228,7 +227,7 @@ class RowMapperTest {
     @Test
     void simpleTypesBoolean() {
         String dbName = uniqueDb("simple_bool");
-        Database db = builder(dbName).build();
+        Database db = Database.create(builder(dbName));
         try (db) {
             db.execute("create table t (v boolean)");
             db.execute("insert into t values (true), (false)");
@@ -243,7 +242,7 @@ class RowMapperTest {
     @Test
     void nullableSimpleTypeReturnsEmpty() {
         String dbName = uniqueDb("nullable");
-        Database db = builder(dbName).build();
+        Database db = Database.create(builder(dbName));
         try (db) {
             db.execute("create table t (v varchar(16))");
             db.execute("insert into t values (null)");
@@ -256,7 +255,7 @@ class RowMapperTest {
     @Test
     void primitiveIntGetsDefaultZeroOnNull() {
         String dbName = uniqueDb("prim_null_int");
-        Database db = builder(dbName).build();
+        Database db = Database.create(builder(dbName));
         try (db) {
             db.execute("create table t (v int)");
             db.execute("insert into t values (null)");
@@ -270,7 +269,7 @@ class RowMapperTest {
     @Test
     void emptyResultList() {
         String dbName = uniqueDb("empty_list");
-        Database db = builder(dbName).build();
+        Database db = Database.create(builder(dbName));
         try (db) {
             db.execute("create table t (id bigint)");
 
@@ -284,10 +283,8 @@ class RowMapperTest {
     @Test
     void customMapperOverridesBuiltin() {
         String dbName = uniqueDb("custom");
-        Database db = builder(dbName)
-            .rowMapper(ExactRecord.class, (rs, rowNum) ->
-                new ExactRecord(rs.getLong("id") * 100, "custom-" + rs.getString("name")))
-            .build();
+        Database db = Database.create(builder(dbName).withRowMapper(ExactRecord.class, (rs, rowNum) ->
+                new ExactRecord(rs.getLong("id") * 100, "custom-" + rs.getString("name"))));
         try (db) {
             db.execute("create table t (id bigint primary key, name varchar(16) not null)");
             db.execute("insert into t values (1, 'hello')");
@@ -301,10 +298,8 @@ class RowMapperTest {
     @Test
     void customMapperWithList() {
         String dbName = uniqueDb("custom_list");
-        Database db = builder(dbName)
-            .rowMapper(TransformResult.class, (rs, rowNum) ->
-                new TransformResult(rs.getLong("id"), rs.getString("val").toUpperCase()))
-            .build();
+        Database db = Database.create(builder(dbName).withRowMapper(TransformResult.class, (rs, rowNum) ->
+                new TransformResult(rs.getLong("id"), rs.getString("val").toUpperCase())));
         try (db) {
             db.execute("create table t (id bigint primary key, val varchar(16) not null)");
             db.execute("insert into t values (1, 'abc'), (2, 'def')");
@@ -376,7 +371,7 @@ class RowMapperTest {
     @Test
     void throwsOnUnknownType() {
         String dbName = uniqueDb("err_unknown");
-        Database db = builder(dbName).build();
+        Database db = Database.create(builder(dbName));
         try (db) {
             db.execute("create table t (v int)");
             db.execute("insert into t values (1)");
@@ -392,7 +387,7 @@ class RowMapperTest {
         // no writable properties; mapping them must fail loudly instead of
         // silently producing an empty instance per row.
         String dbName = uniqueDb("err_zero_props");
-        Database db = builder(dbName).build();
+        Database db = Database.create(builder(dbName));
         try (db) {
             db.execute("create table t (v int)");
             db.execute("insert into t values (1)");
@@ -414,7 +409,7 @@ class RowMapperTest {
     @Test
     void columnAnnotationOverridesRecordMapping() {
         String dbName = uniqueDb("col_record");
-        Database db = builder(dbName).build();
+        Database db = Database.create(builder(dbName));
         try (db) {
             // 列名使用 snake_case，与属性名不匹配但 @Column 指定了映射
             db.execute("create table t (user_id bigint primary key, display_name varchar(32) not null)");
@@ -430,7 +425,7 @@ class RowMapperTest {
     @Test
     void columnAnnotationOverridesBeanMapping() {
         String dbName = uniqueDb("col_bean");
-        Database db = builder(dbName).build();
+        Database db = Database.create(builder(dbName));
         try (db) {
             db.execute("create table t (order_id bigint primary key, order_status varchar(16) not null)");
             db.execute("insert into t values (99, 'SHIPPED')");
@@ -445,7 +440,7 @@ class RowMapperTest {
     @Test
     void columnAnnotationWithPartialOverrides() {
         String dbName = uniqueDb("col_partial");
-        Database db = builder(dbName).build();
+        Database db = Database.create(builder(dbName));
         try (db) {
             // display_name 通过 @Column 映射到 name，score 没有注解直接用驼峰→snake
             db.execute("create table t (display_name varchar(32) not null, score int)");
@@ -461,7 +456,7 @@ class RowMapperTest {
     @Test
     void columnAnnotationFallsThroughToNameMatch() {
         String dbName = uniqueDb("col_fallback");
-        Database db = builder(dbName).build();
+        Database db = Database.create(builder(dbName));
         try (db) {
             // @Column 指定了不存在的列名，但属性名可以匹配
             db.execute("create table t (code varchar(8) not null)");
@@ -476,9 +471,8 @@ class RowMapperTest {
 
     // ====================== 辅助方法 ======================
 
-    private static DatabaseBuilder builder(String dbName) {
-        return new DatabaseBuilder()
-            .config(PoolConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""));
+    private static Database.Wiring builder(String dbName) {
+        return Database.Wiring.defaults(PoolConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""));
     }
 
     private static String uniqueDb(String prefix) {

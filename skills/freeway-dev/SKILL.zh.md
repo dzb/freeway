@@ -711,7 +711,7 @@ binder.bind(HealthCheck.class).to(c -> () -> {
 
 ```java
 PoolConfig config = PoolConfig.defaults("jdbc:h2:mem:test", "sa", "");
-Database db = new DatabaseBuilder().config(config).build();
+Database db = Database.create(config);
 Orm orm = Orm.of(db);
 ```
 
@@ -1150,7 +1150,7 @@ try {
 ### DB 测试（H2 内存）
 ```java
 PoolConfig config = PoolConfig.defaults("jdbc:h2:mem:test;DB_CLOSE_DELAY=-1", "sa", "");
-Database db = new DatabaseBuilder().config(config).build();
+Database db = Database.create(config);
 Schema.ensure(db, TestEntity.class);
 ```
 

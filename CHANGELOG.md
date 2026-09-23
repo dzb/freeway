@@ -22,6 +22,16 @@ builder 不是第二个入口而是第二个组装根：自带一份默认值、
 `HealthFilter.defaults()` 各说两遍，还让 `HttpServerConfig` 有了两条取得通路（`container.get(...)` 与
 `cfg.server()`）。改为既有先例 `SslSettings.from(symbols)` 的形状：**值类型自己读自己的键**。
 
+`DatabaseBuilder` 同轮删除，理由与 `WebServerBuilder` 同构：独立面的组装知识（JDBC coercion 装配、
+`DatabaseImpl` 构造、URL 判型）全挂在一个 builder 上，容器面 `DbModule` 判方言时借的还是它的静态
+工具 `DatabaseBuilder.dialectForUrl`——容器要走的路立在独立面的门牌下。独立装配移进接口本身：
+`Database.create(PoolConfig)` 一步到位；部件差量走 `Database.create(Database.Wiring.defaults(config)
+.withCoercer/withPool/withDialect/withRowMapper(…))`（参数 record + `defaults()` + per-field wither，
+与 `CloudHttpClientDefault.Wiring` 同模板；builder 的旧装配词是裸名词 `coercer(…)`/`pool(…)`，
+调用点连写与读都分不清）。URL 判型归 `Dialect.of(url)`——方言自己回答"这个 URL 是谁"，
+`Database.create` 与 `DbModule.detectDialect` 从此共用一处。两条装配面与 http 完全同形：
+`Database.create`（独立）+ `DbModule`（容器）。
+
 | 旧 API / 行为 | 新 API / 行为 |
 |---|---|
 | `WebServerBuilder.builder().config(c).route(r).build()` | `HttpServer.create(engine, c, HttpPipeline.of(r))` |
@@ -46,6 +56,9 @@ builder 不是第二个入口而是第二个组装根：自带一份默认值、
 | `pipeline.withErrorMapper(…)` | `withErrorHandlers(…)`：类型早在 `ExceptionMapper`→`ErrorHandler` 改名时就换了，wither 补齐——两个活名字只剩一个 |
 | `HttpServerConfig.h2ResetBurstLimit` / `h2ResetWindow`（字段与 wither） | `FreewayHttpEngine.Wiring.withH2Reset(burst, window)`：引擎私有旋钮归能力侧；键不变（`freeway.http.h2.*`），容器路径由 `HttpModule` 自动接线，独立路径直传 `Wiring` |
 | `com.jujin.freeway.http.internal.SslReloader` | `com.jujin.freeway.http.engine.SslReloader`：热重载的驱动方由 `HttpModule` 生命周期钩子改为 `FreewayHttpEngine.start` 自驱（输入经 `Wiring.SslReload` 下推），类回引擎包、降包私有 |
+| `DatabaseBuilder.from(cfg).coercer(…).pool(…).dialect(…).rowMapper(…).build()` | `Database.create(cfg)`（部件全取标准默认）或 `Database.create(Database.Wiring.defaults(cfg).withCoercer(…)…)`（record `Wiring` 差量，`withX` 为写） |
+| `DatabaseBuilder.dialectForUrl(url)` | `Dialect.of(url)`：URL 判型归方言本身，独立面 `Database.create` 与容器面 `DbModule` 同走一处 |
+| `import com.jujin.freeway.db.DatabaseBuilder`（含 `new DatabaseBuilder()` 直构） | 类已删除——`Database` 上的 `create` 与 `DbModule` 是仅有的两副装配面孔 |
 
 行为变化（无需改调用点，但值得知道）：
 
@@ -103,6 +116,10 @@ builder 不是第二个入口而是第二个组装根：自带一份默认值、
 
 - `WebServerBuilder`（209 行）与 `internal.HttpModuleConfig`（151 行）：前者是第二个组装根，后者是
   第二个默认值所有者；派生规则现在只有 `HttpServer.create` 一处，键与默认只有值类型一处。
+- `DatabaseBuilder`（175 行）：独立面的第二个组装根——coercion 装配、`DatabaseImpl` 构造、
+  URL 判型全在它身上，而容器面 `DbModule` 判方言还得借它的静态 `dialectForUrl`。组装收进
+  `Database.create`（+ `Wiring` 差量），判型收进 `Dialect.of`，与 `HttpServer.create` +
+  `HttpModule` 同形；独立构建的能力原样保留且不需要容器。
 - `CorsFilter.Builder`：它不是"少写几个参数"的糖，而是第二个默认值持有者——methods/headers/maxAge
   在 `DEFAULT` 之外又硬写一遍，`*` + credentials 的校验判两次且两处异常类型不同，同时它比规范构造器
   还窄（给不出 `enabled=false`、`exposedHeaders`、`maxAge`）。

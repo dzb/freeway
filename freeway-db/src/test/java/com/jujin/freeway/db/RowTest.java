@@ -25,9 +25,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RowTest {
 
-    private static DatabaseBuilder builder(String name) {
-        return new DatabaseBuilder()
-            .config(PoolConfig.defaults(
+    private static Database.Wiring builder(String name) {
+        return Database.Wiring.defaults(PoolConfig.defaults(
                 "jdbc:h2:mem:" + name + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""));
     }
 
@@ -35,7 +34,7 @@ class RowTest {
 
     @Test
     void mapsAllBasicTypes() {
-        var db = builder(uniqueDb("basic")).build();
+        var db = Database.create(builder(uniqueDb("basic")));
         try (db) {
             db.execute("CREATE TABLE t (s VARCHAR(16), i INT, l BIGINT, d DOUBLE, b BOOLEAN, dec DECIMAL(10,2))");
             db.execute("INSERT INTO t VALUES ('hello', 42, 9999, 3.14, true, 123.45)");
@@ -53,7 +52,7 @@ class RowTest {
 
     @Test
     void nullableColumnsReturnNull() {
-        var db = builder(uniqueDb("nullable")).build();
+        var db = Database.create(builder(uniqueDb("nullable")));
         try (db) {
             db.execute("CREATE TABLE t (id INT, name VARCHAR(16))");
             db.execute("INSERT INTO t VALUES (1, null)");
@@ -82,7 +81,7 @@ class RowTest {
 
     @Test
     void mapsTemporalTypes() {
-        var db = builder(uniqueDb("temporal")).build();
+        var db = Database.create(builder(uniqueDb("temporal")));
         try (db) {
             db.execute("CREATE TABLE t (d DATE, dt TIMESTAMP, t TIME)");
             db.execute("INSERT INTO t VALUES ('2024-06-15', '2024-06-15 14:30:00', '14:30:00')");
@@ -97,7 +96,7 @@ class RowTest {
 
     @Test
     void mapsInstant() {
-        var db = builder(uniqueDb("instant")).build();
+        var db = Database.create(builder(uniqueDb("instant")));
         try (db) {
             db.execute("CREATE TABLE t (ts TIMESTAMP)");
             db.execute("INSERT INTO t VALUES ('2024-06-15 14:30:00')");
@@ -113,7 +112,7 @@ class RowTest {
 
     @Test
     void mapsUuid() {
-        var db = builder(uniqueDb("uuid")).build();
+        var db = Database.create(builder(uniqueDb("uuid")));
         try (db) {
             db.execute("CREATE TABLE t (id UUID)");
             UUID id = UUID.randomUUID();
@@ -129,7 +128,7 @@ class RowTest {
 
     @Test
     void mapsBigInteger() {
-        var db = builder(uniqueDb("bigint")).build();
+        var db = Database.create(builder(uniqueDb("bigint")));
         try (db) {
             db.execute("CREATE TABLE t (val NUMERIC(38))");
             db.execute("INSERT INTO t VALUES (12345678901234567890)");
@@ -146,7 +145,7 @@ class RowTest {
 
     @Test
     void mapsBlobToBytes() {
-        var db = builder(uniqueDb("blob")).build();
+        var db = Database.create(builder(uniqueDb("blob")));
         try (db) {
             db.execute("CREATE TABLE t (id INT, data BYTEA)");
             byte[] input = "binary data here".getBytes(StandardCharsets.UTF_8);
@@ -162,7 +161,7 @@ class RowTest {
 
     @Test
     void mapsBlobEmpty() {
-        var db = builder(uniqueDb("blob_empty")).build();
+        var db = Database.create(builder(uniqueDb("blob_empty")));
         try (db) {
             db.execute("CREATE TABLE t (data BYTEA)");
             db.execute("INSERT INTO t VALUES (?)", (Object) new byte[0]);
@@ -177,7 +176,7 @@ class RowTest {
 
     @Test
     void mapsBlobNull() {
-        var db = builder(uniqueDb("blob_null")).build();
+        var db = Database.create(builder(uniqueDb("blob_null")));
         try (db) {
             db.execute("CREATE TABLE t (id INT, data BYTEA)");
             db.execute("INSERT INTO t VALUES (1, null)");
@@ -192,7 +191,7 @@ class RowTest {
 
     @Test
     void columnsReturnsAllColumnNames() {
-        var db = builder(uniqueDb("cols")).build();
+        var db = Database.create(builder(uniqueDb("cols")));
         try (db) {
             db.execute("CREATE TABLE t (a int, b varchar(8), c boolean)");
             db.execute("INSERT INTO t VALUES (1, 'x', true)");
@@ -209,7 +208,7 @@ class RowTest {
 
     @Test
     void rawReturnsObject() {
-        var db = builder(uniqueDb("raw")).build();
+        var db = Database.create(builder(uniqueDb("raw")));
         try (db) {
             db.execute("CREATE TABLE t (val int)");
             db.execute("INSERT INTO t VALUES (42)");
@@ -222,7 +221,7 @@ class RowTest {
 
     @Test
     void columnAliasUsesLabel() {
-        var db = builder(uniqueDb("alias")).build();
+        var db = Database.create(builder(uniqueDb("alias")));
         try (db) {
             db.execute("CREATE TABLE t (original_name varchar(8))");
             db.execute("INSERT INTO t VALUES ('test')");
@@ -238,7 +237,7 @@ class RowTest {
 
     @Test
     void mapsMultipleRows() {
-        var db = builder(uniqueDb("multi")).build();
+        var db = Database.create(builder(uniqueDb("multi")));
         try (db) {
             db.execute("CREATE TABLE t (id int, label varchar(16))");
             db.execute("INSERT INTO t VALUES (1, 'a'), (2, 'b'), (3, 'c')");
@@ -254,7 +253,7 @@ class RowTest {
 
     @Test
     void emptyResult() {
-        var db = builder(uniqueDb("empty")).build();
+        var db = Database.create(builder(uniqueDb("empty")));
         try (db) {
             db.execute("CREATE TABLE t (id int)");
 
@@ -266,7 +265,7 @@ class RowTest {
 
     @Test
     void oneReturnsEmptyOptional() {
-        var db = builder(uniqueDb("none")).build();
+        var db = Database.create(builder(uniqueDb("none")));
         try (db) {
             db.execute("CREATE TABLE t (id int)");
 
@@ -280,7 +279,7 @@ class RowTest {
 
     @Test
     void genericGetterCoerces() {
-        var db = builder(uniqueDb("generic")).build();
+        var db = Database.create(builder(uniqueDb("generic")));
         try (db) {
             db.execute("CREATE TABLE t (id int)");
             db.execute("INSERT INTO t VALUES (100)");
@@ -297,7 +296,7 @@ class RowTest {
 
     @Test
     void toStringContainsValues() {
-        var db = builder(uniqueDb("tostring")).build();
+        var db = Database.create(builder(uniqueDb("tostring")));
         try (db) {
             db.execute("CREATE TABLE t (id int, name varchar(8))");
             db.execute("INSERT INTO t VALUES (1, 'x')");

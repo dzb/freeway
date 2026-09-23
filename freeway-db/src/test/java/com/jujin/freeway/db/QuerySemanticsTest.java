@@ -15,9 +15,7 @@ class QuerySemanticsTest {
         // result is silently truncated. Callers that must detect ambiguity
         // use list() and check the size.
         String dbName = "freeway_query_one_multi_" + UUID.randomUUID().toString().replace('-', '_');
-        Database db = new DatabaseBuilder()
-            .config(PoolConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
-            .build();
+        Database db = Database.create(PoolConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""));
 
         try (db) {
             db.execute("create table multi_row (id int)");
@@ -39,9 +37,7 @@ class QuerySemanticsTest {
     @Test
     void emptyCollectionExpansionFailsWithGuidance() {
         String dbName = "freeway_query_empty_coll_" + UUID.randomUUID().toString().replace('-', '_');
-        Database db = new DatabaseBuilder()
-            .config(PoolConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
-            .build();
+        Database db = Database.create(PoolConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""));
 
         try (db) {
             SqlException ex = assertThrows(
@@ -60,9 +56,7 @@ class QuerySemanticsTest {
     @Test
     void emptyArrayExpansionFailsWithGuidance() {
         String dbName = "freeway_query_empty_arr_" + UUID.randomUUID().toString().replace('-', '_');
-        Database db = new DatabaseBuilder()
-            .config(PoolConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
-            .build();
+        Database db = Database.create(PoolConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""));
 
         try (db) {
             SqlException ex = assertThrows(
@@ -81,9 +75,7 @@ class QuerySemanticsTest {
     @Test
     void collectionExpansionWorksForPositionalParameters() {
         String dbName = "freeway_query_" + UUID.randomUUID().toString().replace('-', '_');
-        Database db = new DatabaseBuilder()
-            .config(PoolConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
-            .build();
+        Database db = Database.create(PoolConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""));
 
         try (db) {
             Integer value = db.query("select 1 where 1 in (?)", List.of(1, 2))
@@ -96,9 +88,7 @@ class QuerySemanticsTest {
     @Test
     void collectionExpansionRejectsTrailingPositionalParameters() {
         String dbName = "freeway_query_tail_" + UUID.randomUUID().toString().replace('-', '_');
-        Database db = new DatabaseBuilder()
-            .config(PoolConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
-            .build();
+        Database db = Database.create(PoolConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""));
 
         try (db) {
             assertThrows(
@@ -112,9 +102,7 @@ class QuerySemanticsTest {
     @Test
     void collectionExpansionRejectsUnknownNamedParameters() {
         String dbName = "freeway_query_named_" + UUID.randomUUID().toString().replace('-', '_');
-        Database db = new DatabaseBuilder()
-            .config(PoolConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
-            .build();
+        Database db = Database.create(PoolConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""));
 
         try (db) {
             assertThrows(
@@ -130,9 +118,7 @@ class QuerySemanticsTest {
     @Test
     void positionalQuestionMarksInsideStringsAndCommentsAreIgnored() {
         String dbName = "freeway_query_literal_q_" + UUID.randomUUID().toString().replace('-', '_');
-        Database db = new DatabaseBuilder()
-            .config(PoolConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
-            .build();
+        Database db = Database.create(PoolConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""));
 
         try (db) {
             String value = db.query(
@@ -150,9 +136,7 @@ class QuerySemanticsTest {
         // The SQLException wrapper must carry the SQL like the composition-
         // time errors do — a caught exception alone should point at it.
         String dbName = "freeway_query_jdbc_fail_" + UUID.randomUUID().toString().replace('-', '_');
-        Database db = new DatabaseBuilder()
-            .config(PoolConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
-            .build();
+        Database db = Database.create(PoolConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""));
 
         try (db) {
             SqlException ex = assertThrows(

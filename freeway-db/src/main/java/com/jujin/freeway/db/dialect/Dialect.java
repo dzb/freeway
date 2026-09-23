@@ -56,6 +56,63 @@ public interface Dialect {
      */
     String dialectId();
 
+    // ====================== URL detection ======================
+
+    /**
+     * Detects the SQL dialect from a JDBC URL. A {@code null} or blank URL
+     * (no database configured yet) defaults to {@link PostgresDialect}, but a
+     * URL with an unrecognized scheme fails fast: silently falling back to
+     * PostgreSQL for {@code jdbc:oracle:...}, {@code jdbc:sqlserver:...}, etc.
+     * would generate PostgreSQL syntax (SELECT statements, {@code ON
+     * CONFLICT}, {@code pg_indexes}) that the target database rejects.
+     *
+     * <p>Single source of truth for URL-based dialect detection — shared by
+     * {@code Database.create} (standalone assembly) and {@code DbModule}
+     * (IoC assembly) so both resolve the same dialect for the same URL.
+     *
+     * @param url JDBC URL; may be {@code null} or blank (treated as no URL →
+     *            default PostgreSQL dialect)
+     * @throws IllegalStateException when the URL scheme is not a supported
+     *                               database — set the dialect explicitly
+     *                               ({@code Database.create} with
+     *                               {@code Wiring…withDialect(…)}, or the
+     *                               {@code freeway.db.dialect} config key)
+     */
+    static Dialect of(String url) {
+        if (url == null || url.isBlank()) {
+            return new PostgresDialect();
+        }
+        String upper = url.toUpperCase();
+        if (url.contains("jdbc:mysql") || url.contains("jdbc:mariadb")) {
+            return new MySqlDialect();
+        }
+        if (url.contains("jdbc:sqlite")) {
+            return new SqliteDialect();
+        }
+        if (url.contains("jdbc:h2")) {
+            if (
+                upper.contains("MODE=MYSQL") ||
+                upper.contains("MODE=MARIADB")
+            ) {
+                return new MySqlDialect();
+            }
+            if (upper.contains("MODE=POSTGRESQL")) {
+                return new PostgresDialect();
+            }
+            return new H2Dialect();
+        }
+        if (url.contains("jdbc:postgresql")) {
+            return new PostgresDialect();
+        }
+        throw new IllegalStateException(
+            "No SQL dialect for JDBC URL '" + url + "' — unsupported database. "
+                + "Supported URL schemes: mysql, mariadb, sqlite, h2, postgresql. "
+                + "Set the dialect explicitly via Database's wiring "
+                + "(Database.create(Wiring.defaults(config).withDialect(…))) "
+                + "or the freeway.db.dialect config key"
+        );
+    }
+
     /**
      * Returns the quote character used for <em>generated</em> DDL
      * ({@code "} or {@code `}). This is the dialect's primary identifier quote

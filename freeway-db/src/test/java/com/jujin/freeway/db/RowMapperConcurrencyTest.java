@@ -20,9 +20,7 @@ class RowMapperConcurrencyTest {
     @Test
     void concurrentRecordMapping() throws Exception {
         String dbName = "freeway_conc_record_" + UUID.randomUUID().toString().replace('-', '_');
-        Database db = new DatabaseBuilder()
-            .config(PoolConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
-            .build();
+        Database db = Database.create(PoolConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""));
 
         try (db) {
             db.execute("create table items (id bigint primary key, label varchar(32) not null)");
@@ -54,9 +52,7 @@ class RowMapperConcurrencyTest {
     @Test
     void concurrentBeanMapping() throws Exception {
         String dbName = "freeway_conc_bean_" + UUID.randomUUID().toString().replace('-', '_');
-        Database db = new DatabaseBuilder()
-            .config(PoolConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
-            .build();
+        Database db = Database.create(PoolConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""));
 
         try (db) {
             db.execute("create table users (user_id bigint primary key, full_name varchar(64) not null)");
@@ -91,9 +87,7 @@ class RowMapperConcurrencyTest {
     @Test
     void concurrentSimpleMapping() throws Exception {
         String dbName = "freeway_conc_simple_" + UUID.randomUUID().toString().replace('-', '_');
-        Database db = new DatabaseBuilder()
-            .config(PoolConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
-            .build();
+        Database db = Database.create(PoolConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""));
 
         try (db) {
             db.execute("create table vals (v varchar(16) not null)");
@@ -121,10 +115,7 @@ class RowMapperConcurrencyTest {
     @Test
     void concurrentCustomMapper() throws Exception {
         String dbName = "freeway_conc_custom_" + UUID.randomUUID().toString().replace('-', '_');
-        Database db = new DatabaseBuilder()
-            .config(PoolConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
-            .rowMapper(Score.class, (rs, rowNum) -> new Score(rs.getLong("id"), rs.getInt("score") * 2))
-            .build();
+        Database db = Database.create(Database.Wiring.defaults(PoolConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", "")).withRowMapper(Score.class, (rs, rowNum) -> new Score(rs.getLong("id"), rs.getInt("score") * 2)));
 
         try (db) {
             db.execute("create table scores (id bigint primary key, score int not null)");
@@ -155,9 +146,7 @@ class RowMapperConcurrencyTest {
     @Test
     void mixedConcurrentWorkload() throws Exception {
         String dbName = "freeway_conc_mixed_" + UUID.randomUUID().toString().replace('-', '_');
-        Database db = new DatabaseBuilder()
-            .config(PoolConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
-            .build();
+        Database db = Database.create(PoolConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""));
 
         try (db) {
             db.execute("create table t1 (id bigint primary key, name varchar(16))");

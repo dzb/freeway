@@ -20,12 +20,10 @@ class EnumParameterTest {
     enum Status { ACTIVE, ARCHIVED }
 
     private static Database db() {
-        return new DatabaseBuilder()
-            .config(PoolConfig.defaults(
+        return Database.create(PoolConfig.defaults(
                 "jdbc:h2:mem:enum_" + UUID.randomUUID().toString().replace('-', '_')
                     + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
-                "sa", ""))
-            .build();
+                "sa", ""));
     }
 
     @Test

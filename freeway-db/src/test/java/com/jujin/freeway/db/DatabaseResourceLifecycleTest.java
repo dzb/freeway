@@ -272,6 +272,6 @@ class DatabaseResourceLifecycleTest {
             defaults.healthCheckTimeout(),
             defaults.queryTimeout()
         );
-        return new DatabaseBuilder().config(config).build();
+        return Database.create(config);
     }
 }

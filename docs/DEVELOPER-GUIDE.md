@@ -1231,7 +1231,7 @@ try {
 
 ```java
 PoolConfig config = PoolConfig.defaults("jdbc:h2:mem:test", "sa", "");
-Database db = new DatabaseBuilder().config(config).build();
+Database db = Database.create(config);
 Orm orm = Orm.of(db);
 ```
 
@@ -1407,15 +1407,15 @@ new PoolConfig(url, user, pass,
 | `healthCheckTimeout` | 5s |
 | `queryTimeout` | 15s |
 
-`DatabaseBuilder` accepts an optional `pool(Pool)` override:
+`Database.create` accepts an optional pool override through `Wiring…withPool(...)`:
 
 ```java
-// Default — DatabaseBuilder creates a PoolDefault from PoolConfig
-Database db = new DatabaseBuilder().config(config).build();
+// Default — create() builds a PoolDefault from PoolConfig
+Database db = Database.create(config);
 
 // Explicit pool — pass a pre-built instance
 Pool pool = new PoolDefault(config);
-Database db = new DatabaseBuilder().config(config).pool(pool).build();
+Database db = Database.create(Database.Wiring.defaults(config).withPool(pool));
 ```
 
 **IoC pool selection:** `DbModule` binds `PoolDefault` (id `"builtin"`, no `.primary()`). Extension modules like `HikariPoolModule` bind their pool with `.primary()`. The container automatically selects the primary pool when multiple bindings exist — same pattern as HTTP engine selection:
@@ -1443,7 +1443,7 @@ Third-party connection pool adapter for [HikariCP](https://github.com/brettwoold
 ```java
 PoolConfig config = PoolConfig.defaults("jdbc:postgresql://localhost/db", "user", "pass");
 HikariPool pool = new HikariPool(config);
-Database db = new DatabaseBuilder().config(config).pool(pool).build();
+Database db = Database.create(Database.Wiring.defaults(config).withPool(pool));
 ```
 
 **IoC usage:** add `HikariPoolModule` to the launcher — it binds `HikariPool` as `id("hikari").primary()`, overriding the built-in `PoolDefault`. No config keys needed.
@@ -1488,7 +1488,7 @@ freeway.db.dialect=mysql
 
 An explicit `freeway.db.dialect` always wins, and an unknown explicit id fails
 fast. Auto-detection from the JDBC URL is shared between standalone
-`DatabaseBuilder` and `DbModule`; a `null`/blank URL (no database configured
+`Database.create` and `DbModule`; a `null`/blank URL (no database configured
 yet) is the only case that defaults to `PostgresDialect`.
 
 **Built-in dialects:**
@@ -2249,7 +2249,7 @@ try {
 
 // DB tests (H2 in-memory)
 PoolConfig config = PoolConfig.defaults("jdbc:h2:mem:test;DB_CLOSE_DELAY=-1", "sa", "");
-Database db = new DatabaseBuilder().config(config).build();
+Database db = Database.create(config);
 Schema.ensure(db, TestEntity.class);
 ```
 
