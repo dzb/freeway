@@ -2,7 +2,6 @@ package com.jujin.freeway.cloud.event;
 
 import com.jujin.freeway.ioc.EventSink;
 import java.util.Objects;
-import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -26,18 +25,6 @@ final class CloudEventSink implements EventSink {
 
     public CloudEventSink(PeerHub hub) {
         this.hub = Objects.requireNonNull(hub, "hub");
-    }
-
-    @Override
-    public void send(String topic, Object event) {
-        send(topic, event, EventSink.Channel.CLASS);
-    }
-
-    @Override
-    public void send(String topic, Object event, EventSink.Channel channel) {
-        // No bus-supplied identity — mint one. Reachable only from a direct
-        // caller: the bus always uses the four-argument form.
-        send(topic, event, channel, UUID.randomUUID().toString());
     }
 
     @Override

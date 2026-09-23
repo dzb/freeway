@@ -25,11 +25,11 @@ final class EventExecutorSupport {
     private volatile ExecutorService defaultAsyncExecutor;
     private volatile ExecutorService orderedExecutor;
 
-    public EventExecutorSupport(Runnable ensureOpen) {
+    EventExecutorSupport(Runnable ensureOpen) {
         this(ensureOpen, DEFAULT_SHUTDOWN_TIMEOUT_MS);
     }
 
-    /** Package-private: tests shrink the timeout to keep close() fast. */
+    /** Tests shrink the timeout to keep close() fast. */
     EventExecutorSupport(Runnable ensureOpen, long shutdownTimeoutMs) {
         this.ensureOpen = Objects.requireNonNull(ensureOpen, "ensureOpen");
         this.shutdownTimeoutMs = shutdownTimeoutMs;
@@ -41,11 +41,11 @@ final class EventExecutorSupport {
      * defaults (virtual-thread async / ordered) are shut down on
      * {@link com.jujin.freeway.ioc.EventBus#close()}.
      */
-    public void setAsyncExecutor(Executor executor) {
+    void setAsyncExecutor(Executor executor) {
         this.asyncExecutor = Objects.requireNonNull(executor, "executor");
     }
 
-    public Executor asyncExecutor() {
+    Executor asyncExecutor() {
         Executor e = asyncExecutor;
         if (e != null) {
             return e;
@@ -64,7 +64,7 @@ final class EventExecutorSupport {
         }
     }
 
-    public ExecutorService orderedExecutor() {
+    ExecutorService orderedExecutor() {
         ExecutorService e = orderedExecutor;
         if (e != null) {
             return e;
@@ -95,7 +95,7 @@ final class EventExecutorSupport {
      * Safe because {@code EventBus.close()} sets the closed flag before
      * calling in, and creation re-checks that flag under this lock.</p>
      */
-    public void close() {
+    void close() {
         ExecutorService async;
         ExecutorService ordered;
         synchronized (this) {

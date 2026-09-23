@@ -8,18 +8,13 @@ public final class Subscription<E> implements Consumer<E> {
 
     private final Class<E> eventType;
     private final Consumer<E> handler;
+    /** Non-null for a string-topic subscription; null for a class subscription. */
     private final String topic;
 
-    Subscription(Class<E> eventType, Consumer<E> handler) {
+    Subscription(Class<E> eventType, Consumer<E> handler, String topic) {
         this.eventType = Objects.requireNonNull(eventType, "eventType");
         this.handler = Objects.requireNonNull(handler, "handler");
-        this.topic = null;
-    }
-
-    Subscription(Class<E> eventType, Consumer<E> handler, String topic) {
-        this.eventType = eventType;
-        this.handler = Objects.requireNonNull(handler, "handler");
-        this.topic = Objects.requireNonNull(topic, "topic");
+        this.topic = topic;
     }
 
     Class<E> eventType() {

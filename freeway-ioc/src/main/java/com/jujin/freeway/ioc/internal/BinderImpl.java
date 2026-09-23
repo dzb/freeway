@@ -25,7 +25,8 @@ final class BinderImpl implements Binder {
     private final ContainerImpl container;
     private final ContributionRegistry contributions;
     private final List<BindingImpl<?>> pending = new ArrayList<>();
-    private Class<?> currentModule;
+    /** The {@code @Marker} set of the module now binding — inherited by each of its bindings. */
+    private Set<Class<?>> moduleMarkers = Set.of();
 
     BinderImpl(ContainerImpl container, ContributionRegistry contributions) {
         this.container = Objects.requireNonNull(container, "container");
@@ -44,9 +45,9 @@ final class BinderImpl implements Binder {
         for (ModuleNode node : tree.bindOrder()) {
             ModuleEx module = node.resolve();
             LOG.debug("Installing module: {}", module.name());
-            currentModule = module.getClass();
+            moduleMarkers = MarkerIndex.extractModuleMarkers(module.getClass());
             module.bind(this);
-            currentModule = null;
+            moduleMarkers = Set.of();
             flushPending();
         }
     }
@@ -54,12 +55,8 @@ final class BinderImpl implements Binder {
     @Override
     public <T> Binding<T> bind(Class<T> type) {
         BindingImpl<T> binding = new BindingImpl<>(container, type);
-        // Propagate module-level markers
-        if (currentModule != null) {
-            Set<Class<?>> moduleMarkers = MarkerIndex.extractModuleMarkers(currentModule);
-            if (!moduleMarkers.isEmpty()) {
-                binding.addMarkers(moduleMarkers);
-            }
+        if (!moduleMarkers.isEmpty()) {
+            binding.addMarkers(moduleMarkers);
         }
         pending.add(binding);
         return binding;
@@ -67,7 +64,7 @@ final class BinderImpl implements Binder {
 
     /** Registers this module's declared bindings. Called after each module's
      *  {@code bind()} so later modules see earlier ones. */
-    void flushPending() {
+    private void flushPending() {
         for (BindingImpl<?> binding : pending) {
             container.register(binding);
         }

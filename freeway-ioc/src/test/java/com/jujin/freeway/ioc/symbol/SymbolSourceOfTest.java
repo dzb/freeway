@@ -75,6 +75,19 @@ class SymbolSourceOfTest {
     }
 
     @Test
+    void lenientResolveReturnsTheDefaultVerbatim() {
+        // Regression: the default used to be spliced into "${key:default}" and
+        // read back through the expression grammar — ":-" ate a leading dash
+        // and the first '}' ended the expression.
+        SymbolSource symbols = standalone();
+
+        assertEquals("-1", symbols.resolve(KEY, "-1"));
+        assertEquals("a}b", symbols.resolve(KEY, "a}b"));
+        assertEquals("${" + KEY + ".host}", symbols.resolve(KEY, "${" + KEY + ".host}"),
+            "a default is a value, not an expression");
+    }
+
+    @Test
     void parsesSpecsThroughTheCoercerItWasGiven() {
         // Coercer-backed spec: no per-key parser, typed by the chain's Coercer.
         System.setProperty(KEY, "42");

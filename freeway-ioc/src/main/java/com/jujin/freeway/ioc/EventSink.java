@@ -3,12 +3,15 @@ package com.jujin.freeway.ioc;
 /**
  * Sink from the local event bus to an external message queue (Kafka, RabbitMQ, etc.).
  *
- * <p>Implementations may override the channel-aware {@link
- * #send(String, Object, Channel)} to stamp the wire envelope with the
- * dispatch channel, and the identity-carrying {@link #send(String, Object,
- * Channel, String)} to reuse the id the bus minted for this dispatch. Both
- * default to the narrower form, so existing implementations keep working
- * unchanged.
+ * <p>One method: the bus always calls {@link #send(String, Object, Channel, String)}
+ * with the dispatch channel and the id it minted once for the whole fan-out,
+ * so the same logical event carries one identity across every transport it is
+ * sent to. Without the shared id each sink would mint its own, and no consumer
+ * could ever correlate the copies — which is what makes cross-transport dedup
+ * possible at all: when one event arrives over two channels (say a WS mesh and
+ * a Kafka broker), the second arrival is recognizable <em>only</em> because both
+ * copies carry the same id. Implementations that have no use for the id or the
+ * channel may ignore them.
  *
  * <p><b>Error contract:</b> {@code send} must not throw — the bus isolates
  * a throwing sink (warn-logged, never retried), so dispatch survives, but
@@ -26,34 +29,15 @@ public interface EventSink {
         TOPIC
     }
 
-    void send(String topic, Object event);
-
     /**
-     * Channel-aware send. The default delegates to {@link #send(String, Object)}.
+     * Sends one dispatched event.
      *
+     * @param topic   the sink topic: the string topic for {@link Channel#TOPIC},
+     *                the {@code @Topic} value or simple class name for {@link Channel#CLASS}
+     * @param event   the event (or topic payload) that was dispatched
      * @param channel the local dispatch channel the event was published on
+     * @param eventId bus-minted identity of this dispatch, shared by every
+     *                sink in the fan-out; never null
      */
-    default void send(String topic, Object event, Channel channel) {
-        send(topic, event);
-    }
-
-    /**
-     * Identity-carrying send. {@code eventId} is the id the bus minted once
-     * for this dispatch and handed to <em>every</em> sink — so the same
-     * logical event carries one identity across every transport it is
-     * sent to. Without it each sink mints its own, and no consumer can
-     * ever correlate the copies.
-     *
-     * <p>Reusing it is what makes cross-transport dedup possible at all:
-     * when one event arrives over two channels (say a WS mesh and a Kafka
-     * broker), the second arrival is recognizable <em>only</em> because both
-     * copies carry the same id. Implementations that have no use for the id
-     * can leave this default in place.
-     *
-     * @param channel the local dispatch channel the event was published on
-     * @param eventId bus-minted identity of this dispatch; never null
-     */
-    default void send(String topic, Object event, Channel channel, String eventId) {
-        send(topic, event, channel);
-    }
+    void send(String topic, Object event, Channel channel, String eventId);
 }

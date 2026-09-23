@@ -24,7 +24,7 @@ class EventBusSinkTest {
                 .add(EventSubscriber.of(PostCreatedEvent.class, e -> { }))
         );
         EventBus bus = new EventBus(container);
-        bus.addEventSink((topic, event) -> {
+        bus.addEventSink((topic, event, channel, eventId) -> {
             throw new IllegalStateException("mq down");
         });
 
@@ -42,8 +42,8 @@ class EventBusSinkTest {
         EventBus bus = new EventBus(container);
         var first = new java.util.ArrayList<String>();
         var second = new java.util.ArrayList<String>();
-        bus.addEventSink((topic, event) -> first.add(event.getClass().getSimpleName()));
-        bus.addEventSink((topic, event) -> second.add(event.getClass().getSimpleName()));
+        bus.addEventSink((topic, event, channel, eventId) -> first.add(event.getClass().getSimpleName()));
+        bus.addEventSink((topic, event, channel, eventId) -> second.add(event.getClass().getSimpleName()));
 
         bus.publish(new PostCreatedEvent(new Post("x")));
 
@@ -62,7 +62,7 @@ class EventBusSinkTest {
                 .add(EventSubscriber.of(PostCreatedEvent.class, e -> e.stop()))
         );
         EventBus bus = new EventBus(container);
-        bus.addEventSink((topic, event) -> sent.add(event.getClass().getSimpleName()));
+        bus.addEventSink((topic, event, channel, eventId) -> sent.add(event.getClass().getSimpleName()));
 
         bus.publish(new PostCreatedEvent(new Post("x")));
 
@@ -83,7 +83,7 @@ class EventBusSinkTest {
                 .add(EventSubscriber.of(PostCreatedEvent.class, received::add))
         );
         EventBus bus = new EventBus(container);
-        bus.addEventSink((topic, event) -> sent.add(event.getClass().getSimpleName()));
+        bus.addEventSink((topic, event, channel, eventId) -> sent.add(event.getClass().getSimpleName()));
 
         bus.publishInbound(new PostCreatedEvent(new Post("remote")), "remote-1");
 
@@ -102,7 +102,7 @@ class EventBusSinkTest {
         Container container = Freeway.create();
         EventBus bus = new EventBus(container);
         bus.subscribe("order.placed", payload -> received.add(String.valueOf(payload)));
-        bus.addEventSink((topic, event) -> sent.add(topic));
+        bus.addEventSink((topic, event, channel, eventId) -> sent.add(topic));
 
         bus.publishInbound("order.placed", "from-remote", "remote-1");
 
@@ -123,12 +123,9 @@ class EventBusSinkTest {
         EventBus bus = new EventBus(container);
         bus.addEventSink(new EventSink() {
             @Override
-            public void send(String topic, Object event) {
-                channels.add(null);
-            }
-
-            @Override
-            public void send(String topic, Object event, EventSink.Channel channel) {
+            public void send(
+                String topic, Object event, EventSink.Channel channel, String eventId
+            ) {
                 channels.add(channel);
             }
         });
@@ -148,7 +145,7 @@ class EventBusSinkTest {
         Container container = Freeway.create(binder -> { });
         EventBus bus = container.get(EventBus.class);
         List<String> seen = new ArrayList<>();
-        EventSink sink = (topic, event) -> seen.add(topic);
+        EventSink sink = (topic, event, channel, eventId) -> seen.add(topic);
         bus.addEventSink(sink);
         bus.addEventSink(sink);
 
@@ -164,7 +161,7 @@ class EventBusSinkTest {
         Container container = Freeway.create(binder -> { });
         EventBus bus = container.get(EventBus.class);
         List<String> seen = new ArrayList<>();
-        EventSink sink = (topic, event) -> seen.add(topic);
+        EventSink sink = (topic, event, channel, eventId) -> seen.add(topic);
         bus.addEventSink(sink);
 
         assertTrue(bus.removeEventSink(sink), "an installed sink is removable");
@@ -180,13 +177,13 @@ class EventBusSinkTest {
         Container container = Freeway.create(binder -> { });
         EventBus bus = container.get(EventBus.class);
         List<String> seen = new ArrayList<>();
-        bus.addEventSink((topic, event) -> seen.add(topic));
+        bus.addEventSink((topic, event, channel, eventId) -> seen.add(topic));
 
         bus.close();
 
         // Removal stays callable during shutdown so a module's stop hook can
         // release its channel.
-        assertDoesNotThrow(() -> bus.removeEventSink((topic, event) -> { }));
+        assertDoesNotThrow(() -> bus.removeEventSink((topic, event, channel, eventId) -> { }));
         assertTrue(seen.isEmpty(), "close must not leave sinks attached");
         container.close();
     }
@@ -196,8 +193,8 @@ class EventBusSinkTest {
         Container container = Freeway.create(binder -> { });
         EventBus bus = container.get(EventBus.class);
         List<String> seen = new ArrayList<>();
-        bus.addEventSink((topic, event) -> { throw new IllegalStateException("down"); });
-        bus.addEventSink((topic, event) -> seen.add(topic));
+        bus.addEventSink((topic, event, channel, eventId) -> { throw new IllegalStateException("down"); });
+        bus.addEventSink((topic, event, channel, eventId) -> seen.add(topic));
 
         bus.publish("t", "payload");
 
@@ -251,11 +248,6 @@ class EventBusSinkTest {
     /** Captures the eventId the bus hands it, to assert identity sharing. */
     private static final class IdRecordingSink implements EventSink {
         final List<String> ids = new ArrayList<>();
-
-        @Override
-        public void send(String topic, Object event) {
-            send(topic, event, Channel.CLASS, null);
-        }
 
         @Override
         public void send(String topic, Object event, Channel channel, String eventId) {

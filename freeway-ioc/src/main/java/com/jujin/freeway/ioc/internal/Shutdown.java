@@ -19,13 +19,13 @@ final class Shutdown {
     private final Set<Object> preDestroyed = Collections.newSetFromMap(new IdentityHashMap<>());
     private final Set<Object> closed = Collections.newSetFromMap(new IdentityHashMap<>());
     /**
-     * The container-managed message service ({@link EventBus}),
-     * closed only after every lifecycle callback has run: {@code @PreDestroy}
-     * code may still publish events (the documented "look up services during
-     * close" contract), and a bus closed mid-drain would turn those into
-     * failures that abort the whole shutdown.
+     * The container-managed {@link EventBus}, closed only after every
+     * lifecycle callback has run: {@code @PreDestroy} code may still publish
+     * events (the documented "look up services during close" contract), and a
+     * bus closed mid-drain would turn those into failures that abort the whole
+     * shutdown.
      */
-    private final List<AutoCloseable> deferredMessageServices = new ArrayList<>();
+    private final List<EventBus> deferredBuses = new ArrayList<>();
 
     Shutdown(Map<ServiceKey, Object> targetCache) {
         this.targetCache = targetCache;
@@ -40,33 +40,31 @@ final class Shutdown {
      * callback chain that realizes a fresh service on every pass.
      *
      * <p>Deliberately does NOT clear the caches or seal the container — the
-     * caller does that atomically under {@link ServiceRuntime#REALIZE_LOCK}
-     * after this drain (see {@link ContainerImpl#close()}), so a realization
-     * racing {@code close()} cannot insert a fresh singleton past the last
-     * snapshot and escape lifecycle cleanup.
+     * caller does that atomically under the realize lock after this drain
+     * (see {@link ServiceRuntime#seal}), so a realization racing
+     * {@code close()} cannot insert a fresh singleton past the last snapshot
+     * and escape lifecycle cleanup.
      */
     RuntimeException close() {
         RuntimeException failure = drainRemaining(null);
-        // The message service is the last thing to close: every
-        // @PreDestroy/close callback has already run, so no code can publish
-        // into a closed bus.
-        for (AutoCloseable service : deferredMessageServices) {
+        // The bus is the last thing to close: every @PreDestroy/close callback
+        // has already run, so no code can publish into a closed bus.
+        for (EventBus bus : deferredBuses) {
             try {
-                service.close();
-            } catch (Exception | Error ex) {
-                // Exception covers AutoCloseable.close()'s checked declaration.
+                bus.close();
+            } catch (RuntimeException | Error ex) {
                 failure = accumulateFailure(failure,
-                    "Unable to close container-managed message service", ex);
+                    "Unable to close the container-managed EventBus", ex);
             }
         }
-        deferredMessageServices.clear();
+        deferredBuses.clear();
         return failure;
     }
 
     /**
      * Final drain pass for targets realized concurrently with the main drain.
-     * The caller must hold {@link ServiceRuntime#REALIZE_LOCK} while invoking
-     * this: under the lock no new realization can add targets after this
+     * The caller must hold the realize lock ({@link ServiceRuntime#seal})
+     * while invoking this: under the lock no new realization can add targets after this
      * pass's last snapshot, so the pass stabilizes in at most two iterations
      * and the subsequent cache clear cannot orphan anything. Targets already
      * processed by {@link #close()} are skipped via the shared dedup sets.
@@ -105,7 +103,7 @@ final class Shutdown {
                         // Bus services outlive the drain (a @PreDestroy may
                         // still publish); arm order is load-bearing and
                         // compiler-checked — AutoCloseable last.
-                        case EventBus bus -> deferredMessageServices.add(bus);
+                        case EventBus bus -> deferredBuses.add(bus);
                         case AutoCloseable closeable -> closeable.close();
                         default -> {}
                     }

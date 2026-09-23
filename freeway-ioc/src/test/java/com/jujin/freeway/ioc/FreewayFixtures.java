@@ -440,7 +440,6 @@ final class EndpointHolder {
 
 final class TimeoutHolder {
     @Symbol("${" + TIMEOUT_KEY + "}")
-    @IntermediateType(Integer.class)
     private Timeout timeout;
 
     Timeout timeout() {
@@ -643,13 +642,12 @@ final class PrototypeHoldingUnsafe {
     private UnsafeShared shared;
 }
 
-@ThreadSafe
-@NotThreadSafe
-final class ConflictingContract {
+final class PrototypeHoldingUnsafeViaInterface implements SharedContract {
+    @Inject
+    private SharedContract shared;
 }
 
-@ThreadSafe
-final class ThreadSafeGreeterImpl implements Greeter {
+final class SafeGreeterImpl implements Greeter {
     @Override
     public String greet() {
         return "safe";

@@ -1,6 +1,5 @@
 package com.jujin.freeway.ioc;
 
-import com.jujin.freeway.ioc.extension.Extension;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -8,6 +7,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -108,13 +108,14 @@ final class EventSubscriptionIndex {
     }
 
     <E> Subscription<E> subscribeClass(Class<E> eventType, Consumer<E> handler) {
-        Subscription<E> sub = new Subscription<>(eventType, handler);
+        Subscription<E> sub = new Subscription<>(eventType, handler, null);
         runtimeSubs.computeIfAbsent(eventType, k -> new CopyOnWriteArrayList<>()).add(sub);
         return sub;
     }
 
     Subscription<Object> subscribeTopic(String topic, Consumer<Object> handler) {
-        Subscription<Object> sub = new Subscription<>(Object.class, handler, topic);
+        Subscription<Object> sub = new Subscription<>(
+            Object.class, handler, Objects.requireNonNull(topic, "topic"));
         runtimeTopicSubs.computeIfAbsent(topic, k -> new CopyOnWriteArrayList<>()).add(sub);
         return sub;
     }
@@ -149,13 +150,9 @@ final class EventSubscriptionIndex {
             if (moduleIndex != null) {
                 return;
             }
-            Extension<?> ext = container.extension(EventSubscriber.class);
             var classIdx = new HashMap<Class<?>, List<Consumer<Object>>>();
             var topicIdx = new HashMap<String, List<Consumer<Object>>>();
-            for (Object entry : ext.all()) {
-                if (!(entry instanceof EventSubscriber<?> sub)) {
-                    continue;
-                }
+            for (EventSubscriber<?> sub : container.extension(EventSubscriber.class).all()) {
                 Consumer<Object> handler = adapt(sub);
                 if (sub.topic() == null) {
                     classIdx.computeIfAbsent(sub.eventType(), k -> new ArrayList<>()).add(handler);

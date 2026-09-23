@@ -68,13 +68,7 @@ public record SymbolSpec<T>(
         T defaultValue,
         Function<String, T> parser
     ) {
-        return new SymbolSpec<>(
-            normalizedKey(key, type, parser),
-            type,
-            defaultValue,
-            parser,
-            false
-        );
+        return new SymbolSpec<>(requireKey(key, type), type, defaultValue, parser, false);
     }
 
     /**
@@ -87,10 +81,12 @@ public record SymbolSpec<T>(
      * an absent key and an empty one. Entries must not contain commas
      * (the same limitation HTTP header lists carry).
      */
+    @SuppressWarnings("unchecked")
     public static SymbolSpec<List<String>> list(String key, List<String> defaultValue) {
+        Class<List<String>> type = (Class<List<String>>) (Class<?>) List.class;
         return new SymbolSpec<>(
-            key,
-            (Class<List<String>>) (Class<?>) List.class,
+            requireKey(key, type),
+            type,
             defaultValue == null ? null : List.copyOf(defaultValue),
             SymbolSpec::splitList,
             false
@@ -177,26 +173,15 @@ public record SymbolSpec<T>(
         Class<T> type,
         Function<String, T> parser
     ) {
-        return new SymbolSpec<>(
-            normalizedKey(key, type, parser),
-            type,
-            null,
-            parser,
-            true
-        );
+        return new SymbolSpec<>(requireKey(key, type), type, null, parser, true);
     }
 
-    private static String normalizedKey(
-        String key,
-        Class<?> type,
-        Function<String, ?> parser
-    ) {
+    /** Every factory's key check; a null parser is legal (the coercer-parsed form). */
+    private static String requireKey(String key, Class<?> type) {
         if (key == null || key.isBlank()) {
             throw new IllegalArgumentException("Config key must not be blank");
         }
         Objects.requireNonNull(type, "type");
-        // parser may be null — the coercer-parsed form (of/required without a
-        // parser) resolves via parse(raw, Coercer) instead.
         return key;
     }
 

@@ -27,7 +27,7 @@ import java.util.function.Function;
  *
  * <p>Deferred creations drain in two passes: the config layer
  * ({@link SymbolProvider}, {@link CoerceRule}) first, everything else after.
- * Deferred consumers resolve {@code @Symbol}/{@code @Value} and coerce at
+ * Deferred consumers resolve {@code @Symbol} and coerce at
  * construction time, so their providers and rules must already be in place —
  * a single FIFO queue made that depend on declaration order.
  *
@@ -127,7 +127,7 @@ final class ContributionRegistry {
     /**
      * True for entry types the config chain reads: their class contributions
      * must materialize before any other deferred consumer constructs (those
-     * resolve {@code @Symbol}/{@code @Value} and coerce while they build).
+     * resolve {@code @Symbol} and coerce while they build).
      * Hard-coded to the two types that have this property — honest for a set
      * of two, no descriptor table to keep in sync.
      */

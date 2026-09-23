@@ -261,7 +261,7 @@ class EventBusOrderedDeferredTest {
         assertThrows(IllegalStateException.class,
             () -> bus.subscribe("topic", p -> {}));
         assertThrows(IllegalStateException.class,
-            () -> bus.addEventSink((t, e) -> {}));
+            () -> bus.addEventSink((t, e, c, i) -> {}));
         container.close();
     }
 
@@ -307,7 +307,7 @@ class EventBusOrderedDeferredTest {
         EventBus bus = container.get(EventBus.class);
         List<String> sent = new ArrayList<>();
         bus.addEventSink(
-            (topic, event) -> sent.add(topic + "=" + event.getClass().getSimpleName())
+            (topic, event, channel, eventId) -> sent.add(topic + "=" + event.getClass().getSimpleName())
         );
 
         bus.publish(new PostCreatedEvent(new Post("x"))); // zero subscribers -> DeadEvent

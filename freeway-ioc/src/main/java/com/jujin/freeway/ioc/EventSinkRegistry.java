@@ -16,7 +16,7 @@ final class EventSinkRegistry {
 
     private volatile List<EventSink> sinks = List.of();
 
-    public void add(EventSink sink) {
+    void add(EventSink sink) {
         synchronized (this) {
             for (EventSink installed : sinks) {
                 if (installed == sink) {
@@ -30,7 +30,7 @@ final class EventSinkRegistry {
         }
     }
 
-    public boolean remove(EventSink sink) {
+    boolean remove(EventSink sink) {
         synchronized (this) {
             for (int i = 0; i < sinks.size(); i++) {
                 if (sinks.get(i) == sink) { // identity, like add
@@ -44,16 +44,16 @@ final class EventSinkRegistry {
         }
     }
 
-    public boolean isEmpty() {
+    boolean isEmpty() {
         return sinks.isEmpty();
     }
 
     /** The live immutable snapshot — callers iterate, never mutate. */
-    public List<EventSink> snapshot() {
+    List<EventSink> snapshot() {
         return sinks;
     }
 
-    public void clear() {
+    void clear() {
         synchronized (this) {
             sinks = List.of();
         }

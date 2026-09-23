@@ -11,8 +11,8 @@ import java.lang.annotation.Target;
  * <p>
  * Marker annotations should be empty — the mere presence of the
  * annotation is all that is needed. Markers are additive: a service
- * may accumulate markers from module-level defaults, builder method
- * annotations, and explicit {@code .marker()} declarations.
+ * may accumulate markers from module-level defaults, its implementation
+ * class, and explicit {@code .marker()} declarations.
  * <p>
  * When applied to a module class (one that implements
  * {@link com.jujin.freeway.ioc.ModuleEx}), all services defined by

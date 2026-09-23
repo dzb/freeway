@@ -60,6 +60,30 @@ class MarkerAndConcurrencyTest {
     }
 
     @Test
+    void primaryAnnotationOnImplementationSelectsTheBinding() {
+        // Regression: @Primary on the implementation class entered the marker
+        // index but not the primary flag type resolution read, so get(type)
+        // over two bindings failed as ambiguous although @Primary documents
+        // itself as equivalent to .primary().
+        Container container = Freeway.create(binder -> {
+            binder.bind(Cache.class).to(SlowCache.class);
+            binder.bind(Cache.class).to(PrimaryCache.class);
+        });
+
+        assertEquals("primary", container.get(Cache.class).name());
+        assertTrue(container.isActiveBinding(Cache.class, Primary.class));
+        container.close();
+    }
+
+    @Primary
+    static final class PrimaryCache implements Cache {
+        @Override
+        public String name() {
+            return "primary";
+        }
+    }
+
+    @Test
     void activeBindingQueryFollowsUniqueAndPrimarySelection() {
         Container primary = Freeway.create(binder -> {
             binder.bind(Cache.class).to(FastCache.class).marker(Fast.class);
@@ -81,19 +105,18 @@ class MarkerAndConcurrencyTest {
     }
 
     @Test
-    void markerDeclaredAfterFlushStillResolves() {
-        // Regression: a binding registered by the module that declared it, then
-        // receiving .marker() from a LATER module, was invisible to
-        // marker-based resolution — the MarkerIndex was never updated for the
-        // late declaration. The handle is shared across the two modules.
+    void markerDeclaredAfterFlushIsRejected() {
+        // Bindings are sealed when their module's bindings flush: a handle
+        // shared with a LATER module cannot gain markers after registration.
+        // Declare the marker in the owning module's bind instead.
         Binding<Cache>[] shared = new Binding[1];
-        Container container = Freeway.create(
-            binder -> shared[0] = binder.bind(Cache.class).to(FastCache.class),
-            binder -> shared[0].marker(Fast.class));
-
-        Cache cache = container.get(Cache.class, Fast.class);
-        assertEquals("fast", cache.name());
-        container.close();
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+            () -> Freeway.create(
+                binder -> shared[0] = binder.bind(Cache.class).to(FastCache.class),
+                binder -> shared[0].marker(Fast.class)),
+            "a sealed binding must reject a late marker declaration");
+        assertTrue(ex.getMessage().contains("sealed"),
+            "the error must name the cause, got: " + ex.getMessage());
     }
 
     @Test

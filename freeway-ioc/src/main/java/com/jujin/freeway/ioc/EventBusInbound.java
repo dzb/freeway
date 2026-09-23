@@ -1,7 +1,7 @@
 package com.jujin.freeway.ioc;
 
 /**
- * Adapter SPI for publishing event received from an external transport.
+ * Adapter SPI for publishing events received from an external transport.
  *
  * <p>Business code should use {@link EventBus#publish(Object)} /
  * {@link EventBus#publish(String, Object)} instead. This interface is

@@ -97,9 +97,6 @@ final class Lifecycle {
     }
 
     private record LifecyclePlan(MethodHandle postConstruct, MethodHandle preDestroy) {
-        private LifecyclePlan {
-        }
-
         static LifecyclePlan of(Class<?> type) {
             Method postConstruct = findLifecycleMethod(type, PostConstruct.class);
             Method preDestroy = findLifecycleMethod(type, PreDestroy.class);

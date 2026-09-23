@@ -117,12 +117,11 @@ class ContainerBindingTest {
     }
 
     @Test
-    void lateIdChangeMigratesRealizedInstance() {
-        // Regression: Binding.id() called AFTER the binding was realized re-keys
-        // the binding index but used to leave the old-key cache entries behind —
-        // get(new id) then realized a SECOND singleton, so close() ran
-        // @PreDestroy twice on two instances. The cache must migrate with the
-        // re-key so the binding keeps serving ONE instance.
+    void lateIdChangeIsRejected() {
+        // Bindings are sealed when their module's bindings flush: a handle
+        // kept past that point cannot re-key a live container (which used to
+        // orphan the realized instance under the old key and serve a second
+        // singleton under the new one).
         IdChangeService.destroyed.set(0);
         AtomicReference<Binding<IdChangeService>> handle = new AtomicReference<>();
         Container container = Freeway.create(binder -> {
@@ -131,20 +130,16 @@ class ContainerBindingTest {
             handle.set(binding);
         });
 
-        IdChangeService original = container.get(IdChangeService.class, "initial");
-        handle.get().id("renamed"); // late re-key after realization
-
-        IdChangeService renamed = container.get(IdChangeService.class, "renamed");
-        assertSame(original, renamed,
-            "a re-keyed binding must keep serving the same realized instance");
-        assertEquals(0, IdChangeService.destroyed.get());
-        assertThrows(IllegalArgumentException.class,
-            () -> container.get(IdChangeService.class, "initial"),
-            "the old id must no longer resolve after the re-key");
+        container.get(IdChangeService.class, "initial");
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+            () -> handle.get().id("renamed"),
+            "a sealed binding must reject a late id change");
+        assertTrue(ex.getMessage().contains("sealed"),
+            "the error must name the cause, got: " + ex.getMessage());
 
         container.close();
         assertEquals(1, IdChangeService.destroyed.get(),
-            "exactly one @PreDestroy for the re-keyed singleton (no second instance)");
+            "the one realized singleton still receives exactly one @PreDestroy");
     }
 
     @Test

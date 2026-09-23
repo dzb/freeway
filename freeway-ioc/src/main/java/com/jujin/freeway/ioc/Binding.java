@@ -8,6 +8,12 @@ import java.util.function.Function;
 /**
  * Fluent binding DSL returned by {@link Binder#bind(Class)}.
  *
+ * <p>A binding is mutable only while its module is binding: once the module's
+ * bindings are flushed the binding is registered and sealed, and every method
+ * below throws {@link IllegalStateException}. A handle kept past that point
+ * (by another module, or by application code after the container is built)
+ * cannot mutate a live container.
+ *
  * <p>Example:
  * <pre>{@code
  * binder.bind(PaymentGateway.class)

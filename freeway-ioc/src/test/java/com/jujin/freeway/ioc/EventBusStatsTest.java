@@ -85,8 +85,8 @@ class EventBusStatsTest {
         Container container = Freeway.create(binder -> { });
         EventBus bus = new EventBus(container);
         List<Object> delivered = new ArrayList<>();
-        bus.addEventSink((topic, event) -> { throw new IllegalStateException("boom"); });
-        bus.addEventSink((topic, event) -> delivered.add(event));
+        bus.addEventSink((topic, event, channel, eventId) -> { throw new IllegalStateException("boom"); });
+        bus.addEventSink((topic, event, channel, eventId) -> delivered.add(event));
 
         bus.publish("orders", "payload"); // topic channel
 

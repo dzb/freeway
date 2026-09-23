@@ -2,8 +2,6 @@ package com.jujin.freeway.ioc;
 
 import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.commons.scoped.Defer;
-import com.jujin.freeway.ioc.annotation.Inject;
-import com.jujin.freeway.ioc.annotation.Topic;
 
 import java.util.Iterator;
 import java.util.LinkedHashSet;
@@ -37,7 +35,7 @@ import java.util.function.Supplier;
  * subscriber is isolated (other subscribers still receive the event) and
  * counted in {@link #stats()}; the event is not retried. A failing sink is
  * similarly isolated. Inside a {@code Defer} scope (e.g. a DB transaction),
- * event are buffered and dispatched only after the scope commits — a
+ * events are buffered and dispatched only after the scope commits — a
  * rollback discards them. Async dispatch ({@link #publishAsync}) has no
  * ordering guarantee; {@link #publishOrdered} provides a globally ordered
  * channel. Within one dispatch, module subscribers (composition-time
@@ -45,7 +43,7 @@ import java.util.function.Supplier;
  * (in subscription order). Runtime subscribers live until {@link #close()}
  * or explicit {@link #unsubscribe}.
  *
- * <p><b>Inbound event:</b> event received from an external source (e.g. an
+ * <p><b>Inbound events:</b> events received from an external source (e.g. an
  * MQ subscriber) are injected through the adapter SPI
  * {@link EventBusInbound#publishInbound(Object, String)} /
  * {@link EventBusInbound#publishInbound(String, Object, String)} — they are
@@ -55,7 +53,6 @@ import java.util.function.Supplier;
  */
 public final class EventBus implements EventBusInbound, AutoCloseable {
 
-    private final Container container;
     private final EventStats stats;
     private final EventSinkRegistry sinkRegistry = new EventSinkRegistry();
     private final EventSubscriptionIndex subscriptions;
@@ -72,22 +69,19 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
         return closed.get();
     }
 
-    @Inject
+    /**
+     * A bus over {@code container}'s {@code EventSubscriber} contributions and
+     * {@link Metrics}. The container binds its own ({@code container.get(EventBus.class)});
+     * {@code Container} is not an injectable type, so the bus is not
+     * constructor-injected — it is built by that builtin's factory.
+     */
     public EventBus(Container container) {
-        this.container = Objects.requireNonNull(container, "container");
+        Objects.requireNonNull(container, "container");
         // Metrics is a container builtin (NoopMetrics by default) — always
         // resolvable; a contributed/primary implementation observes the bus.
         this.stats = new EventStats(container.get(Metrics.class));
         this.subscriptions = new EventSubscriptionIndex(container);
-        this.dispatcher = new EventDispatcher(
-            this,
-            subscriptions,
-            sinkRegistry,
-            stats,
-            closed::get,
-            this::publish,
-            EventBus::resolveTopic
-        );
+        this.dispatcher = new EventDispatcher(this, subscriptions, sinkRegistry, stats);
         this.executors = new EventExecutorSupport(this::requireOpen);
     }
 
@@ -157,7 +151,7 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
         requireOpen();
         // DeadEvent always dispatches immediately — it is a diagnostic
         // event that fires when zero subscribers exist, and must not be
-        // re-deferred during drain of committed event.
+        // re-deferred during drain of committed events.
         boolean defer = Defer.isActive() && !(event instanceof DeadEvent);
         // The inbound id is claimed inside the deferred action, not here:
         // a rollback discards the buffered dispatch, and claiming at publish
@@ -167,12 +161,8 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
             if (inbound && !claimInbound(eventId)) {
                 return; // duplicate — already delivered over another channel
             }
-            dispatchEvent(event, inbound, eventId);
+            dispatcher.dispatchEvent(event, inbound, eventId);
         });
-    }
-
-    private <E> void dispatchEvent(E event, boolean inbound, String eventId) {
-        dispatcher.dispatchEvent(event, inbound, eventId);
     }
 
     // ==================== string-topic publish ====================
@@ -222,17 +212,8 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
             if (inbound && !claimInbound(eventId)) {
                 return; // duplicate — already delivered over another channel
             }
-            dispatchTopic(topic, payload, inbound, eventId);
+            dispatcher.dispatchTopic(topic, payload, inbound, eventId);
         });
-    }
-
-    private void dispatchTopic(
-        String topic,
-        Object payload,
-        boolean inbound,
-        String eventId
-    ) {
-        dispatcher.dispatchTopic(topic, payload, inbound, eventId);
     }
 
     /**
@@ -257,13 +238,11 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
      * @param capacity bound on the number of remembered ids; zero or negative
      *                 disables deduplication
      */
-    public void inboundDeduplication(int capacity) {
-        synchronized (this) {
-            if (capacity <= 0) {
-                inboundIds = null;
-            } else if (inboundIds == null || inboundIds.capacity() != capacity) {
-                inboundIds = new IdWindow(capacity);
-            }
+    public synchronized void inboundDeduplication(int capacity) {
+        if (capacity <= 0) {
+            inboundIds = null;
+        } else if (inboundIds == null || inboundIds.capacity() != capacity) {
+            inboundIds = new IdWindow(capacity);
         }
     }
 
@@ -348,10 +327,10 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
     // ==================== ordered publish ====================
 
     /**
-     * Publishes an event on the globally ordered channel: event submitted
+     * Publishes an event on the globally ordered channel: events submitted
      * here are dispatched strictly in submission order (single-threaded
-     * FIFO), so a sequence of ordered event observes a total order. This is
-     * the channel for transaction-outbox-style ordering — event published
+     * FIFO), so a sequence of ordered events observes a total order. This is
+     * the channel for transaction-outbox-style ordering — events published
      * inside one {@code Defer} scope drain in call order and are dispatched
      * in that same order after the scope commits.
      *
@@ -419,7 +398,7 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
     // ==================== reactive streams (JDK Flow) ====================
 
     /**
-     * Streams class-matched event as a JDK {@link Flow.Publisher} — the
+     * Streams class-matched events as a JDK {@link Flow.Publisher} — the
      * reactive-streams contract built into the JDK since 9, no external
      * dependency. The publisher is cold-lazy: the underlying bus
      * subscription is created on the first downstream {@code subscribe},
@@ -427,8 +406,8 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
      *
      * <p>Backpressure: downstream demand is honored via
      * {@link java.util.concurrent.SubmissionPublisher}; a consumer that cannot keep up
-     * overflow-drops event (non-blocking) rather than stalling bus
-     * dispatch for everyone else. Dropped event are logged at debug level.</p>
+     * overflow-drops events (non-blocking) rather than stalling bus
+     * dispatch for everyone else. Dropped events are logged at debug level.</p>
      *
      * <p>Lifecycle: any downstream {@code cancel()} ends the whole stream —
      * the subscription detaches from the bus and further subscribers see
@@ -476,10 +455,10 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
      *                           post-close silent no-ops are excluded)
      * @param delivered          successful subscriber deliveries (one per subscriber)
      * @param subscriberFailures throwing subscriber executions
-     * @param deadEvents         DeadEvent diagnostics emitted for zero-subscriber event
+     * @param deadEvents         DeadEvent diagnostics emitted for zero-subscriber events
      * @param sinkFailures       throwing {@link EventSink} sends (isolated —
      *                           the other sinks still receive the event)
-     * @param streamDrops        event dropped by a slow/absent-demand stream
+     * @param streamDrops        events dropped by a slow/absent-demand stream
      *                           consumer (overflow-drop, never blocks dispatch)
      */
     public record EventBusStats(
@@ -493,17 +472,10 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
 
     /**
      * Snapshot of cumulative dispatch counters. Useful for operational
-     * observability (e.g. "subscriberFailures &gt; 0 for the last N event").
+     * observability (e.g. "subscriberFailures &gt; 0 for the last N events").
      */
     public EventBusStats stats() {
-        return new EventBusStats(
-            stats.publishedCount(),
-            stats.deliveredCount(),
-            stats.subscriberFailureCount(),
-            stats.deadEventCount(),
-            stats.sinkFailureCount(),
-            stats.streamDropCount()
-        );
+        return stats.snapshot();
     }
 
     /** Package-private: {@link EventStreams} counts overflow-drops here. */
@@ -559,22 +531,6 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
         if (closed.get()) {
             throw new IllegalStateException("EventBus is closed");
         }
-    }
-
-    // ==================== internals ====================
-
-    /** @return {@code @Topic} value, or the type's simple name — cached per
-     *  class so dispatch never repeats the reflective annotation lookup */
-    private static final ClassValue<String> TOPIC_OF = new ClassValue<>() {
-        @Override
-        protected String computeValue(Class<?> type) {
-            Topic topic = type.getAnnotation(Topic.class);
-            return topic != null ? topic.value() : type.getSimpleName();
-        }
-    };
-
-    private static String resolveTopic(Class<?> eventType) {
-        return TOPIC_OF.get(eventType);
     }
 
     /**

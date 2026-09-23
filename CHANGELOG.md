@@ -91,6 +91,11 @@ EventBus 两处形状变化（record 规范构造器/组件类型随内容迁移
 |---|---|
 | `new EventBus.EventBusStats(published, delivered, subscriberFailures, deadEvents)` | 规范构造器多两个尾参 `…, deadEvents, sinkFailures, streamDrops`；读取方（`stats().delivered()` 等）不受影响 |
 | `DeadEvent` 记录 `source` 为内部 `EventDispatcher`、组件类型 `Object` | `source` 是发布诊断的 `EventBus` 本身，组件类型收窄为 `EventBus`（record 形状不变，仓内零调用点受影响） |
+| `EventSink` 三个 `send` 重载（`send(topic, event)` / `send(topic, event, channel)` / 四参形） | 只剩 `send(topic, event, channel, eventId)`：总线永远只调四参形，两档窄形只是"老实现能编译"的兼容垫片（与已删的构建器/快照同类，见 AGENTS 无兼容垫片）。`CloudEventSink` / `KafkaEventSink` 各删两转发方法；sink 测试的 lambda 一律四参；`KafkaEventSinkTest.twoArgSendDefaultsToClassChannel` 删除（"裸调默认 CLASS 通道"的约定随窄形消失，直调者自己传 `Channel`） |
+| `Binding` 句柄在模块绑定结束后仍可 `id/marker/to/scope/primary/advise`（晚 `id` 曾孤立已实例、晚 `marker` 曾进不了索引，各由一套迁移/同步机器兜底） | 绑定随其模块的 flush 注册即封印，此后六个 DSL 方法一律 `IllegalStateException`（"is sealed — …accepted only while its module is binding"）。`BindingIndex.updateId/contains`、`ContainerImpl.syncMarkers/updateId`、`ServiceRuntime.rekey` 删除；`lateIdChangeMigratesRealizedInstance` / `markerDeclaredAfterFlushStillResolves` 翻转为拒绝断言 |
+| `@IntermediateType`（两步 coercion：先转中间类型再转目标） | 删除：自定义形状改为一条 `CoerceRule<String, T>` 从原始字符串直接解析（`Endpoint` 测试早已是此形，`Timeout` 测试随之改写）。`InjectionResolver.coerceConfiguredValue` 去 `lookup` 参数、`resolveMarkers` 跳过表减一项 |
+| `@ThreadSafe`（标记，唯一作用是"与 `@NotThreadSafe` 并存即错"与按标记解析） | 删除：`@NotThreadSafe` 独立存在即是完整契约（未标注 = 无契约不校验），冲突检查与 `MarkerIndex` 的 `ThreadSafe` 分支删除；`ScopeProxyAdvisorTest` 的冲突测试与按标记解析测试删除，`ThreadSafeGreeterImpl` 更名 `SafeGreeterImpl` 去注解；`@NotThreadSafe` javadoc 去双标注段、`InjectionResolver` 的修复建议改为"去标记/转 THREAD 作用域/换 holder" |
+| scope 校验的属主靠类型猜（`findOwnerBinding`：精确类型→接口递归→超类链） | realize 路径把属主 `BindingImpl` 穿下来读精确 scope，`create()` 传 null 回退启发式。两处行为修正（无签名变化，编译器不报警）：同类型多绑定无 primary 时 singleton 属主曾整段跳过校验（`uniqueOrNull` 吞歧义→"属主未知"→放行），现在按自己绑定的 scope 判；prototype 属主曾被实现的 singleton 接口"认领"而误拦，现在不拦。`Container.create/create/constructInstance/initialize` 与 resolver 全链加 `owner` 参数；`multiBoundSingletonOwnerDoesNotEscapeScopeValidation` / `multiBoundPrototypeOwnerIsNotJudgedByItsSingletonInterface` 各钉一条（HEAD 下双双失败） |
 
 ### Added
 
@@ -189,6 +194,23 @@ EventBus 两处形状变化（record 规范构造器/组件类型随内容迁移
   接受；commit 后 claim 照旧，双副本仍然只送一次
   （`EventBusInboundDedupTest` 两条：`rollbackLeavesIdUnclaimedSoRedeliveryIsAccepted`、
   `committedInboundStillDedupsRedelivery`；`inboundDeduplication` javadoc 同步改述）。
+- **实现类上的 `@Primary` 对按类型解析无效**：`to(Impl.class)` 把 `@Primary` 收进标记集，
+  但 `get(type)` 读的是另一份 `primary` 布尔位——两个绑定一个标了 `@Primary`，按类型取仍报
+  "Multiple services match"，与 `@Primary` javadoc 自称"等价于 `.primary()`"相反。删去布尔位，
+  `isPrimary()` 直接读 `Primary` 标记：`.primary()`、类上 `@Primary`、模块级
+  `@Marker(Primary.class)` 从此是一个答案（`primaryAnnotationOnImplementationSelectsTheBinding`）。
+- **`SymbolSource.resolve(name, default)` 把默认值当表达式读**：默认实现拼成
+  `"${name:default}"` 再走展开语法——`":-"` 吃掉前导横线（`resolve(k, "-1")` 得 `"1"`），默认值里
+  第一个 `}` 提前结束表达式（`"a}b"` 得 `"ab}"`），默认值里的 `${…}` 还会被展开。改为
+  `resolve(name)` 捕获 `UnknownSymbolException` 回退默认值：默认值原样返回，嵌套缺失等展开错误
+  照旧上抛（`lenientResolveReturnsTheDefaultVerbatim`）。副作用是替换源不再需要为 `expand` 是恒等的
+  情形自己重写 `resolve(name, default)`（ext testkit 的 `Symbols` 即此例，可删）。
+- **realize 锁是 JVM 全局的**：`ServiceRuntime.REALIZE_LOCK` 为 `static`，一个容器的慢构造器会挡住
+  另一个容器的首次实例化（1.5.x 只修了缓存命中路径，锁本身没动），一个 provider 若等待另一容器上的
+  实例化还可能跨容器死锁。锁改为每个容器一把（`firstRealizationDoesNotQueueBehindAnotherContainer`）。
+- **THREAD 作用域跨容器串值**：`ScopedCache` 是进程级的，键却只有 `(type, id)`——两个容器以同一
+  显式 id 绑定同一类型，在一个 `within()` 内拿到的是同一个值。键加上所属容器
+  （`threadScopeKeepsTwoContainersApart`）。
 
 ### Changed
 
@@ -282,6 +304,31 @@ EventBus 两处形状变化（record 规范构造器/组件类型随内容迁移
   `DeadEvent.source` 从内部 `EventDispatcher` 改为 `EventBus` 本身（见迁移表）；一次派发内的
   订阅顺序成文进类 javadoc：module 订阅者（组合期贡献、按其排序）先于 runtime 订阅者（按订阅
   顺序）。
+- **freeway-ioc 内部收敛**（无公开形状变化，全仓既有测试不改断言即通过）：
+  - `ServiceRuntime` 独占两张缓存与 realize 锁，`ContainerImpl` 不再持有/清理/迁移 map；关停的
+    "置 closed → 末轮 drain → 清缓存"成为 `ServiceRuntime.seal(finalDrain)` 一个原子步。具体类
+    单例不再在 proxy 缓存与 target 缓存各存一份（原 `serviceCache` 只剩接口 proxy，更名 `proxyCache`）。
+  - 实例绑定机器删除：`prebuiltInstance`/`setInstance`/`requireSingletonScope` 与 `scope()` 里的
+    实例校验只为 5 个内置服务存在（公开 DSL 没有 `toInstance`）；内置服务改走 provider，
+    `registerBuiltin`/`registerBuiltinLazy` 合一。
+  - `ServiceRuntime.requireAdviceSupported` 删除：`advise()` 在绑定期已拒绝非接口类型，该检查不可达；
+    `ProxyFactoryImpl` → `ServiceProxy`（无 `ProxyFactory` 接口，`Impl` 后缀名不副实；无状态，改静态），
+    三参 `create` 阶梯与重复的 `Object` 方法守卫、接口守卫一并删除。
+  - 选择规则一处：`BindingIndex.select` 同时服务按类型与按标记查找——"单个即中、多个取唯一 primary、
+    否则歧义"原来在 `BindingIndex.selectUnique` 与 `MarkerIndex.findByMarker` 各写一遍；
+    `findUnique` 多绑定分支不再全表扫描一个 `typeIndex` 早已给出的集合，`ScanResult` 删除。
+  - `@Marker` 读取合一（`extractModuleMarkers`/`extractClassMarkers` 同一个 helper），标记只在进入
+    绑定处校验一次；模块标记每个模块算一次，而不是每次 `bind()` 反射一次。
+  - `EventDispatcher` 构造参数 7 → 4：`isClosed`/`deadEventPublisher`/`topicResolver` 三个都是指回 bus
+    的间接层；`@Topic` 解析（唯一使用者是 sink fan-out）随之迁入；类/话题两通道的派发体合一。
+    `EventBus` 构造器去掉 `@Inject`——`Container` 不可注入，该注解宣传一条走不通的路。
+  - `EventStats` 6×(LongAdder + Counter + 增量 + 读取) 收成一个 `Tally` 记录与 `snapshot()`；
+    包私有类上的 `public` 修饰（`EventStats`/`EventSinkRegistry`/`EventExecutorSupport`）去除；
+    `Subscription` 两个构造器合一。
+  - `SymbolSpec.list` 补键校验（原唯一跳过 `blank` 检查的工厂），`normalizedKey` 的死参数删除。
+  - 过期陈述：`ContainerImpl`"both buses"（早已只剩 `EventBus`）、`@Value`（不存在的注解，3 处）、
+    `@Marker`"builder method annotations"、`Ordering` 只列一个返回它的 `add`、`EventBus` javadoc
+    里十余处 "event" 单复数错。
 - 测试清扫：`EventBusAsyncPublishTest` 两处 `Thread.sleep(200)` 换成仓内统一的 `Await.until`
   （消灭固定睡量的 flaky 面）；新增回归钉住本批契约——回滚后重投、有界关停不吊死、sink 失败
   计数与隔离、stream 溢出计数、ordered topic 通道、`DeadEvent.source` 即 bus。

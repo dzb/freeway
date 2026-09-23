@@ -2,11 +2,11 @@ package com.jujin.freeway.ioc.internal;
 
 import com.jujin.freeway.ioc.AmbiguousBindingException;
 
+import java.lang.annotation.Annotation;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.function.Predicate;
@@ -18,8 +18,8 @@ import org.slf4j.LoggerFactory;
 /**
  * Registry of bindings keyed by (type, id) plus a per-type view.
  *
- * <p><b>Threading model.</b> Writes ({@link #register}, {@link #updateId},
- * {@link #clear}) are mutually exclusive via the monitor; lookups
+ * <p><b>Threading model.</b> Writes ({@link #register}, {@link #clear}) are
+ * mutually exclusive via the monitor; lookups
  * ({@code find}/{@code findUnique}) are deliberately lock-free because they
  * sit on every {@code container.get()} path. This split is safe under one
  * contract: <b>bindings are registered during module composition and looked
@@ -39,11 +39,6 @@ final class BindingIndex {
         bindings.clear();
         bindingOrder.clear();
         typeIndex.clear();
-    }
-
-    /** True when {@code binding} is registered under its current type+id key. */
-    boolean contains(BindingImpl<?> binding) {
-        return bindings.get(new ServiceKey(binding.type(), binding.id())) == binding;
     }
 
     synchronized <T> void register(BindingImpl<T> binding) {
@@ -71,130 +66,99 @@ final class BindingIndex {
         }
     }
 
-    /**
-     * Re-keys a registered binding from {@code previousId} to {@code newId}.
-     * Returns {@code true} when the binding was actually re-keyed — the caller
-     * must then migrate any realized service/target cache entries so a late
-     * {@code .id()} change does not orphan the old instance.
-     */
-    synchronized boolean updateId(BindingImpl<?> binding, String previousId, String newId) {
-        if (Objects.equals(previousId, newId)) {
-            return false;
-        }
-        ServiceKey previousKey = new ServiceKey(binding.type(), previousId);
-        if (bindings.get(previousKey) != binding) {
-            return false;
-        }
-        ServiceKey newKey = new ServiceKey(binding.type(), newId);
-        BindingImpl<?> existing = bindings.get(newKey);
-        if (existing != null && existing != binding) {
-            throw duplicateBinding(binding.type().getName(), newId);
-        }
-        List<ServiceKey> reordered = new ArrayList<>(bindingOrder.size());
-        boolean replaced = false;
-        for (ServiceKey key : bindingOrder) {
-            if (key.equals(previousKey)) {
-                reordered.add(newKey);
-                replaced = true;
-            } else {
-                reordered.add(key);
-            }
-        }
-        if (!replaced) {
-            return false;
-        }
-        bindingOrder.clear();
-        bindingOrder.addAll(reordered);
-        bindings.remove(previousKey);
-        bindings.put(newKey, binding);
-        return true;
-    }
-
     @SuppressWarnings("unchecked")
     <T> BindingImpl<T> find(Class<T> type, String id) {
         BindingImpl<?> exact = bindings.get(new ServiceKey(type, id));
         if (exact != null) {
             return (BindingImpl<T>) exact;
         }
-        ScanResult<T> scan = scanBindings(
-            binding -> id.equals(binding.id()) && type.isAssignableFrom(binding.type()),
-            false
-        );
-        if (scan.multiple()) {
+        List<BindingImpl<?>> matches =
+            scan(binding -> id.equals(binding.id()) && type.isAssignableFrom(binding.type()));
+        if (matches.size() > 1) {
             throw new AmbiguousBindingException(
                 "Multiple services match type " + type.getName() + " and id " + id
             );
         }
-        return scan.first();
+        return matches.isEmpty() ? null : (BindingImpl<T>) matches.getFirst();
     }
 
-    @SuppressWarnings("unchecked")
+    /**
+     * The binding {@code get(type)} selects: the bindings registered under
+     * exactly {@code type}, or — when there are none — every binding whose
+     * type is assignable to it, narrowed by {@link #select}.
+     */
     <T> BindingImpl<T> findUnique(Class<T> type) {
-        List<BindingImpl<?>> typeBindings = typeIndex.get(type);
-        if (typeBindings != null && !typeBindings.isEmpty()) {
-            if (typeBindings.size() == 1) {
-                return (BindingImpl<T>) typeBindings.getFirst();
-            }
-            return selectUnique(
-                type,
-                scanBindings(binding -> binding.type().equals(type), true)
-            );
-        }
-        return selectUnique(
-            type,
-            scanBindings(binding -> type.isAssignableFrom(binding.type()), true)
-        );
+        List<BindingImpl<?>> exact = typeIndex.get(type);
+        List<BindingImpl<?>> candidates = exact != null && !exact.isEmpty()
+            ? exact
+            : scan(binding -> type.isAssignableFrom(binding.type()));
+        return select(candidates, type, null);
     }
 
-    private static <T> BindingImpl<T> selectUnique(Class<T> type, ScanResult<T> scan) {
-        if (scan.first() == null) {
+    /**
+     * The one selection rule, shared by type and marker lookups: no candidate
+     * is a miss ({@code null}), a single candidate wins, several are narrowed
+     * to their unique primary — two primaries, or none, is ambiguous.
+     *
+     * @param markers the requested markers, named in the failure; {@code null}
+     *                for a lookup by type alone
+     */
+    @SuppressWarnings("unchecked")
+    static <T> BindingImpl<T> select(
+        List<BindingImpl<?>> candidates,
+        Class<T> type,
+        Class<? extends Annotation>[] markers
+    ) {
+        if (candidates.isEmpty()) {
             return null;
         }
-        if (!scan.multiple()) {
-            return scan.first();
+        if (candidates.size() == 1) {
+            return (BindingImpl<T>) candidates.getFirst();
         }
-        if (scan.primaryConflict()) {
-            throw new AmbiguousBindingException(
-                "Multiple primary services match type " + type.getName()
-            );
-        }
-        if (scan.primary() != null) {
-            return scan.primary();
-        }
-        throw new AmbiguousBindingException(
-            "Multiple services match type " + type.getName()
-                + "; mark one binding as primary()"
-        );
-    }
-
-    @SuppressWarnings("unchecked")
-    private <T> ScanResult<T> scanBindings(
-        Predicate<BindingImpl<?>> predicate,
-        boolean trackPrimary
-    ) {
-        BindingImpl<T> first = null;
-        BindingImpl<T> primary = null;
-        boolean multiple = false;
-        boolean primaryConflict = false;
-        for (ServiceKey key : bindingOrder) {
-            BindingImpl<?> binding = bindings.get(key);
-            if (binding == null || !predicate.test(binding)) {
+        BindingImpl<?> primary = null;
+        for (BindingImpl<?> candidate : candidates) {
+            if (!candidate.isPrimary()) {
                 continue;
             }
-            if (first != null) {
-                multiple = true;
-            } else {
-                first = (BindingImpl<T>) binding;
+            if (primary != null) {
+                throw new AmbiguousBindingException(
+                    "Multiple primary services match " + describe(type, markers));
             }
-            if (trackPrimary && binding.isPrimary()) {
-                if (primary != null && primary != binding) {
-                    primaryConflict = true;
-                } else {
-                    primary = (BindingImpl<T>) binding;
-                }
+            primary = candidate;
+        }
+        if (primary == null) {
+            throw new AmbiguousBindingException(
+                "Multiple services match " + describe(type, markers)
+                    + "; mark one binding as primary()");
+        }
+        return (BindingImpl<T>) primary;
+    }
+
+    private static String describe(Class<?> type, Class<? extends Annotation>[] markers) {
+        String described = "type " + type.getName();
+        if (markers == null) {
+            return described;
+        }
+        StringBuilder sb = new StringBuilder(described).append(" with markers [");
+        for (int i = 0; i < markers.length; i++) {
+            if (i > 0) {
+                sb.append(", ");
+            }
+            sb.append('@').append(markers[i].getSimpleName());
+        }
+        return sb.append(']').toString();
+    }
+
+    /** Registered bindings matching {@code predicate}, in registration order. */
+    private List<BindingImpl<?>> scan(Predicate<BindingImpl<?>> predicate) {
+        List<BindingImpl<?>> matches = new ArrayList<>(2);
+        for (ServiceKey key : bindingOrder) {
+            BindingImpl<?> binding = bindings.get(key);
+            if (binding != null && predicate.test(binding)) {
+                matches.add(binding);
             }
         }
-        return new ScanResult<>(first, primary, multiple, primaryConflict);
+        return matches;
     }
 
     private static IllegalStateException duplicateBinding(String typeName, String id) {
@@ -202,11 +166,4 @@ final class BindingIndex {
             "Duplicate binding for type " + typeName + " and id " + id
         );
     }
-
-    private record ScanResult<T>(
-        BindingImpl<T> first,
-        BindingImpl<T> primary,
-        boolean multiple,
-        boolean primaryConflict
-    ) {}
 }

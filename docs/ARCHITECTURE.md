@@ -128,8 +128,10 @@ All in `com.jujin.freeway.ioc.annotation`:
 - `@PostConstruct` / `@PreDestroy` — lifecycle callbacks after injection
   completes and before the instance is destroyed.
 
-`binding.primary()` maps to the `@Primary` marker internally, so both forms
-resolve through the same marker index.
+`binding.primary()` maps to the `@Primary` marker internally, and the marker is
+the only record of "primary": `.primary()`, `@Primary` on the implementation
+class and a module-level `@Marker(Primary.class)` select the same binding for a
+lookup by type and for a lookup by marker.
 
 ## Config Cascade
 

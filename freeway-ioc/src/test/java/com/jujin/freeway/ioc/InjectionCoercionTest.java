@@ -174,14 +174,16 @@ class InjectionCoercionTest {
     }
 
     @Test
-    void intermediateTypeCanBridgeCustomCoercions() {
+    void customCoercionBridgesFromTheRawString() {
+        // Custom shapes bridge from the raw string in one rule — the same
+        // String-sourced form the Endpoint test below uses.
         System.setProperty(TIMEOUT_KEY, "2500");
 
         Container container = Freeway.create(binder ->
             binder.contribute(CoerceRule.class).add(new CoerceRule<>(
-                Integer.class,
+                String.class,
                 Timeout.class,
-                Timeout::new
+                value -> new Timeout(Integer.parseInt(value.trim()))
             ))
         );
 

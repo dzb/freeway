@@ -1,7 +1,8 @@
 package com.jujin.freeway.ioc.extension;
 
 /**
- * Ordering handle returned by {@link Contribution#add(String, Object)}.
+ * Ordering handle returned by the named {@link Contribution} adds —
+ * {@code add(id, value)}, {@code add(id, factory)} and {@code add(Class)}.
  *
  * <p>Declares ordering constraints relative to other named contributions.
  * Unrecognised target ids are ignored with a warning when ordering is

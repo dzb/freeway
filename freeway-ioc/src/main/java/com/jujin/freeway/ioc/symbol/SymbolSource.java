@@ -93,29 +93,28 @@ public interface SymbolSource {
     String resolve(String name);
 
     /**
-     * Resolves a symbol to its value, returning {@code defaultValue} when the
-     * symbol is not found. Delegates to {@link #expand(String)} with the
-     * {@code ${name:default}} syntax.
+     * Resolves a symbol to its value, returning {@code defaultValue} verbatim
+     * when the symbol is not found.
      *
      * <p>Only a missing top-level symbol maps to {@code defaultValue}
      * (detected via {@link UnknownSymbolException}, not message text);
      * expansion errors — depth limit, unclosed expression, or an unknown
      * symbol nested inside another value — propagate instead of silently
-     * treating a broken config chain as "absent".
+     * treating a broken config chain as "absent". The default is a value, not
+     * an expression: it is neither expanded nor read through the
+     * {@code ${name:default}} grammar, so {@code "-1"} stays {@code "-1"} and
+     * a {@code '}'} in it is an ordinary character.
      *
      * @param name         the symbol name
      * @param defaultValue the fallback value (null = return null on miss)
      * @return the resolved value, or defaultValue if not found
      */
     default String resolve(String name, String defaultValue) {
-        if (defaultValue == null) {
-            try {
-                return resolve(name);
-            } catch (UnknownSymbolException e) {
-                return null;
-            }
+        try {
+            return resolve(name);
+        } catch (UnknownSymbolException e) {
+            return defaultValue;
         }
-        return expand("${" + name + ":" + defaultValue + "}");
     }
 
     /**

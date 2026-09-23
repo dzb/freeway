@@ -7,56 +7,39 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.List;
-import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 
 /**
- * Creates the JDK proxies behind every interface binding: the lazy resolving
- * proxy, the advice chain, and the one-instance-per-get rule for prototype
- * targets.
+ * The JDK proxy behind every interface binding: the lazy resolving proxy, the
+ * advice chain, and the one-instance-per-get rule for prototype targets.
  */
-final class ProxyFactoryImpl {
-    <T> T create(Class<T> interfaceType, Supplier<T> provider, String description) {
-        return createAdvised(interfaceType, provider, description, List.of(), false);
-    }
-
-    static Object handleObjectMethod(Object proxy, Method method, Object[] args, String toStringValue) {
-        if (method.getDeclaringClass() != Object.class) {
-            throw new IllegalArgumentException("Method is not declared on Object: " + method);
-        }
-        return switch (method.getName()) {
-            case "toString" -> toStringValue != null ? toStringValue : proxy.getClass().getName();
-            case "hashCode" -> System.identityHashCode(proxy);
-            case "equals" -> args != null && args.length > 0 && proxy == args[0];
-            default -> throw new UnsupportedOperationException("Unsupported Object method: " + method);
-        };
+final class ServiceProxy {
+    private ServiceProxy() {
     }
 
     /**
-     * The resolving proxy: the provider runs on first invocation, and the
+     * The resolving proxy: the target runs on first invocation, and the
      * advices whose selector matches wrap the invocation. When
-     * {@code cacheTarget} is set the handler resolves the provider exactly once
-     * per proxy and reuses that target for every subsequent invocation — used
-     * for PROTOTYPE targets so a proxy behaves like a single lazily-created
+     * {@code cacheTarget} is set the handler resolves the target exactly once
+     * per proxy and reuses it for every subsequent invocation — used for
+     * PROTOTYPE targets so a proxy behaves like a single lazily-created
      * instance ("one instance per get(), state persists across calls") instead
      * of creating a fresh target per method call. Must NOT be set for
      * THREAD-scoped targets — their identity is per-scope, not per-proxy.
      */
     @SuppressWarnings("unchecked")
-    <T> T createAdvised(
+    static <T> T create(
         Class<T> interfaceType,
-        Supplier<T> provider,
+        Supplier<T> target,
         String description,
         List<AdviceEntry> advices,
         boolean cacheTarget
     ) {
-        requireInterface(interfaceType);
-        Objects.requireNonNull(provider, "provider");
-        Objects.requireNonNull(advices, "advices");
-        return newProxy(
-            interfaceType,
-            new AdvisedHandler<>(provider, description, advices, cacheTarget)
+        return (T) Proxy.newProxyInstance(
+            interfaceType.getClassLoader(),
+            new Class<?>[] { interfaceType },
+            new AdvisedHandler<>(target, description, advices, cacheTarget)
         );
     }
 
@@ -86,10 +69,14 @@ final class ProxyFactoryImpl {
         @Override
         public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
             if (method.getDeclaringClass() == Object.class) {
-                return handleObjectMethod(proxy, method, args, description);
+                return switch (method.getName()) {
+                    case "toString" -> description;
+                    case "hashCode" -> System.identityHashCode(proxy);
+                    case "equals" -> args != null && args.length > 0 && proxy == args[0];
+                    default -> throw new UnsupportedOperationException("Unsupported Object method: " + method);
+                };
             }
-
-            return invokeAdvised(resolveTarget(), method, args, advices, 0);
+            return invokeAdvised(resolveTarget(), method, args, 0);
         }
 
         /**
@@ -119,51 +106,24 @@ final class ProxyFactoryImpl {
             }
         }
 
-        private Object invokeAdvised(
-            Object real,
-            Method method,
-            Object[] args,
-            List<AdviceEntry> entries,
-            int index
-        ) throws Throwable {
-            for (int i = index; i < entries.size(); i++) {
-                AdviceEntry entry = entries.get(i);
+        private Object invokeAdvised(Object real, Method method, Object[] args, int index)
+            throws Throwable {
+            for (int i = index; i < advices.size(); i++) {
+                AdviceEntry entry = advices.get(i);
                 int nextIndex = i + 1;
                 MethodInvocationContext context = new MethodInvocationContext(
                     real,
                     method,
                     args,
-                    () -> invokeAdvised(real, method, args, entries, nextIndex)
+                    () -> invokeAdvised(real, method, args, nextIndex)
                 );
                 if (entry.selector().test(context)) {
                     return entry.advice().invoke(context);
                 }
             }
-            return invokeTarget(real, method, args);
-        }
-
-        private Object invokeTarget(Object real, Method method, Object[] args) throws Throwable {
             MethodHandle handle = targetHandles.computeIfAbsent(
                 method, MethodHandleUtils::methodHandle);
             return MethodHandleUtils.invokeOn(handle, real, args);
-        }
-    }
-
-    @SuppressWarnings("unchecked")
-    private static <T> T newProxy(Class<T> interfaceType, InvocationHandler handler) {
-        return (T) Proxy.newProxyInstance(
-            interfaceType.getClassLoader(),
-            new Class<?>[] { interfaceType },
-            handler
-        );
-    }
-
-    private static void requireInterface(Class<?> interfaceType) {
-        Objects.requireNonNull(interfaceType, "interfaceType");
-        if (!interfaceType.isInterface()) {
-            throw new IllegalArgumentException(
-                "ProxyFactory can only proxy interfaces: " + interfaceType.getName()
-            );
         }
     }
 

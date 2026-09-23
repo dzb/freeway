@@ -4,83 +4,76 @@ import com.jujin.freeway.commons.metrics.Metrics;
 import java.util.concurrent.atomic.LongAdder;
 
 /**
- * Internal counters for {@link com.jujin.freeway.ioc.EventBus}.
+ * Internal counters for {@link EventBus}: each count feeds both the bus's own
+ * {@link EventBus#stats()} snapshot and the container's {@link Metrics} (which
+ * may be the no-op default, so it cannot be the snapshot's source).
  */
 final class EventStats {
 
-    private final Metrics.Counter cPublished;
-    private final Metrics.Counter cDelivered;
-    private final Metrics.Counter cSubscriberFailures;
-    private final Metrics.Counter cDeadEvents;
-    private final Metrics.Counter cSinkFailures;
-    private final Metrics.Counter cStreamDrops;
-    private final LongAdder published = new LongAdder();
-    private final LongAdder delivered = new LongAdder();
-    private final LongAdder subscriberFailures = new LongAdder();
-    private final LongAdder deadEvents = new LongAdder();
-    private final LongAdder sinkFailures = new LongAdder();
-    private final LongAdder streamDrops = new LongAdder();
+    private final Tally published;
+    private final Tally delivered;
+    private final Tally subscriberFailures;
+    private final Tally deadEvents;
+    private final Tally sinkFailures;
+    private final Tally streamDrops;
 
-    public EventStats(Metrics metrics) {
-        this.cPublished = metrics.counter("eventbus.published");
-        this.cDelivered = metrics.counter("eventbus.delivered");
-        this.cSubscriberFailures = metrics.counter("eventbus.subscriber_failures");
-        this.cDeadEvents = metrics.counter("eventbus.dead_events");
-        this.cSinkFailures = metrics.counter("eventbus.sink_failures");
-        this.cStreamDrops = metrics.counter("eventbus.stream_drops");
+    EventStats(Metrics metrics) {
+        this.published = new Tally(metrics.counter("eventbus.published"));
+        this.delivered = new Tally(metrics.counter("eventbus.delivered"));
+        this.subscriberFailures = new Tally(metrics.counter("eventbus.subscriber_failures"));
+        this.deadEvents = new Tally(metrics.counter("eventbus.dead_events"));
+        this.sinkFailures = new Tally(metrics.counter("eventbus.sink_failures"));
+        this.streamDrops = new Tally(metrics.counter("eventbus.stream_drops"));
     }
 
-    public void published() {
+    void published() {
         published.increment();
-        cPublished.increment();
     }
 
-    public void delivered() {
+    void delivered() {
         delivered.increment();
-        cDelivered.increment();
     }
 
-    public void subscriberFailure() {
+    void subscriberFailure() {
         subscriberFailures.increment();
-        cSubscriberFailures.increment();
     }
 
-    public void deadEvent() {
+    void deadEvent() {
         deadEvents.increment();
-        cDeadEvents.increment();
     }
 
-    public void sinkFailure() {
+    void sinkFailure() {
         sinkFailures.increment();
-        cSinkFailures.increment();
     }
 
-    public void streamDrop() {
+    void streamDrop() {
         streamDrops.increment();
-        cStreamDrops.increment();
     }
 
-    public long publishedCount() {
-        return published.sum();
+    EventBus.EventBusStats snapshot() {
+        return new EventBus.EventBusStats(
+            published.sum(),
+            delivered.sum(),
+            subscriberFailures.sum(),
+            deadEvents.sum(),
+            sinkFailures.sum(),
+            streamDrops.sum()
+        );
     }
 
-    public long deliveredCount() {
-        return delivered.sum();
-    }
+    /** One count, kept locally and mirrored to its metrics counter. */
+    private record Tally(LongAdder local, Metrics.Counter metric) {
+        Tally(Metrics.Counter metric) {
+            this(new LongAdder(), metric);
+        }
 
-    public long subscriberFailureCount() {
-        return subscriberFailures.sum();
-    }
+        void increment() {
+            local.increment();
+            metric.increment();
+        }
 
-    public long deadEventCount() {
-        return deadEvents.sum();
-    }
-
-    public long sinkFailureCount() {
-        return sinkFailures.sum();
-    }
-
-    public long streamDropCount() {
-        return streamDrops.sum();
+        long sum() {
+            return local.sum();
+        }
     }
 }

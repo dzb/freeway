@@ -218,7 +218,7 @@ class ContainerCloseTest {
     @Test
     void concurrentCloseDoesNotOrphanSlowRealize() throws Exception {
         // Regression: close() drains lifecycle callbacks WITHOUT holding
-        // REALIZE_LOCK (deliberately — user callbacks may join threads that
+        // the realize lock (deliberately — user callbacks may join threads that
         // realize services), then clears the caches and seals. A realize()
         // that passed its first closed check and is blocked in a slow
         // constructor could insert a fresh singleton into targetCache AFTER
@@ -246,7 +246,7 @@ class ContainerCloseTest {
         Thread closer = new Thread(container::close);
         closer.start();
         // Give close() time to finish its drain (nothing to drain yet) and
-        // block on REALIZE_LOCK, so the constructor returns strictly after
+        // block on the realize lock, so the constructor returns strictly after
         // the drain's last snapshot — the race window.
         Thread.sleep(200);
         raceRelease.countDown();

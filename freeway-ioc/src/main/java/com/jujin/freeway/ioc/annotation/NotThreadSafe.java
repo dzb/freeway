@@ -20,11 +20,8 @@ import java.lang.annotation.Target;
  * THREAD-scoped interface binding (its proxy resolves per scope). Resolve
  * by marker via {@code container.get(X.class, NotThreadSafe.class)}.
  *
- * <p>This is a declaration, not a proof. An implementation annotated with
- * both {@link ThreadSafe} and {@link NotThreadSafe} is rejected at binding
- * time. Unannotated services carry no contract and are not validated.
- *
- * @see ThreadSafe
+ * <p>This is a declaration, not a proof. Unannotated services carry no
+ * contract and are not validated.
  */
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.TYPE)

@@ -10,7 +10,6 @@ import com.jujin.freeway.ioc.MissingBindingException;
 import com.jujin.freeway.ioc.LoggerSource;
 import com.jujin.freeway.ioc.Scope;
 import com.jujin.freeway.ioc.annotation.Inject;
-import com.jujin.freeway.ioc.annotation.IntermediateType;
 import com.jujin.freeway.ioc.AmbiguousBindingException;
 import com.jujin.freeway.ioc.annotation.NotThreadSafe;
 import com.jujin.freeway.ioc.annotation.Symbol;
@@ -20,7 +19,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.lang.annotation.Annotation;
-import java.lang.reflect.AnnotatedElement;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.HashSet;
@@ -40,11 +38,18 @@ final class InjectionResolver {
         this.container = Objects.requireNonNull(container, "container");
     }
 
-    Object[] resolveArguments(Class<?> ownerType, List<BeanParameter> parameters) {
+    /**
+     * @param owner the binding being realized on the realize path; {@code null}
+     *              for caller-owned instances from {@code Container.create},
+     *              which have no binding and no knowable scope
+     */
+    Object[] resolveArguments(
+        BindingImpl<?> owner, Class<?> ownerType, List<BeanParameter> parameters
+    ) {
         Object[] args = new Object[parameters.size()];
         for (int i = 0; i < parameters.size(); i++) {
             try {
-                args[i] = resolveParameter(ownerType, parameters.get(i));
+                args[i] = resolveParameter(owner, ownerType, parameters.get(i));
             } catch (MissingBindingException e) {
                 // Parameter names need -parameters, which the build does not
                 // enable — the index and declared type identify the point.
@@ -75,7 +80,7 @@ final class InjectionResolver {
         );
     }
 
-    void injectFields(Object instance) {
+    void injectFields(Object instance, BindingImpl<?> owner) {
         Class<?> ownerType = instance.getClass();
         BeanPlan plan = BeanIntrospector.plan(ownerType);
         for (BeanProperty property : plan.properties()) {
@@ -107,6 +112,7 @@ final class InjectionResolver {
             Object value;
             try {
                 value = resolveValue(
+                    owner,
                     ownerType,
                     of(property),
                     property.type(),
@@ -130,10 +136,12 @@ final class InjectionResolver {
         }
     }
 
-    private Object resolveParameter(Class<?> ownerType, BeanParameter parameter) {
+    private Object resolveParameter(
+        BindingImpl<?> owner, Class<?> ownerType, BeanParameter parameter
+    ) {
         Type parameterType = parameter.type();
         Class<?> rawType = Types.rawClass(parameterType);
-        return resolveValue(ownerType, of(parameter), parameterType, rawType, true);
+        return resolveValue(owner, ownerType, of(parameter), parameterType, rawType, true);
     }
 
     /**
@@ -163,7 +171,7 @@ final class InjectionResolver {
         if (!(memberType instanceof ParameterizedType pt)) {
             return null;
         }
-        // An @Value/@Symbol on a List/Map injection point means "coerce the
+        // A @Symbol on a List/Map injection point means "coerce the
         // configured value", not "consume contributions" — otherwise
         // @Symbol List<String> would silently inject an empty contribution
         // list and drop the configuration.
@@ -237,35 +245,21 @@ final class InjectionResolver {
         return new AnnotationLookup(parameter.annotations());
     }
 
-    private static AnnotationLookup of(AnnotatedElement element) {
-        return new AnnotationLookup(element.getAnnotations());
-    }
-
     /**
-     * The annotations at one injection point. All three sources
-     * ({@link BeanProperty}, {@link BeanParameter}, {@link AnnotatedElement})
-     * expose them as a plain array, so lookup is a single scan.
+     * The annotations at one injection point. Both sources
+     * ({@link BeanProperty}, {@link BeanParameter}) expose them as a plain
+     * array, so lookup is a single scan.
      */
     private record AnnotationLookup(Annotation[] all) {
 
         <A extends Annotation> Optional<A> annotation(Class<A> type) {
-            return find(all, type);
-        }
-
-        Annotation[] annotations() {
-            return all;
-        }
-    }
-
-    private static <A extends Annotation> Optional<A> find(
-        Annotation[] annotations, Class<A> type
-    ) {
-        for (Annotation annotation : annotations) {
-            if (type.isInstance(annotation)) {
-                return Optional.of(type.cast(annotation));
+            for (Annotation annotation : all) {
+                if (type.isInstance(annotation)) {
+                    return Optional.of(type.cast(annotation));
+                }
             }
+            return Optional.empty();
         }
-        return Optional.empty();
     }
 
     private Logger resolveLogger(Class<?> ownerType, AnnotationLookup lookup) {
@@ -295,33 +289,28 @@ final class InjectionResolver {
         // override is honored at every injection site (constructor, field,
         // @Symbol) instead of hard-coding the built-in instance.
         var symbol = lookup.annotation(Symbol.class);
-        if (symbol.isPresent()) {
-            String val = symbol.get().value();
-            // ${...} template → expand (supports defaults and variable composition)
-            // Plain key      → resolve (missing = fail-fast)
-            String raw = val.contains("${")
-                ? container.get(SymbolSource.class).expand(val)
-                : container.get(SymbolSource.class).resolve(val);
-            return coerceConfiguredValue(targetType, raw, lookup);
+        if (symbol.isEmpty()) {
+            return null;
         }
-
-        return null;
+        String val = symbol.get().value();
+        SymbolSource symbols = container.get(SymbolSource.class);
+        // ${...} template → expand (supports defaults and variable composition)
+        // Plain key      → resolve (missing = fail-fast)
+        String raw = val.contains("${") ? symbols.expand(val) : symbols.resolve(val);
+        return coerceConfiguredValue(targetType, raw);
     }
 
-    private Object coerceConfiguredValue(Class<?> targetType, Object rawValue, AnnotationLookup lookup) {
-        var intermediateType = lookup.annotation(IntermediateType.class);
-        Object value = rawValue;
+    /**
+     * Coerces one configured value to its injection type in a single step.
+     * Custom shapes bridge from the raw string directly: a
+     * {@code CoerceRule<String, T>} parses the whole value in one rule.
+     */
+    private Object coerceConfiguredValue(Class<?> targetType, Object rawValue) {
         try {
-            if (intermediateType.isPresent()) {
-                value = container.get(Coercer.class).coerce(rawValue, intermediateType.get().value());
-            }
-            return container.get(Coercer.class).coerce(value, targetType);
+            return container.get(Coercer.class).coerce(rawValue, targetType);
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException(
-                "Cannot coerce configured value '" + rawValue + "' to " + targetType.getName()
-                    + (intermediateType.isPresent()
-                        ? " via intermediate type " + intermediateType.get().value().getName()
-                        : ""),
+                "Cannot coerce configured value '" + rawValue + "' to " + targetType.getName(),
                 e
             );
         }
@@ -336,6 +325,7 @@ final class InjectionResolver {
     private final Set<String> markerWarned = ConcurrentHashMap.newKeySet();
 
     private Object resolveValue(
+        BindingImpl<?> owner,
         Class<?> ownerType,
         AnnotationLookup lookup,
         Type memberType,
@@ -353,7 +343,7 @@ final class InjectionResolver {
         if (contributed != null) {
             return contributed;
         }
-        Object injected = resolveInjected(ownerType, lookup, targetType);
+        Object injected = resolveInjected(owner, ownerType, lookup, targetType);
         if (injected != null) {
             return injected;
         }
@@ -368,10 +358,15 @@ final class InjectionResolver {
         // A plain String parameter resolves container.get(String.class) via the
         // same marker/scope path as every other type — no special case that
         // would skip scope-compatibility validation.
-        return resolveService(ownerType, lookup, targetType);
+        return resolveService(owner, ownerType, lookup, targetType);
     }
 
-    private Object resolveInjected(Class<?> ownerType, AnnotationLookup lookup, Class<?> targetType) {
+    private Object resolveInjected(
+        BindingImpl<?> owner,
+        Class<?> ownerType,
+        AnnotationLookup lookup,
+        Class<?> targetType
+    ) {
         if (!hasInjectionAnnotation(lookup)) {
             return null;
         }
@@ -384,14 +379,19 @@ final class InjectionResolver {
         String id = resolveId(lookup);
         if (id != null) {
             validateScopeBeforeResolution(
-                ownerType, container.bindingIndex().find(targetType, id));
+                owner, ownerType, container.bindingIndex().find(targetType, id));
             return container.get(targetType, id);
         }
         // No explicit id — try marker-based resolution
-        return resolveService(ownerType, lookup, targetType);
+        return resolveService(owner, ownerType, lookup, targetType);
     }
 
-    private Object resolveService(Class<?> ownerType, AnnotationLookup lookup, Class<?> targetType) {
+    private Object resolveService(
+        BindingImpl<?> owner,
+        Class<?> ownerType,
+        AnnotationLookup lookup,
+        Class<?> targetType
+    ) {
         Set<Class<? extends Annotation>> markers = resolveMarkers(ownerType, lookup);
         // Validate before realization: a singleton owner directly injecting a
         // thread-scoped concrete class must get the dedicated diagnostic even
@@ -405,7 +405,7 @@ final class InjectionResolver {
         BindingImpl<?> selected = markers.isEmpty()
             ? uniqueOrNull(targetType)
             : container.markerIndex().findByMarker(targetType, markerArr);
-        validateScopeBeforeResolution(ownerType, selected);
+        validateScopeBeforeResolution(owner, ownerType, selected);
         Object service;
         if (!markers.isEmpty()) {
             service = container.get(targetType, markerArr);
@@ -430,11 +430,10 @@ final class InjectionResolver {
             AnnotationLookup lookup
     ) {
         Set<Class<? extends Annotation>> result = new HashSet<>();
-        for (Annotation ann : lookup.annotations()) {
+        for (Annotation ann : lookup.all()) {
             Class<? extends Annotation> annType = ann.annotationType();
             // Skip framework annotations that aren't markers
-            if (annType == Inject.class || annType == Symbol.class
-                    || annType == IntermediateType.class) {
+            if (annType == Inject.class || annType == Symbol.class) {
                 continue;
             }
             // Check if this annotation is a known marker
@@ -454,6 +453,13 @@ final class InjectionResolver {
         return result;
     }
 
+    /**
+     * Create-path fallback: a caller-owned instance from
+     * {@code Container.create} has no binding, so the owner scope is guessed
+     * from the type — the exact binding, then the interface hierarchy, then
+     * the superclass chain. Only singleton owners are validated; anything
+     * unresolvable (or ambiguous) skips validation rather than failing.
+     */
     private BindingImpl<?> findOwnerBinding(Class<?> ownerType) {
         BindingImpl<?> exact = uniqueOrNull(ownerType);
         if (exact != null) return exact;
@@ -482,11 +488,12 @@ final class InjectionResolver {
     }
 
     /**
-     * The validator's heuristic lookups must not be louder than the thing they
-     * validate: an interface implemented by several bindings (a contributed
-     * {@code HttpFilter}, say) is simply {@code null} here — the real
-     * selection happens at the {@code get} below and reports ambiguity in
-     * its own terms.
+     * Create-path fallback lookup: must not be louder than the thing it
+     * validates — an interface implemented by several bindings (a contributed
+     * {@code HttpFilter}, say) is simply {@code null} here, and the real
+     * selection happens at the {@code get} below, reporting ambiguity in its
+     * own terms. On the realize path the owner binding is passed down
+     * directly and this guesswork is skipped entirely.
      */
     @SuppressWarnings("unchecked")
     private BindingImpl<?> uniqueOrNull(Class<?> type) {
@@ -498,6 +505,7 @@ final class InjectionResolver {
     }
 
     private void validateScopeBeforeResolution(
+        BindingImpl<?> owner,
         Class<?> ownerType,
         BindingImpl<?> targetBinding
     ) {
@@ -505,7 +513,11 @@ final class InjectionResolver {
             return;
         }
         Class<?> targetType = targetBinding.type();
-        BindingImpl<?> ownerBinding = findOwnerBinding(ownerType);
+        // The binding being realized names its own scope — no guessing. Only
+        // a caller-owned instance (owner == null) falls back to the type
+        // heuristic, which can neither see multi-bound ambiguity nor the
+        // prototype binding actually being built.
+        BindingImpl<?> ownerBinding = owner != null ? owner : findOwnerBinding(ownerType);
         if (ownerBinding == null || ownerBinding.scope() != Scope.SINGLETON) {
             return;
         }
@@ -538,28 +550,20 @@ final class InjectionResolver {
                         ? " (bound to a @NotThreadSafe implementation)" : "")
                     + " — the singleton shares it across threads, and the "
                     + "interface proxy holds one target, so proxying does not "
-                    + "change that. Declare the implementation @ThreadSafe, "
-                    + "bind it Scope.THREAD (then the proxy resolves per "
-                    + "thread), or inject it into a prototype/thread-scoped "
-                    + "holder."
+                    + "change that. Remove the marker once the implementation "
+                    + "is verified thread-safe, bind it Scope.THREAD (then the "
+                    + "proxy resolves per thread), or inject it into a "
+                    + "prototype/thread-scoped holder."
             );
         }
     }
 
-    /**
-     * The trimmed {@code @Inject("id")} value, or {@code null} when absent.
-     * Takes the concrete annotation type — this method is only ever called
-     * with an {@code Inject}, so there is no other branch to handle.
-     */
+    /** The trimmed {@code @Inject("id")} value, or {@code null} when absent or blank. */
     private static String normalizedId(Inject inject) {
         if (inject == null) {
             return null;
         }
-        String value = inject.value();
-        if (value == null) {
-            return null;
-        }
-        value = value.trim();
+        String value = inject.value().trim();
         return value.isEmpty() ? null : value;
     }
 

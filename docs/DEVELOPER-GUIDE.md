@@ -561,7 +561,7 @@ only receive two-argument `publish(topic, payload)` calls.
 | `EventSubscriber<E>` | Module-level subscriber: carries event type, handler, and ordering |
 | `Subscription<E>` | Handle returned by `subscribe()`, used to `unsubscribe()` |
 | `DeadEvent` | Published when an event has zero subscribers — subscribe for diagnostics |
-| `EventSink` | Sends events to an external MQ: `EventSink.send(topic, event)` |
+| `EventSink` | Sends events to an external MQ: `EventSink.send(topic, event, channel, eventId)` |
 | `@Topic("kafka.topic")` | Maps an event class to a cross-JVM topic name |
 | `EventBus.Stoppable` | Events implementing this can `stop()` the subscriber chain |
 

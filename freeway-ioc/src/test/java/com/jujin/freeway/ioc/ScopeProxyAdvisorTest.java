@@ -336,6 +336,24 @@ class ScopeProxyAdvisorTest {
     }
 
     @Test
+    void threadScopeKeepsTwoContainersApart() {
+        // Regression: the scope cache is process-wide and was keyed by
+        // (type, id) alone, so two containers binding the same type under the
+        // same id shared ONE value inside a scope.
+        Container a = Freeway.create(binder ->
+            binder.bind(ScopedCounter.class).to(ScopedCounter.class).scope(Scope.THREAD).id("counter"));
+        Container b = Freeway.create(binder ->
+            binder.bind(ScopedCounter.class).to(ScopedCounter.class).scope(Scope.THREAD).id("counter"));
+
+        a.get(Scoping.class).within(() -> assertNotSame(
+            a.get(ScopedCounter.class, "counter"),
+            b.get(ScopedCounter.class, "counter"),
+            "each container realizes its own thread-scoped value"));
+        a.close();
+        b.close();
+    }
+
+    @Test
     void scopedBindingWithinUsesScopedValue() {
         ScopedCounter.created.set(0);
         ScopedCounter.destroyed.set(0);
@@ -577,14 +595,14 @@ class ScopeProxyAdvisorTest {
     @Test
     void cachedSingletonCallDoesNotQueueBehindUnrelatedRealization() throws Exception {
         // Regression: interface singleton proxies re-entered realize() on
-        // every method call and realize() took the JVM-wide REALIZE_LOCK even
+        // every method call and realize() took the (then JVM-wide) realize lock even
         // for a cache hit — so a call on an already-realized singleton of one
         // container blocked behind an unrelated slow constructor of another
         // container (measured ~1.2s for a 500ms sleep). The target is fully
         // published before it lands in the CHM, so a cached read is safe
         // lock-free.
         Container fast = Freeway.create(binder ->
-            binder.bind(Greeter.class).to(ThreadSafeGreeterImpl.class));
+            binder.bind(Greeter.class).to(SafeGreeterImpl.class));
         Greeter greeter = fast.get(Greeter.class);
         greeter.greet(); // warm the target cache
 
@@ -600,6 +618,33 @@ class ScopeProxyAdvisorTest {
             assertTrue(ms < 400,
                 "cached dispatch must not queue behind an unrelated "
                     + "first-time realization, blocked " + ms + "ms");
+        } finally {
+            realizer.join();
+            fast.close();
+            slow.close();
+        }
+    }
+
+    @Test
+    void firstRealizationDoesNotQueueBehindAnotherContainer() throws Exception {
+        // Regression: the realize lock was JVM-wide, so a first-time
+        // realization in one container waited for an unrelated slow
+        // constructor in another (the cached path above was fixed, the lock
+        // itself was not). Each container now serializes only its own.
+        Container slow = Freeway.create(binder ->
+            binder.bind(SlowSingleton.class).to(SlowSingleton.class));
+        Container fast = Freeway.create(binder ->
+            binder.bind(GreeterImpl.class).to(GreeterImpl.class));
+        Thread realizer = new Thread(() -> slow.get(SlowSingleton.class));
+        realizer.start();
+        try {
+            Thread.sleep(50); // the 500ms constructor is now in flight
+            long start = System.nanoTime();
+            fast.get(GreeterImpl.class);
+            long ms = (System.nanoTime() - start) / 1_000_000;
+            assertTrue(ms < 400,
+                "first-time realization must not queue behind another "
+                    + "container's constructor, blocked " + ms + "ms");
         } finally {
             realizer.join();
             fast.close();
@@ -624,6 +669,50 @@ class ScopeProxyAdvisorTest {
     }
 
     @Test
+    void multiBoundSingletonOwnerDoesNotEscapeScopeValidation() {
+        // The owner binding names its own scope: a singleton binding realized
+        // among several bindings of its type is still validated. The old
+        // type heuristic swallowed the multi-binding ambiguity as "unknown
+        // owner" and skipped validation entirely.
+        Container container = Freeway.create(binder -> {
+            binder.bind(UnsafeShared.class).to(UnsafeShared.class);
+            binder.bind(SingletonHoldingUnsafe.class).to(SingletonHoldingUnsafe.class).id("a");
+            binder.bind(SingletonHoldingUnsafe.class).to(SingletonHoldingUnsafe.class).id("b");
+        });
+
+        RuntimeException ex = assertThrows(RuntimeException.class,
+            () -> container.get(SingletonHoldingUnsafe.class, "a"));
+        assertInstanceOf(IllegalStateException.class, ex.getCause());
+        assertTrue(ex.getCause().getMessage().contains("@NotThreadSafe"),
+            "a realized singleton must be rejected for @NotThreadSafe deps, got: "
+                + ex.getCause().getMessage());
+        container.close();
+    }
+
+    @Test
+    void multiBoundPrototypeOwnerIsNotJudgedByItsSingletonInterface() {
+        // The mirror case: a prototype binding realized among several bindings
+        // of its type must not be judged by a singleton binding of an
+        // interface it implements. The old heuristic walked the interface
+        // hierarchy once the exact-type lookup went ambiguous and rejected
+        // this valid prototype.
+        Container container = Freeway.create(binder -> {
+            binder.bind(SharedContract.class).to(UnsafeSharedImpl.class);
+            binder.bind(PrototypeHoldingUnsafeViaInterface.class)
+                .to(PrototypeHoldingUnsafeViaInterface.class)
+                .id("a")
+                .scope(Scope.PROTOTYPE);
+            binder.bind(PrototypeHoldingUnsafeViaInterface.class)
+                .to(PrototypeHoldingUnsafeViaInterface.class)
+                .id("b");
+        });
+
+        assertDoesNotThrow(() -> container.get(PrototypeHoldingUnsafeViaInterface.class, "a"),
+            "a prototype holder gets its own instance per resolution — no sharing");
+        container.close();
+    }
+
+    @Test
     void prototypeHolderMayInjectNotThreadSafeConcrete() {
         Container container = Freeway.create(binder -> {
             binder.bind(UnsafeShared.class).to(UnsafeShared.class);
@@ -634,26 +723,6 @@ class ScopeProxyAdvisorTest {
 
         assertDoesNotThrow(() -> container.get(PrototypeHoldingUnsafe.class),
             "a prototype holder gets its own instance per resolution — no sharing");
-    }
-
-    @Test
-    void conflictingConcurrencyMarkersRejected() {
-        IllegalArgumentException ex = assertThrows(
-            IllegalArgumentException.class,
-            () -> Freeway.create(binder ->
-                binder.bind(ConflictingContract.class).to(ConflictingContract.class)));
-        assertTrue(ex.getMessage().contains("both @ThreadSafe and @NotThreadSafe"),
-            "got: " + ex.getMessage());
-    }
-
-    @Test
-    void threadSafeMarkerResolvesByMarker() {
-        Container container = Freeway.create(binder ->
-            binder.bind(Greeter.class).to(ThreadSafeGreeterImpl.class));
-
-        Greeter g = container.get(Greeter.class, ThreadSafe.class);
-        assertNotNull(g);
-        assertEquals("safe", g.greet());
     }
 
     @Test

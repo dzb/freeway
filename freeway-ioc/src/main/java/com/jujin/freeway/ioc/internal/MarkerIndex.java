@@ -1,10 +1,8 @@
 package com.jujin.freeway.ioc.internal;
 
-import com.jujin.freeway.ioc.AmbiguousBindingException;
 import com.jujin.freeway.ioc.annotation.Marker;
 import com.jujin.freeway.ioc.annotation.NotThreadSafe;
 import com.jujin.freeway.ioc.annotation.Primary;
-import com.jujin.freeway.ioc.annotation.ThreadSafe;
 import java.lang.annotation.Annotation;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -36,12 +34,11 @@ final class MarkerIndex {
     }
 
     /**
-     * Puts a binding into the index under each of its markers — the one entry
-     * point, used both when the binding is flushed and when markers are added
-     * later (via {@code .marker(...)}/{@code .primary()} on a handle a later
-     * module extends). Does not duplicate entries; removing markers is not
-     * supported. Marker annotations were already validated where they entered
-     * the binding ({@link BindingImpl#addMarkers}/{@link BindingImpl#marker}).
+     * Puts a binding into the index under each of its markers, once, when the
+     * binding is registered. Bindings are sealed at registration, so markers
+     * added later do not exist. Marker annotations were already validated
+     * where they entered the binding
+     * ({@link BindingImpl#addMarkers}/{@link BindingImpl#marker}).
      */
     void sync(BindingImpl<?> binding) {
         for (Class<?> marker : binding.markers()) {
@@ -54,28 +51,20 @@ final class MarkerIndex {
     }
 
     /**
-     * Finds the unique binding matching the given type and marker set.
-     * Returns {@code null} if no markers are provided (caller should fall
-     * back to normal type-based resolution).
+     * Finds the binding matching the given type and every given marker,
+     * selected by the same rule as a lookup by type
+     * ({@link BindingIndex#select}). Callers pass at least one marker; an
+     * empty marker set matches nothing.
      *
-     * @param type    the requested service type
-     * @param markers the marker annotations present at the injection point
-     * @param <T>     the service type
-     * @return the unique matching binding, or null
-     * @throws IllegalArgumentException if multiple bindings match and none is primary
+     * @return the selected binding, or {@code null} when none matches
+     * @throws com.jujin.freeway.ioc.AmbiguousBindingException if several match
+     *         and none is the unique primary
      */
-    @SuppressWarnings("unchecked")
     <T> BindingImpl<T> findByMarker(
         Class<T> type,
         Class<? extends Annotation>[] markers
     ) {
-        if (markers.length == 0) {
-            return null;
-        }
-
-        // Start with all bindings assignable to the requested type
         Set<BindingImpl<?>> matches = null;
-
         for (Class<? extends Annotation> marker : markers) {
             List<BindingImpl<?>> bindings = markerToBindings.get(marker);
             if (bindings == null) {
@@ -90,101 +79,48 @@ final class MarkerIndex {
                 return null;
             }
         }
-
-        if (matches == null || matches.isEmpty()) {
+        if (matches == null) {
             return null;
         }
-
-        // Filter by type assignability
-        List<BindingImpl<?>> typeMatches = new ArrayList<>();
+        List<BindingImpl<?>> candidates = new ArrayList<>();
         for (BindingImpl<?> binding : matches) {
             if (type.isAssignableFrom(binding.type())) {
-                typeMatches.add(binding);
+                candidates.add(binding);
             }
         }
-
-        if (typeMatches.isEmpty()) {
-            return null;
-        }
-        if (typeMatches.size() == 1) {
-            return (BindingImpl<T>) typeMatches.getFirst();
-        }
-
-        // Multiple matches — check for primary
-        BindingImpl<?> primary = null;
-        for (BindingImpl<?> b : typeMatches) {
-            if (b.isPrimary()) {
-                if (primary != null) {
-                    throw new AmbiguousBindingException(
-                        "Multiple primary services match type " + type.getName()
-                            + " with markers " + markerNames(markers)
-                    );
-                }
-                primary = b;
-            }
-        }
-        if (primary != null) {
-            return (BindingImpl<T>) primary;
-        }
-
-        throw new AmbiguousBindingException(
-            "Multiple services match type " + type.getName()
-                + " with markers " + markerNames(markers)
-                + "; mark one binding as primary()"
-        );
+        return BindingIndex.select(candidates, type, markers);
     }
 
     /**
-     * Extracts markers from a module class. Reads {@code @Marker} annotation
-     * and returns the listed classes. Returns empty set if the module has no
-     * {@code @Marker} annotation.
+     * The markers a module class lists in {@code @Marker} — every binding the
+     * module declares inherits them.
      */
     static Set<Class<?>> extractModuleMarkers(Class<?> moduleClass) {
-        Marker marker = moduleClass.getAnnotation(Marker.class);
-        if (marker == null || marker.value().length == 0) {
-            return Set.of();
-        }
-        Set<Class<?>> result = new HashSet<>();
-        for (Class<?> c : marker.value()) {
-            validateMarkerAnnotation(c);
-            result.add(c);
-        }
-        return Set.copyOf(result);
+        return Set.copyOf(listedMarkers(moduleClass));
     }
 
     /**
-     * Extracts markers from an implementation class. Reads {@code @Marker}
-     * and standalone marker annotations (like {@code @Primary}).
+     * The markers an implementation class declares: those listed in
+     * {@code @Marker}, plus the standalone marker annotations placed directly
+     * on it ({@code @Primary} and the {@code @NotThreadSafe} concurrency
+     * contract — the container rejects a {@code @NotThreadSafe} implementation
+     * in a singleton holder).
      */
     static Set<Class<?>> extractClassMarkers(Class<?> implClass) {
-        Set<Class<?>> result = new HashSet<>();
-        Marker marker = implClass.getAnnotation(Marker.class);
-        if (marker != null) {
-            for (Class<?> c : marker.value()) {
-                validateMarkerAnnotation(c);
-                result.add(c);
-            }
-        }
-        // Also pick up @Primary on the class
-        if (implClass.getAnnotation(Primary.class) != null) {
+        Set<Class<?>> result = listedMarkers(implClass);
+        if (implClass.isAnnotationPresent(Primary.class)) {
             result.add(Primary.class);
         }
-        // Concurrency-contract markers (same direct-annotation style as
-        // @Primary): the container rejects @NotThreadSafe into a singleton.
-        boolean threadSafe = implClass.getAnnotation(ThreadSafe.class) != null;
-        boolean notThreadSafe = implClass.getAnnotation(NotThreadSafe.class) != null;
-        if (threadSafe && notThreadSafe) {
-            throw new IllegalArgumentException(
-                "Implementation " + implClass.getName()
-                    + " is annotated with both @ThreadSafe and @NotThreadSafe");
-        }
-        if (threadSafe) {
-            result.add(ThreadSafe.class);
-        }
-        if (notThreadSafe) {
+        if (implClass.isAnnotationPresent(NotThreadSafe.class)) {
             result.add(NotThreadSafe.class);
         }
         return Set.copyOf(result);
+    }
+
+    /** The classes {@code type}'s {@code @Marker} lists — validated by the binding they enter. */
+    private static Set<Class<?>> listedMarkers(Class<?> type) {
+        Marker marker = type.getAnnotation(Marker.class);
+        return marker == null ? new HashSet<>() : new HashSet<>(List.of(marker.value()));
     }
 
     static void validateMarkerAnnotation(Class<?> markerClass) {
@@ -202,19 +138,4 @@ final class MarkerIndex {
     void clear() {
         markerToBindings.clear();
     }
-
-    private static String markerNames(Class<? extends Annotation>[] markers) {
-        if (markers.length == 0) {
-            return "[]";
-        }
-        StringBuilder sb = new StringBuilder("[");
-        for (int i = 0; i < markers.length; i++) {
-            if (i > 0) {
-                sb.append(", ");
-            }
-            sb.append('@').append(markers[i].getSimpleName());
-        }
-        return sb.append(']').toString();
-    }
-
 }
