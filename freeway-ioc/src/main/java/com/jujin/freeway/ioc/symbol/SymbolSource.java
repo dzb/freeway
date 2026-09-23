@@ -65,10 +65,11 @@ public interface SymbolSource {
      * <p><b>A primary replacement must take the same view itself.</b> Its
      * factory receives the container, so the pattern is:
      * {@code binder.bind(SymbolSource.class).to(c ->
-     * new MySource(c.extension(SymbolProvider.class).all()))}. A replacement
-     * that ignores the view serves only its own tiers — boot's cascade
-     * silently disappears and surfaces much later as "my config file is
-     * ignored".
+     * new MySource(c.extension(SymbolProvider.class)))} — hand over the
+     * {@code Extension} itself, not an {@code all()} snapshot: the view must
+     * be re-read on every lookup. A replacement that ignores the view serves
+     * only its own tiers — boot's cascade silently disappears and surfaces
+     * much later as "my config file is ignored".
      *
      * @param coercer    parses coercer-backed specs; the container passes its own
      * @param contributed the live contributed view, re-read on every lookup

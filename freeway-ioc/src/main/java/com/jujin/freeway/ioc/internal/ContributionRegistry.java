@@ -176,15 +176,20 @@ final class ContributionRegistry {
      * An Ordering handle that stores ordering constraints and applies
      * them to the real Ordering once the instance is created. Inner (not
      * static) so a post-composition {@code before()}/{@code after()} fails
-     * loudly instead of buffering constraints nothing will ever replay.
+     * loudly instead of buffering constraints nothing will ever replay —
+     * and so does one declared after the instance already landed
+     * ({@link #applied}): that window opens mid-drain, before the seal,
+     * and the constraint would sit buffered with no replay ever coming.
      */
     private final class DeferredOrdering implements Ordering {
         private final List<String> beforeIds = new ArrayList<>();
         private final List<String> afterIds = new ArrayList<>();
+        private boolean applied;
 
         void apply(Ordering target) {
             if (!beforeIds.isEmpty()) target.before(beforeIds.toArray(new String[0]));
             if (!afterIds.isEmpty()) target.after(afterIds.toArray(new String[0]));
+            applied = true;
         }
 
         @Override
@@ -207,6 +212,13 @@ final class ContributionRegistry {
                     "Ordering constraints are accepted only during composition " +
                         "(module bind), before the container is built — " + op +
                         " on a deferred handle after composition would be silently dropped"
+                );
+            }
+            if (applied) {
+                throw new IllegalStateException(
+                    "Ordering constraints on a deferred handle are accepted only " +
+                        "before its contribution is created — " + op +
+                        " after the instance landed has nothing left to replay into"
                 );
             }
         }

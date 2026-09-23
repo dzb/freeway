@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 /**
  * A module may bind its own primary {@link SymbolSource}. Contributions reach
@@ -93,6 +94,43 @@ class SymbolSourceReplacementTest {
 
         assertEquals("class-tier", container.get(SymbolSource.class).resolve("class.tier", null),
             "the replacement must see class-contributed providers from the same view");
+        container.close();
+    }
+
+    /** A replacement that never consults the contributed view — the failure
+     *  mode the {@link SymbolSource#of} pattern warns about. */
+    private static final class BlindSource implements SymbolSource {
+
+        private final SymbolSource delegate =
+            SymbolSource.of(new CoercerDefault(), SymbolProvider.systemProperties());
+
+        @Override
+        public String resolve(String name) {
+            return delegate.resolve(name);
+        }
+
+        @Override
+        public String expand(String input) {
+            return delegate.expand(input);
+        }
+    }
+
+    @Test
+    void replacementIgnoringTheViewServesOnlyItsOwnTiers() {
+        // The warning pinned as a consequence: contributions reach the chain
+        // through the extension store alone, so a replacement built without
+        // the view cannot see them — boot's cascade would vanish the same
+        // way, surfacing much later as "my config file is ignored".
+        Container container = Freeway.create(binder -> {
+            binder.bind(SymbolSource.class)
+                .to(c -> new BlindSource())
+                .primary();
+            binder.contribute(SymbolProvider.class)
+                .add("probe-tier", SymbolProvider.of(() -> Map.of("probe", "value"), 7));
+        });
+
+        assertNull(container.get(SymbolSource.class).resolve("probe", null),
+            "a replacement that ignores the view serves only its own tiers");
         container.close();
     }
 }

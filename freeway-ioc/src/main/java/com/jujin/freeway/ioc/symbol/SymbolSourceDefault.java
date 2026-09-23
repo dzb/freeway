@@ -172,9 +172,6 @@ final class SymbolSourceDefault implements SymbolSource {
      * Recursively expands {@code ${...}} references with a depth limit
      * to prevent stack overflow.
      * <p>
-     * Recursively expands {@code ${...}} references with a depth limit to
-     * prevent stack overflow.
-     * <p>
      * Default value syntax: {@code ${name:-default}} / {@code ${name:default}}
      * (see {@link #expand(String)}).
      *

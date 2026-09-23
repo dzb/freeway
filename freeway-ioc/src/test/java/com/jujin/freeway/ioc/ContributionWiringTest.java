@@ -166,7 +166,10 @@ class ContributionWiringTest {
         // The window for both the read and the constraint is composition:
         // the deferred factory below warms the cache during the drain, then
         // declares the constraint on the earlier entry — both after that
-        // entry landed. (Post-composition the window is sealed; see
+        // entry landed. The re-read happens *inside* the factory: the
+        // factory's own add() right after return would invalidate the cache
+        // anyway and mask a constraint that failed to. (Post-composition
+        // the window is sealed; see
         // ExtensionAggregationTest.containerSealsExtensionsAfterComposition.)
         postReadHandle.set(null);
         Container container = Freeway.create(
@@ -176,8 +179,14 @@ class ContributionWiringTest {
             binder -> binder.contribute(Labeled.class).add("warmer", c -> {
                 // Warm the sorted cache (insertion order, no constraints yet)…
                 c.extension(Labeled.class).all();
-                // …then constrain an entry that is already in the store.
+                // …then constrain an entry that is already in the store…
                 postReadHandle.get().before("first");
+                // …and re-read before this factory's own entry lands: only
+                // before()'s invalidation can explain the new order here.
+                assertEquals(List.of("web", "core"),
+                    c.extension(Labeled.class).all().stream()
+                        .map(Labeled::label).toList(),
+                    "before() after the first all() must invalidate the cached order");
                 return (Labeled) () -> "warmer";
             })
         );
@@ -187,6 +196,32 @@ class ContributionWiringTest {
                 .map(Labeled::label).toList(),
             "ordering declared after the first all() must invalidate the cached order");
         container.close();
+    }
+
+    @Test
+    void deferredHandleRejectsOrderingAfterItsContributionLanded() {
+        // The applied window: a deferred handle goes inert the moment its
+        // instance lands in the drain — seal() has not run yet (composed is
+        // still false), but nothing will ever replay a constraint declared
+        // now, so it must fail loudly exactly like the post-seal case.
+        postReadHandle.set(null);
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+            () -> Freeway.create(
+                binder -> postReadHandle.set(
+                    binder.contribute(Labeled.class).add("first", c -> {
+                        return (Labeled) () -> "core";
+                    })),
+                binder -> binder.contribute(Labeled.class).add("second", c -> {
+                    // Deferred runnables drain in declaration order, so
+                    // "first" has already landed and applied its handle.
+                    postReadHandle.get().before("first");
+                    return (Labeled) () -> "web";
+                })
+            ));
+        assertTrue(ex.getMessage().contains("before()"),
+            "message must name the operation: " + ex.getMessage());
+        assertTrue(ex.getMessage().contains("replay"),
+            "message must explain the consequence: " + ex.getMessage());
     }
 
     @Test
