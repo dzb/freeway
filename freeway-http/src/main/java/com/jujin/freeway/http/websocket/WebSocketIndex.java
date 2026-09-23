@@ -24,7 +24,10 @@ public final class WebSocketIndex {
      * Contribution-consumed routes: both parameter lists are resolved from
      * {@code binder.contribute(...)} extensions when the container builds
      * this class (see {@code HttpModule}) — constructor parameters consume
-     * contributions implicitly.
+     * contributions implicitly. {@code HttpModule} resolves every class-based
+     * endpoint before this constructor runs; one still unresolved here (an
+     * index built by hand, without that step) fails at assembly rather than
+     * silently deferring to the first upgrade.
      */
     public WebSocketIndex(
         List<WebSocketRoute> routes,
@@ -47,6 +50,14 @@ public final class WebSocketIndex {
     }
 
     private static Route adapt(WebSocketRoute route) {
+        if (route.endpoint() instanceof LazyEndpoint le && !le.isResolved()) {
+            throw new IllegalStateException(
+                "WebSocket route " + route.path() + " uses endpoint class "
+                    + le.endpointType().getName() + " but it was never "
+                    + "resolved — HttpModule resolves class endpoints before "
+                    + "building this index; build the index through the "
+                    + "container, or declare an endpoint instance");
+        }
         return Route.get(route.path(), new EndpointHandler(route.endpoint()));
     }
 

@@ -6,13 +6,14 @@ import java.util.function.Supplier;
 
 /**
  * A {@link WebSocketEndpoint} that wraps a handler class. The endpoint
- * instance is created through the container (constructor + field injection
- * + lifecycle) and handed in by {@code HttpModule} when the WebSocket index
- * is built at server startup — see {@code HttpModule}'s WebSocketIndex
- * binding — so missing or misconfigured endpoints fail fast at startup
- * rather than on the first upgrade. The websocket package itself never
- * sees the container: the module keeps it and supplies the built instance
- * from the outside.
+ * instance is created through the container — constructor injection, field
+ * injection and {@code @PostConstruct}; the container does not track it
+ * afterwards, so there is no {@code @PreDestroy} — and handed in by
+ * {@code HttpModule} when the WebSocket index is built at server startup —
+ * see {@code HttpModule}'s WebSocketIndex binding — so missing or
+ * misconfigured endpoints fail fast at startup rather than on the first
+ * upgrade. The websocket package itself never sees the container: the
+ * module keeps it and supplies the built instance from the outside.
  */
 public final class LazyEndpoint implements WebSocketEndpoint {
     private final Class<? extends WebSocketEndpoint> endpointType;
@@ -25,6 +26,11 @@ public final class LazyEndpoint implements WebSocketEndpoint {
     /** The endpoint class this route was declared with. */
     public Class<? extends WebSocketEndpoint> endpointType() {
         return endpointType;
+    }
+
+    /** True once {@link #resolve} has handed in the built instance. */
+    public boolean isResolved() {
+        return resolved != null;
     }
 
     /**

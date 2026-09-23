@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.Base64;
+import java.util.Set;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -11,6 +12,7 @@ import org.slf4j.LoggerFactory;
 import com.jujin.freeway.http.engine.ws.WebSocketReadLoop;
 import com.jujin.freeway.http.engine.ws.WebSocketSessionImpl;
 import com.jujin.freeway.http.engine.ws.WebSocketUtils;
+import com.jujin.freeway.http.websocket.WebSocketListener;
 import com.jujin.freeway.http.websocket.WebSocketMatch;
 
 /**
@@ -68,14 +70,27 @@ final class WebSocketUpgrade {
             HttpSession.writeLine(out, "Sec-WebSocket-Accept: " + acceptKey);
             String protocolHeader =
                 HttpSession.headerValue(req.headers(), "Sec-WebSocket-Protocol");
-            if (protocolHeader != null
-                    && !match.endpoint().subprotocols().isEmpty()) {
-                for (String candidate : protocolHeader.split(",")) {
-                    String candidateProtocol = candidate.trim();
-                    if (match.endpoint().subprotocols().contains(candidateProtocol)) {
-                        HttpSession.writeLine(out,
-                            "Sec-WebSocket-Protocol: " + candidateProtocol);
-                        break;
+            if (protocolHeader != null) {
+                Set<String> supported;
+                try {
+                    supported = match.endpoint().subprotocols();
+                } catch (Exception e) {
+                    // The endpoint's own callback broke the handshake — its
+                    // fault, not the peer's: WARN with the class so it is
+                    // found, never swallowed at TRACE.
+                    LOG.warn("WebSocket upgrade failed: endpoint {} rejected {} {}: {}",
+                        match.endpoint().getClass().getName(), req.method(),
+                        req.path(), e.toString(), e);
+                    return;
+                }
+                if (!supported.isEmpty()) {
+                    for (String candidate : protocolHeader.split(",")) {
+                        String candidateProtocol = candidate.trim();
+                        if (supported.contains(candidateProtocol)) {
+                            HttpSession.writeLine(out,
+                                "Sec-WebSocket-Protocol: " + candidateProtocol);
+                            break;
+                        }
                     }
                 }
             }
@@ -104,12 +119,25 @@ final class WebSocketUpgrade {
                 req.queryString(), req.headers(), websocketInput,
                 connection.outputStream(), match.pathVariables(),
                 HttpSession.headerValue(req.headers(), "x-request-id"));
-            var listener = match.endpoint().open(wsSession);
-            listener.onOpen(wsSession);
+            WebSocketListener listener;
+            try {
+                listener = match.endpoint().open(wsSession);
+                listener.onOpen(wsSession);
+            } catch (Exception e) {
+                // Endpoint failure during the upgrade phase — WARN with the
+                // class so a broken endpoint surfaces here, not as a silent
+                // dropped connection.
+                LOG.warn("WebSocket upgrade failed: endpoint {} could not open {} {}: {}",
+                    match.endpoint().getClass().getName(), req.method(),
+                    req.path(), e.toString(), e);
+                return;
+            }
             WebSocketReadLoop.readLoop(websocketInput, connection.outputStream(),
                 wsSession, listener);
         } catch (Exception e) {
-            LOG.trace("WebSocket upgrade error: {}", e.getMessage());
+            // Read-loop and connection failures stay low-level: a peer
+            // disconnecting mid-frame is routine, not a fault to alert on.
+            LOG.trace("WebSocket exchange error: {}", e.toString());
         } finally {
             connection.close();
         }

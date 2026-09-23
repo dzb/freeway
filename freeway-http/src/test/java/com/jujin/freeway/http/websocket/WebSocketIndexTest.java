@@ -60,17 +60,15 @@ class WebSocketIndexTest {
     }
 
     @Test
-    void classRouteMatchesWithResolutionDeferredInStandaloneIndex() {
-        var index = new WebSocketIndex(List.of(
-            WebSocketRoute.of("/cls", GreetedEndpoint.class)), List.of());
-        var match = index.match("GET", "/cls");
-        assertNotNull(match);
-        assertTrue(match.endpoint() instanceof LazyEndpoint,
-            "class route must register through the lazy wrapper");
-        var ex = assertThrows(IllegalStateException.class,
-            () -> match.endpoint().open(null));
+    void standaloneIndexRejectsUnresolvedClassRouteAtAssembly() {
+        // HttpModule resolves every class endpoint before building the index;
+        // a by-hand index has no such step, so it must fail here — at
+        // assembly, naming the class — instead of deferring to the first
+        // upgrade where it used to be swallowed at TRACE.
+        var ex = assertThrows(IllegalStateException.class, () -> new WebSocketIndex(
+            List.of(WebSocketRoute.of("/cls", GreetedEndpoint.class)), List.of()));
         assertTrue(ex.getMessage().contains("GreetedEndpoint"),
-            "unresolved use must fail loud and name the endpoint class");
+            "assembly failure must name the endpoint class: " + ex.getMessage());
     }
 
     @Test
@@ -91,6 +89,41 @@ class WebSocketIndexTest {
             "constructor injection must reach the endpoint class");
         assertEquals(Set.of("chat"), match.endpoint().subprotocols(),
             "subprotocols must delegate to the resolved endpoint");
+        container.close();
+    }
+
+    /** Endpoint whose constructor dependency nobody binds — startup must fail. */
+    static final class NeedyEndpoint implements WebSocketEndpoint {
+        interface Unbound {}
+
+        @Inject
+        NeedyEndpoint(Unbound dep) {
+        }
+
+        @Override
+        public WebSocketListener open(WebSocketSession session) {
+            return WebSocketListener.NOOP;
+        }
+    }
+
+    @Test
+    void endpointWithUnsatisfiableConstructorFailsWhenTheIndexIsBuilt() {
+        // Resolution happens inside the WebSocketIndex binding, so the
+        // unsatisfiable constructor surfaces at container.get(...), not on
+        // the first upgrade — and the cause chain names the endpoint.
+        Container container = Freeway.create(
+            new HttpModule(),
+            b -> b.contribute(WebSocketRoute.class)
+                .add(WebSocketRoute.of("/needy", NeedyEndpoint.class))
+        );
+        RuntimeException ex = assertThrows(RuntimeException.class,
+            () -> container.get(WebSocketIndex.class));
+        StringBuilder chain = new StringBuilder();
+        for (Throwable t = ex; t != null; t = t.getCause()) {
+            chain.append(t.getMessage()).append('\n');
+        }
+        assertTrue(chain.toString().contains("NeedyEndpoint"),
+            "startup failure must name the endpoint class:\n" + chain);
         container.close();
     }
 }
