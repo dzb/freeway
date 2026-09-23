@@ -1,14 +1,17 @@
 package com.jujin.freeway.http.route;
 
 import com.jujin.freeway.http.HttpContext;
-import com.jujin.freeway.ioc.Container;
+import java.util.Objects;
+import java.util.function.Supplier;
 
 /**
  * A {@link RouteHandler} that wraps a handler class. The handler instance is
- * obtained from the container (constructor + field injection + lifecycle) when
- * the route index is built at server startup — see
- * {@code HttpModule}'s RouteIndex binding — so missing or misconfigured
- * handlers fail fast at startup rather than on the first request.
+ * created through the container (constructor + field injection + lifecycle)
+ * and handed in by {@code HttpModule} when the route index is built at server
+ * startup — see {@code HttpModule}'s RouteIndex binding — so missing or
+ * misconfigured handlers fail fast at startup rather than on the first
+ * request. The route package itself never sees the container: the module
+ * keeps it and supplies the built instance from the outside.
  */
 public final class LazyHandler implements RouteHandler {
     private final Class<? extends RouteHandler> handlerType;
@@ -18,13 +21,26 @@ public final class LazyHandler implements RouteHandler {
         this.handlerType = handlerType;
     }
 
-    public RouteHandler resolve(Container container) {
+    /** The handler class this route was declared with. */
+    public Class<? extends RouteHandler> handlerType() {
+        return handlerType;
+    }
+
+    /**
+     * Hands the built instance in; the first hand-in wins. The supplier is
+     * consulted only while unresolved, so a handler shared by an expanded
+     * route set is instantiated exactly once.
+     */
+    public RouteHandler resolve(Supplier<RouteHandler> factory) {
+        Objects.requireNonNull(factory, "factory");
         RouteHandler h = resolved;
         if (h == null) {
             synchronized (this) {
                 h = resolved;
                 if (h == null) {
-                    resolved = h = container.create(handlerType);
+                    resolved = h = Objects.requireNonNull(
+                        factory.get(), "factory.get()"
+                    );
                 }
             }
         }

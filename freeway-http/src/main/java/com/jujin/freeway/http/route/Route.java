@@ -23,7 +23,8 @@ public record Route(
         return new Route(method, path, handler);
     }
 
-    /** Creates a route from a handler class — resolved via LazyHandler at request time. */
+    /** Creates a route from a handler class — the wrapper is resolved by
+     *  {@code HttpModule} at startup, before the first request. */
     public static Route of(String method, String path, Class<? extends RouteHandler> handlerType) {
         return new Route(method, path, new LazyHandler(handlerType));
     }

@@ -205,11 +205,14 @@ public final class HttpModule implements ModuleEx {
             container.get(SymbolSource.class), container.get(HealthCheck.class)));
     }
 
-    /** Resolves a {@link LazyHandler} (class-based route) against the
-     *  container, which instantiates the handler class with constructor
-     *  injection. */
+    /** Resolves a {@link LazyHandler} (class-based route): the container
+     *  instantiates the handler class with constructor injection and the
+     *  instance is handed to the wrapper — the route package stays free of
+     *  container types. */
     private static void resolveLazy(Route r, Container c) {
-        if (r.handler() instanceof LazyHandler lh) lh.resolve(c);
+        if (r.handler() instanceof LazyHandler lh) {
+            lh.resolve(() -> c.create(lh.handlerType()));
+        }
     }
 
     /**
