@@ -18,7 +18,7 @@ import java.util.Map;
 public interface DatabaseRegistry {
 
     /**
-     * Creates a hub over the given named databases (standalone mode).
+     * Creates a registry over the given named databases (standalone mode).
      */
     static DatabaseRegistry of(Map<String, Database> databases) {
         return new DatabaseRegistryImpl(databases);
@@ -38,7 +38,7 @@ public interface DatabaseRegistry {
     Database primary();
 
     /**
-     * Returns the registered databases as they were when this hub was
+     * Returns the registered databases as they were when this registry was
      *  assembled — an immutable snapshot, not a live view: later contributions
      *  do not appear.
      */

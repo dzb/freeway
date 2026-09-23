@@ -224,7 +224,7 @@ class DbModuleTest {
     }
 
     @Test
-    void dbHubWrapsNamedDatabaseContributions() {
+    void dbRegistryWrapsNamedDatabaseContributions() {
         Database primary = Database.create(PoolConfig.defaults("jdbc:h2:mem:primary_" + UUID.randomUUID().toString().replace('-', '_') + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""));
         Database audit = Database.create(PoolConfig.defaults("jdbc:h2:mem:audit_" + UUID.randomUUID().toString().replace('-', '_') + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""));
 
@@ -235,11 +235,11 @@ class DbModuleTest {
                     binder -> binder.contribute(NamedDatabase.class).add(new NamedDatabase("audit", audit))
             );
 
-            DatabaseRegistry hub = container.get(DatabaseRegistry.class);
-            assertEquals(primary, hub.get("primary"));
-            assertEquals(audit, hub.get("audit"));
-            assertSame(primary, hub.primary());
-            assertEquals(Map.of("primary", primary, "audit", audit), hub.all());
+            DatabaseRegistry registry = container.get(DatabaseRegistry.class);
+            assertEquals(primary, registry.get("primary"));
+            assertEquals(audit, registry.get("audit"));
+            assertSame(primary, registry.primary());
+            assertEquals(Map.of("primary", primary, "audit", audit), registry.all());
         } finally {
             primary.close();
             audit.close();
@@ -248,16 +248,16 @@ class DbModuleTest {
 
     @Test
     void defaultInstallRegistersPrimaryDatabase() {
-        String dbName = "freeway_hub_primary_" + UUID.randomUUID().toString().replace('-', '_');
+        String dbName = "freeway_registry_primary_" + UUID.randomUUID().toString().replace('-', '_');
         System.setProperty(URL_KEY, "jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1");
         System.setProperty(USER_KEY, "sa");
         System.setProperty(PASS_KEY, "");
 
         try (Container container = Freeway.create(new DbModule())) {
-            DatabaseRegistry hub = container.get(DatabaseRegistry.class);
-            assertTrue(hub.all().containsKey("primary"),
+            DatabaseRegistry registry = container.get(DatabaseRegistry.class);
+            assertTrue(registry.all().containsKey("primary"),
                 "default install must auto-register a 'primary' database");
-            Database primary = hub.primary();
+            Database primary = registry.primary();
             assertSame(container.get(Database.class), primary,
                 "auto-registered primary must be the container's configured Database");
             assertEquals("postgresql", primary.dialect().dialectId(),
@@ -268,7 +268,7 @@ class DbModuleTest {
 
     @Test
     void userPrimaryContributionWinsOverAutoRegistration() {
-        String dbName = "freeway_hub_user_primary_" + UUID.randomUUID().toString().replace('-', '_');
+        String dbName = "freeway_registry_user_primary_" + UUID.randomUUID().toString().replace('-', '_');
         Database custom = Database.create(PoolConfig.defaults(
                 "jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""));
 
@@ -278,10 +278,10 @@ class DbModuleTest {
                 binder -> binder.contribute(NamedDatabase.class)
                     .add(new NamedDatabase("primary", custom))
             );
-            DatabaseRegistry hub = container.get(DatabaseRegistry.class);
-            assertSame(custom, hub.primary(),
+            DatabaseRegistry registry = container.get(DatabaseRegistry.class);
+            assertSame(custom, registry.primary(),
                 "a user-contributed 'primary' must win over auto-registration");
-            assertEquals(1, hub.all().size(),
+            assertEquals(1, registry.all().size(),
                 "auto-registration must not add a second 'primary' when the user already provided one");
         } finally {
             custom.close();

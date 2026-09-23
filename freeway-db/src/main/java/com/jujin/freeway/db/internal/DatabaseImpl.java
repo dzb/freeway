@@ -31,7 +31,7 @@ public final class DatabaseImpl implements Database {
     /**
      * Transaction binding for this Database instance. Instance-scoped so a
      * transaction on one Database never leaks into another Database's
-     * queries (a static key made {@code db1.transaction(() -> hub.get("audit").query(...))}
+     * queries (a static key made {@code db1.transaction(() -> registry.get("audit").query(...))}
      * silently execute audit's SQL on db1's connection).
      */
     private final ScopedValue<TxBinding> tx = ScopedValue.newInstance();

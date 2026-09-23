@@ -82,14 +82,17 @@ public interface Dialect {
         if (url == null || url.isBlank()) {
             return new PostgresDialect();
         }
-        String upper = url.toUpperCase();
-        if (url.contains("jdbc:mysql") || url.contains("jdbc:mariadb")) {
+        // Scheme matching on the uppercased copy: docs promise case-insensitive
+        // detection (freeway-db.md), and Locale.ROOT keeps the Turkish dotted-i
+        // from turning "jdbc:sqlite" into a non-match.
+        String upper = url.toUpperCase(Locale.ROOT);
+        if (upper.contains("JDBC:MYSQL") || upper.contains("JDBC:MARIADB")) {
             return new MySqlDialect();
         }
-        if (url.contains("jdbc:sqlite")) {
+        if (upper.contains("JDBC:SQLITE")) {
             return new SqliteDialect();
         }
-        if (url.contains("jdbc:h2")) {
+        if (upper.contains("JDBC:H2")) {
             if (
                 upper.contains("MODE=MYSQL") ||
                 upper.contains("MODE=MARIADB")
@@ -101,7 +104,7 @@ public interface Dialect {
             }
             return new H2Dialect();
         }
-        if (url.contains("jdbc:postgresql")) {
+        if (upper.contains("JDBC:POSTGRESQL")) {
             return new PostgresDialect();
         }
         throw new IllegalStateException(

@@ -36,16 +36,16 @@ class DatabaseRegistryImplTest {
     @Test
     void distinctNamesAreAllRegistered() {
         StubDb db = new StubDb();
-        DatabaseRegistryImpl hub =
+        DatabaseRegistryImpl registry =
             new DatabaseRegistryImpl(List.of(new NamedDatabase("primary", db),
                 new NamedDatabase("audit", db)));
 
-        assertEquals(2, hub.all().size());
-        assertEquals(db, hub.primary());
-        assertEquals(db, hub.get("audit"));
+        assertEquals(2, registry.all().size());
+        assertEquals(db, registry.primary());
+        assertEquals(db, registry.get("audit"));
     }
 
-    /** Value object standing in for a Database — the hub only stores routes. */
+    /** Value object standing in for a Database — the registry only stores routes. */
     private static final class StubDb implements Database {
 
         @Override

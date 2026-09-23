@@ -8,6 +8,7 @@ import com.jujin.freeway.db.dialect.H2Dialect;
 import com.jujin.freeway.db.dialect.MySqlDialect;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
@@ -19,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class DatabaseCreateTest {
     @Test
     void overlaysAnExistingConfig() {
-        String dbName = "freeway_builder_overlay_" + UUID.randomUUID().toString().replace('-', '_');
+        String dbName = "freeway_create_overlay_" + UUID.randomUUID().toString().replace('-', '_');
         PoolConfig base = PoolConfig.defaults(
             "jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
             "sa",
@@ -42,7 +43,7 @@ class DatabaseCreateTest {
 
     @Test
     void zeroQueryTimeoutMeansNoTimeout() {
-        String dbName = "freeway_builder_qt_" + UUID.randomUUID().toString().replace('-', '_');
+        String dbName = "freeway_create_qt_" + UUID.randomUUID().toString().replace('-', '_');
         PoolConfig base = PoolConfig.defaults(
             "jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
             "sa", ""
@@ -64,7 +65,7 @@ class DatabaseCreateTest {
 
     @Test
     void standaloneCreateUsesDefaultCoercion() {
-        String dbName = "freeway_builder_coercion_" + UUID.randomUUID().toString().replace('-', '_');
+        String dbName = "freeway_create_coercion_" + UUID.randomUUID().toString().replace('-', '_');
         Database db = Database.create(PoolConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""));
 
         try (db) {
@@ -78,7 +79,7 @@ class DatabaseCreateTest {
 
     @Test
     void standaloneCreateAcceptsManualRowMapper() {
-        String dbName = "freeway_builder_mapper_" + UUID.randomUUID().toString().replace('-', '_');
+        String dbName = "freeway_create_mapper_" + UUID.randomUUID().toString().replace('-', '_');
         Database db = Database.create(Database.Wiring.defaults(PoolConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", "")).withRowMapper(Marker.class, (rs, rowNum) -> new Marker(rs.getString(1))));
 
         try (db) {
@@ -89,7 +90,7 @@ class DatabaseCreateTest {
 
     @Test
     void customCoercerRetainsJdbcDefaultRules() {
-        String dbName = "freeway_builder_jdbc_rules_" + UUID.randomUUID().toString().replace('-', '_');
+        String dbName = "freeway_create_jdbc_rules_" + UUID.randomUUID().toString().replace('-', '_');
         Database db = Database.create(Database.Wiring.defaults(PoolConfig.defaults(
                 "jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", "")).withCoercer(new CoercerDefault()));
 
@@ -106,7 +107,7 @@ class DatabaseCreateTest {
 
     @Test
     void customDialectIsUsed() {
-        String dbName = "freeway_builder_dialect_" + UUID.randomUUID().toString().replace('-', '_');
+        String dbName = "freeway_create_dialect_" + UUID.randomUUID().toString().replace('-', '_');
         Database db = Database.create(Database.Wiring.defaults(PoolConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", "")).withDialect(new MySqlDialect()));
         try (db) {
             assertEquals("mysql", db.dialect().dialectId());
@@ -118,8 +119,8 @@ class DatabaseCreateTest {
     void detectsDialectFromJdbcUrl() {
         assertDialectForUrl("jdbc:mysql://localhost:3306/app", "mysql");
         assertDialectForUrl("jdbc:sqlite:/tmp/freeway_builder.db", "sqlite");
-        assertDialectForUrl("jdbc:h2:mem:freeway_builder_plain", "h2");
-        assertDialectForUrl("jdbc:h2:mem:freeway_builder_mysqlmode;MODE=MySQL", "mysql");
+        assertDialectForUrl("jdbc:h2:mem:freeway_create_plain", "h2");
+        assertDialectForUrl("jdbc:h2:mem:freeway_create_mysqlmode;MODE=MySQL", "mysql");
         assertDialectForUrl("jdbc:postgresql://localhost/app", "postgresql");
     }
 
@@ -182,6 +183,33 @@ class DatabaseCreateTest {
     }
 
     @Test
+    void dialectDetectionIsCaseInsensitive() {
+        // Docs promise case-insensitive scheme detection (freeway-db.md):
+        // matching runs on the uppercased copy, not the raw URL.
+        assertEquals("mysql", Dialect.of("JDBC:MYSQL://localhost:3306/app").dialectId());
+        assertEquals("mysql", Dialect.of("Jdbc:MariaDb://localhost:3306/app").dialectId());
+        assertEquals("sqlite", Dialect.of("JDBC:Sqlite:/tmp/upper.db").dialectId());
+        assertEquals("h2", Dialect.of("JDBC:H2:mem:upper").dialectId());
+        assertEquals("postgresql", Dialect.of("JDBC:PostgreSQL://localhost/app").dialectId());
+        assertEquals("mysql", Dialect.of("jdbc:h2:mem:uppermode;MODE=MySQL").dialectId());
+    }
+
+    @Test
+    void dialectDetectionSurvivesTurkishDefaultLocale() {
+        // Turkish uppercases "i" to "İ" (dotted capital I): without
+        // Locale.ROOT, "jdbc:sqlite" uppercased under tr-TR never matches
+        // "JDBC:SQLITE" and detection falls through to the error.
+        Locale saved = Locale.getDefault();
+        Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+        try {
+            assertEquals("sqlite", Dialect.of("jdbc:sqlite:/tmp/tr.db").dialectId());
+            assertEquals("mysql", Dialect.of("jdbc:mariadb://localhost:3306/app").dialectId());
+        } finally {
+            Locale.setDefault(saved);
+        }
+    }
+
+    @Test
     void customSchemeWithExplicitDialectIsUsable() {
         Database db = Database.create(Database.Wiring.defaults(PoolConfig.defaults("jdbc:custom:whatever", "sa", "")).withDialect(new MySqlDialect()).withPool(new StubPool()));
         try (db) {
@@ -231,7 +259,7 @@ class DatabaseCreateTest {
 
     @Test
     void customPoolIsUsed() {
-        String dbName = "freeway_builder_pool_" + UUID.randomUUID().toString().replace('-', '_');
+        String dbName = "freeway_create_pool_" + UUID.randomUUID().toString().replace('-', '_');
         PoolConfig config = PoolConfig.defaults(
             "jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""
         );
