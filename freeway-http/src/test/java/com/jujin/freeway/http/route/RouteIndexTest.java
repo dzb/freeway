@@ -34,7 +34,7 @@ class RouteIndexTest {
     }
 
     @Test
-    void allowedMethodsListsTheMethodsThatRecognizeThePath() {
+    void methodsListsTheMethodsThatRecognizeThePath() {
         RouteIndex registry = new RouteIndex(List.of(
             Route.get("/users", ctx -> ctx.send(200, "ok")),
             Route.post("/users", ctx -> ctx.send(201, "created")),
@@ -42,16 +42,16 @@ class RouteIndexTest {
 
         // HEAD rides along with GET — the same fallback match() applies.
         assertEquals(Set.of("GET", "HEAD", "POST"),
-            registry.allowedMethods("/users"));
+            registry.methods("/users"));
         assertEquals(Set.of("GET", "HEAD"),
-            registry.allowedMethods("/users/42"));
+            registry.methods("/users/42"));
         // Path no method recognizes: the caller answers 404, not 405.
-        assertTrue(registry.allowedMethods("/absent").isEmpty());
+        assertTrue(registry.methods("/absent").isEmpty());
         // Method-constrained routes only claim paths their constraint accepts.
         RouteIndex constrained = new RouteIndex(List.of(
             Route.get("/items/{id:\\d+}", ctx -> ctx.send(200, "number"))), List.of());
-        assertTrue(constrained.allowedMethods("/items/42").contains("GET"));
-        assertTrue(constrained.allowedMethods("/items/abc").isEmpty());
+        assertTrue(constrained.methods("/items/42").contains("GET"));
+        assertTrue(constrained.methods("/items/abc").isEmpty());
     }
 
     @Test

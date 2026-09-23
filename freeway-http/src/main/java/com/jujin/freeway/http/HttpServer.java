@@ -351,7 +351,7 @@ public final class HttpServer implements AutoCloseable {
         if (match == null) {
             // Path known under other methods is a 405 with Allow (RFC 9110);
             // only a path no method recognizes is a 404.
-            var allowed = routes.allowedMethods(ctx.path());
+            var allowed = routes.methods(ctx.path());
             if (allowed.isEmpty()) {
                 ErrorResponses.notFound(ctx);
             } else {

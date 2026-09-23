@@ -170,7 +170,7 @@ public final class RouteIndex {
      * 404. {@code HEAD} rides along with {@code GET}, mirroring match();
      * sorted for a stable header, walked only on the miss path.
      */
-    public Set<String> allowedMethods(String path) {
+    public Set<String> methods(String path) {
         TreeSet<String> allowed = new TreeSet<>();
         for (Map.Entry<String, TrieNode> root : methodRoots.entrySet()) {
             if (matchTrie(root.getValue(), path) != null) {
