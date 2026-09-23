@@ -3,8 +3,6 @@ package com.jujin.freeway.ioc;
 import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.commons.scoped.Defer;
 
-import java.util.Iterator;
-import java.util.LinkedHashSet;
 import java.util.Objects;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Flow;
@@ -16,7 +14,7 @@ import java.util.function.Supplier;
  * In-process event bus with class-based and string-topic subscriptions,
  * optional {@code Defer}-scoped buffering, async dispatch, reactive streams
  * ({@link #stream(Class)}/{@link #stream(String)}, JDK {@link Flow}), and an
- * optional external event sink.
+ * optional outbound bridge to external transports ({@link EventBridge}).
  *
  * <p><b>The message domain has two channels:</b></p>
  * <ul>
@@ -54,11 +52,10 @@ import java.util.function.Supplier;
 public final class EventBus implements EventBusInbound, AutoCloseable {
 
     private final EventStats stats;
-    private final EventSinkRegistry sinkRegistry = new EventSinkRegistry();
+    /** The "leaves the JVM" half: sinks, dispatch identities, inbound dedup. */
+    private final EventBridge bridge;
     private final EventSubscriptionIndex subscriptions;
     private final EventDispatcher dispatcher;
-    /** Bounded window of recent inbound wire ids; null when dedup is off. */
-    private volatile IdWindow inboundIds;
     private final AtomicBoolean closed = new AtomicBoolean();
     private final EventExecutorSupport executors;
     /** Live stream subscriptions, closed (and detached) on {@link #close()}. */
@@ -80,8 +77,9 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
         // Metrics is a container builtin (NoopMetrics by default) — always
         // resolvable; a contributed/primary implementation observes the bus.
         this.stats = new EventStats(container.get(Metrics.class));
+        this.bridge = new EventBridge(stats);
         this.subscriptions = new EventSubscriptionIndex(container);
-        this.dispatcher = new EventDispatcher(this, subscriptions, sinkRegistry, stats);
+        this.dispatcher = new EventDispatcher(this, subscriptions, bridge, stats);
         this.executors = new EventExecutorSupport(this::requireOpen);
     }
 
@@ -97,7 +95,7 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
     public void addEventSink(EventSink sink) {
         requireOpen();
         Objects.requireNonNull(sink, "sink");
-        sinkRegistry.add(sink);
+        bridge.add(sink);
     }
 
     /** Detaches a sink previously installed by {@link #addEventSink}
@@ -107,7 +105,7 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
      *  @return {@code true} if the sink was installed and is now detached */
     public boolean removeEventSink(EventSink sink) {
         Objects.requireNonNull(sink, "sink");
-        return sinkRegistry.remove(sink);
+        return bridge.remove(sink);
     }
 
     // ==================== class-based publish ====================
@@ -130,8 +128,8 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
      */
     public <E> void publish(E event) {
         // No id minted here: an id is only needed by the outbound sink fan-out,
-        // so it is minted lazily at send time (EventDispatcher.sendToSinks) —
-        // a publish with no sinks, or one discarded by a rollback, pays nothing.
+        // so it is minted lazily at send time (EventBridge.fanOut) — a publish
+        // with no sinks, or one discarded by a rollback, pays nothing.
         publishEvent(event, null, false);
     }
 
@@ -158,7 +156,7 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
         // time would leave the id burned — the broker's redelivery of the
         // same wire id would then be dropped as a "duplicate" (event loss).
         deferOrRun(defer, () -> {
-            if (inbound && !claimInbound(eventId)) {
+            if (inbound && !bridge.claim(eventId)) {
                 return; // duplicate — already delivered over another channel
             }
             dispatcher.dispatchEvent(event, inbound, eventId);
@@ -209,7 +207,7 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
         // Claim inside the deferred action — see publishEvent: claiming at
         // publish time would burn the wire id on a rollback.
         deferOrRun(Defer.isActive(), () -> {
-            if (inbound && !claimInbound(eventId)) {
+            if (inbound && !bridge.claim(eventId)) {
                 return; // duplicate — already delivered over another channel
             }
             dispatcher.dispatchTopic(topic, payload, inbound, eventId);
@@ -238,53 +236,8 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
      * @param capacity bound on the number of remembered ids; zero or negative
      *                 disables deduplication
      */
-    public synchronized void inboundDeduplication(int capacity) {
-        if (capacity <= 0) {
-            inboundIds = null;
-        } else if (inboundIds == null || inboundIds.capacity() != capacity) {
-            inboundIds = new IdWindow(capacity);
-        }
-    }
-
-    /** True when {@code eventId} is new to the window (or dedup is off). */
-    private boolean claimInbound(String eventId) {
-        if (eventId == null || eventId.isBlank()) {
-            return true; // no identity to correlate on — always deliver
-        }
-        IdWindow window = inboundIds;
-        return window == null || window.claim(eventId);
-    }
-
-    /**
-     * Insertion-ordered window of the last {@code capacity} inbound ids.
-     * Insertion order (not access order) is deliberate: the window answers
-     * "have I seen this recently", and re-seeing an id must not extend its
-     * life — otherwise a hot id would pin itself in the window forever.
-     */
-    private static final class IdWindow {
-        private final int capacity;
-        private final LinkedHashSet<String> seen = new LinkedHashSet<>();
-
-        IdWindow(int capacity) {
-            this.capacity = capacity;
-        }
-
-        int capacity() {
-            return capacity;
-        }
-
-        /** @return true if {@code id} was new; false if already present */
-        synchronized boolean claim(String id) {
-            if (!seen.add(id)) {
-                return false;
-            }
-            if (seen.size() > capacity) {
-                Iterator<String> oldest = seen.iterator();
-                oldest.next();
-                oldest.remove();
-            }
-            return true;
-        }
+    public void inboundDeduplication(int capacity) {
+        bridge.deduplication(capacity);
     }
 
     private void deferOrRun(boolean defer, Runnable action) {
@@ -517,7 +470,7 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
         // Detach every sink: a closed bus must not keep module channels
         // (and their sockets) reachable, and post-close publishes are
         // best-effort no-ops anyway.
-        sinkRegistry.clear();
+        bridge.clear();
         subscriptions.clearRuntime();
         // Broadcast semantics: post-close publishes are silent no-ops — a
         // fact nobody consumes must not abort shutdown.

@@ -5,7 +5,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
-import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -34,18 +33,18 @@ final class EventDispatcher {
      *  {@link DeadEvent} diagnostic and is named as that diagnostic's source. */
     private final EventBus bus;
     private final EventSubscriptionIndex subscriptions;
-    private final EventSinkRegistry sinks;
+    private final EventBridge bridge;
     private final EventStats stats;
 
     EventDispatcher(
         EventBus bus,
         EventSubscriptionIndex subscriptions,
-        EventSinkRegistry sinks,
+        EventBridge bridge,
         EventStats stats
     ) {
         this.bus = bus;
         this.subscriptions = subscriptions;
-        this.sinks = sinks;
+        this.bridge = bridge;
         this.stats = stats;
     }
 
@@ -107,8 +106,8 @@ final class EventDispatcher {
         }
         // Guard before evaluating the sink arguments: with no sinks the topic
         // resolution (even cached) must not run.
-        if (!sinks.isEmpty()) {
-            sendToSinks(
+        if (!bridge.isEmpty()) {
+            bridge.fanOut(
                 topic != null ? topic : TOPIC_OF.get(payload.getClass()),
                 payload,
                 topic != null ? EventSink.Channel.TOPIC : EventSink.Channel.CLASS,
@@ -134,30 +133,6 @@ final class EventDispatcher {
                 break;
             }
             deliver(() -> sub.dispatch(payload), "Runtime event subscriber failed for {}", label);
-        }
-    }
-
-    private void sendToSinks(
-        String topic,
-        Object payload,
-        EventSink.Channel channel,
-        String eventId,
-        Supplier<String> label
-    ) {
-        if (sinks.isEmpty()) {
-            return; // re-check: removeEventSink/clear may have raced the caller's guard
-        }
-        // Mint here, once per fan-out: every sink shares the id, and a publish
-        // that never reaches a sink (no sinks, rollback, inbound) never pays
-        // for a UUID. Inbound carries its wire id; the local channel passes null.
-        String id = eventId != null ? eventId : UUID.randomUUID().toString();
-        for (EventSink sink : sinks.snapshot()) {
-            try {
-                sink.send(topic, payload, channel, id);
-            } catch (Exception ex) {
-                stats.sinkFailure();
-                LOG.warn("Event sink failed for {}", label.get(), ex);
-            }
         }
     }
 
