@@ -1,10 +1,10 @@
 package com.jujin.freeway.flow;
 
 /**
- * Task component
+ * Task handler
  */
 @FunctionalInterface
-public interface TaskComponent {
+public interface TaskHandler {
     /**
      * Runs
      *

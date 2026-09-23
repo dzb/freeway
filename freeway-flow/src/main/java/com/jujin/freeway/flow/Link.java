@@ -30,7 +30,7 @@ public class Link implements Comparable<Link> {
         this.nextId = spec.to();
         this.title = spec.title();
         this.priority = spec.priority();
-        this.when = new ConditionDesc(graph, spec.when(), spec.whenComponent());
+        this.when = new ConditionDesc(graph, spec.when(), spec.whenHandler());
 
         if (spec.meta() == null) {
             this.metas = Collections.emptyMap();
@@ -94,8 +94,8 @@ public class Link implements Comparable<Link> {
         if (when != null && !when.isEmpty()) {
             buf.append(", when=").append(when.description());
         }
-        if (when.component() != null) {
-            buf.append(", whenComponent=").append(when.component());
+        if (when.handler() != null) {
+            buf.append(", whenHandler=").append(when.handler());
         }
         buf.append("}");
         return buf.toString();

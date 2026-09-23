@@ -145,11 +145,11 @@ public class GraphSpec {
         return addNode(id, NodeType.ACTIVITY);
     }
 
-    public NodeSpec addActivity(NamedTaskComponent component) {
-        Objects.requireNonNull(component, "component");
-        NodeSpec node = addActivity(component.name());
-        node.title(component.title());
-        node.task(component);
+    public NodeSpec addActivity(NamedTaskHandler handler) {
+        Objects.requireNonNull(handler, "handler");
+        NodeSpec node = addActivity(handler.name());
+        node.title(handler.title());
+        node.task(handler);
         return node;
     }
 
@@ -238,9 +238,9 @@ public class GraphSpec {
             if (node.when != null && !node.when.isEmpty()) {
                 domNode.put("when", node.when);
             }
-            if (node.whenComponent != null) {
+            if (node.whenHandler != null) {
                 throw new IllegalStateException(
-                    "Node '" + node.id + "' uses an inline ConditionComponent "
+                    "Node '" + node.id + "' uses an inline ConditionHandler "
                         + "which cannot be serialized — bind it via the "
                         + "container and reference it by name");
             }
@@ -250,9 +250,9 @@ public class GraphSpec {
             if (!node.data.isEmpty()) {
                 domNode.put("data", node.data);
             }
-            if (node.taskComponent != null) {
+            if (node.taskHandler != null) {
                 throw new IllegalStateException(
-                    "Node '" + node.id + "' uses an inline TaskComponent which "
+                    "Node '" + node.id + "' uses an inline TaskHandler which "
                         + "cannot be serialized — bind it via the container and "
                         + "reference it by name");
             }
@@ -274,10 +274,10 @@ public class GraphSpec {
             if (link.when != null && !link.when.isEmpty()) {
                 domLink.put("when", link.when);
             }
-            if (link.whenComponent != null) {
+            if (link.whenHandler != null) {
                 throw new IllegalStateException(
                     "Link '" + link.from + "' -> '" + link.to + "' uses an "
-                        + "inline ConditionComponent which cannot be serialized "
+                        + "inline ConditionHandler which cannot be serialized "
                         + "— bind it via the container and reference it by name");
             }
             if (link.priority != 0) {
@@ -375,15 +375,15 @@ public class GraphSpec {
             nodeBlueprint.meta(node.metas());
             nodeBlueprint.data(node.data());
             if (node.when() != null) {
-                if (node.when().component() != null) {
-                    nodeBlueprint.when(node.when().component());
+                if (node.when().handler() != null) {
+                    nodeBlueprint.when(node.when().handler());
                 } else {
                     nodeBlueprint.when(node.when().description());
                 }
             }
             if (node.task() != null) {
-                if (node.task().component() != null) {
-                    nodeBlueprint.task(node.task().component());
+                if (node.task().handler() != null) {
+                    nodeBlueprint.task(node.task().handler());
                 } else {
                     nodeBlueprint.task(node.task().description());
                 }
@@ -395,8 +395,8 @@ public class GraphSpec {
             linkBlueprint.title(link.title());
             linkBlueprint.meta(link.metas());
             if (link.when() != null) {
-                if (link.when().component() != null) {
-                    linkBlueprint.when(link.when().component());
+                if (link.when().handler() != null) {
+                    linkBlueprint.when(link.when().handler());
                 } else {
                     linkBlueprint.when(link.when().description());
                 }
@@ -517,7 +517,7 @@ public class GraphSpec {
         //     route through the node.
         for (NodeSpec node : nodes.values()) {
             validateTask(node);
-            validateCondition(node.when, node.whenComponent,
+            validateCondition(node.when, node.whenHandler,
                 "Node '" + node.id() + "' when");
             validateJoin(node);
             for (String key : node.data.keySet()) {
@@ -530,7 +530,7 @@ public class GraphSpec {
             }
         }
         for (LinkSpec link : links) {
-            validateCondition(link.when, link.whenComponent,
+            validateCondition(link.when, link.whenHandler,
                 "Link '" + link.from + "' -> '" + link.to + "' when");
         }
 
@@ -707,14 +707,14 @@ public class GraphSpec {
 
     /**
      * The v3 task vocabulary: {@code @name}, {@code #graphId} or an inline
-     * component. A {@code $} reference is now the node's data field; a
+     * handler. A {@code $} reference is now the node's data field; a
      * {@code !} reference is now an {@code @name} with a contributed id —
      * both fail at build with the migration named, not at first execution.
      */
     private void validateTask(NodeSpec node) {
         String task = node.task;
         if (task == null || task.isBlank()) {
-            return; // inline component or no task
+            return; // inline handler or no task
         }
         String t = task.trim();
         if (t.length() > 1 && (t.startsWith("@") || t.startsWith("#"))) {
@@ -726,22 +726,22 @@ public class GraphSpec {
                 + " the node's 'data' field.";
         } else if (t.startsWith("!")) {
             hint = " A '!' reference was dropped in v3: contribute the"
-                + " component with an id and reference it as '@name'.";
+                + " handler with an id and reference it as '@name'.";
         }
         throw new IllegalStateException(
             "Node '" + node.id + "' in graph '" + id + "' has unsupported"
                 + " task '" + task + "'. The vocabulary is '@name', '#graphId'"
-                + " or an inline component." + hint
+                + " or an inline handler." + hint
         );
     }
 
-    private void validateCondition(String when, ConditionComponent component, String what) {
-        if (component != null || when == null || when.isBlank()) {
+    private void validateCondition(String when, ConditionHandler handler, String what) {
+        if (handler != null || when == null || when.isBlank()) {
             return;
         }
         String w = when.trim();
         if (w.startsWith("@") && w.length() > 1) {
-            return; // @name component reference — resolved at run
+            return; // @name handler reference — resolved at run
         }
         try {
             ExprEvaluator.validate(when);

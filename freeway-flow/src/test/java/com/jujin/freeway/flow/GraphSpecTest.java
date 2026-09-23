@@ -21,12 +21,12 @@ class GraphSpecTest {
     private static FlowDriver countingDriver(AtomicInteger counter) {
         return new FlowDriver() {
             @Override
-            public boolean handleCondition(FlowExchanger exchanger, ConditionDesc condition) {
+            public boolean handleCondition(FlowEvaluation evaluation, ConditionDesc condition) {
                 return true;
             }
 
             @Override
-            public void handleTask(FlowExchanger exchanger, TaskDesc task) {
+            public void handleTask(FlowEvaluation evaluation, TaskDesc task) {
                 if (!task.isEmpty()) counter.incrementAndGet();
             }
         };
@@ -438,13 +438,13 @@ class GraphSpecTest {
     }
 
     @Test
-    void testInlineTaskComponentCannotBeSerialized() {
-        // Regression: component-backed tasks silently vanished from toJson.
+    void testInlineTaskHandlerCannotBeSerialized() {
+        // Regression: handler-backed tasks silently vanished from toJson.
         GraphSpec bp = GraphSpec.create("inline", spec -> {
             spec.entry("s");
             spec.addStart("s").linkAdd("a");
             spec.addActivity("a")
-                .task(new NamedTaskComponent() {
+                .task(new NamedTaskHandler() {
                     @Override public String name() { return "inline"; }
                     @Override public String title() { return null; }
                     @Override public void run(FlowContext ctx, Node node) { }

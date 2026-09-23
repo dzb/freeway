@@ -20,9 +20,9 @@ import org.slf4j.LoggerFactory;
  *   <li>{@link FlowEngine} is a singleton; its driver map is built from the
  *       contributed {@link FlowDriver}s over a built-in {@code "default"}
  *       that resolves against this container</li>
- *   <li>graph tasks and conditions reference container components as
+ *   <li>graph tasks and conditions reference container handlers as
  *       {@code @name} — resolved through {@code container.get(type, name)},
- *       so any {@link TaskComponent}/{@link ConditionComponent} bound or
+ *       so any {@link TaskHandler}/{@link ConditionHandler} bound or
  *       contributed with an explicit id is reachable</li>
  *   <li>contributed {@link FlowInterceptor}s form the engine's interceptor
  *       chain in extension order — the chain is fixed at load; nothing can

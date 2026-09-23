@@ -1,10 +1,10 @@
 package com.jujin.freeway.flow;
 
 /**
- * Condition component
+ * Condition handler
  */
 @FunctionalInterface
-public interface ConditionComponent {
+public interface ConditionHandler {
     /**
      * Tests
      *

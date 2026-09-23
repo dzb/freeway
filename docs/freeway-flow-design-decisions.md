@@ -297,11 +297,11 @@ JSON → GraphSpec.normalize() → new Graph
 
 ## Subgraph Driver Re-resolution
 
-**Decision:** `FlowExchanger.runGraph()` calls `engine.driver(graph)` to resolve the subgraph's own driver, rather than reusing the parent's.
+**Decision:** `FlowEvaluation.runGraph()` calls `engine.driver(graph)` to resolve the subgraph's own driver, rather than reusing the parent's.
 
-**Why:** Subgraphs define their own `"driver"` field. Blindly propagating the parent's driver meant subgraphs with custom drivers would silently use the wrong one. The fix creates a new `FlowExchanger` with the correctly resolved driver. The same `ExecState` instance is shared between parent and subgraph for parallel/inclusive node state tracking.
+**Why:** Subgraphs define their own `"driver"` field. Blindly propagating the parent's driver meant subgraphs with custom drivers would silently use the wrong one. The fix creates a new `FlowEvaluation` with the correctly resolved driver. The same `ExecState` instance is shared between parent and subgraph for parallel/inclusive node state tracking.
 
-**See also:** `FlowExchanger.java:runGraph()` (`freeway-flow`)
+**See also:** `FlowEvaluation.java:runGraph()` (`freeway-flow`)
 
 ---
 
@@ -337,7 +337,7 @@ list to copy and the accumulation bug class this worked around is structurally g
 
 - `ExecState` keeps a concurrent `Set<DeadEnd>` keyed per `(graphId, nodeId)`. An EXCLUSIVE node records a dead end when it matches no condition and has no default link (still logged as a warning). Joins record a *provisional* dead end each time they are entered but cannot activate; when the final branch arrives, the join clears only its own entry (`deadEndClear`) so a dead end recorded by a sibling branch is not lost.
 - The completion check in `eval()` throws `FlowException("Graph '...' did not complete: dead end at node '...'")`, naming the stuck node and graph. **Exemption:** a run ended via `stop()` is not a dead end (stopping is intentional); an interceptor veto that never proceeds simply records nothing. v1/v2-era `interrupt()` and resume-replay exemptions retired with those mechanisms.
-- Sub-graph evals share the parent's `ExecState` (passed through `FlowExchanger.runGraph()`), so a dead end recorded inside a sub-graph propagates to the caller's completion check. No reset is needed at eval start — a fresh `ExecState` is created per top-level evaluation.
+- Sub-graph evals share the parent's `ExecState` (passed through `FlowEvaluation.runGraph()`), so a dead end recorded inside a sub-graph propagates to the caller's completion check. No reset is needed at eval start — a fresh `ExecState` is created per top-level evaluation.
 
 **See also:** `ExecState.java:DeadEnd`, `FlowEngineDefault.java:eval()` / `exclusiveOut()` / `joinArrived()` (`freeway-flow`)
 
@@ -400,11 +400,11 @@ the double-merge hazard) is dissolved by v3's shape: there is exactly one interc
 engine, frozen at load, and `runGraph()`'s nested eval runs the same chain — every node of parent
 and child is visited exactly once by construction.
 
-**Decision (original):** Sub-graph evals inherit the caller's per-eval interceptors: `FlowExchanger.runGraph()` stores the raw per-eval `FlowOptions` on the parent exchanger (`evalOptions`) and re-passes it to the sub-eval, so per-eval interceptors (`interceptFlow` / `onNodeStart` / `onNodeEnd`) cover sub-graph nodes too.
+**Decision (original):** Sub-graph evals inherit the caller's per-eval interceptors: `FlowEvaluation.runGraph()` stores the raw per-eval `FlowOptions` on the parent evaluation (`evalOptions`) and re-passes it to the sub-eval, so per-eval interceptors (`interceptFlow` / `onNodeStart` / `onNodeEnd`) cover sub-graph nodes too.
 
 **Why:** Previously a sub-graph call lost the caller's per-eval interceptors — nodes inside the sub-graph ran with only engine-level interceptors. Only the *raw* options are propagated: each eval merges the engine-level interceptor list itself, so nested evals never run engine-level interceptors twice.
 
-**See also:** `FlowExchanger.java:runGraph()` / `evalOptions()`, `FlowEngineDefault.java:eval()` (`freeway-flow`)
+**See also:** `FlowEvaluation.java:runGraph()` / `evalOptions()`, `FlowEngineDefault.java:eval()` (`freeway-flow`)
 
 ---
 

@@ -41,8 +41,8 @@ public class Node {
         this.id = spec.id();
         this.title = spec.title();
         this.type = type;
-        this.when = new ConditionDesc(graph, spec.when(), spec.whenComponent());
-        this.task = new TaskDesc(this, spec.task(), spec.taskComponent());
+        this.when = new ConditionDesc(graph, spec.when(), spec.whenHandler());
+        this.task = new TaskDesc(this, spec.task(), spec.taskHandler());
         this.data = spec.data().isEmpty()
             ? Map.of()
             : Collections.unmodifiableMap(new LinkedHashMap<>(spec.data()));
@@ -197,14 +197,14 @@ public class Node {
         if (when != null && !when.isEmpty()) {
             buf.append(", when='").append(when.description()).append('\'');
         }
-        if (when.component() != null) {
-            buf.append(", whenComponent=").append(when.component());
+        if (when.handler() != null) {
+            buf.append(", whenHandler=").append(when.handler());
         }
         if (task != null && !task.isEmpty()) {
             buf.append(", task='").append(task.description()).append('\'');
         }
-        if (task.component() != null) {
-            buf.append(", taskComponent=").append(task.component());
+        if (task.handler() != null) {
+            buf.append(", taskHandler=").append(task.handler());
         }
         if (!nextLinks.isEmpty()) {
             buf.append(", link=").append(nextLinks);

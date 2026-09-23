@@ -17,7 +17,7 @@ public final class LinkSpec {
     String title;
     final Map<String, Object> meta = new LinkedHashMap<>();
     String when;
-    ConditionComponent whenComponent;
+    ConditionHandler whenHandler;
     int priority;
 
     LinkSpec(GraphSpec owner, String from, String to) {
@@ -56,13 +56,13 @@ public final class LinkSpec {
 
     public LinkSpec when(String when) {
         this.when = when;
-        this.whenComponent = null;
+        this.whenHandler = null;
         touch();
         return this;
     }
 
-    public LinkSpec when(ConditionComponent whenComponent) {
-        this.whenComponent = whenComponent;
+    public LinkSpec when(ConditionHandler whenHandler) {
+        this.whenHandler = whenHandler;
         this.when = null;
         touch();
         return this;
@@ -94,8 +94,8 @@ public final class LinkSpec {
         return when;
     }
 
-    public ConditionComponent whenComponent() {
-        return whenComponent;
+    public ConditionHandler whenHandler() {
+        return whenHandler;
     }
 
     public int priority() {

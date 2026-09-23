@@ -6,26 +6,26 @@ package com.jujin.freeway.flow;
 public final class ConditionDesc {
     private final Graph graph;
     private final String description;
-    private final ConditionComponent component;
+    private final ConditionHandler handler;
 
     public ConditionDesc(Graph graph, String description) {
         this.graph = graph;
         this.description = (description != null) ? description.trim() : null;
-        this.component = null;
+        this.handler = null;
     }
 
-    public ConditionDesc(Graph graph, String description, ConditionComponent component) {
+    public ConditionDesc(Graph graph, String description, ConditionHandler handler) {
         this.graph = graph;
         this.description = (description != null) ? description.trim() : null;
-        this.component = component;
+        this.handler = handler;
     }
 
     public Graph graph() { return graph; }
     public String description() { return description; }
-    public ConditionComponent component() { return component; }
+    public ConditionHandler handler() { return handler; }
 
     public boolean isEmpty() {
-        return (description == null || description.isEmpty()) && component == null;
+        return (description == null || description.isEmpty()) && handler == null;
     }
 
     @Override

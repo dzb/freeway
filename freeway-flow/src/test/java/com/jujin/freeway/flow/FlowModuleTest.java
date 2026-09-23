@@ -22,8 +22,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class FlowModuleTest {
 
-    /** A task component the driver resolves via {@code @worker}. */
-    public static final class WorkerTask implements TaskComponent {
+    /** A task handler the driver resolves via {@code @worker}. */
+    public static final class WorkerTask implements TaskHandler {
         @Override
         public void run(FlowContext context, Node node) {
             context.put("worked", true);
@@ -33,13 +33,13 @@ class FlowModuleTest {
     /** A driver that stamps the context with its own label. */
     public static final class LabelDriver implements FlowDriver {
         @Override
-        public boolean handleCondition(FlowExchanger exchanger, ConditionDesc condition) {
+        public boolean handleCondition(FlowEvaluation evaluation, ConditionDesc condition) {
             return true;
         }
 
         @Override
-        public void handleTask(FlowExchanger exchanger, TaskDesc task) {
-            if (!task.isEmpty()) exchanger.context().put("driver", "label");
+        public void handleTask(FlowEvaluation evaluation, TaskDesc task) {
+            if (!task.isEmpty()) evaluation.context().put("driver", "label");
         }
     }
 
@@ -81,7 +81,7 @@ class FlowModuleTest {
     void contributedInterceptorChainsIntoEveryEval() {
         AtomicInteger starts = new AtomicInteger(0);
         Container container = Freeway.create(new FlowModule(), binder -> {
-            binder.bind(TaskComponent.class).to(c -> new WorkerTask()).id("anything");
+            binder.bind(TaskHandler.class).to(c -> new WorkerTask()).id("anything");
             binder.contribute(FlowInterceptor.class).add("counter", new FlowInterceptor() {
                 @Override
                 public void onNodeStart(FlowContext ctx, Node node) {

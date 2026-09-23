@@ -8,8 +8,8 @@ import java.util.concurrent.ExecutorService;
  * Default flow driver — resolves the v3 task/condition vocabulary:
  *
  * <ul>
- *   <li>inline {@link TaskComponent}/{@link ConditionComponent} → executed directly</li>
- *   <li>{@code @name} → the container binding {@code (TaskComponent|ConditionComponent, name)}</li>
+ *   <li>inline {@link TaskHandler}/{@link ConditionHandler} → executed directly</li>
+ *   <li>{@code @name} → the container binding {@code (TaskHandler|ConditionHandler, name)}</li>
  *   <li>{@code #graphId} → run the sub-graph</li>
  * </ul>
  *
@@ -29,7 +29,7 @@ public final class FlowDriverDefault implements FlowDriver {
         this.executor = executor;
     }
 
-    /** Standalone instance: inline components and {@code #graphId} only. */
+    /** Standalone instance: inline handlers and {@code #graphId} only. */
     public static FlowDriverDefault instance() {
         return INSTANCE;
     }
@@ -68,52 +68,52 @@ public final class FlowDriverDefault implements FlowDriver {
     // --- condition ---
 
     @Override
-    public boolean handleCondition(FlowExchanger exchanger, ConditionDesc condition) throws Throwable {
-        if (condition.component() != null) {
-            return condition.component().test(exchanger.context());
+    public boolean handleCondition(FlowEvaluation evaluation, ConditionDesc condition) throws Throwable {
+        if (condition.handler() != null) {
+            return condition.handler().test(evaluation.context());
         }
         String description = condition.description();
         if (description != null && description.startsWith("@")) {
-            return resolveComponent(description, ConditionComponent.class, "condition")
-                .test(exchanger.context());
+            return resolveHandler(description, ConditionHandler.class, "condition")
+                .test(evaluation.context());
         }
-        return ExprEvaluator.evalCondition(description, exchanger.context().data());
+        return ExprEvaluator.evalCondition(description, evaluation.context().data());
     }
 
     // --- task ---
 
     @Override
-    public void handleTask(FlowExchanger exchanger, TaskDesc task) throws Throwable {
+    public void handleTask(FlowEvaluation evaluation, TaskDesc task) throws Throwable {
         if (task.isEmpty()) {
             return;
         }
-        if (task.component() != null) {
-            task.component().run(exchanger.context(), task.node());
+        if (task.handler() != null) {
+            task.handler().run(evaluation.context(), task.node());
             return;
         }
         String description = task.description();
         if (task.isGraphRef()) {
-            exchanger.runGraph(exchanger.engine().graphOrThrow(description.substring(1)));
+            evaluation.runGraph(evaluation.engine().graphOrThrow(description.substring(1)));
             return;
         }
-        if (task.isComponentRef()) {
-            resolveComponent(description, TaskComponent.class, "task")
-                .run(exchanger.context(), task.node());
+        if (task.isHandlerRef()) {
+            resolveHandler(description, TaskHandler.class, "task")
+                .run(evaluation.context(), task.node());
             return;
         }
         throw new IllegalArgumentException(
             "Unsupported task description '" + description + "' on node '"
                 + task.node().id() + "' — the vocabulary is @name, #graphId or"
-                + " an inline component; static values belong in the node's"
+                + " an inline handler; static values belong in the node's"
                 + " data field");
     }
 
     /**
-     * Resolves an {@code @name} description to a component of the required
+     * Resolves an {@code @name} description to a handler of the required
      * type. Shared by condition and task resolution — they differ only in
      * the error wording (kind) and the target interface.
      */
-    private <T> T resolveComponent(String description, Class<T> type, String kind) {
+    private <T> T resolveHandler(String description, Class<T> type, String kind) {
         String beanName = description.substring(1);
         if (container == null) {
             throw new IllegalStateException(
@@ -121,16 +121,16 @@ public final class FlowDriverDefault implements FlowDriver {
                     + "Use FlowDriverDefault.builder().container(...), or "
                     + "install FlowModule for IoC-based resolution.");
         }
-        Object component;
+        Object handler;
         try {
-            component = container.get(type, beanName);
+            handler = container.get(type, beanName);
         } catch (MissingBindingException e) {
             throw new IllegalStateException(
-                "No " + kind + " component is bound with id '" + beanName
+                "No " + kind + " handler is bound with id '" + beanName
                     + "' — bind it with binder.bind(" + type.getSimpleName()
                     + ".class).id(\"" + beanName + "\") or contribute it with"
                     + " an explicit id", e);
         }
-        return type.cast(component);
+        return type.cast(handler);
     }
 }

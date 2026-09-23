@@ -10,13 +10,13 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 
 /**
- * Per-evaluation working state of a {@link FlowExchanger}: join counters,
+ * Per-evaluation working state of a {@link FlowEvaluation}: join counters,
  * loop iterators and dead-end marks. A fresh instance belongs to one
  * top-level evaluation; sub-graph calls share it so a stuck sub-graph
  * propagates to its caller.
  *
  * <p>Everything here is keyed by (graph, node) and owned by the engine:
- * custom drivers and components observe the flow through
+ * custom drivers and handlers observe the flow through
  * {@link FlowContext}, not by writing into this state — there is no
  * shared string-keyed bag for a key collision to corrupt.</p>
  */

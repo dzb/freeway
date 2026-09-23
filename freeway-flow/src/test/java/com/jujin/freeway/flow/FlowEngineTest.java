@@ -44,17 +44,17 @@ class FlowEngineTest {
     private static FlowDriver tasksRun(Consumer<Node> body) {
         return new FlowDriver() {
             @Override
-            public boolean handleCondition(FlowExchanger exchanger, ConditionDesc condition)
+            public boolean handleCondition(FlowEvaluation evaluation, ConditionDesc condition)
                     throws Throwable {
                 return ExprEvaluator.evalCondition(condition.description(),
-                    exchanger.context().data());
+                    evaluation.context().data());
             }
 
             @Override
-            public void handleTask(FlowExchanger exchanger, TaskDesc task) throws Throwable {
+            public void handleTask(FlowEvaluation evaluation, TaskDesc task) throws Throwable {
                 if (task.isEmpty()) return;
                 if (task.isGraphRef()) {
-                    exchanger.runGraph(exchanger.engine().graphOrThrow(
+                    evaluation.runGraph(evaluation.engine().graphOrThrow(
                         task.description().substring(1)));
                     return;
                 }
@@ -64,11 +64,11 @@ class FlowEngineTest {
     }
 
     /** A driver resolving every {@code @name} from real container bindings. */
-    private static FlowDriverDefault driverResolving(Map<String, TaskComponent> byId,
+    private static FlowDriverDefault driverResolving(Map<String, TaskHandler> byId,
             ExecutorService executor) {
         Container container = Freeway.create(binder ->
             byId.forEach((id, task) ->
-                binder.bind(TaskComponent.class).to(c -> task).id(id)));
+                binder.bind(TaskHandler.class).to(c -> task).id(id)));
         return new FlowDriverDefault(container, executor);
     }
 
@@ -104,8 +104,8 @@ class FlowEngineTest {
 
     @Test
     void containerReferenceResolvesByTaskAndConditionType() {
-        // A @name task resolves its TaskComponent binding; the same lookup by
-        // name on a condition would need a ConditionComponent — the driver is
+        // A @name task resolves its TaskHandler binding; the same lookup by
+        // name on a condition would need a ConditionHandler — the driver is
         // type-scoped per call site, so a wrong-kind reference fails with the
         // kind named.
         Graph graph = Graph.create("typed", spec -> {
@@ -115,7 +115,7 @@ class FlowEngineTest {
             spec.addEnd("e");
         });
         FlowEngine engine = newEngine(driverResolving(Map.of("worker",
-            (TaskComponent) (ctx, node) -> ctx.put("ran", true)), null));
+            (TaskHandler) (ctx, node) -> ctx.put("ran", true)), null));
         FlowContext ctx = FlowContext.of();
         engine.eval(graph, ctx);
         assertEquals(Boolean.TRUE, ctx.get("ran"));
@@ -136,8 +136,8 @@ class FlowEngineTest {
 
         List<String> executed = new ArrayList<>();
         FlowEngine engine = newEngine(driverResolving(Map.of(
-            "highTask", (TaskComponent) (ctx, node) -> executed.add("high"),
-            "lowTask", (TaskComponent) (ctx, node) -> executed.add("low")), null));
+            "highTask", (TaskHandler) (ctx, node) -> executed.add("high"),
+            "lowTask", (TaskHandler) (ctx, node) -> executed.add("low")), null));
 
         FlowContext ctx1 = FlowContext.of();
         ctx1.put("score", 90);
@@ -178,7 +178,7 @@ class FlowEngineTest {
 
         AtomicInteger counter = new AtomicInteger(0);
         FlowEngine engine = newEngine(driverResolving(Map.of("jsonTask",
-            (TaskComponent) (ctx, node) -> counter.incrementAndGet()), null));
+            (TaskHandler) (ctx, node) -> counter.incrementAndGet()), null));
         engine.eval(graph, FlowContext.of());
         assertEquals(1, counter.get());
     }
@@ -448,7 +448,7 @@ class FlowEngineTest {
 
         List<String> executed = new ArrayList<>();
         FlowEngine engine = newEngine(driverResolving(Map.of("subTask",
-            (TaskComponent) (ctx, node) -> executed.add("sub")), null));
+            (TaskHandler) (ctx, node) -> executed.add("sub")), null));
 
         engine.load(subGraph);
         engine.load(mainGraph);
@@ -462,14 +462,14 @@ class FlowEngineTest {
         List<String> events = new ArrayList<>();
 
         FlowDriver mainDriver = driverResolving(Map.of(
-            "mainTask", (TaskComponent) (ctx, node) ->
+            "mainTask", (TaskHandler) (ctx, node) ->
                 events.add("main:" + node.graph().id() + ":" + node.id()),
-            "subTask", (TaskComponent) (ctx, node) ->
+            "subTask", (TaskHandler) (ctx, node) ->
                 events.add("main:" + node.graph().id() + ":" + node.id())), null);
         FlowDriver subDriver = driverResolving(Map.of(
-            "mainTask", (TaskComponent) (ctx, node) ->
+            "mainTask", (TaskHandler) (ctx, node) ->
                 events.add("sub:" + node.graph().id() + ":" + node.id()),
-            "subTask", (TaskComponent) (ctx, node) ->
+            "subTask", (TaskHandler) (ctx, node) ->
                 events.add("sub:" + node.graph().id() + ":" + node.id())), null);
 
         FlowEngine engine = FlowEngine.create(Map.of(
@@ -583,16 +583,16 @@ class FlowEngineTest {
     }
 
     @Test
-    void exchangerCopyKeepsExecState() {
+    void evaluationCopyKeepsExecState() {
         FlowEngine engine = FlowEngine.create();
         Graph graph = graphWithDriver("default");
-        FlowExchanger exchanger = new FlowExchanger(
+        FlowEvaluation evaluation = new FlowEvaluation(
             graph, engine, engine.driver(graph), FlowContext.of());
 
-        exchanger.execState().countSet(graph, "loop", 3);
+        evaluation.execState().countSet(graph, "loop", 3);
 
-        FlowExchanger copy = exchanger.copy(graph);
-        assertSame(exchanger.execState(), copy.execState());
+        FlowEvaluation copy = evaluation.copy(graph);
+        assertSame(evaluation.execState(), copy.execState());
     }
 
     // ── 停止 ──────────────────────────────────────────────────────
@@ -608,8 +608,8 @@ class FlowEngineTest {
 
         AtomicInteger bCount = new AtomicInteger(0);
         FlowEngine engine = newEngine(driverResolving(Map.of(
-            "stopper", (TaskComponent) (ctx, node) -> ctx.stop(),
-            "neverCalled", (TaskComponent) (ctx, node) -> bCount.incrementAndGet()), null));
+            "stopper", (TaskHandler) (ctx, node) -> ctx.stop(),
+            "neverCalled", (TaskHandler) (ctx, node) -> bCount.incrementAndGet()), null));
 
         // Stopping is an intentional early end: the run completes without the
         // dead-end error an unrouted gateway would raise.
@@ -666,7 +666,7 @@ class FlowEngineTest {
         });
 
         FlowEngine engine = newEngine(driverResolving(Map.of("publisher",
-            (TaskComponent) (ctx, node) -> {
+            (TaskHandler) (ctx, node) -> {
                 ctx.eventBus().subscribe("done", event -> received.add((String) event));
                 ctx.eventBus().publish("done", "fired");
             }), null));
@@ -694,7 +694,7 @@ class FlowEngineTest {
 
         List<String> received = new ArrayList<>();
         FlowEngine engine = newEngine(driverResolving(Map.of("subscribe",
-            (TaskComponent) (ctx, node) ->
+            (TaskHandler) (ctx, node) ->
                 ctx.eventBus().subscribe("stale.topic", e -> received.add((String) e))), null));
 
         FlowContext ctx = FlowContext.of();
@@ -739,7 +739,7 @@ class FlowEngineTest {
 
         FlowEngine engine = FlowEngine.create(
             Map.of("default", driverResolving(Map.of("taskA",
-                (TaskComponent) (ctx, node) -> events.add("task:exec:" + node.id())), null)),
+                (TaskHandler) (ctx, node) -> events.add("task:exec:" + node.id())), null)),
             List.of(auditor));
         engine.eval(graph, FlowContext.of());
 
@@ -777,7 +777,7 @@ class FlowEngineTest {
 
         FlowEngine engine = FlowEngine.create(
             Map.of("default", driverResolving(Map.of("neverRun",
-                (TaskComponent) (ctx, node) -> taskRan.incrementAndGet()), null)),
+                (TaskHandler) (ctx, node) -> taskRan.incrementAndGet()), null)),
             List.of(veto));
 
         engine.eval(graph, FlowContext.of());
@@ -946,7 +946,7 @@ class FlowEngineTest {
 
     public record Greeter(String greeting) {}
 
-    public static final class InjectedTask implements TaskComponent {
+    public static final class InjectedTask implements TaskHandler {
         @com.jujin.freeway.ioc.annotation.Inject
         private Greeter greeter;
 
@@ -1116,17 +1116,17 @@ class FlowEngineTest {
         }
 
         @Override
-        public boolean handleCondition(FlowExchanger exchanger, ConditionDesc condition)
+        public boolean handleCondition(FlowEvaluation evaluation, ConditionDesc condition)
                 throws Throwable {
             return ExprEvaluator.evalCondition(condition.description(),
-                exchanger.context().data());
+                evaluation.context().data());
         }
 
         @Override
-        public void handleTask(FlowExchanger exchanger, TaskDesc task) throws Throwable {
+        public void handleTask(FlowEvaluation evaluation, TaskDesc task) throws Throwable {
             if (task.isEmpty()) return;
             invoked.incrementAndGet();
-            exchanger.context().put("driver", label);
+            evaluation.context().put("driver", label);
         }
     }
 
@@ -1180,16 +1180,16 @@ class FlowEngineTest {
     /** add(Class)-compatible driver — constructor takes only injectable types. */
     public static final class CountingDriverNoArg implements FlowDriver {
         @Override
-        public boolean handleCondition(FlowExchanger exchanger, ConditionDesc condition)
+        public boolean handleCondition(FlowEvaluation evaluation, ConditionDesc condition)
                 throws Throwable {
             return ExprEvaluator.evalCondition(condition.description(),
-                exchanger.context().data());
+                evaluation.context().data());
         }
 
         @Override
-        public void handleTask(FlowExchanger exchanger, TaskDesc task) throws Throwable {
+        public void handleTask(FlowEvaluation evaluation, TaskDesc task) throws Throwable {
             if (task.isEmpty()) return;
-            exchanger.context().put("driver", "injected");
+            evaluation.context().put("driver", "injected");
         }
     }
 
@@ -1575,14 +1575,14 @@ class FlowEngineTest {
             }
 
             @Override
-            public boolean handleCondition(FlowExchanger exchanger, ConditionDesc condition)
+            public boolean handleCondition(FlowEvaluation evaluation, ConditionDesc condition)
                     throws Throwable {
                 return ExprEvaluator.evalCondition(condition.description(),
-                    exchanger.context().data());
+                    evaluation.context().data());
             }
 
             @Override
-            public void handleTask(FlowExchanger exchanger, TaskDesc task) throws Throwable {
+            public void handleTask(FlowEvaluation evaluation, TaskDesc task) throws Throwable {
                 if (!task.isEmpty()) body.accept(task.node());
             }
         }));
@@ -1737,22 +1737,22 @@ class FlowEngineTest {
                 }
 
                 @Override
-                public boolean handleCondition(FlowExchanger exchanger, ConditionDesc condition)
+                public boolean handleCondition(FlowEvaluation evaluation, ConditionDesc condition)
                         throws Throwable {
                     return ExprEvaluator.evalCondition(condition.description(),
-                        exchanger.context().data());
+                        evaluation.context().data());
                 }
 
                 @Override
-                public void handleTask(FlowExchanger exchanger, TaskDesc task) throws Throwable {
+                public void handleTask(FlowEvaluation evaluation, TaskDesc task) throws Throwable {
                     if (task.isEmpty()) return;
                     switch (task.node().id()) {
                         case "a" -> {
-                            exchanger.context().put("shared", "A");
+                            evaluation.context().put("shared", "A");
                             barrier.arriveAndAwaitAdvance();
                         }
                         case "b" -> {
-                            exchanger.context().put("shared", "B");
+                            evaluation.context().put("shared", "B");
                             barrier.arriveAndAwaitAdvance();
                         }
                         default -> { }
@@ -1785,16 +1785,16 @@ class FlowEngineTest {
         // no conflict check); with sequential branches this is deterministic.
         FlowEngine direct = FlowEngine.create(Map.of("default", new FlowDriver() {
             @Override
-            public boolean handleCondition(FlowExchanger exchanger, ConditionDesc condition)
+            public boolean handleCondition(FlowEvaluation evaluation, ConditionDesc condition)
                     throws Throwable {
                 return ExprEvaluator.evalCondition(condition.description(),
-                    exchanger.context().data());
+                    evaluation.context().data());
             }
 
             @Override
-            public void handleTask(FlowExchanger exchanger, TaskDesc task) throws Throwable {
+            public void handleTask(FlowEvaluation evaluation, TaskDesc task) throws Throwable {
                 if (task.isEmpty()) return;
-                exchanger.context().put("winner", task.node().id());
+                evaluation.context().put("winner", task.node().id());
             }
         }));
         Graph g = GraphSpec.create("shared", spec -> {
@@ -1847,7 +1847,7 @@ class FlowEngineTest {
     @Test
     void droppedTaskVerbsAreRejectedAtBuildWithMigrationGuidance() {
         // $meta and !marker died in v3 — but silently resolving to "no task"
-        // or a wrong component would be worse: the vocabulary check fails the
+        // or a wrong handler would be worse: the vocabulary check fails the
         // build and names the replacement.
         IllegalStateException meta = assertThrows(IllegalStateException.class,
             () -> GraphSpec.create("g", s -> {
@@ -1915,11 +1915,11 @@ class FlowEngineTest {
 
     @Test
     void unsupportedTaskVerbNeverReachesRuntimeAndInlineStaysOk() {
-        // Inline components are programmatic and stay valid; only string
+        // Inline handlers are programmatic and stay valid; only string
         // descriptors beyond @ and # fail.
         Graph g = GraphSpec.create("inline", s -> {
             s.entry("s"); s.addStart("s").linkAdd("a");
-            s.addActivity("a").task((TaskComponent) (ctx, node) -> ctx.put("inline", true))
+            s.addActivity("a").task((TaskHandler) (ctx, node) -> ctx.put("inline", true))
                 .linkAdd("e");
             s.addEnd("e");
         }).create();

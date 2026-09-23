@@ -45,7 +45,7 @@ import org.slf4j.LoggerFactory;
  *       {@code $for} it is a plain activity gateway.</li>
  * </ul>
  * Failure taxonomy is deliberate: configuration errors (unknown graph, bad
- * reference, ambiguous component) propagate as {@link IllegalArgumentException}
+ * reference, ambiguous handler) propagate as {@link IllegalArgumentException}
  * or {@link IllegalStateException}; execution failures surface as
  * {@link FlowException}.</p>
  */
@@ -119,17 +119,17 @@ public final class FlowEngineDefault implements FlowEngine {
         // A fresh top-level run owns its context: a reused one must not carry
         // a previous run's stop flag or subscriptions into it.
         context.stopped(false);
-        FlowExchanger exchanger = new FlowExchanger(graph, this, driver(graph), context);
-        eval(graph, exchanger);
+        FlowEvaluation evaluation = new FlowEvaluation(graph, this, driver(graph), context);
+        eval(graph, evaluation);
     }
 
     @Override
-    public void eval(Graph graph, FlowExchanger exchanger) throws FlowException {
-        if (!exchanger.isSubgraphEval()) {
-            exchanger.context().eventBus().clear();
+    public void eval(Graph graph, FlowEvaluation evaluation) throws FlowException {
+        if (!evaluation.isSubgraphEval()) {
+            evaluation.context().eventBus().clear();
         }
-        FlowInterceptor.FlowChain walk = () -> this.walk(exchanger, graph.start());
-        runChain(0, exchanger.context(), graph, walk);
+        FlowInterceptor.FlowChain walk = () -> this.walk(evaluation, graph.start());
+        runChain(0, evaluation.context(), graph, walk);
 
         // A gateway dead end (EXCLUSIVE with no match/default, or a join that
         // never received all its branches) must not report success: the graph
@@ -137,8 +137,8 @@ public final class FlowEngineDefault implements FlowEngine {
         // intentional. The check also covers a no-op chain: an interceptor
         // that never proceeds leaves the graph un-run, which is indistinguish-
         // able from a veto and therefore legal.
-        if (!exchanger.isStopped()) {
-            ExecState.DeadEnd deadEnd = exchanger.execState().deadEnd();
+        if (!evaluation.isStopped()) {
+            ExecState.DeadEnd deadEnd = evaluation.execState().deadEnd();
             if (deadEnd != null) {
                 throw new FlowException(
                     "Graph '" + graph.id() + "' did not complete: dead end at node '"
@@ -149,7 +149,7 @@ public final class FlowEngineDefault implements FlowEngine {
             }
             // Completed run: drop flow-scoped subscriptions so a reused
             // context cannot carry this run's subscribers into the next.
-            exchanger.context().eventBus().clear();
+            evaluation.context().eventBus().clear();
         }
     }
 
@@ -165,59 +165,59 @@ public final class FlowEngineDefault implements FlowEngine {
 
     // --- the frontier walk ---
 
-    private void walk(FlowExchanger exchanger, Node entry) throws FlowException {
+    private void walk(FlowEvaluation evaluation, Node entry) throws FlowException {
         ArrayDeque<Node> frontier = new ArrayDeque<>();
         if (entry != null) {
             frontier.push(entry);
         }
         while (!frontier.isEmpty()) {
             Node node = frontier.pop();
-            if (exchanger.isStopped()) {
+            if (evaluation.isStopped()) {
                 return;
             }
             switch (node.type()) {
                 case START -> {
-                    if (nodeHooks(exchanger, node)) fanOut(exchanger, node, frontier);
+                    if (nodeHooks(evaluation, node)) fanOut(evaluation, node, frontier);
                 }
                 case END -> {
-                    if (onNodeStart(exchanger, node)) {
-                        exchanger.markEnded(node.graph());
-                        onNodeEnd(exchanger, node);
+                    if (onNodeStart(evaluation, node)) {
+                        evaluation.markEnded(node.graph());
+                        onNodeEnd(evaluation, node);
                     }
                 }
                 case ACTIVITY -> {
-                    if (taskExec(exchanger, node)) fanOut(exchanger, node, frontier);
+                    if (taskExec(evaluation, node)) fanOut(evaluation, node, frontier);
                 }
                 case EXCLUSIVE -> {
-                    if (taskExec(exchanger, node)) exclusiveOut(exchanger, node, frontier);
+                    if (taskExec(evaluation, node)) exclusiveOut(evaluation, node, frontier);
                 }
                 case INCLUSIVE -> {
-                    if (joinArrived(exchanger, node) && taskExec(exchanger, node)) {
-                        fanOut(exchanger, node, frontier);
+                    if (joinArrived(evaluation, node) && taskExec(evaluation, node)) {
+                        fanOut(evaluation, node, frontier);
                     }
                 }
                 case PARALLEL -> {
-                    if (joinArrived(exchanger, node) && taskExec(exchanger, node)) {
-                        parallelOut(exchanger, node);
+                    if (joinArrived(evaluation, node) && taskExec(evaluation, node)) {
+                        parallelOut(evaluation, node);
                     }
                 }
-                case LOOP -> loopRun(exchanger, node, frontier);
+                case LOOP -> loopRun(evaluation, node, frontier);
             }
         }
     }
 
     /** START/END lifecycle: the hook pair only, no task, no condition. */
-    private boolean nodeHooks(FlowExchanger exchanger, Node node) {
-        if (!onNodeStart(exchanger, node)) return false;
-        return onNodeEnd(exchanger, node);
+    private boolean nodeHooks(FlowEvaluation evaluation, Node node) {
+        if (!onNodeStart(evaluation, node)) return false;
+        return onNodeEnd(evaluation, node);
     }
 
     /** And-fan-out: every link whose condition matches joins the frontier, in link order. */
-    private void fanOut(FlowExchanger exchanger, Node node, ArrayDeque<Node> frontier)
+    private void fanOut(FlowEvaluation evaluation, Node node, ArrayDeque<Node> frontier)
             throws FlowException {
         List<Node> matched = new ArrayList<>();
         for (Link link : node.nextLinks()) {
-            if (conditionTest(exchanger, link.when(), true)) {
+            if (conditionTest(evaluation, link.when(), true)) {
                 matched.add(link.nextNode());
             }
         }
@@ -228,7 +228,7 @@ public final class FlowEngineDefault implements FlowEngine {
     }
 
     /** Xor-fan-out: first matching link wins; else the default; else dead end. */
-    private void exclusiveOut(FlowExchanger exchanger, Node node, ArrayDeque<Node> frontier)
+    private void exclusiveOut(FlowEvaluation evaluation, Node node, ArrayDeque<Node> frontier)
             throws FlowException {
         Link defLine = null;
         for (Link link : node.nextLinks()) {
@@ -240,7 +240,7 @@ public final class FlowEngineDefault implements FlowEngine {
                     );
                 }
                 defLine = link;
-            } else if (conditionTest(exchanger, link.when(), false)) {
+            } else if (conditionTest(evaluation, link.when(), false)) {
                 frontier.push(link.nextNode());
                 return;
             }
@@ -252,7 +252,7 @@ public final class FlowEngineDefault implements FlowEngine {
                 "EXCLUSIVE node '{}/{}' matched no condition and has no default link — execution stops at this node",
                 node.graph().id(), node.id()
             );
-            markDeadEnd(exchanger, node);
+            markDeadEnd(evaluation, node);
         }
     }
 
@@ -264,24 +264,24 @@ public final class FlowEngineDefault implements FlowEngine {
      * loudly instead of silently. The counter re-arms at activation so a
      * fork-join inside a LOOP body works again next iteration.
      */
-    private boolean joinArrived(FlowExchanger exchanger, Node node) {
+    private boolean joinArrived(FlowEvaluation evaluation, Node node) {
         int expected = node.prevLinks().size();
-        int arrived = exchanger.execState().countIncr(node.graph(), node.id());
+        int arrived = evaluation.execState().countIncr(node.graph(), node.id());
         if (arrived >= expected) {
-            exchanger.execState().countSet(node.graph(), node.id(), 0);
-            exchanger.execState().deadEndClear(node.graph(), node.id());
+            evaluation.execState().countSet(node.graph(), node.id(), 0);
+            evaluation.execState().deadEndClear(node.graph(), node.id());
             return true;
         }
-        markDeadEnd(exchanger, node);
+        markDeadEnd(evaluation, node);
         return false;
     }
 
-    private void markDeadEnd(FlowExchanger exchanger, Node node) {
-        exchanger.execState().deadEnd(node.graph(), node.id());
+    private void markDeadEnd(FlowEvaluation evaluation, Node node) {
+        evaluation.execState().deadEnd(node.graph(), node.id());
     }
 
     /** Task lifecycle: hooks around the node's condition-gated data + task, exactly-one-end. */
-    private boolean taskExec(FlowExchanger exchanger, Node node) throws FlowException {
+    private boolean taskExec(FlowEvaluation evaluation, Node node) throws FlowException {
         boolean ended = false;
         try {
             // onNodeStart runs inside the try so the pairing below is
@@ -289,14 +289,14 @@ public final class FlowEngineDefault implements FlowEngine {
             // throws, onNodeEnd is invoked exactly once — otherwise
             // interceptors and drivers maintaining per-node state (e.g. a
             // nesting stack) leak a start without an end.
-            if (!onNodeStart(exchanger, node)) return false;
+            if (!onNodeStart(evaluation, node)) return false;
 
-            if (conditionTest(exchanger, node.when(), true)) {
+            if (conditionTest(evaluation, node.when(), true)) {
                 if (!node.data().isEmpty()) {
-                    exchanger.context().putAll(node.data());
+                    evaluation.context().putAll(node.data());
                 }
                 try {
-                    exchanger.driver().handleTask(exchanger, node.task());
+                    evaluation.driver().handleTask(evaluation, node.task());
                 } catch (FlowException e) {
                     throw e;
                 } catch (IllegalStateException | IllegalArgumentException e) {
@@ -307,13 +307,13 @@ public final class FlowEngineDefault implements FlowEngine {
                 }
             }
 
-            if (exchanger.isStopped()) return false;
+            if (evaluation.isStopped()) return false;
             ended = true;
-            return onNodeEnd(exchanger, node);
+            return onNodeEnd(evaluation, node);
         } finally {
             if (!ended) {
                 try {
-                    onNodeEnd(exchanger, node);
+                    onNodeEnd(evaluation, node);
                 } catch (Exception ex) {
                     LOG.warn("onNodeEnd failed after task failure at {}/{}",
                         node.graph().id(), node.id(), ex);
@@ -322,27 +322,27 @@ public final class FlowEngineDefault implements FlowEngine {
         }
     }
 
-    private boolean onNodeStart(FlowExchanger exchanger, Node node) {
+    private boolean onNodeStart(FlowEvaluation evaluation, Node node) {
         for (FlowInterceptor interceptor : interceptors) {
-            interceptor.onNodeStart(exchanger.context(), node);
+            interceptor.onNodeStart(evaluation.context(), node);
         }
-        exchanger.driver().onNodeStart(exchanger, node);
-        return !exchanger.isStopped();
+        evaluation.driver().onNodeStart(evaluation, node);
+        return !evaluation.isStopped();
     }
 
-    private boolean onNodeEnd(FlowExchanger exchanger, Node node) {
+    private boolean onNodeEnd(FlowEvaluation evaluation, Node node) {
         for (FlowInterceptor interceptor : interceptors) {
-            interceptor.onNodeEnd(exchanger.context(), node);
+            interceptor.onNodeEnd(evaluation.context(), node);
         }
-        exchanger.driver().onNodeEnd(exchanger, node);
-        return !exchanger.isStopped();
+        evaluation.driver().onNodeEnd(evaluation, node);
+        return !evaluation.isStopped();
     }
 
-    private boolean conditionTest(FlowExchanger exchanger, ConditionDesc condition, boolean def)
+    private boolean conditionTest(FlowEvaluation evaluation, ConditionDesc condition, boolean def)
             throws FlowException {
         if (condition.isEmpty()) return def;
         try {
-            return exchanger.driver().handleCondition(exchanger, condition);
+            return evaluation.driver().handleCondition(evaluation, condition);
         } catch (FlowException e) {
             throw e;
         } catch (IllegalStateException | IllegalArgumentException e) {
@@ -355,13 +355,13 @@ public final class FlowEngineDefault implements FlowEngine {
 
     // --- PARALLEL ---
 
-    private void parallelOut(FlowExchanger exchanger, Node node) throws FlowException {
+    private void parallelOut(FlowEvaluation evaluation, Node node) throws FlowException {
         List<Node> branches = node.nextNodes();
-        if (exchanger.driver().executor() == null || branches.size() < 2) {
+        if (evaluation.driver().executor() == null || branches.size() < 2) {
             // No executor (or nothing to overlap): branches run inline, each
             // still isolated and merged in order.
             for (Node branch : branches) {
-                runBranch(exchanger, node, branch);
+                runBranch(evaluation, node, branch);
             }
             return;
         }
@@ -376,10 +376,10 @@ public final class FlowEngineDefault implements FlowEngine {
         AtomicReference<Throwable> errorRef = new AtomicReference<>();
         for (Node branch : branches) {
             try {
-                exchanger.driver().executor().execute(() -> {
+                evaluation.driver().executor().execute(() -> {
                     try {
                         if (errorRef.get() != null) return;
-                        runBranch(exchanger, node, branch);
+                        runBranch(evaluation, node, branch);
                     } catch (Throwable ex) {
                         errorRef.compareAndSet(null, ex);
                     } finally {
@@ -420,30 +420,30 @@ public final class FlowEngineDefault implements FlowEngine {
      * fails the run with both values named. A branch that stopped or failed
      * contributes nothing (its partial writes are discarded with it).
      */
-    private void runBranch(FlowExchanger exchanger, Node fork, Node branch) throws FlowException {
+    private void runBranch(FlowEvaluation evaluation, Node fork, Node branch) throws FlowException {
         if ("shared".equals(fork.metaAsString("join"))) {
-            walk(exchanger, branch);
+            walk(evaluation, branch);
             return;
         }
-        Runnable merge = exchanger.context().beginBranch();
+        Runnable merge = evaluation.context().beginBranch();
         // A throwing walk never reaches the merger: an aborted branch
         // contributes nothing, its partial writes discarded with it.
-        walk(exchanger, branch);
+        walk(evaluation, branch);
         merge.run();
     }
 
     // --- LOOP ---
 
-    private void loopRun(FlowExchanger exchanger, Node node, ArrayDeque<Node> frontier)
+    private void loopRun(FlowEvaluation evaluation, Node node, ArrayDeque<Node> frontier)
             throws FlowException {
         String forKey = node.metaAsString("$for");
         if (forKey == null) {
             // No $in/$for pair: a plain activity gateway (iteration is undefined).
-            if (taskExec(exchanger, node)) fanOut(exchanger, node, frontier);
+            if (taskExec(evaluation, node)) fanOut(evaluation, node, frontier);
             return;
         }
 
-        ArrayDeque<Iterator<?>> stack = exchanger.execState().loopStack(node.graph(), node.id());
+        ArrayDeque<Iterator<?>> stack = evaluation.execState().loopStack(node.graph(), node.id());
         Iterator<?> iterator;
         synchronized (stack) {
             // Claim atomically: the "sibling already running this loop" check,
@@ -452,11 +452,11 @@ public final class FlowEngineDefault implements FlowEngine {
             // arrivals skip the whole node. An exhausted iterator left by a
             // completed run is popped first, re-arming a sequential re-entry.
             if (loopBusy(stack)) return;
-            iterator = loopIterator(exchanger, node);
+            iterator = loopIterator(evaluation, node);
             stack.push(iterator);
         }
 
-        if (!taskExec(exchanger, node)) return;
+        if (!taskExec(evaluation, node)) return;
 
         // Guard against unbounded iteration: a misconfigured $in (e.g. a
         // multi-million-element collection) would otherwise spin here forever.
@@ -469,21 +469,21 @@ public final class FlowEngineDefault implements FlowEngine {
                         + "' — check '$in' for an oversized or unbounded collection"
                 );
             }
-            exchanger.context().put(forKey, iterator.next());
+            evaluation.context().put(forKey, iterator.next());
             // A new iteration re-enters the body: join counters (and their
             // provisional dead-ends) left by the previous iteration must not
             // leak into this one.
-            resetLoopBodyJoins(exchanger, node);
+            resetLoopBodyJoins(evaluation, node);
             // The body runs to completion per iteration (a nested walk per
             // matched link), not round-robin across iterations.
             List<Node> body = new ArrayList<>();
             for (Link link : node.nextLinks()) {
-                if (conditionTest(exchanger, link.when(), true)) {
+                if (conditionTest(evaluation, link.when(), true)) {
                     body.add(link.nextNode());
                 }
             }
             for (Node member : body) {
-                walk(exchanger, member);
+                walk(evaluation, member);
             }
         }
     }
@@ -503,7 +503,7 @@ public final class FlowEngineDefault implements FlowEngine {
      * context key holding either, or a {@code "start...end"} /
      * {@code "start:end:step"} range string.
      */
-    private Iterator<?> loopIterator(FlowExchanger exchanger, Node node) {
+    private Iterator<?> loopIterator(FlowEvaluation evaluation, Node node) {
         Object inKey = node.meta("$in");
 
         Object inObj;
@@ -511,7 +511,7 @@ public final class FlowEngineDefault implements FlowEngine {
             inObj = inKey;
         } else if (inKey instanceof String inKeyStr) {
             if (!inKeyStr.contains(":") && !inKeyStr.contains("...")) {
-                inObj = exchanger.context().getAs(inKeyStr);
+                inObj = evaluation.context().getAs(inKeyStr);
             } else {
                 inObj = com.jujin.freeway.flow.internal.Stepper.from(inKeyStr);
             }
@@ -540,13 +540,13 @@ public final class FlowEngineDefault implements FlowEngine {
      * does), so the next iteration could falsely activate early or twice. The
      * provisional dead-end is cleared too — a new iteration starts fresh.
      */
-    private void resetLoopBodyJoins(FlowExchanger exchanger, Node loopNode) {
-        List<String> joins = exchanger.execState().loopBodyJoins(
+    private void resetLoopBodyJoins(FlowEvaluation evaluation, Node loopNode) {
+        List<String> joins = evaluation.execState().loopBodyJoins(
             loopNode.graph(), loopNode.id(), () -> loopBodyJoins(loopNode));
         Graph graph = loopNode.graph();
         for (String joinId : joins) {
-            exchanger.execState().countSet(graph, joinId, 0);
-            exchanger.execState().deadEndClear(graph, joinId);
+            evaluation.execState().countSet(graph, joinId, 0);
+            evaluation.execState().deadEndClear(graph, joinId);
         }
     }
 

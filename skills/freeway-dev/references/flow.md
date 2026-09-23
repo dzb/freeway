@@ -14,9 +14,9 @@
 
 | Form | Resolves to |
 |------|-------------|
-| `@name` | `TaskComponent` (or `ConditionComponent` in a `when`) bound/contributed in the container with id `name` |
+| `@name` | `TaskHandler` (or `ConditionHandler` in a `when`) bound/contributed in the container with id `name` |
 | `#graphId` | Another loaded graph, run as a sub-graph sharing the evaluation's join state; a child that never reaches END fails at the calling node |
-| inline component | `TaskComponent`/`ConditionComponent` supplied programmatically |
+| inline handler | `TaskHandler`/`ConditionHandler` supplied programmatically |
 | node `data` field | Static values written into the context before the task runs |
 
 Markers (`!marker`) and meta tasks (`$metaKey`) were dropped with v3: contribute with an id and use `@name`; use `data` for static values. Old forms fail `GraphSpec.create()` with migration hints.
@@ -34,8 +34,8 @@ binder.contribute(FlowDriver.class)
 ```
 
 ```java
-// Task components are plain container bindings by id:
-binder.contribute(TaskComponent.class).add("orderHandler", (ctx, node) -> ...);
+// Task handlers are plain container bindings by id:
+binder.contribute(TaskHandler.class).add("orderHandler", (ctx, node) -> ...);
 
 GraphSpec bp = GraphSpec.create("flow", spec -> {
     spec.entry("start");

@@ -112,8 +112,8 @@ public interface FlowEngine {
 
     /**
      * @hidden Continues an in-flight evaluation on another graph — the entry
-     *  {@link FlowExchanger#runGraph} uses so the sub-run shares the parent's
+     *  {@link FlowEvaluation#runGraph} uses so the sub-run shares the parent's
      *  join state. Applications call {@link #eval(Graph, FlowContext)}.
      */
-    void eval(Graph graph, FlowExchanger exchanger) throws FlowException;
+    void eval(Graph graph, FlowEvaluation evaluation) throws FlowException;
 }

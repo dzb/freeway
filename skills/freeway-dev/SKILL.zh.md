@@ -962,12 +962,12 @@ Graph graph = Graph.fromText("""
 
 | 前缀 | 语法 | 解析为 |
 |------|------|--------|
-| `!` (marker) | `!channel:order !priority:high` | `TaskComponent`，按 `@FlowMarker` 交集匹配，标记最多者胜出 |
-| `@` (bean) | `@orderService` | `TaskComponent`，容器按 binding id 查找。条件节点也支持 `@`，解析为 `ConditionComponent` |
+| `!` (marker) | `!channel:order !priority:high` | `TaskHandler`，按 `@FlowMarker` 交集匹配，标记最多者胜出 |
+| `@` (bean) | `@orderService` | `TaskHandler`，容器按 binding id 查找。条件节点也支持 `@`，解析为 `ConditionHandler` |
 | `#` (子图) | `#approvalFlow` | 调用已加载的命名子图，嵌套执行 |
 | `$` (meta) | `$app.name` | 读取图元数据注入执行上下文，不解析为组件 |
 
-`@FlowMarker("channel:order")` 注解在 `TaskComponent` 实现类上，自动注册到 marker index。
+`@FlowMarker("channel:order")` 注解在 `TaskHandler` 实现类上，自动注册到 marker index。
 
 ### Driver（驱动器）
 
@@ -989,7 +989,7 @@ FlowEngine engine = container.get(FlowEngine.class);
 engine.load(graph);
 engine.eval("orderFlow", FlowContext.of());
 
-// 通过 IoC — FlowModule 自动注册贡献的 TaskComponent 和 FlowDriver
+// 通过 IoC — FlowModule 自动注册贡献的 TaskHandler 和 FlowDriver
 FreewayApp.run(args, new AppModule(), new FlowModule());
 ```
 

@@ -142,6 +142,17 @@ builder 不是第二个入口而是第二个组装根：自带一份默认值、
   `MethodHandleUtils` 的 `Utils` 后缀对齐（仓内原为 4:1，唯一调用点 `WebSocketUpgrade` 同批改）。
 - `Tracer` 方法签名中的两处 `com.jujin.freeway.cloud.context.TraceContext` 全限定名改为
   import（同文件 `InvocationContext` 一并清理）——签名类型不变，无迁移项。
+- `FlowExchanger` → `FlowEvaluation`：该类型是"一次在途求值的状态"（graph/engine/driver/context/
+  execState 的载体，javadoc 原词即 evaluation），自己不执行求值——求值者是 `FlowEngine` +
+  `FlowDriver`；Exchanger 的两方交换语义（`java.util.concurrent.Exchanger`）与 -er 能动者后缀
+  都在误导。它是 `FlowDriver` 全部钩子的参数类型，参数名随之 `exchanger` → `evaluation`。
+- flow 组件族对齐全仓 Handler 惯例（`RouteHandler`/`BodyHandler`/`ErrorHandler`…）：
+  `TaskComponent`/`NamedTaskComponent`/`ConditionComponent` → `TaskHandler`/`NamedTaskHandler`/
+  `ConditionHandler`（方法名 `run`/`test`/`name`/`title` 不变）；衍生标识符一并收词，不留双词表：
+  `TaskDesc`/`ConditionDesc` 的字段与 `component()` 访问器 → `handler()`，`isComponentRef()` →
+  `isHandlerRef()`，`NodeSpec`/`LinkSpec` 的 `whenComponent` 字段与访问器 → `whenHandler`，
+  `resolveComponent` → `resolveHandler`，错误消息与注释中的 "component" → "handler"
+  （`ExprEvaluator` 的 "array component" 是数组元素义，保持原样）。
 
 ## [1.5.3] - 2026-09-20
 

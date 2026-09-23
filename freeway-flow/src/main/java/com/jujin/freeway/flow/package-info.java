@@ -32,7 +32,7 @@
  *   <li>{@link com.jujin.freeway.flow.FlowContext} — the run's data map,
  *       event bus and stop signal</li>
  *   <li>{@link com.jujin.freeway.flow.FlowDriverDefault} — resolves the task
- *       vocabulary: inline components, {@code @name} (container), and
+ *       vocabulary: inline handlers, {@code @name} (container), and
  *       {@code #graphId} (sub-graph); nodes may also carry {@code data}</li>
  *   <li>{@link com.jujin.freeway.flow.FlowModule} — the IoC assembly</li>
  * </ul>

@@ -14,23 +14,23 @@ import java.util.concurrent.ConcurrentHashMap;
  * while keeping the evaluation alive — that is how a sub-graph call joins
  * the parent's counters and dead-end reporting.</p>
  */
-public final class FlowExchanger {
+public final class FlowEvaluation {
     private final Graph graph;
     private final FlowEngine engine;
     private final FlowDriver driver;
     private final FlowContext context;
     final ExecState execState;
-    /** True when this exchanger runs a sub-graph (created by {@link #runGraph}). */
+    /** True when this evaluation runs a sub-graph (created by {@link #runGraph}). */
     private volatile boolean subgraphEval = false;
     /** Graphs whose END node was reached in this evaluation. */
     private final Set<String> graphEnded = ConcurrentHashMap.newKeySet();
 
-    public FlowExchanger(Graph graph, FlowEngine engine, FlowDriver driver,
+    public FlowEvaluation(Graph graph, FlowEngine engine, FlowDriver driver,
             FlowContext context) {
         this(graph, engine, driver, context, new ExecState());
     }
 
-    FlowExchanger(Graph graph, FlowEngine engine, FlowDriver driver,
+    FlowEvaluation(Graph graph, FlowEngine engine, FlowDriver driver,
             FlowContext context, ExecState execState) {
         this.graph = Objects.requireNonNull(graph, "graph");
         this.engine = Objects.requireNonNull(engine, "engine");
@@ -40,14 +40,14 @@ public final class FlowExchanger {
     }
 
     /** The same evaluation continued on another graph, sharing the run state. */
-    public FlowExchanger copy(Graph graphNew) {
-        return new FlowExchanger(graphNew, engine, driver, context, execState);
+    public FlowEvaluation copy(Graph graphNew) {
+        return new FlowEvaluation(graphNew, engine, driver, context, execState);
     }
 
     /** The same evaluation continued on another graph and context (e.g. a
      *  sub-graph run with isolated variables). */
-    public FlowExchanger copy(Graph graphNew, FlowContext contextNew) {
-        return new FlowExchanger(graphNew, engine, driver, contextNew, execState);
+    public FlowEvaluation copy(Graph graphNew, FlowContext contextNew) {
+        return new FlowEvaluation(graphNew, engine, driver, contextNew, execState);
     }
 
     public Graph graph() { return graph; }
@@ -64,7 +64,7 @@ public final class FlowExchanger {
      * {@link FlowException} at the calling node, not a silent success.
      */
     public void runGraph(Graph graph) {
-        FlowExchanger subEx = new FlowExchanger(
+        FlowEvaluation subEx = new FlowEvaluation(
             graph, engine, engine.driver(graph), context, execState);
         subEx.markSubgraphEval();
         engine.eval(graph, subEx);
@@ -109,7 +109,7 @@ public final class FlowExchanger {
 
     ExecState execState() { return execState; }
 
-    /** True when this exchanger runs a sub-graph (created by {@link #runGraph}). */
+    /** True when this evaluation runs a sub-graph (created by {@link #runGraph}). */
     boolean isSubgraphEval() { return subgraphEval; }
 
     void markSubgraphEval() { this.subgraphEval = true; }

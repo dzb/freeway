@@ -106,7 +106,7 @@ public interface FlowContext {
 
     // --- engine-internal ---
 
-    /** @hidden sets the stop signal (the engine and {@link FlowExchanger#stop()}). */
+    /** @hidden sets the stop signal (the engine and {@link FlowEvaluation#stop()}). */
     void stopped(boolean stopped);
 
     /**

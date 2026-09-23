@@ -27,9 +27,9 @@ public final class NodeSpec {
     final Map<String, Object> data = new LinkedHashMap<>();
     final List<PendingLink> pendingLinks = new ArrayList<>();
     String when;
-    ConditionComponent whenComponent;
+    ConditionHandler whenHandler;
     String task;
-    TaskComponent taskComponent;
+    TaskHandler taskHandler;
 
     NodeSpec(GraphSpec owner, String id, NodeType type) {
         this.owner = owner;
@@ -76,13 +76,13 @@ public final class NodeSpec {
 
     public NodeSpec when(String when) {
         this.when = when;
-        this.whenComponent = null;
+        this.whenHandler = null;
         touch();
         return this;
     }
 
-    public NodeSpec when(ConditionComponent whenComponent) {
-        this.whenComponent = whenComponent;
+    public NodeSpec when(ConditionHandler whenHandler) {
+        this.whenHandler = whenHandler;
         this.when = null;
         touch();
         return this;
@@ -90,13 +90,13 @@ public final class NodeSpec {
 
     public NodeSpec task(String task) {
         this.task = task;
-        this.taskComponent = null;
+        this.taskHandler = null;
         touch();
         return this;
     }
 
-    public NodeSpec task(TaskComponent taskComponent) {
-        this.taskComponent = taskComponent;
+    public NodeSpec task(TaskHandler taskHandler) {
+        this.taskHandler = taskHandler;
         this.task = null;
         touch();
         return this;
@@ -161,15 +161,15 @@ public final class NodeSpec {
         return when;
     }
 
-    public ConditionComponent whenComponent() {
-        return whenComponent;
+    public ConditionHandler whenHandler() {
+        return whenHandler;
     }
 
     public String task() {
         return task;
     }
 
-    public TaskComponent taskComponent() {
-        return taskComponent;
+    public TaskHandler taskHandler() {
+        return taskHandler;
     }
 }

@@ -2103,12 +2103,12 @@ build error, never a runtime guess:
 
 | Syntax | Resolves to |
 |--------|-------------|
-| `@name` | `TaskComponent` (or `ConditionComponent`, in a `when`) bound in the container with id `name` |
+| `@name` | `TaskHandler` (or `ConditionHandler`, in a `when`) bound in the container with id `name` |
 | `#graphId` | Another loaded graph, run as a sub-graph sharing the evaluation's join state; a child that never reaches its END fails at the calling node |
-| (inline) | A `TaskComponent`/`ConditionComponent` supplied programmatically |
+| (inline) | A `TaskHandler`/`ConditionHandler` supplied programmatically |
 | `data` field | Static values written into the context before the task runs — the replacement for v2's `$meta` task |
 
-Markers (`!marker`) are gone: contribute the component with an id and reference
+Markers (`!marker`) are gone: contribute the handler with an id and reference
 it as `@name`, which the container resolves like any other binding.
 
 **Execution:**
@@ -2140,7 +2140,7 @@ operand is only evaluated when it can affect the result — and unary `-` (plus
 number/string comparisons are numeric when the string parses (`"10" > 9` is
 true; `"10" == 10` is true), otherwise lexicographic; `"true"`/`"1"` are
 truthy and `"false"`/`"0"` falsy in boolean contexts. A `when` may also be a
-`@name` component reference.
+`@name` handler reference.
 
 **Branch isolation:** a `PARALLEL` fork defaults to `join: "merge"` — each
 branch runs over a thread-local write buffer and merges into the context on
@@ -2156,9 +2156,9 @@ join counter re-arms each LOOP iteration for a fork-join inside a loop body.
 |------|---------|
 | `Graph` | Immutable runtime model — built from `GraphSpec` blueprints |
 | `GraphSpec` | Canonical DAG authoring surface with explicit `entry`, separated `nodes`/`links`, and the boot-time validation gate |
-| `FlowEngine` | Graph executor: `load`/`unload`/`graphs`, `eval` (fresh top-level run, or continuation via an exchanger for sub-graphs) |
+| `FlowEngine` | Graph executor: `load`/`unload`/`graphs`, `eval` (fresh top-level run, or continuation via an evaluation for sub-graphs) |
 | `FlowDriver` | Pluggable task/condition executor + optional `PARALLEL` executor — contributed via `binder.contribute(FlowDriver.class)` |
-| `FlowDriverDefault` | Built-in driver: resolves `@name` against the container, `#graphId` via sub-graph runs; standalone with inline components when container is null |
+| `FlowDriverDefault` | Built-in driver: resolves `@name` against the container, `#graphId` via sub-graph runs; standalone with inline handlers when container is null |
 | `FlowInterceptor` | Contributed chain (flow-level `interceptFlow` + node `onNodeStart`/`onNodeEnd`); fixed at load, cannot change while running |
 | `ExecState` | Per-evaluation join counters, loop iterators and dead-end marks — engine-owned, no shared string bag |
 | `FlowEventBus` | Topic pub/sub scoped to one execution (cleared at run boundaries) |
