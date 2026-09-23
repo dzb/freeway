@@ -300,52 +300,30 @@ public final class Extension<V> {
     }
 
     /**
-     * One cycle among {@code remaining}, found by DFS on the stalled
-     * subgraph; empty only if there is none (a Kahn stall guarantees one).
-     * An instance method because {@code Entry} captures the type variable
-     * {@code V}, which a static context cannot reference.
+     * The cycle among {@code remaining}: strip dead ends (no edge back into
+     * the set — they cannot lie on a cycle), then walk out-edges until a
+     * node repeats; that repeat closes the cycle. Instance method because
+     * {@code Entry} captures {@code V}, which a static context cannot reference.
      */
     private List<Entry> findCycle(
         Map<Entry, Set<Entry>> outgoing,
         List<Entry> remaining
     ) {
-        Set<Entry> left = new HashSet<>(remaining);
-        Set<Entry> done = new HashSet<>();
+        List<Entry> live = new ArrayList<>(remaining);
+        boolean stripped;
+        do {
+            Set<Entry> in = new HashSet<>(live);
+            stripped = live.removeIf(e ->
+                outgoing.getOrDefault(e, Set.of()).stream().noneMatch(in::contains));
+        } while (stripped);
         List<Entry> path = new ArrayList<>();
-        Set<Entry> onPath = new HashSet<>();
-        for (Entry start : remaining) {
-            if (done.contains(start)) continue;
-            List<Entry> cycle = dfs(start, outgoing, left, done, path, onPath);
-            if (!cycle.isEmpty()) return cycle;
+        Entry at = live.get(0);
+        while (!path.contains(at)) {
+            path.add(at);
+            at = outgoing.getOrDefault(at, Set.of()).stream()
+                .filter(live::contains).findFirst().orElseThrow();
         }
-        return List.of();
-    }
-
-    private List<Entry> dfs(
-        Entry node,
-        Map<Entry, Set<Entry>> outgoing,
-        Set<Entry> left,
-        Set<Entry> done,
-        List<Entry> path,
-        Set<Entry> onPath
-    ) {
-        onPath.add(node);
-        path.add(node);
-        for (Entry next : outgoing.getOrDefault(node, Set.of())) {
-            if (!left.contains(next)) continue;
-            if (onPath.contains(next)) {
-                return new ArrayList<>(
-                    path.subList(path.indexOf(next), path.size()));
-            }
-            if (!done.contains(next)) {
-                List<Entry> cycle = dfs(next, outgoing, left, done, path, onPath);
-                if (!cycle.isEmpty()) return cycle;
-            }
-        }
-        onPath.remove(node);
-        path.remove(path.size() - 1);
-        done.add(node);
-        return List.of();
+        return new ArrayList<>(path.subList(path.indexOf(at), path.size()));
     }
 
     /**
@@ -353,7 +331,6 @@ public final class Extension<V> {
      * the closure; id-less entries (defensive only) show their value type.
      */
     private String describeCycle(List<Entry> cycle) {
-        if (cycle.isEmpty()) return "(cycle members could not be resolved)";
         StringBuilder sb = new StringBuilder();
         for (Entry e : cycle) {
             if (sb.length() > 0) sb.append(" → ");
