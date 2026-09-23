@@ -31,7 +31,10 @@ import com.jujin.freeway.http.route.Route;
 import com.jujin.freeway.http.route.RouteGroup;
 import com.jujin.freeway.http.route.RouteIndex;
 import com.jujin.freeway.http.staticfile.StaticResourceMount;
+import com.jujin.freeway.http.websocket.LazyEndpoint;
+import com.jujin.freeway.http.websocket.WebSocketGroup;
 import com.jujin.freeway.http.websocket.WebSocketIndex;
+import com.jujin.freeway.http.websocket.WebSocketRoute;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.EventBus;
@@ -79,7 +82,20 @@ public final class HttpModule implements ModuleEx {
             }
             return new RouteIndex(allRoutes, List.of());
         });
-        binder.bind(WebSocketIndex.class).to(WebSocketIndex.class);
+        binder.bind(WebSocketIndex.class).to(container -> {
+            var routes = container.extension(WebSocketRoute.class).all();
+            var groups = container.extension(WebSocketGroup.class).all();
+            for (var r : routes) {
+                resolveEndpoint(r, container);
+            }
+            // Resolve LazyEndpoints from group-expanded routes too
+            for (WebSocketGroup group : groups) {
+                for (WebSocketRoute expanded : group.expand()) {
+                    resolveEndpoint(expanded, container);
+                }
+            }
+            return new WebSocketIndex(routes, groups);
+        });
         binder.bind(JsonCodec.class).to(JsonCodecDefault.class);
 
         // Config — each face resolved by the type that owns its keys and its
@@ -212,6 +228,16 @@ public final class HttpModule implements ModuleEx {
     private static void resolveLazy(Route r, Container c) {
         if (r.handler() instanceof LazyHandler lh) {
             lh.resolve(() -> c.create(lh.handlerType()));
+        }
+    }
+
+    /** Resolves a {@link LazyEndpoint} (class-based WebSocket route): the
+     *  container instantiates the endpoint class with constructor injection
+     *  and the instance is handed to the wrapper — the websocket package
+     *  stays free of container types. */
+    private static void resolveEndpoint(WebSocketRoute r, Container c) {
+        if (r.endpoint() instanceof LazyEndpoint le) {
+            le.resolve(() -> c.create(le.endpointType()));
         }
     }
 
