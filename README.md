@@ -294,7 +294,7 @@ A compact JDBC data access layer with ORM:
 - **Dialect** — config-driven selection via `freeway.db.dialect`, JDBC URL auto-detection: `PostgresDialect` (default), `MySqlDialect`, `SqliteDialect`, and `H2Dialect` (plain H2; `MODE=PostgreSQL`/`MODE=MySQL` still map accordingly). Unsupported JDBC URL schemes fail fast at startup with guidance instead of silently falling back to PostgreSQL. Dialect capabilities drive SQL lexing and DDL (e.g. MySQL backslash-escaped strings, transactional-DDL support).
 - **Schema** — `@Table`/`@Column`/`@Id`/`@Generated` annotations + `Schema.ensure()` auto-DDL. Entity groups contributed via `SchemaEntity.of("core", User.class)`, filterable via `freeway.db.schema.groups`.
 - **Migrations** — versioned SQL files (`V001__name.sql`) with SHA-256 checksum validation (raw bytes, plus a CRLF→LF normalized twin for line-ending tolerance), format enforcement, and database-level concurrency lock. On databases without transactional DDL (MySQL/MariaDB), a migration containing DDL is rejected up front with guidance — split it and make statements idempotent. `MigrationRunner` runs after Schema at startup via `RuntimeHook` (`"freeway.db.migration"`).
-- `DatabaseHub` - multi-datasource routing.
+- `DatabaseRegistry` - multi-datasource routing.
 
 freeway-db's library classes are **ioc-free** and independently usable outside the container; IoC enters only through `DbModule`, the module's single integration point (the module declares `freeway-ioc` as a regular compile dependency).
 
@@ -303,7 +303,7 @@ freeway-db's library classes are **ioc-free** and independently usable outside t
 A lightweight graph workflow engine for orchestrating multi-step processes:
 
 - **Graph definition** — JSON-based DAGs with 7 node types: `START`, `END`, `ACTIVITY`, `EXCLUSIVE`, `INCLUSIVE`, `PARALLEL`, `LOOP`. Canonical v3 format (`nodes`+`links` with an explicit `entry`); the build gate validates link references, cycles, entry, task vocabulary, `when` expressions, `join` declarations and `data` keys — everything static fails at boot, not mid-run.
-- **Task vocabulary** — a closed set: `@name` resolves a `TaskComponent`/`ConditionComponent` bound in the IoC container, `#graphId` calls another loaded graph as a subflow, and inline components work programmatically; a node's `data` field writes static values into the execution context.
+- **Task vocabulary** — a closed set: `@name` resolves a `TaskHandler`/`ConditionHandler` bound in the IoC container, `#graphId` calls another loaded graph as a subflow, and inline handlers work programmatically; a node's `data` field writes static values into the execution context.
 - **Execution** — iterative frontier walk (path length never costs JVM stack); gateway dead ends fail the run loudly; `ctx.stop()` is a legal early completion.
 - **Branch isolation** — a `PARALLEL` fork declares `join: "merge"` (default: per-branch write buffers merged on clean completion, write-write conflicts fail the run) or `join: "shared"` to opt out.
 - **PlantUML export** — visualize any graph definition as a PlantUML diagram.

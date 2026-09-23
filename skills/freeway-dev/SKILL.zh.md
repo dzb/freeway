@@ -13,7 +13,7 @@ description: 基于 Freeway 框架构建 Java 应用。当用户提到 Freeway�
 freeway-commons     JSON、类型转换、Defer、ScopedCache、Bean 内省、验证、日志
 freeway-ioc         IoC 容器：绑定、注入、作用域、AOP、事件总线、扩展
 freeway-boot        launcher、配置级联、profiles、运行时生命周期
-freeway-flow        图编排引擎 — 7 节点类型、v2 DAG 格式、@FlowMarker
+freeway-flow        图编排引擎 — 7 节点类型、v3 DAG 格式
 freeway-http        HTTP/WebSocket：路由、过滤器、静态文件、multipart、SSE
   ├ 内置引擎          FreewayHttpEngine（HTTP/1.1 + HTTP/2 + WebSocket + HTTPS）
   └ 外部引擎          Undertow / Jetty → 见 freeway-ext
@@ -938,18 +938,18 @@ freeway.db.schema.auto=true          freeway.db.schema.auto=false
 GraphSpec bp = GraphSpec.create("orderFlow", spec -> {
     spec.entry("start");
     spec.addStart("start").linkAdd("approve");
-    spec.addActivity("approve").task("!channel:order").linkAdd("end");
+    spec.addActivity("approve").task("@orderService").linkAdd("end");
     spec.addEnd("end");
 });
-Graph graph = bp.create();          // normalize() 自动校验 link 引用 + 可达性
+Graph graph = bp.create();          // create() 构建期校验 link 引用 + 可达性
 
 // JSON — 规范的 nodes+links 格式
 Graph graph = Graph.fromText("""
 {
-    "id": "orderFlow", "version": 2, "entry": "start",
+    "id": "orderFlow", "version": 3, "entry": "start",
     "nodes": [
         {"id": "start", "type": "start"},
-        {"id": "approve", "type": "activity", "task": "!channel:order"},
+        {"id": "approve", "type": "activity", "task": "@orderService"},
         {"id": "end", "type": "end"}
     ],
     "links": [
@@ -962,20 +962,20 @@ Graph graph = Graph.fromText("""
 
 ### 任务解析
 
-节点通过前缀语法指定要执行的内容，不同前缀走不同解析逻辑：
+节点通过词汇表指定要执行的内容，不同形式走不同解析逻辑（封闭词汇，构建期即校验）：
 
-| 前缀 | 语法 | 解析为 |
+| 形式 | 语法 | 解析为 |
 |------|------|--------|
-| `!` (marker) | `!channel:order !priority:high` | `TaskHandler`，按 `@FlowMarker` 交集匹配，标记最多者胜出 |
-| `@` (bean) | `@orderService` | `TaskHandler`，容器按 binding id 查找。条件节点也支持 `@`，解析为 `ConditionHandler` |
+| `@` (bean) | `@orderService` | `TaskHandler`，容器按 binding id 查找。条件位也支持 `@`，解析为 `ConditionHandler` |
 | `#` (子图) | `#approvalFlow` | 调用已加载的命名子图，嵌套执行 |
-| `$` (meta) | `$app.name` | 读取图元数据注入执行上下文，不解析为组件 |
+| 内联 handler | 编程式传入 | `TaskHandler`/`ConditionHandler`，不经容器 |
+| 节点 `data` 字段 | `"data": {"channel": "order"}` | 静态值写入执行上下文，不解析为 handler |
 
-`@FlowMarker("channel:order")` 注解在 `TaskHandler` 实现类上，自动注册到 marker index。
+`!marker`（如 `!channel:order`）与 `$meta` 任务词汇已随 v3 删除：改用带 id 的 contribute + `@name`，静态值改用节点 `data` 字段。旧写法在 `GraphSpec.create()` 构建期报错并指路。
 
 ### Driver（驱动器）
 
-图通过 `"driver"` 字段选择驱动器（null/"" → `"default"`）。`FlowModule` 绑定 `FlowContainer` 后创建 `FlowDriverDefault` 作为默认驱动器，再合并从 `Extension<FlowDriver>.asMap()` 获取的自定义驱动器。自定义驱动器通过扩展点贡献：
+图通过 `"driver"` 字段选择驱动器（null/"" → `"default"`）。`FlowModule` 直接创建内置 `FlowDriverDefault` 作为 `"default"` 驱动器，并经 `Extension<FlowDriver>.asMap()` 合并贡献的自定义驱动器（贡献 id 为 `"default"` 的驱动器会覆盖内置并告警）。自定义驱动器通过扩展点贡献：
 
 ```java
 // 自定义驱动器
@@ -997,7 +997,7 @@ engine.eval("orderFlow", FlowContext.of());
 FreewayApp.run(args, new AppModule(), new FlowModule());
 ```
 
-支持 PlantUML 导出、执行追踪（暂停/恢复）、子图调用、拦截器链。零外部依赖。
+支持 PlantUML 导出、执行追踪、子图调用、拦截器链。零外部依赖。
 
 ## Commons 工具
 

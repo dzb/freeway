@@ -1674,9 +1674,9 @@ binder.contribute(NamedDatabase.class)
     .add(new NamedDatabase("audit", auditDb))
     .add(new NamedDatabase("primary", mainDb));
 
-DatabaseRegistry hub = container.get(DatabaseRegistry.class);
-Database primary = hub.primary();
-Database audit = hub.get("audit");
+DatabaseRegistry registry = container.get(DatabaseRegistry.class);
+Database primary = registry.primary();
+Database audit = registry.get("audit");
 ```
 
 ---

@@ -4,7 +4,6 @@ Examples below are minimal snippets. They omit imports and app-specific domain t
 
 ## Stable API
 
-- `DatabaseBuilder`
 - `Database`
 - `DatabaseRegistry`
 - `Orm`

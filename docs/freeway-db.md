@@ -218,10 +218,10 @@ Container container = Freeway.create(
     }
 );
 
-DatabaseRegistry hub = container.get(DatabaseRegistry.class);
-Database p = hub.get("primary");
-Database a = hub.get("audit");
-Database def = hub.primary();
+DatabaseRegistry registry = container.get(DatabaseRegistry.class);
+Database p = registry.get("primary");
+Database a = registry.get("audit");
+Database def = registry.primary();
 ```
 
 ### 3.4 方言检测与选择

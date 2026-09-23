@@ -3,6 +3,8 @@
 > **已被取代**：现行规格见 [graph-v3.md](graph-v3.md)（`version=3`）。
 > 本文是 v2 落地前的设计提案，保留作决策轨迹——其中的"建议"部分（GraphCodec/
 > GraphCompiler/CompiledGraph、双格式过渡期兼容）并未全部采纳，勿据此编写图。
+> 文中类型名（如 `FlowExchanger`）已随后续重命名（现为 `FlowEvaluation`），
+> 且 v2 格式已被解析器拒绝。
 
 > 目标：定义一套适合 Freeway 的 canonical graph 格式。v2 为 Freeway 原生设计，不来自 solon-flow。
 >

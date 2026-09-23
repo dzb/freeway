@@ -942,7 +942,7 @@ class FlowEngineTest {
             "onNodeEnd must pair with a stopped onNodeStart, got " + events);
     }
 
-    // ── 容器注入的组件 ────────────────────────────────────────────
+    // ── 容器注入的 handler ───────────────────────────────────────────
 
     public record Greeter(String greeting) {}
 

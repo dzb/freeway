@@ -64,11 +64,11 @@ public final class FlowEvaluation {
      * {@link FlowException} at the calling node, not a silent success.
      */
     public void runGraph(Graph graph) {
-        FlowEvaluation subEx = new FlowEvaluation(
+        FlowEvaluation subEval = new FlowEvaluation(
             graph, engine, engine.driver(graph), context, execState);
-        subEx.markSubgraphEval();
-        engine.eval(graph, subEx);
-        if (!isStopped() && !subEx.isGraphEnded(graph.id())) {
+        subEval.markSubgraphEval();
+        engine.eval(graph, subEval);
+        if (!isStopped() && !subEval.isGraphEnded(graph.id())) {
             throw new FlowException(
                 "Sub-graph '" + graph.id() + "' did not reach its END node "
                     + "(a gateway took no branch, or an interceptor stopped "

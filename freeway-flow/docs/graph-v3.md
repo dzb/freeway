@@ -84,14 +84,14 @@
 ### 2.4 词汇表
 
 **task**：
-- `@name` → `container.get(TaskComponent.class, name)`（条件位为 `ConditionComponent`）；
+- `@name` → `container.get(TaskHandler.class, name)`（条件位为 `ConditionHandler`）；
   未绑定时报错并给出 bind/contribute 两种写法。
 - `#graphId` → 子图调用：共享本次求值的 join 计数与死端报告；子图未达 END 在调用点抛错。
-- 内联组件（编程式）直接执行。
+- 内联 handler（编程式）直接执行。
 - 其它一律构建期报错（`$x` → 指向 `data`；`!x` → 指向带 id 的贡献）。
 
 **when（边或节点）**：
-- `@name` → 条件组件引用（运行期解析）；
+- `@name` → 条件 handler 引用（运行期解析）；
 - 否则按 `ExprEvaluator` 文法**在构建期编译**：比较、`&& || ! and or`、括号、算术
   `+ - * / %`、字面量、`a.b.c` 路径、列表下标；JSON 来源的数值字符串按数值比较。
 

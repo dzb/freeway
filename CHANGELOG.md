@@ -155,6 +155,18 @@ builder 不是第二个入口而是第二个组装根：自带一份默认值、
   "先到先映射"规则不变）：handler 抛出的异常不再穿透过滤器链，外层过滤器观察到的即是
   映射后的终值；请求处理最外层的 catch 保留为兜底。
   `HttpServerFeatureTest.accessLogRecordsMappedStatusOnHandlerException` 钉住该路径。
+- **`Dialect.of` 判型大小写敏感**：scheme 匹配读原始 URL（`url.contains("jdbc:…")`），
+  `JDBC:POSTGRESQL://` 这样的大写写法直接落进"不支持的数据库"错误；`toUpperCase()` 也没带
+  `Locale`，土耳其语默认 locale 下 `jdbc:sqlite` 的 `i` 变 `İ` 同样判失。匹配统一在
+  `Locale.ROOT` 大写副本上进行，与文档声称的大小写不敏感一致（`DatabaseCreateTest` 钉住两种回归）。
+- **类路由 WebSocket 端点未解析被静默推迟到首个 upgrade**：手工构造 `WebSocketIndex`
+  （不经 `HttpModule`）时 `LazyEndpoint` 永远没人 resolve，直到第一次连接升级才抛——而升级路径的
+  异常只记 TRACE，连接直接断掉、日志一片安静。`WebSocketIndex` 构造期即拒绝未解析的类端点
+  （`HttpModule` 构造前完成解析，只有绕过模块的路径会触发）；升级握手中端点回调
+  （`subprotocols`/`open`/`onOpen`）的失败升为 WARN 并点名端点类，读循环与客户端断开仍留在低级别。
+- **drain 窗口内的延迟排序约束被静默丢弃**：`DeferredOrdering` 只在 seal 之后拒绝
+  `before()`/`after()`，但实例落地（apply）发生在 drain 中、seal 之前——这段窗口里声明的
+  约束进了缓冲却永远无人回放。补 `applied` 标志：落地后再声明与封印后一样大声失败。
 
 ### Changed
 

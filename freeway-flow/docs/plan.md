@@ -1,5 +1,7 @@
 # 移植适配方案：solon-flow → freeway-flow
 
+> **历史文档**：v1/v2 时代方案记录，现行规格见 [graph-v3.md](graph-v3.md)。
+>
 > 方案制定：2026-06-26  
 > 实施完成：2026-06-26  
 > 源基线：solon-flow 4.0.2

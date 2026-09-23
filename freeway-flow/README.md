@@ -20,7 +20,7 @@ Freeway 自行定义，不追随上游行为。7 种节点、封闭的任务词�
 | `snakeyaml` | YAML 图定义 | **移除** — 仅支持 JSON |
 | `snack4` (ONode) | JSON 序列化 | `freeway-commons` JsonUtils |
 | `dami2` (DamiBus) | 执行级事件总线 | `FlowEventBus`（~90 行） |
-| `liquor-eval` (Scripts) | 脚本/任务求值 | **移除** — task 仅 `@name` / `#graphId` / 内联组件 |
+| `liquor-eval` (Scripts) | 脚本/任务求值 | **移除** — task 仅 `@name` / `#graphId` / 内联 handler |
 | `solon-expression` (SnelParser) | 条件表达式 | `ExprEvaluator`（独立递归下降实现） |
 | `RankEntity` | 拦截器排序 | 容器扩展链（组装期定序，加载后不可变） |
 
@@ -38,12 +38,12 @@ Freeway 自行定义，不追随上游行为。7 种节点、封闭的任务词�
 
 ## 词汇表（构建期即校验）
 
-- **task**：`@name`（容器按 id 解析 `TaskComponent`/`ConditionComponent`）、`#graphId`（子图，
-  未达 END 即在调用点报错）、内联组件（编程式）。v1/v2 的 `$meta`、`!marker` 已删除：
+- **task**：`@name`（容器按 id 解析 `TaskHandler`/`ConditionHandler`）、`#graphId`（子图，
+  未达 END 即在调用点报错）、内联 handler（编程式）。v1/v2 的 `$meta`、`!marker` 已删除：
   静态值改用节点 `data` 字段，标记匹配用带 id 的 contribute + `@name`——旧写法在
   **构建期**报错并指路。
 - **when（条件）**：`ExprEvaluator` 表达式（`> < >= <= == != && || !`、括号、`a.b.c` 路径、
-  列表下标），或 `@name` 组件引用。所有表达式在 `create()` 编译，非法表达式启动即失败。
+  列表下标），或 `@name` handler 引用。所有表达式在 `create()` 编译，非法表达式启动即失败。
 - **join**：仅 PARALLEL 节点的保留 meta 键，`merge`（缺省）或 `shared`。
 
 ## 快速开始（v3）
@@ -71,7 +71,7 @@ String json = """
 
 // IoC 装配：任务 = 带 id 的容器绑定，拦截器 = 贡献的扩展（加载期定链，之后不可变）
 App app = Freeway.create(new FlowModule(), binder -> {
-    binder.contribute(TaskComponent.class).add("handler", (ctx, node) ->
+    binder.contribute(TaskHandler.class).add("handler", (ctx, node) ->
         System.out.println(ctx.get("verdict")));
     binder.contribute(FlowInterceptor.class).add("audit", new FlowInterceptor() {
         @Override public void onNodeStart(FlowContext ctx, Node node) {
@@ -85,7 +85,7 @@ FlowContext ctx = FlowContext.of();
 ctx.put("score", 95);
 app.get(FlowEngine.class).eval(graph, ctx);
 
-// 独立使用（无容器）：只支持内联组件与 #子图
+// 独立使用（无容器）：只支持内联 handler 与 #子图
 FlowEngine standalone = FlowEngine.create();
 ```
 

@@ -1,5 +1,7 @@
 # freeway-flow 迁移改动说明
 
+> **历史文档**：v1/v2 时代方案记录，现行规格见 [graph-v3.md](graph-v3.md)。
+>
 > 说明对象：`freeway-flow`
 >
 > 背景：该模块的 **v1 定义格式 (`GraphSpec`)** 由 `solon-flow` 移植到 Freeway 架构下。本文记录移植后的实际改动和兼容策略。
