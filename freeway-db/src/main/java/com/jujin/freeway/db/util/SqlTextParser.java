@@ -171,11 +171,11 @@ public final class SqlTextParser {
             if (
                 (c == ':' || c == '$') &&
                 i + 1 < len &&
-                Names.isValidParamStart(sql.charAt(i + 1))
+                isValidParamStart(sql.charAt(i + 1))
             ) {
                 int start = i + 1;
                 int end = start;
-                while (end < len && Names.isValidParamChar(sql.charAt(end))) {
+                while (end < len && isValidParamChar(sql.charAt(end))) {
                     end++;
                 }
                 sink.text(sql, textStart, i);
@@ -680,5 +680,17 @@ public final class SqlTextParser {
             statements.add(statement);
         }
         current.setLength(0);
+    }
+
+    // ====================== named-parameter identifiers ======================
+
+    /** First character of a {@code :name}/{@code $name} parameter identifier. */
+    private static boolean isValidParamStart(char c) {
+        return Character.isLetter(c) || c == '_';
+    }
+
+    /** A character legal inside a named-parameter identifier. */
+    private static boolean isValidParamChar(char c) {
+        return Character.isLetterOrDigit(c) || c == '_';
     }
 }

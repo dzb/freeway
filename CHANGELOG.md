@@ -153,6 +153,13 @@ builder 不是第二个入口而是第二个组装根：自带一份默认值、
   `isHandlerRef()`，`NodeSpec`/`LinkSpec` 的 `whenComponent` 字段与访问器 → `whenHandler`，
   `resolveComponent` → `resolveHandler`，错误消息与注释中的 "component" → "handler"
   （`ExprEvaluator` 的 "array component" 是数组元素义，保持原样）。
+- `DatabaseHub` → `DatabaseRegistry`：接口自己的 javadoc 首句就是 "**Registry** for multiple named
+  `Database` instances"，`get/primary/all/of(Map)` 也全是注册表语义，与 cloud 的 `ServiceRegistry`
+  同词同概念；"Hub" 在仓内的既有语义是 `PeerHub`（网格互联），对不上这个职责。
+  `DatabaseHubImpl` → `DatabaseRegistryImpl`、测试名随之。
+- `db.util.Names` 并入 `SqlTextParser`：它仅有的两个公开方法是命名参数标识符的词法校验
+  （`isValidParamStart`/`isValidParamChar`），叫 "Names" 会让人以为是表/列名称工具；唯一消费者
+  本来就是同包词法器，收成其私有方法后概念减一。
 
 ## [1.5.3] - 2026-09-20
 

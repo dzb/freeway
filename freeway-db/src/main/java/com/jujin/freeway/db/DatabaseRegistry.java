@@ -1,6 +1,6 @@
 package com.jujin.freeway.db;
 
-import com.jujin.freeway.db.internal.DatabaseHubImpl;
+import com.jujin.freeway.db.internal.DatabaseRegistryImpl;
 import java.util.Map;
 
 /**
@@ -15,13 +15,13 @@ import java.util.Map;
  * single-database transaction — work on the other databases commits on its
  * own and is not rolled back with the transaction.
  */
-public interface DatabaseHub {
+public interface DatabaseRegistry {
 
     /**
      * Creates a hub over the given named databases (standalone mode).
      */
-    static DatabaseHub of(Map<String, Database> databases) {
-        return new DatabaseHubImpl(databases);
+    static DatabaseRegistry of(Map<String, Database> databases) {
+        return new DatabaseRegistryImpl(databases);
     }
 
     /**

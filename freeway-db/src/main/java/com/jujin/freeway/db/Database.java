@@ -100,7 +100,7 @@ public interface Database extends AutoCloseable {
      *
      * <p><b>The transaction covers only this {@code Database}'s
      * connection.</b> Work executed on <em>other</em> {@code Database}
-     * instances (e.g. obtained from a {@link DatabaseHub}) commits
+     * instances (e.g. obtained from a {@link DatabaseRegistry}) commits
      * independently and is not rolled back when this transaction fails — do
      * not mix multi-database writes inside a single-database transaction
      * expecting atomicity.
@@ -128,7 +128,7 @@ public interface Database extends AutoCloseable {
      *
      * <p>As with {@link #transaction(Transactional)}, the transaction covers
      * only this {@code Database}'s connection: work on other {@code Database}
-     * instances (e.g. via {@link DatabaseHub}) commits independently and is
+     * instances (e.g. via {@link DatabaseRegistry}) commits independently and is
      * not rolled back with this transaction.
      *
      * @param isolation the isolation level (use {@link IsolationLevel#DEFAULT} to skip setting)

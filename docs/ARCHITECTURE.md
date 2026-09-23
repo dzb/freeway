@@ -99,7 +99,7 @@ freeway-commons         zero deps
   `{name}`, with `{name:regex}` for constraints.
 - **DB** — `Database` is the entry point: named params (`:name`/`$name`),
   programmatic transactions, built-in pooling, dialect auto-detection from the
-  JDBC URL, `DatabaseHub` for multi-datasource. Schema (annotation-driven DDL)
+  JDBC URL, `DatabaseRegistry` for multi-datasource. Schema (annotation-driven DDL)
   and Migration (versioned SQL) are complementary evolution paths.
 - **Flow** — in-JVM graph orchestration (lineage: solon-flow 4.0.2, Apache 2.0;
   schema and semantics are freeway-native): 7 node types

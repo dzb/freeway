@@ -3,7 +3,7 @@ package com.jujin.freeway.db;
 import com.jujin.freeway.commons.coercion.CoerceRule;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.ioc.symbol.SymbolSpec;
-import com.jujin.freeway.db.internal.DatabaseHubImpl;
+import com.jujin.freeway.db.internal.DatabaseRegistryImpl;
 import com.jujin.freeway.db.internal.DatabaseImpl;
 import com.jujin.freeway.db.internal.PoolDefault;
 import com.jujin.freeway.db.internal.RowMapperResolver;
@@ -40,7 +40,7 @@ import java.util.function.Function;
  * <ul>
  *   <li>{@link Database} — created from {@link PoolConfig} resolved from config cascade</li>
  *   <li>{@link Orm} — bound as a singleton</li>
- *   <li>{@link DatabaseHub} — multi-datasource routing</li>
+ *   <li>{@link DatabaseRegistry} — multi-datasource routing</li>
  *   <li>{@link Pool} — built-in; override via extension module with {@code .primary()}</li>
  *   <li>{@link Dialect} — auto-detected from JDBC URL or overridden via {@link DbConfigKeys#DIALECT}</li>
  *   <li>{@link MigrationRunner} — versioned SQL migration at startup</li>
@@ -87,7 +87,7 @@ public final class DbModule implements ModuleEx {
             .bind(Database.class)
             .to(container -> buildDatabase(container));
         binder
-            .bind(DatabaseHub.class)
+            .bind(DatabaseRegistry.class)
             .to(container -> {
                 // Auto-register the single configured Database as "primary"
                 // unless a user contribution already owns that name — the
@@ -102,7 +102,7 @@ public final class DbModule implements ModuleEx {
                         container.get(Database.class)
                     ));
                 }
-                return new DatabaseHubImpl(named);
+                return new DatabaseRegistryImpl(named);
             });
         binder.bind(Orm.class).to(Orm.class);
         binder

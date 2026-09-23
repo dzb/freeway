@@ -137,7 +137,7 @@ public final class DatabaseImpl implements Database {
      *
      * <p>The transaction covers only this {@code Database}'s connection: SQL
      * executed on other {@code Database} instances (e.g. obtained from a
-     * {@link com.jujin.freeway.db.DatabaseHub}) commits independently and is not rolled back when
+     * {@link com.jujin.freeway.db.DatabaseRegistry}) commits independently and is not rolled back when
      * this transaction fails.
      */
     @Override
@@ -309,7 +309,7 @@ public final class DatabaseImpl implements Database {
                     + "(ScopedValue does not propagate; the call would borrow an "
                     + "independent pooled connection and run outside the transaction). "
                     + "Run DB work on the transaction thread, or use a separate "
-                    + "Database instance (e.g. via DatabaseHub) for concurrent work"
+                    + "Database instance (e.g. via DatabaseRegistry) for concurrent work"
             );
         }
     }

@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class DatabaseHubImplTest {
+class DatabaseRegistryImplTest {
 
     @Test
     void duplicateNameFailsFast() {
@@ -27,7 +27,7 @@ class DatabaseHubImplTest {
 
         IllegalStateException ex = assertThrows(
             IllegalStateException.class,
-            () -> new DatabaseHubImpl(List.of(first, second))
+            () -> new DatabaseRegistryImpl(List.of(first, second))
         );
         assertTrue(ex.getMessage().contains("primary"),
             "message must name the duplicated database: " + ex.getMessage());
@@ -36,8 +36,8 @@ class DatabaseHubImplTest {
     @Test
     void distinctNamesAreAllRegistered() {
         StubDb db = new StubDb();
-        DatabaseHubImpl hub =
-            new DatabaseHubImpl(List.of(new NamedDatabase("primary", db),
+        DatabaseRegistryImpl hub =
+            new DatabaseRegistryImpl(List.of(new NamedDatabase("primary", db),
                 new NamedDatabase("audit", db)));
 
         assertEquals(2, hub.all().size());

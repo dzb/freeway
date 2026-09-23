@@ -6,7 +6,7 @@ Examples below are minimal snippets. They omit imports and app-specific domain t
 
 - `DatabaseBuilder`
 - `Database`
-- `DatabaseHub`
+- `DatabaseRegistry`
 - `Orm`
 - `PoolConfig`
 - `Pool`

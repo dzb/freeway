@@ -239,7 +239,7 @@ class DbModuleTest {
                     binder -> binder.contribute(NamedDatabase.class).add(new NamedDatabase("audit", audit))
             );
 
-            DatabaseHub hub = container.get(DatabaseHub.class);
+            DatabaseRegistry hub = container.get(DatabaseRegistry.class);
             assertEquals(primary, hub.get("primary"));
             assertEquals(audit, hub.get("audit"));
             assertSame(primary, hub.primary());
@@ -258,7 +258,7 @@ class DbModuleTest {
         System.setProperty(PASS_KEY, "");
 
         try (Container container = Freeway.create(new DbModule())) {
-            DatabaseHub hub = container.get(DatabaseHub.class);
+            DatabaseRegistry hub = container.get(DatabaseRegistry.class);
             assertTrue(hub.all().containsKey("primary"),
                 "default install must auto-register a 'primary' database");
             Database primary = hub.primary();
@@ -284,7 +284,7 @@ class DbModuleTest {
                 binder -> binder.contribute(NamedDatabase.class)
                     .add(new NamedDatabase("primary", custom))
             );
-            DatabaseHub hub = container.get(DatabaseHub.class);
+            DatabaseRegistry hub = container.get(DatabaseRegistry.class);
             assertSame(custom, hub.primary(),
                 "a user-contributed 'primary' must win over auto-registration");
             assertEquals(1, hub.all().size(),

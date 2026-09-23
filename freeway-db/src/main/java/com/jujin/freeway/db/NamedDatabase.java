@@ -4,7 +4,7 @@ import java.util.Objects;
 
 /**
  * A named {@link Database} registration, used to contribute
- * databases to the {@link DatabaseHub}.
+ * databases to the {@link DatabaseRegistry}.
  *
  * @param name the logical database name
  * @param db   the database instance

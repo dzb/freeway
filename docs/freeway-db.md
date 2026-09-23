@@ -222,7 +222,7 @@ Container container = Freeway.create(
     }
 );
 
-DatabaseHub hub = container.get(DatabaseHub.class);
+DatabaseRegistry hub = container.get(DatabaseRegistry.class);
 Database p = hub.get("primary");
 Database a = hub.get("audit");
 Database def = hub.primary();
@@ -441,11 +441,11 @@ db.transaction(() -> {
 
 ### 跨线程限制（ScopedValue 不传播）
 
-事务绑定在开启它的线程上，`ScopedValue` **不会传播到子线程**。`transaction()` 内新起的线程/其它线程不能做 DB 工作——此时调用 `db.query/execute/batch` 会抛 `SqlException`（"Another thread holds an active transaction on this Database ..."），而不是静默借用独立连接绕过事务、破坏原子性。注意该守卫按 `Database` 实例生效：单例 `Database` 在事务进行期间，其它线程的全部非事务 DB 调用都会被拒绝；并发工作请走独立的 `Database` 实例（如经 `DatabaseHub`）。事务内创建的 `Query`/`BatchQuery` 也必须在事务线程上、事务结束前消费完，否则同样抛 `SqlException`。
+事务绑定在开启它的线程上，`ScopedValue` **不会传播到子线程**。`transaction()` 内新起的线程/其它线程不能做 DB 工作——此时调用 `db.query/execute/batch` 会抛 `SqlException`（"Another thread holds an active transaction on this Database ..."），而不是静默借用独立连接绕过事务、破坏原子性。注意该守卫按 `Database` 实例生效：单例 `Database` 在事务进行期间，其它线程的全部非事务 DB 调用都会被拒绝；并发工作请走独立的 `Database` 实例（如经 `DatabaseRegistry`）。事务内创建的 `Query`/`BatchQuery` 也必须在事务线程上、事务结束前消费完，否则同样抛 `SqlException`。
 
 ### 跨库无 XA
 
-`db.transaction()` 只覆盖当前 `Database` 自己的连接：经 `DatabaseHub` 拿到的其它数据源在事务内写入会**独立提交**，本事务失败不会回滚它们。跨库没有 XA / 两阶段提交，不要在单库事务里混写多个库。
+`db.transaction()` 只覆盖当前 `Database` 自己的连接：经 `DatabaseRegistry` 拿到的其它数据源在事务内写入会**独立提交**，本事务失败不会回滚它们。跨库没有 XA / 两阶段提交，不要在单库事务里混写多个库。
 
 ### Schema.ensure 与事务
 

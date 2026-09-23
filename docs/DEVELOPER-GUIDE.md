@@ -1321,7 +1321,7 @@ db.transaction(IsolationLevel.SERIALIZABLE, () -> {
 });
 ```
 
-Nested transactions are detected and rejected. Auto-commit is restored on exit. Queries inside the transaction automatically use the same connection. The transaction is **thread-bound** (backed by `ScopedValue`, which does not propagate to child threads): DB calls made on a different thread while a transaction is active, or consuming a `Query`/`BatchQuery` created inside a transaction on another thread (or after the transaction ends), throw a `SqlException` — the work would otherwise silently borrow an independent pooled connection and run outside the transaction, breaking atomicity. Cross-`Database` work (e.g. via `DatabaseHub`) commits independently and is not rolled back with the transaction.
+Nested transactions are detected and rejected. Auto-commit is restored on exit. Queries inside the transaction automatically use the same connection. The transaction is **thread-bound** (backed by `ScopedValue`, which does not propagate to child threads): DB calls made on a different thread while a transaction is active, or consuming a `Query`/`BatchQuery` created inside a transaction on another thread (or after the transaction ends), throw a `SqlException` — the work would otherwise silently borrow an independent pooled connection and run outside the transaction, breaking atomicity. Cross-`Database` work (e.g. via `DatabaseRegistry`) commits independently and is not rolled back with the transaction.
 
 **Transaction-aware side effects:** EventBus events published inside a transaction are automatically deferred and only fire after commit — no manual wiring needed. This is powered by the `Defer` mechanism (see [Defer](#defer--scope-bound-deferred-execution)):
 
@@ -1666,14 +1666,14 @@ freeway.db.schema.auto=true           freeway.db.schema.auto=false
 
 The same entity classes and SQL files work in both environments. Switching modes is just one config key.
 
-### DatabaseHub
+### DatabaseRegistry
 
 ```java
 binder.contribute(NamedDatabase.class)
     .add(new NamedDatabase("audit", auditDb))
     .add(new NamedDatabase("primary", mainDb));
 
-DatabaseHub hub = container.get(DatabaseHub.class);
+DatabaseRegistry hub = container.get(DatabaseRegistry.class);
 Database primary = hub.primary();
 Database audit = hub.get("audit");
 ```
