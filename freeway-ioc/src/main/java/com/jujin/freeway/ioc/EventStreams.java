@@ -141,6 +141,7 @@ final class EventStreams {
             // Drop-immediately predicate: never retry, never block dispatch.
             int lag = offer(event, (subscriber, item) -> false);
             if (lag < 0) {
+                bus.recordStreamDrop();
                 LOG.debug("Stream subscriber overflowed; event dropped");
             }
         }

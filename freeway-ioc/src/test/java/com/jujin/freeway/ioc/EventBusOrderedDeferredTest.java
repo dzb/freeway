@@ -63,6 +63,26 @@ class EventBusOrderedDeferredTest {
     }
 
     @Test
+    void publishOrderedTopicDispatchesInSubmissionOrderAfterCommit() throws Exception {
+        // The ordered channel carries the topic payload form too — the
+        // transaction-outbox use case often routes on a topic string.
+        List<Object> log = new ArrayList<>();
+        EventBus bus = new EventBus(Freeway.create());
+        bus.subscribe("ordered.topic", log::add);
+
+        Defer.within(() -> {
+            bus.publishOrdered("ordered.topic", 1);
+            bus.publishOrdered("ordered.topic", 2);
+            assertTrue(log.isEmpty(), "ordered topic publish must wait for commit");
+        });
+        Await.until(2000, () -> log.size() == 2);
+
+        assertEquals(List.of(1, 2), log,
+            "ordered topic payloads must drain in submission order");
+        bus.close();
+    }
+
+    @Test
     void publishInsideDeferScopeIsDeferredUntilCommit() {
         List<String> log = new ArrayList<>();
         Container container = Freeway.create(
@@ -234,6 +254,8 @@ class EventBusOrderedDeferredTest {
             () -> bus.publishAsync(new PostCreatedEvent(new Post("x"))));
         assertThrows(IllegalStateException.class,
             () -> bus.publishAsync("topic", "payload"));
+        assertThrows(IllegalStateException.class,
+            () -> bus.publishOrdered("topic", "payload"));
         assertThrows(IllegalStateException.class,
             () -> bus.subscribe(PostCreatedEvent.class, e -> {}));
         assertThrows(IllegalStateException.class,

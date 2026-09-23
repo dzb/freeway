@@ -163,6 +163,32 @@ class EventBusStreamTest {
         bus.close();
     }
 
+    @Test
+    void overflowDropsAreCountedNotSwallowedSilently() {
+        // A no-demand consumer fills the SubmissionPublisher buffer
+        // (Flow.defaultBufferSize = 256); beyond that, offer() drops
+        // non-blockingly. The drop must be visible in stats(), not just a
+        // debug log — otherwise an operator cannot see a stalled consumer.
+        Container container = Freeway.create();
+        EventBus bus = new EventBus(container);
+
+        bus.stream(Tick.class).subscribe(new Flow.Subscriber<>() {
+            @Override public void onSubscribe(Flow.Subscription s) { /* never request */ }
+            @Override public void onNext(Tick item) {}
+            @Override public void onError(Throwable t) {}
+            @Override public void onComplete() {}
+        });
+
+        for (int i = 0; i < 400; i++) {
+            bus.publish(new Tick("t" + i));
+        }
+
+        assertTrue(bus.stats().streamDrops() > 0,
+            "overflow beyond the buffer must count as a stream drop: "
+                + bus.stats());
+        bus.close();
+    }
+
     // ==================== Defer integration ====================
 
     @Test

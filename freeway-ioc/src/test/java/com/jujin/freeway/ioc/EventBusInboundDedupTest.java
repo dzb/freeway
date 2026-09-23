@@ -5,7 +5,10 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
+import com.jujin.freeway.commons.scoped.Defer;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
  * Inbound deduplication — the reason an event carries one identity across
@@ -153,6 +156,53 @@ class EventBusInboundDedupTest {
         bus.publish("local");
 
         assertEquals(List.of("local", "local"), received);
+        container.close();
+    }
+
+    @Test
+    void rollbackLeavesIdUnclaimedSoRedeliveryIsAccepted() {
+        // Regression: the id used to be claimed at publish time, before the
+        // Defer buffer. A rollback discarded the dispatch but kept the id
+        // burned, so the broker's redelivery of the same wire id was dropped
+        // as a "duplicate" — permanent event loss.
+        Container container = Freeway.create(binder -> { });
+        EventBus bus = container.get(EventBus.class);
+        List<String> received = new ArrayList<>();
+        bus.subscribe(String.class, received::add);
+        bus.inboundDeduplication(16);
+
+        assertThrows(RuntimeException.class, () -> {
+            Defer.within(() -> {
+                bus.publishInbound("hello", "evt-1");
+                throw new RuntimeException("rollback");
+            });
+        });
+        assertEquals(List.of(), received,
+            "the rolled-back publish must not dispatch");
+
+        // Broker redelivers the same wire id after the failed transaction.
+        bus.publishInbound("hello", "evt-1");
+
+        assertEquals(List.of("hello"), received,
+            "redelivery after rollback must be accepted — the id was never dispatched");
+        container.close();
+    }
+
+    @Test
+    void committedInboundStillDedupsRedelivery() {
+        // The claim merely moved later, not vanished: once the deferred
+        // dispatch runs, the id is claimed and a later copy is dropped.
+        Container container = Freeway.create(binder -> { });
+        EventBus bus = container.get(EventBus.class);
+        List<String> received = new ArrayList<>();
+        bus.subscribe(String.class, received::add);
+        bus.inboundDeduplication(16);
+
+        Defer.within(() -> bus.publishInbound("hello", "evt-1"));
+        bus.publishInbound("hello", "evt-1"); // duplicate after commit
+
+        assertEquals(List.of("hello"), received,
+            "a committed id stays claimed — the second copy is dropped");
         container.close();
     }
 

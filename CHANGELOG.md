@@ -85,6 +85,13 @@ builder 不是第二个入口而是第二个组装根：自带一份默认值、
   每次请求都可能 NPE 的字段。默认路径成为 `HealthFilter.DEFAULT_PATH`，`normalize` 与 `defaults()`
   不再各写一个 `"/healthz"`。
 
+EventBus 两处形状变化（record 规范构造器/组件类型随内容迁移，编译器即迁移路径）：
+
+| 旧 API / 行为 | 新 API / 行为 |
+|---|---|
+| `new EventBus.EventBusStats(published, delivered, subscriberFailures, deadEvents)` | 规范构造器多两个尾参 `…, deadEvents, sinkFailures, streamDrops`；读取方（`stats().delivered()` 等）不受影响 |
+| `DeadEvent` 记录 `source` 为内部 `EventDispatcher`、组件类型 `Object` | `source` 是发布诊断的 `EventBus` 本身，组件类型收窄为 `EventBus`（record 形状不变，仓内零调用点受影响） |
+
 ### Added
 
 - `SymbolSpec.orDefault(fallback)`：叠加式读取的默认由**被构建的值**给出，键表因此不必重述默认；
@@ -124,6 +131,15 @@ builder 不是第二个入口而是第二个组装根：自带一份默认值、
   构造注入，握手前未解析则响亮失败并点名端点类（`WebSocketIndexTest` 两条：独立索引下延迟
   匹配 + 未解析即用报错、容器解析 + 构造注入 + `subprotocols` 委托）。WS 端点类从此不必
   借静态容器持有者。
+- `EventBus.publishOrdered(String topic, Object payload)`：有序通道的 topic 形——与
+  `publishAsync` 的类/话题对称，事务 outbox 按话题串布线时不再只能走无序的
+  `publishAsync(topic, …)`；同一条全局有序单线程队列，Defer 内提交仍在 commit 后按序 drain
+  （`EventBusOrderedDeferredTest` 钉住 + `publishAfterCloseThrows` 补 post-close 拒绝）。
+- `EventBusStats.sinkFailures` / `streamDrops` 两个计数（`EventBus.EventBusStats` record 加
+  两个尾组件，见迁移表）与对应 Metrics 计数器 `eventbus.sink_failures` /
+  `eventbus.stream_drops`：sink 失败与流溢出丢弃原来只落在日志里，运维无法从 `stats()`
+  看到"卡死的消费者"和"哑掉的通道"（`throwingSinkIsIsolatedAndCounted`、
+  `overflowDropsAreCountedNotSwallowedSilently` 各钉一条）。
 
 ### Removed
 
@@ -167,6 +183,12 @@ builder 不是第二个入口而是第二个组装根：自带一份默认值、
 - **drain 窗口内的延迟排序约束被静默丢弃**：`DeferredOrdering` 只在 seal 之后拒绝
   `before()`/`after()`，但实例落地（apply）发生在 drain 中、seal 之前——这段窗口里声明的
   约束进了缓冲却永远无人回放。补 `applied` 标志：落地后再声明与封印后一样大声失败。
+- **inbound 去重在 Defer 回滚后吞掉 MQ 重投（事件永久丢失）**：wire id 在 publish 时就被
+  claim，而 Defer 缓冲的派发随回滚一起丢弃——id 已烧毁、事件没送达，代理带着同一 id 的
+  重投被判"重复"丢掉。claim 移进延迟动作（真正派发的那一刻）：回滚则 id 从未入窗、重投照常
+  接受；commit 后 claim 照旧，双副本仍然只送一次
+  （`EventBusInboundDedupTest` 两条：`rollbackLeavesIdUnclaimedSoRedeliveryIsAccepted`、
+  `committedInboundStillDedupsRedelivery`；`inboundDeduplication` javadoc 同步改述）。
 
 ### Changed
 
@@ -239,6 +261,30 @@ builder 不是第二个入口而是第二个组装根：自带一份默认值、
   返回 `Contribution<T>`，`.add(id, v)` / `.add(Class)` 返回 `Ordering`（词干取自既有的
   `validateOrdering` / "Ordering reference" 词族）；`BinderImpl.DeferredContribution` →
   `DeferredOrdering` 随之。错误消息与散文里的 "contribution"（条目领域词）不动。
+- **EventBus 发布热路径改为全惰性**：本地 publish 不再在入口铸 UUID（SecureRandom）——id 只为
+  出站 sink fan-out 存在，移到 `sendToSinks` 里、守卫判空之后铸造，一次 fan-out 一枚、全体 sink
+  共享（`EventSink` "bus-minted、never null" 契约不变；无 sink、被回滚、inbound 转发的发布零成本）；
+  `@Topic` 解析进 `ClassValue` 缓存（与 `SUPER_TYPES` 同一模式），反射注解查找每类只付一次；
+  sink 空守卫上提到 sink 参数求值之前——没有 sink 就不做 topic 解析；订阅者/失败告警标签改惰性
+  `Supplier`，只有真失败才拼字符串。
+- **类通道索引一次走查**：`EventSubscriptionIndex.classSubs(eventType)` 合并原
+  `classHandlers` + `runtimeClassSubs` 两次 `SUPER_TYPES` 遍历为一次，module+runtime 两组
+  同遍匹配；精确命中直接返回活列表（module 列表封印后不可变、runtime 是 COW，只读迭代安全），
+  删掉原来的无条件 `ArrayList` 拷贝——只有跨超类型合并时才复制。
+- **`EventSinkRegistry` 改 volatile 不可变列表**：add/remove/clear 少见、在监视器下写时拷贝，
+  发布热路径的 `isEmpty()`/`snapshot()` 变成纯字段读——不再每次 publish 抢锁 + `List.copyOf`。
+- **bus 自建执行器有界关停**：`EventExecutorSupport.close()` 不再用无界
+  `ExecutorService.close()` 等到天荒地老——`shutdown()` 后限时等待（默认 5s，超时 WARN 点名
+  阻塞的通道并 `shutdownNow()`）。挂死的订阅者原先会挂死整个容器关停（`internal.Shutdown` 把
+  EventBus 排在全部 `@PreDestroy` 之后）；`setAsyncExecutor` 的所有权同时成文：**自设执行器总不
+  关闭**，生命周期归安装方，只有总线自建的默认执行器随 `close()` 停。
+- `EventBus.close()` 改 `AtomicBoolean` CAS：并发 close 从"读-改-写竞态"变为恰好一个执行者；
+  `DeadEvent.source` 从内部 `EventDispatcher` 改为 `EventBus` 本身（见迁移表）；一次派发内的
+  订阅顺序成文进类 javadoc：module 订阅者（组合期贡献、按其排序）先于 runtime 订阅者（按订阅
+  顺序）。
+- 测试清扫：`EventBusAsyncPublishTest` 两处 `Thread.sleep(200)` 换成仓内统一的 `Await.until`
+  （消灭固定睡量的 flaky 面）；新增回归钉住本批契约——回滚后重投、有界关停不吊死、sink 失败
+  计数与隔离、stream 溢出计数、ordered topic 通道、`DeadEvent.source` 即 bus。
 
 ## [1.5.3] - 2026-09-20
 

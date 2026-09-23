@@ -8,9 +8,9 @@ import com.jujin.freeway.ioc.annotation.Topic;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.Objects;
-import java.util.UUID;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Flow;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -40,8 +40,10 @@ import java.util.function.Supplier;
  * event are buffered and dispatched only after the scope commits — a
  * rollback discards them. Async dispatch ({@link #publishAsync}) has no
  * ordering guarantee; {@link #publishOrdered} provides a globally ordered
- * channel. Runtime subscribers live until {@link #close()} or explicit
- * {@link #unsubscribe}.
+ * channel. Within one dispatch, module subscribers (composition-time
+ * contributions, in their ordering) run first, then runtime subscribers
+ * (in subscription order). Runtime subscribers live until {@link #close()}
+ * or explicit {@link #unsubscribe}.
  *
  * <p><b>Inbound event:</b> event received from an external source (e.g. an
  * MQ subscriber) are injected through the adapter SPI
@@ -60,14 +62,14 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
     private final EventDispatcher dispatcher;
     /** Bounded window of recent inbound wire ids; null when dedup is off. */
     private volatile IdWindow inboundIds;
-    private volatile boolean closed;
+    private final AtomicBoolean closed = new AtomicBoolean();
     private final EventExecutorSupport executors;
     /** Live stream subscriptions, closed (and detached) on {@link #close()}. */
     private final EventStreams streams = new EventStreams(this);
 
     /** Package-private closed probe for {@link EventStreams} subscriptions. */
     boolean isBusClosed() {
-        return closed;
+        return closed.get();
     }
 
     @Inject
@@ -78,10 +80,11 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
         this.stats = new EventStats(container.get(Metrics.class));
         this.subscriptions = new EventSubscriptionIndex(container);
         this.dispatcher = new EventDispatcher(
+            this,
             subscriptions,
             sinkRegistry,
             stats,
-            () -> closed,
+            closed::get,
             this::publish,
             EventBus::resolveTopic
         );
@@ -132,7 +135,10 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
      * If no scope is active, the event is published immediately.</p>
      */
     public <E> void publish(E event) {
-        publishEvent(event, UUID.randomUUID().toString(), false);
+        // No id minted here: an id is only needed by the outbound sink fan-out,
+        // so it is minted lazily at send time (EventDispatcher.sendToSinks) —
+        // a publish with no sinks, or one discarded by a rollback, pays nothing.
+        publishEvent(event, null, false);
     }
 
     /**
@@ -149,14 +155,20 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
     private <E> void publishEvent(E event, String eventId, boolean inbound) {
         Objects.requireNonNull(event, "event");
         requireOpen();
-        if (inbound && !claimInbound(eventId)) {
-            return; // duplicate — already delivered over another channel
-        }
         // DeadEvent always dispatches immediately — it is a diagnostic
         // event that fires when zero subscribers exist, and must not be
         // re-deferred during drain of committed event.
         boolean defer = Defer.isActive() && !(event instanceof DeadEvent);
-        deferOrRun(defer, () -> dispatchEvent(event, inbound, eventId));
+        // The inbound id is claimed inside the deferred action, not here:
+        // a rollback discards the buffered dispatch, and claiming at publish
+        // time would leave the id burned — the broker's redelivery of the
+        // same wire id would then be dropped as a "duplicate" (event loss).
+        deferOrRun(defer, () -> {
+            if (inbound && !claimInbound(eventId)) {
+                return; // duplicate — already delivered over another channel
+            }
+            dispatchEvent(event, inbound, eventId);
+        });
     }
 
     private <E> void dispatchEvent(E event, boolean inbound, String eventId) {
@@ -182,7 +194,7 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
      * <p>Like {@link #publish(Object)}, respects the active {@code Defer} scope.</p>
      */
     public void publish(String topic, Object payload) {
-        publishTopic(topic, payload, UUID.randomUUID().toString(), false);
+        publishTopic(topic, payload, null, false); // id minted at sink send time
     }
 
     /**
@@ -204,10 +216,14 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
     ) {
         Objects.requireNonNull(topic, "topic");
         requireOpen();
-        if (inbound && !claimInbound(eventId)) {
-            return; // duplicate — already delivered over another channel
-        }
-        deferOrRun(Defer.isActive(), () -> dispatchTopic(topic, payload, inbound, eventId));
+        // Claim inside the deferred action — see publishEvent: claiming at
+        // publish time would burn the wire id on a rollback.
+        deferOrRun(Defer.isActive(), () -> {
+            if (inbound && !claimInbound(eventId)) {
+                return; // duplicate — already delivered over another channel
+            }
+            dispatchTopic(topic, payload, inbound, eventId);
+        });
     }
 
     private void dispatchTopic(
@@ -232,8 +248,11 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
      * second copy through; too large one costs memory for nothing. Zero or
      * negative turns deduplication off and releases the window.
      *
-     * <p>Ids are claimed at publish time, so the two copies race freely —
-     * whichever arrives first wins and the other is dropped.</p>
+     * <p>Ids are claimed at dispatch time — inside the deferred action when
+     * a {@code Defer} scope buffers the publish — so a rollback leaves the
+     * id unclaimed and the broker's redelivery is accepted. Two copies race
+     * freely at dispatch; whichever claims first wins and the other is
+     * dropped.</p>
      *
      * @param capacity bound on the number of remembered ids; zero or negative
      *                 disables deduplication
@@ -299,7 +318,14 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
 
     // ==================== async ====================
 
-    /** Set a custom executor for async dispatch. Defaults to virtual threads. */
+    /**
+     * Sets a custom executor for async dispatch. Defaults to lazily-created
+     * virtual threads.
+     *
+     * <p>Ownership: a caller-supplied executor is <b>never</b> closed by the
+     * bus — its lifecycle stays with the installer. Only the bus-created
+     * defaults are shut down (bounded wait) on {@link #close()}.</p>
+     */
     public void setAsyncExecutor(Executor executor) {
         requireOpen();
         executors.setAsyncExecutor(executor);
@@ -340,6 +366,17 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
     }
 
     /**
+     * Ordered version of {@link #publish(String, Object)}: topic payloads
+     * submitted here dispatch strictly in submission order on the same
+     * global ordered channel as {@link #publishOrdered(Object)}.
+     */
+    public void publishOrdered(String topic, Object payload) {
+        Objects.requireNonNull(topic, "topic");
+        requireOpen();
+        executeDeferred(executors::orderedExecutor, () -> publish(topic, payload));
+    }
+
+    /**
      * Executes {@code publish} on the executor supplied by {@code exec},
      * buffering it in the active {@code Defer} scope when present.
      *
@@ -354,7 +391,7 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
      */
     private void executeDeferred(Supplier<Executor> exec, Runnable publish) {
         Runnable guarded = () -> {
-            if (closed) {
+            if (closed.get()) {
                 return;
             }
             try {
@@ -362,14 +399,14 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
             } catch (IllegalStateException e) {
                 // A task that passed requireOpen() before close() must not
                 // surface as a spurious async failure after the bus is gone.
-                if (!closed) {
+                if (!closed.get()) {
                     throw e;
                 }
             }
         };
         if (Defer.isActive()) {
             Defer.defer(() -> {
-                if (closed) {
+                if (closed.get()) {
                     return;
                 }
                 exec.get().execute(guarded);
@@ -440,12 +477,18 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
      * @param delivered          successful subscriber deliveries (one per subscriber)
      * @param subscriberFailures throwing subscriber executions
      * @param deadEvents         DeadEvent diagnostics emitted for zero-subscriber event
+     * @param sinkFailures       throwing {@link EventSink} sends (isolated —
+     *                           the other sinks still receive the event)
+     * @param streamDrops        event dropped by a slow/absent-demand stream
+     *                           consumer (overflow-drop, never blocks dispatch)
      */
     public record EventBusStats(
         long published,
         long delivered,
         long subscriberFailures,
-        long deadEvents
+        long deadEvents,
+        long sinkFailures,
+        long streamDrops
     ) {}
 
     /**
@@ -457,8 +500,15 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
             stats.publishedCount(),
             stats.deliveredCount(),
             stats.subscriberFailureCount(),
-            stats.deadEventCount()
+            stats.deadEventCount(),
+            stats.sinkFailureCount(),
+            stats.streamDropCount()
         );
+    }
+
+    /** Package-private: {@link EventStreams} counts overflow-drops here. */
+    void recordStreamDrop() {
+        stats.streamDrop();
     }
 
     // ==================== class-based runtime subscribe ====================
@@ -489,10 +539,9 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
 
     @Override
     public void close() {
-        if (closed) {
+        if (!closed.compareAndSet(false, true)) {
             return;
         }
-        closed = true;
         // Detach every sink: a closed bus must not keep module channels
         // (and their sockets) reachable, and post-close publishes are
         // best-effort no-ops anyway.
@@ -507,16 +556,25 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
     }
 
     private void requireOpen() {
-        if (closed) {
+        if (closed.get()) {
             throw new IllegalStateException("EventBus is closed");
         }
     }
 
     // ==================== internals ====================
 
+    /** @return {@code @Topic} value, or the type's simple name — cached per
+     *  class so dispatch never repeats the reflective annotation lookup */
+    private static final ClassValue<String> TOPIC_OF = new ClassValue<>() {
+        @Override
+        protected String computeValue(Class<?> type) {
+            Topic topic = type.getAnnotation(Topic.class);
+            return topic != null ? topic.value() : type.getSimpleName();
+        }
+    };
+
     private static String resolveTopic(Class<?> eventType) {
-        Topic topic = eventType.getAnnotation(Topic.class);
-        return topic != null ? topic.value() : eventType.getSimpleName();
+        return TOPIC_OF.get(eventType);
     }
 
     /**

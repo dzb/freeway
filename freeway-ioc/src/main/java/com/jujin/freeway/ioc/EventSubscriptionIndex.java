@@ -31,13 +31,35 @@ final class EventSubscriptionIndex {
         this.container = container;
     }
 
-    List<Consumer<Object>> classHandlers(Class<?> eventType) {
+    /**
+     * Both class-handler groups for one dispatch, resolved in a single walk
+     * of the supertype hierarchy — the hot path used by
+     * {@code EventDispatcher.dispatchEvent}.
+     *
+     * <p>Lists returned here are safe to iterate without copying: module
+     * lists are built once at composition and never mutated, runtime lists
+     * are {@link CopyOnWriteArrayList}. A caller must not mutate them.</p>
+     */
+    ClassSubs classSubs(Class<?> eventType) {
         ensureIndexed();
         ModuleIndex idx = moduleIndex;
-        if (idx == null) {
-            return List.of();
+        Map<Class<?>, List<Consumer<Object>>> moduleIdx =
+            idx != null ? idx.classIdx() : Map.of();
+        List<Consumer<Object>> module = moduleIdx.get(eventType);
+        List<Subscription<?>> runtime = runtimeSubs.get(eventType);
+        List<Consumer<Object>> moduleMore = null;
+        List<Subscription<?>> runtimeMore = null;
+        for (Class<?> sup : SUPER_TYPES.get(eventType)) {
+            List<Consumer<Object>> m = moduleIdx.get(sup);
+            if (m != null) {
+                moduleMore = moduleMore != null ? concat(moduleMore, m) : m;
+            }
+            List<Subscription<?>> r = runtimeSubs.get(sup);
+            if (r != null) {
+                runtimeMore = runtimeMore != null ? concat(runtimeMore, r) : r;
+            }
         }
-        return matchingSubscriptions(idx.classIdx(), eventType);
+        return new ClassSubs(merge(module, moduleMore), merge(runtime, runtimeMore));
     }
 
     List<Consumer<Object>> topicHandlers(String topic) {
@@ -47,12 +69,42 @@ final class EventSubscriptionIndex {
         return subs != null ? subs : List.of();
     }
 
-    List<Subscription<?>> runtimeClassSubs(Class<?> eventType) {
-        return matchingSubscriptions(runtimeSubs, eventType);
-    }
-
     List<Subscription<?>> runtimeTopicSubs(String topic) {
         return runtimeTopicSubs.getOrDefault(topic, List.of());
+    }
+
+    /** direct handlers first, then supertype handlers in hierarchy order */
+    private static <T> List<T> merge(List<T> direct, List<T> supertypeHits) {
+        if (supertypeHits == null) {
+            return direct != null ? direct : List.of();
+        }
+        if (direct == null) {
+            return supertypeHits;
+        }
+        List<T> all = new ArrayList<>(direct.size() + supertypeHits.size());
+        all.addAll(direct);
+        all.addAll(supertypeHits);
+        return all;
+    }
+
+    /** Grows the supertype-hit list; the first hit stays live until a
+     *  second one forces a copy (each further hit copies again — the
+     *  supertype count is tiny). */
+    private static <T> List<T> concat(List<T> accumulated, List<T> next) {
+        List<T> grown = new ArrayList<>(accumulated.size() + next.size());
+        grown.addAll(accumulated);
+        grown.addAll(next);
+        return grown;
+    }
+
+    /** Module + runtime handlers matched for one event type. */
+    record ClassSubs(
+        List<Consumer<Object>> module,
+        List<Subscription<?>> runtime
+    ) {
+        boolean isEmpty() {
+            return module.isEmpty() && runtime.isEmpty();
+        }
     }
 
     <E> Subscription<E> subscribeClass(Class<E> eventType, Consumer<E> handler) {
@@ -113,24 +165,6 @@ final class EventSubscriptionIndex {
             }
             moduleIndex = new ModuleIndex(classIdx, topicIdx);
         }
-    }
-
-    private static <T> List<T> matchingSubscriptions(
-        Map<Class<?>, List<T>> index,
-        Class<?> eventType
-    ) {
-        List<T> direct = index.get(eventType);
-        List<T> result = direct != null ? new ArrayList<>(direct) : null;
-        for (Class<?> sup : SUPER_TYPES.get(eventType)) {
-            List<T> subs = index.get(sup);
-            if (subs != null) {
-                if (result == null) {
-                    result = new ArrayList<>();
-                }
-                result.addAll(subs);
-            }
-        }
-        return result != null ? result : List.of();
     }
 
     private static final ClassValue<List<Class<?>>> SUPER_TYPES =
