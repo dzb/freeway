@@ -136,6 +136,12 @@ builder 不是第二个入口而是第二个组装根：自带一份默认值、
 - 两处失真声明纠正：根包 `package-info` 不再称 `ExchangeMetaDefault` 可替换——两处 `new`
   直构、容器从不查考它，绑 `.primary()` 不会被尊重；`HttpModule` 的 ACCESS_LOG 注释不再
   自称"本模块自读的唯一键"（同读的还有 `freeway.http.h2.*` 两键），相邻 spec 注释风格一并统一。
+- `Graph` 的公开构造器收为包私有：全仓唯一的 `new Graph(…)` 是同包的 `GraphSpec.create()`，
+  公开构造器只是第二个派生点；蓝图用法不变（`graphSpec.create()` / `FlowEngine.load(spec)`）。
+- `WebSocketUtil` → `WebSocketUtils`：与同族 `BinUtils` / `HttpUtils` / `JsonUtils` /
+  `MethodHandleUtils` 的 `Utils` 后缀对齐（仓内原为 4:1，唯一调用点 `WebSocketUpgrade` 同批改）。
+- `Tracer` 方法签名中的两处 `com.jujin.freeway.cloud.context.TraceContext` 全限定名改为
+  import（同文件 `InvocationContext` 一并清理）——签名类型不变，无迁移项。
 
 ## [1.5.3] - 2026-09-20
 

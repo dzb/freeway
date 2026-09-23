@@ -22,7 +22,7 @@ public class Graph {
     private final List<Link> links;
     private Node start;
 
-    public Graph(GraphSpec blueprint) {
+    Graph(GraphSpec blueprint) {
         // Same validation as GraphSpec.create(): link references, cycles,
         // duplicate unconditional links and entry resolution must not differ
         // between the two construction paths.

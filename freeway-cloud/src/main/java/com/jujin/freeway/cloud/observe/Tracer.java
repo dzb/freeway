@@ -1,5 +1,8 @@
 package com.jujin.freeway.cloud.observe;
 
+import com.jujin.freeway.cloud.context.InvocationContext;
+import com.jujin.freeway.cloud.context.TraceContext;
+
 /**
  * Distributed tracer. Context is carried by {@code InvocationContext}
  * (ScopedValue) across async/virtual-thread boundaries; MDC is the display
@@ -11,7 +14,7 @@ public interface Tracer {
     Span start(String name);
 
     /** Starts a span under an explicit parent context. */
-    Span start(String name, com.jujin.freeway.cloud.context.TraceContext parent);
+    Span start(String name, TraceContext parent);
 
     Tracer NOOP = new Tracer() {
         @Override
@@ -20,7 +23,7 @@ public interface Tracer {
         }
 
         @Override
-        public Span start(String name, com.jujin.freeway.cloud.context.TraceContext parent) {
+        public Span start(String name, TraceContext parent) {
             return Span.NOOP;
         }
     };
@@ -46,14 +49,14 @@ public interface Tracer {
          * trace, this span as the current span, and the principal/baggage the
          * tracer inherited. A caller that owns a scope (the inbound tracing
          * filter, a background job) binds it with
-         * {@link com.jujin.freeway.cloud.context.InvocationContext#runWith} so
+         * {@link InvocationContext#runWith} so
          * everything inside that scope — including outbound propagation —
          * continues <em>this</em> span rather than its parent.
          *
          * @return the context to bind, or {@code null} when the span owns none
          *         (a no-op tracer)
          */
-        default com.jujin.freeway.cloud.context.InvocationContext context() {
+        default InvocationContext context() {
             return null;
         }
 

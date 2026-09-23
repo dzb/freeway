@@ -860,7 +860,7 @@ Three-layer architecture: **engine layer** handles transport (socket I/O, protoc
 | Engine (shared) | `FreewayHttpEngine`, `HttpContextImpl`, `HttpSession`, `HttpServerHandleImpl`, `SessionBufferedInputStream/OutputStream`, `FixedLengthInputStream`, `ChunkedInputStream` |
 | Engine (HTTP/1.x) | `HttpConnection`, `Http1xSession`, `Http1xParser` in `engine/` |
 | Engine (HTTP/2) | `Http2Connection`, `Http2Stream`, `FrameSerializer`, `HPackContext` etc in `engine/http2/` |
-| Engine (WebSocket) | `WebSocketFrame`, `WebSocketSessionImpl`, `WebSocketUtil` etc in `engine/ws/` |
+| Engine (WebSocket) | `WebSocketFrame`, `WebSocketSessionImpl`, `WebSocketUtils` etc in `engine/ws/` |
 | Routing | `Route`, `RouteGroup`, `RouteIndex`, `PathPattern` |
 | Body | `BodyHandler`, `MultipartForm` |
 | WebSocket | `WebSocketSession`, `WebSocketListener`, `WebSocketRoute`, `WebSocketGroup`, `WebSocketIndex` |

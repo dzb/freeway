@@ -10,7 +10,7 @@ import org.slf4j.LoggerFactory;
 
 import com.jujin.freeway.http.engine.ws.WebSocketReadLoop;
 import com.jujin.freeway.http.engine.ws.WebSocketSessionImpl;
-import com.jujin.freeway.http.engine.ws.WebSocketUtil;
+import com.jujin.freeway.http.engine.ws.WebSocketUtils;
 import com.jujin.freeway.http.websocket.WebSocketMatch;
 
 /**
@@ -54,7 +54,7 @@ final class WebSocketUpgrade {
             }
             String acceptKey;
             try {
-                acceptKey = WebSocketUtil.makeAcceptKey(wsKey);
+                acceptKey = WebSocketUtils.makeAcceptKey(wsKey);
             } catch (Exception e) {
                 HttpSession.sendUpgradeError(connection.outputStream(), 500,
                     "Key generation failed");
