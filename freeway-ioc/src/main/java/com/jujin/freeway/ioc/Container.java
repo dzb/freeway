@@ -98,7 +98,9 @@ public interface Container extends AutoCloseable {
 
     /**
      * Returns the extension point for the given entry type, providing access
-     * to all contributed values of that type across all modules.
+     * to all contributed values of that type across all modules. Read at any
+     * time; contributions themselves are accepted only during composition —
+     * the store is sealed once the container is built.
      *
      * @param entryType the extension point type (e.g. {@code Route.class})
      * @param <T>       the entry type

@@ -44,7 +44,7 @@ class RegistryRenewalTest {
         try (Container container = Freeway.create(binder -> {
             binder.bind(ServiceRegistry.class).to(c -> registry);
             binder.contribute(ServiceDeclaration.class)
-                .add("test", c -> INSTANCE);
+                .add("test", (ServiceDeclaration) c -> INSTANCE);
         })) {
             RegistryLifecycleHook hook =
                 new RegistryLifecycleHook(renewal, Duration.ofMillis(20));
@@ -78,7 +78,7 @@ class RegistryRenewalTest {
         RegistryRenewal renewal = new RegistryRenewal();
         try (Container container = Freeway.create(binder -> {
             binder.bind(ServiceRegistry.class).to(c -> registry);
-            binder.contribute(ServiceDeclaration.class).add("test", c -> INSTANCE);
+            binder.contribute(ServiceDeclaration.class).add("test", (ServiceDeclaration) c -> INSTANCE);
         })) {
             RegistryLifecycleHook hook =
                 new RegistryLifecycleHook(renewal, Duration.ofMillis(20));
@@ -109,7 +109,7 @@ class RegistryRenewalTest {
         RegistryRenewal renewal = new RegistryRenewal();
         try (Container container = Freeway.create(binder -> {
             binder.bind(ServiceRegistry.class).to(c -> registry);
-            binder.contribute(ServiceDeclaration.class).add("test", c -> INSTANCE);
+            binder.contribute(ServiceDeclaration.class).add("test", (ServiceDeclaration) c -> INSTANCE);
             // 60 ms window: long enough to observe, short enough to keep the suite fast.
             binder.bind(com.jujin.freeway.ioc.symbol.SymbolSource.class)
                 .to(c -> symbols(com.jujin.freeway.cloud.CloudConfigKeys.REGISTRY_SHUTDOWN_DRAIN, "60ms"))

@@ -2,7 +2,7 @@ package com.jujin.freeway.ioc;
 
 import java.util.concurrent.atomic.AtomicReference;
 
-import com.jujin.freeway.ioc.extension.Contribution;
+import com.jujin.freeway.ioc.extension.Ordering;
 
 /**
  * Shared scaffolding for the split container test files: system-property
@@ -19,7 +19,7 @@ final class FreewayTestSupport {
     static final String APP_NAME_KEY = "freeway.test.app.name";
 
     /** Handle shared between class-contribution ordering tests. */
-    static final AtomicReference<Contribution> postReadHandle =
+    static final AtomicReference<Ordering> postReadHandle =
         new AtomicReference<>();
 
     private static String previousPort;

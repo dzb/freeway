@@ -111,6 +111,19 @@ builder 不是第二个入口而是第二个组装根：自带一份默认值、
 - `MediaTypes.contentType(文件名)`：扩展名 → Content-Type 表收进共享词表（`MediaTypes`
   javadoc 承诺的唯一分类源），静态资源服务器改从这里读——`StaticResourceMount` 原来私有
   同一张表，新增扩展名从此只落一处。
+- `Contribution.add(String, Function<Container, ? extends T>)`：命名贡献的**容器工厂形**——
+  与 `Binding.to(Function)` 同一形态。实例形在 bind 期就造值，没有容器把手；工厂形走
+  `add(Class)` 同一条 `pendingCreates` 延迟线（所有模块绑定完再创建），实例化时拿到容器、
+  声明顺序不敏感，`before/after` 经 `DeferredOrdering` 如期落到真实条目（`ContributionWiringTest`
+  三条：容器身份与晚绑定服务、延迟后仍生效的排序、重复 id 报错）。订阅者一类"值要靠服务造"的
+  贡献从此不必借静态容器持有者。**迁移**：`T` 本身是单参函数式接口时，传 lambda 作**值**的
+  调用与工厂形歧义——显式转型回 `T`（cloud 四处测试即此情形，转型即"这个 lambda 是值"）。
+- `WebSocketRoute.of(path, Class<? extends WebSocketEndpoint>)`：类形 WS 路由——与 `Route`
+  的类形完全同构：record 槽位里放 `LazyEndpoint` 包装（`WebSocketRoute` 形状不变），
+  `HttpModule` 建 `WebSocketIndex` 时与 `resolveLazy` 并排 `resolveEndpoint`，容器 `create`
+  构造注入，握手前未解析则响亮失败并点名端点类（`WebSocketIndexTest` 两条：独立索引下延迟
+  匹配 + 未解析即用报错、容器解析 + 构造注入 + `subprotocols` 委托）。WS 端点类从此不必
+  借静态容器持有者。
 
 ### Removed
 
@@ -177,6 +190,43 @@ builder 不是第二个入口而是第二个组装根：自带一份默认值、
 - `db.util.Names` 并入 `SqlTextParser`：它仅有的两个公开方法是命名参数标识符的词法校验
   （`isValidParamStart`/`isValidParamChar`），叫 "Names" 会让人以为是表/列名称工具；唯一消费者
   本来就是同包词法器，收成其私有方法后概念减一。
+- **贡献机制收敛（freeway-ioc）**，三个决定打包落地：
+  1. **组合期封印**：`Extension` 在装配（bind → drain）结束时 seal，`add`/`before`/`after`
+     之后一律抛 "sealed"。原先"运行时可向已建容器贡献"的能力处在被测试但未被文档承诺的
+     中间态（并发失效协议为此而生），现按 B 方案封死：`Extension` 的专用锁、全部
+     `synchronized`、`version()` 计数与 `EventSubscriptionIndex` 的双检循环一并删除，
+     读侧自封印起无锁；`Extension.get(String)` 生产零引用，同批删除（先例：`Extension.of`）。
+     `EventBusOrderedDeferredTest` 中"首播后贡献订阅者"改为断言拒绝——晚订阅走
+     `EventBus.subscribe`。
+  2. **SymbolProvider 统一走 contribute、删除 register 通道**：贡献 tier 只进扩展存储，
+     `SymbolSource` 拉取（新 `SymbolSource.of(coercer, supplier, tiers…)` 重载接受 live view，
+     排序缓存以 view 身份为失效键）；`SymbolSource.register()` 接口方法、容器的
+     `infrastructureWiring` 推送表、`contributedProviders` 列表、load 后回放、
+     on-demand 谓词与 `LazySymbolProvider` 门面全部删除——五件特殊机器减为零，
+     顺带消掉"替换后、回放前"的读取空窗。替换源的契约改为**自取 view**：
+     `.to(c -> new MySource(c.extension(SymbolProvider.class)))`；原"盲替换启动期 fail-fast"
+     随 register 一起移除，`SymbolSourceReplacementTest` 改钉正面模式。
+  3. **生命周期归一**：新建 `internal/ContributionRegistry` 独占 DSL、扩展存储、延迟队列、
+     drain 与 seal；`BinderImpl` 回归纯 binding 委托。延迟创建改双队列——配置层
+     （`SymbolProvider`/`CoerceRule`）先建，其余随后（原 FIFO 让"配置层晚于消费者声明"
+     碰运气）；`add(Class)` 反糖为 `add(id, factory)`，同一条延迟路径一份实现。
+     仍保留的唯一推送是 `CoerceRule` 进 coercer（commons 的 `Coercer` 在别模块，拉取
+     要动其规则存储与优先级语义，收益不抵风险，留待后续）。
+  同批修正三处文档与实现相反的陈述：skills 两份声称"缺失排序 id 会报错"（实际通用路径
+  WARN+忽略、仅 hook 走 `validateOrdering`），`InjectionResolver` javadoc 首句仍称可注入
+  `Extension<Foo>`（同方法显式拒绝）。
+  **迁移提示**：`add(id, factory)` 重载与 `add(id, value)` 并存后，当扩展点类型 V 本身是
+  函数式接口、调用点又传裸 lambda 作**值**时（`.add("id", c -> …)`）两个重载都"潜在适用"，
+  javac 报歧义——向值语义显式转型（`.add("id", (V) c -> …)`）或把工厂 lambda 先赋给
+  `Function<Container, ? extends V>` 局部变量即可；仓内 cloud 四处测试即此修法。
+- `Contributions<T>` → `Contribution<T>`、排序句柄 `Contribution` → `Ordering`：单复数对读作
+  "一条 vs 一筐"，但两个类型都不持有值——前者是 `contribute()` 返回的写侧 DSL（`add` 门面，
+  自身无状态），后者是命名 `add` 之后声明 `before/after` 的句柄（javadoc 首句本就是 "Ordering
+  handle"，却要靠补一个 "handle" 才能消歧，`ARCHITECTURE` 还一度把它写成
+  `Contribution<RuntimeHook>`）。改名后与 `bind()` → `Binding<T>` 同形：`Binder.contribute`
+  返回 `Contribution<T>`，`.add(id, v)` / `.add(Class)` 返回 `Ordering`（词干取自既有的
+  `validateOrdering` / "Ordering reference" 词族）；`BinderImpl.DeferredContribution` →
+  `DeferredOrdering` 随之。错误消息与散文里的 "contribution"（条目领域词）不动。
 
 ## [1.5.3] - 2026-09-20
 

@@ -12,17 +12,15 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.PriorityQueue;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Aggregates contributed values of a given entry type and provides ordered
  * access to them. Each extension point is identified by the entry class
  * itself.
  *
- * <p>Contributions are added via {@link Contributions} during module binding
+ * <p>Contributions are added via {@link Contribution} during module binding
  * and retrieved at runtime through {@code container.extension(EntryType.class)}:
  * <pre>{@code
  * // Contribute
@@ -32,75 +30,65 @@ import java.util.concurrent.atomic.AtomicLong;
  * List<Route> routes = container.extension(Route.class).all();
  * }</pre>
  *
- * @param <V> the entry type (extension point type)
+ * <p>The container {@link #seal() seals} every extension once composition
+ * finishes: {@link #add} and {@link Ordering#before}/{@link Ordering#after}
+ * are accepted only while modules are binding, never after the container is
+ * built. Readers are lock-free — the data is immutable from the seal on, and
+ * the composition thread's writes are published with it.
+ *
+ * @param <T> the entry type (extension point type)
  */
-public final class Extension<V> {
+public final class Extension<T> {
     private static final Logger LOG = LoggerFactory.getLogger(Extension.class);
 
     private final List<Entry> entries = new ArrayList<>();
     private final Set<String> ids = new LinkedHashSet<>();
-    private final Class<V> entryType;
-    private volatile List<V> sorted;
-    private volatile Map<String, V> mapCache;
-    private final AtomicLong version = new AtomicLong();
-    /**
-     * Guards entries/ids/caches. A dedicated object — this Extension is
-     * handed out publicly ({@code container.extension(...)}), so its
-     * intrinsic monitor must stay out of the locking protocol.
-     */
-    private final Object lock = new Object();
+    private final Class<T> entryType;
+    private volatile List<T> sorted;
+    private volatile Map<String, T> mapCache;
+    /** Set by the container after composition; visible to every later reader. */
+    private volatile boolean sealed;
 
-    public Extension(Class<V> entryType) {
+    public Extension(Class<T> entryType) {
         this.entryType = Objects.requireNonNull(entryType, "entryType");
+    }
+
+    /**
+     * Closes the contribution window: after the seal, {@link #add} and
+     * {@link Ordering#before}/{@link Ordering#after} throw. Idempotent —
+     * the container seals every extension (including ones created later
+     * through a lazy lookup) exactly once per composition.
+     */
+    public void seal() {
+        sealed = true;
     }
 
     /**
      * Adds a named contribution with ordering support.
      *
-     * @param id    unique id for ordering via {@link Contribution#before}/{@link Contribution#after}
+     * @param id    unique id for ordering via {@link Ordering#before}/{@link Ordering#after}
      * @param value the contribution value
-     * @return a {@link Contribution} handle for declaring ordering constraints
-     * @throws IllegalStateException if the id is a duplicate
+     * @return an {@link Ordering} handle for declaring ordering constraints
+     * @throws IllegalStateException if the id is a duplicate, or if this
+     *         extension is already sealed
      */
-    public Contribution add(String id, V value) {
+    public Ordering add(String id, T value) {
         Objects.requireNonNull(value, "value");
-        synchronized (lock) {
-            String normalizedId = normalizeOptionalId(id);
-            if (normalizedId != null && !ids.add(normalizedId)) {
-                throw new IllegalStateException(
-                    "Duplicate contribution id " +
-                        normalizedId +
-                        " for extension " +
-                        entryType.getSimpleName()
-                );
-            }
-            Entry entry = new Entry(normalizedId, value);
-            entries.add(entry);
-            sorted = null;
-            mapCache = null;
-            version.incrementAndGet();
-            return entry;
+        requireMutable("add(id, value)");
+        String normalizedId = normalizeOptionalId(id);
+        if (normalizedId != null && !ids.add(normalizedId)) {
+            throw new IllegalStateException(
+                "Duplicate contribution id " +
+                    normalizedId +
+                    " for extension " +
+                    entryType.getSimpleName()
+            );
         }
-    }
-
-    /**
-     * Monotonic change counter. Incremented whenever a contribution is added,
-     * letting consumers (e.g. the event bus) refresh cached views lazily.
-     */
-    public long version() {
-        return version.get();
-    }
-
-    /**
-     * Returns the contribution with the given id, or empty.
-     *
-     * @param id the contribution id
-     * @return the contributed value, or empty if not found
-     */
-    public Optional<V> get(String id) {
-        String normalized = normalizeOptionalId(id);
-        if (normalized == null) return Optional.empty();
-        return Optional.ofNullable(asMap().get(normalized));
+        Entry entry = new Entry(normalizedId, value);
+        entries.add(entry);
+        sorted = null;
+        mapCache = null;
+        return entry;
     }
 
     /**
@@ -112,25 +100,20 @@ public final class Extension<V> {
      *
      * @return an ordered map of named contributions
      */
-    public Map<String, V> asMap() {
-        Map<String, V> cached = mapCache;
+    public Map<String, T> asMap() {
+        Map<String, T> cached = mapCache;
         if (cached != null) {
             return cached;
         }
-        synchronized (lock) {
-            cached = mapCache;
-            if (cached == null) {
-                Map<String, V> result = new LinkedHashMap<>();
-                for (Entry e : entries) {
-                    if (e.id != null) result.put(e.id, e.value);
-                }
-                // Unmodifiable *view* (not Map.copyOf): asMap() promises
-                // insertion order, which copyOf does not guarantee.
-                cached = Collections.unmodifiableMap(result);
-                mapCache = cached;
-            }
-            return cached;
+        Map<String, T> result = new LinkedHashMap<>();
+        for (Entry e : entries) {
+            if (e.id != null) result.put(e.id, e.value);
         }
+        // Unmodifiable *view* (not Map.copyOf): asMap() promises
+        // insertion order, which copyOf does not guarantee.
+        cached = Collections.unmodifiableMap(result);
+        mapCache = cached;
+        return cached;
     }
 
     /**
@@ -140,18 +123,14 @@ public final class Extension<V> {
      *
      * @return an unmodifiable list of contributed values
      */
-    public List<V> all() {
-        List<V> s = sorted;
+    public List<T> all() {
+        List<T> s = sorted;
         if (s != null) {
             return s;
         }
-        synchronized (lock) {
-            s = sorted;
-            if (s == null) {
-                sorted = s = order();
-            }
-            return s;
-        }
+        s = order();
+        sorted = s;
+        return s;
     }
 
     @Override
@@ -172,25 +151,38 @@ public final class Extension<V> {
      *         method, and the contribution that declared the reference
      */
     public void validateOrdering() {
-        synchronized (lock) {
-            Map<String, Entry> byId = new LinkedHashMap<>();
-            for (Entry entry : entries) {
-                if (entry.id != null) {
-                    byId.put(entry.id, entry);
+        Map<String, Entry> byId = new LinkedHashMap<>();
+        for (Entry entry : entries) {
+            if (entry.id != null) {
+                byId.put(entry.id, entry);
+            }
+        }
+        for (Entry entry : entries) {
+            for (String id : entry.afterIds) {
+                if (!byId.containsKey(id)) {
+                    throw missingReference(id, "after()", entry);
                 }
             }
-            for (Entry entry : entries) {
-                for (String id : entry.afterIds) {
-                    if (!byId.containsKey(id)) {
-                        throw missingReference(id, "after()", entry);
-                    }
-                }
-                for (String id : entry.beforeIds) {
-                    if (!byId.containsKey(id)) {
-                        throw missingReference(id, "before()", entry);
-                    }
+            for (String id : entry.beforeIds) {
+                if (!byId.containsKey(id)) {
+                    throw missingReference(id, "before()", entry);
                 }
             }
+        }
+    }
+
+    /**
+     * Guards every mutation. Writes happen on the composition thread only
+     * (module bind, then the deferred drain) — no lock is needed — and stop
+     * entirely at the seal, which is what makes the read side lock-free.
+     */
+    void requireMutable(String op) {
+        if (sealed) {
+            throw new IllegalStateException(
+                "Extension " + entryType.getSimpleName() + " is sealed — " +
+                    op + " is accepted only during composition (module bind), " +
+                    "before the container is built"
+            );
         }
     }
 
@@ -210,7 +202,7 @@ public final class Extension<V> {
         );
     }
 
-    private List<V> order() {
+    private List<T> order() {
         if (entries.isEmpty()) {
             return List.of();
         }
@@ -219,7 +211,7 @@ public final class Extension<V> {
                 .stream()
                 .allMatch(e -> e.afterIds.isEmpty() && e.beforeIds.isEmpty())
         ) {
-            List<V> values = new ArrayList<>(entries.size());
+            List<T> values = new ArrayList<>(entries.size());
             for (Entry e : entries) values.add(e.value);
             return List.copyOf(values);
         }
@@ -294,7 +286,7 @@ public final class Extension<V> {
                     + describeCycle(findCycle(outgoing, remaining))
             );
         }
-        List<V> values = new ArrayList<>(ordered.size());
+        List<T> values = new ArrayList<>(ordered.size());
         for (Entry e : ordered) values.add(e.value);
         return List.copyOf(values);
     }
@@ -303,7 +295,7 @@ public final class Extension<V> {
      * The cycle among {@code remaining}: strip dead ends (no edge back into
      * the set — they cannot lie on a cycle), then walk out-edges until a
      * node repeats; that repeat closes the cycle. Instance method because
-     * {@code Entry} captures {@code V}, which a static context cannot reference.
+     * {@code Entry} captures {@code T}, which a static context cannot reference.
      */
     private List<Entry> findCycle(
         Map<Entry, Set<Entry>> outgoing,
@@ -377,52 +369,47 @@ public final class Extension<V> {
         return v;
     }
 
-    private final class Entry implements Contribution {
+    private final class Entry implements Ordering {
 
         final String id;
-        final V value;
+        final T value;
         final List<String> beforeIds = new ArrayList<>();
         final List<String> afterIds = new ArrayList<>();
 
-        Entry(String id, V value) {
+        Entry(String id, T value) {
             this.id = id;
             this.value = value;
         }
 
         @Override
-        public Contribution before(String... ids) {
-            synchronized (lock) {
-                for (String s : ids) {
-                    beforeIds.add(Objects.requireNonNull(s, "id").trim());
-                }
-                invalidateOrder();
+        public Ordering before(String... ids) {
+            requireMutable("before()");
+            for (String s : ids) {
+                beforeIds.add(Objects.requireNonNull(s, "id").trim());
             }
+            invalidateOrder();
             return this;
         }
 
         @Override
-        public Contribution after(String... ids) {
-            synchronized (lock) {
-                for (String s : ids) {
-                    afterIds.add(Objects.requireNonNull(s, "id").trim());
-                }
-                invalidateOrder();
+        public Ordering after(String... ids) {
+            requireMutable("after()");
+            for (String s : ids) {
+                afterIds.add(Objects.requireNonNull(s, "id").trim());
             }
+            invalidateOrder();
             return this;
         }
 
         /**
          * Ordering declared via before()/after() invalidates the {@code sorted}
-         * cache and bumps the change counter unconditionally: {@code version()}
-         * is documented as a monotonic counter for ANY contribution change, and
-         * consumers that cache views must not have to know whether the sorted
-         * cache happened to exist. Runs under the same lock as the cache
-         * rebuild in {@link #all()}, so the constraint lists and the cache
-         * pointer stay consistent.
+         * cache. Runs on the composition thread — same thread as {@link #all()}
+         * during binding — so the constraint lists and the cache pointer stay
+         * consistent without a lock; after the seal no mutation can race a
+         * reader.
          */
         private void invalidateOrder() {
             Extension.this.sorted = null;
-            Extension.this.version.incrementAndGet();
         }
 
     }

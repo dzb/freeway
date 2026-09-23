@@ -2,35 +2,47 @@ package com.jujin.freeway.ioc.symbol;
 
 import com.jujin.freeway.commons.coercion.Coercer;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Supplier;
 
 /**
  * The built-in {@link SymbolSource}: one chain over {@link SymbolProvider}
- * tiers, assembled by {@link SymbolSource#of(Coercer, SymbolProvider...)}.
+ * tiers, assembled by {@link SymbolSource#of}.
  *
- * <p>The container builds the chain with its own system-properties tier and
- * its own {@code Coercer}, then {@link #register(SymbolProvider) registers} the
- * boot cascade (CLI, mapped env, config files) and every module contribution on
- * top. There is deliberately no raw-env fallback: environment variables reach
+ * <p>Static tiers (the container's system-properties tier) sit beside the
+ * contributed view, which the container supplies as a live read of its
+ * {@code SymbolProvider} extension store — boot contributes the application's
+ * tiers (CLI, mapped env, config files) and every module contribution flows
+ * through the same store. There is no install step: a declared contribution
+ * is visible on the next lookup, and a replaced source takes the same view.
+ *
+ * <p>There is deliberately no raw-env fallback: environment variables reach
  * the chain only through the declared prefix mapping, so an unknown symbol
  * fails instead of silently matching an unrelated variable.
  */
 final class SymbolSourceDefault implements SymbolSource {
     private static final int MAX_EXPAND_DEPTH = 40;
 
-    /** All providers — the framework's own tiers (CLI, JVM system properties,
-     *  mapped env, config files) plus module contributions — consulted
-     *  by declared {@link SymbolProvider#order()}; equal orders keep
-     *  contribution order (stable sort). */
-    private final CopyOnWriteArrayList<SymbolProvider> providers = new CopyOnWriteArrayList<>();
+    /** The static tiers — immutable for the source's lifetime. */
+    private final List<SymbolProvider> statics;
 
-    /** Providers sorted by declared order (stable: ties keep contribution
-     *  order). Built lazily on first resolve — sorting calls {@code order()}
-     *  on every provider, which would force the on-demand class-contribution
-     *  facades to materialize at bind time otherwise. */
-    private volatile List<SymbolProvider> ordered;
+    /** The live contributed view — re-read on every lookup. */
+    private final Supplier<List<SymbolProvider>> contributed;
+
+    /**
+     * The merge of statics + contributed view, sorted by declared
+     * {@link SymbolProvider#order()} (stable: ties keep contribution order),
+     * paired with the exact view instance it was built from. The view
+     * identity is the invalidation key: {@code Extension.all()} hands back
+     * the same list until a contribution lands, and the store is frozen once
+     * the container seals — so a hit is a pointer compare, and a rebuild
+     * (composition thread only) is idempotent.
+     */
+    private record Snapshot(List<SymbolProvider> view, List<SymbolProvider> merged) {}
+
+    private volatile Snapshot snapshot;
 
     /** The chain's {@link Coercer} — lets the one-step {@code resolve(spec)}
      *  parse coercer-backed types (Duration, Boolean, user {@code CoerceRule}s)
@@ -38,17 +50,14 @@ final class SymbolSourceDefault implements SymbolSource {
      *  The container passes its own, so contributed rules apply here too. */
     private final Coercer coercer;
 
-    SymbolSourceDefault(Coercer coercer, List<SymbolProvider> providers) {
+    SymbolSourceDefault(
+        Coercer coercer,
+        List<SymbolProvider> statics,
+        Supplier<List<SymbolProvider>> contributed
+    ) {
         this.coercer = Objects.requireNonNull(coercer, "coercer");
-        this.providers.addAll(Objects.requireNonNull(providers, "providers"));
-    }
-
-    @Override
-    public void register(SymbolProvider provider) {
-        // Every provider sits in one ordered list — the declared order()
-        // decides, never the install order of the contributing module.
-        providers.add(Objects.requireNonNull(provider, "provider"));
-        ordered = null; // invalidate the sorted snapshot
+        this.statics = List.copyOf(Objects.requireNonNull(statics, "statics"));
+        this.contributed = Objects.requireNonNull(contributed, "contributed");
     }
 
     @Override
@@ -61,13 +70,17 @@ final class SymbolSourceDefault implements SymbolSource {
     /** All providers in declared precedence order (ascending {@code order()});
      *  equal orders keep contribution order (stable sort). */
     private List<SymbolProvider> orderedProviders() {
-        List<SymbolProvider> cached = ordered;
-        if (cached == null) {
-            List<SymbolProvider> sorted = new ArrayList<>(providers);
-            sorted.sort(java.util.Comparator.comparingInt(SymbolProvider::order));
-            ordered = cached = List.copyOf(sorted);
+        List<SymbolProvider> view = contributed.get();
+        Snapshot s = snapshot;
+        if (s != null && s.view() == view) {
+            return s.merged();
         }
-        return cached;
+        List<SymbolProvider> sorted = new ArrayList<>(statics);
+        sorted.addAll(view);
+        sorted.sort(Comparator.comparingInt(SymbolProvider::order));
+        s = new Snapshot(view, List.copyOf(sorted));
+        snapshot = s;
+        return s.merged();
     }
 
     @Override
@@ -135,9 +148,9 @@ final class SymbolSourceDefault implements SymbolSource {
      * Finds the closing {@code }} for the expression starting at
      * {@code ${} at {@code from}-1. Every {@code {} — nested {@code ${...}}
      * references and literal braces inside a default value alike — is
-     * tracked by depth, so {@code ${a:${b}}} and {@code ${a:x{y}z}} parse
-     * as symbol {@code a} with the full default {@code ${b}} / {@code x{y}z}
-     * instead of ending at the inner brace.
+     * tracked by depth, so a default like {@code ${a:${b}}} and
+     * {@code ${a:x{y}z}} parse as symbol {@code a} with the full default
+     * {@code ${b}} / {@code x{y}z} instead of ending at the inner brace.
      */
     private static int closingBrace(String input, int from) {
         int depth = 0;
@@ -156,22 +169,19 @@ final class SymbolSourceDefault implements SymbolSource {
     }
 
     /**
-     * Recursively expands {@code ${...}} symbol references with a depth limit
+     * Recursively expands {@code ${...}} references with a depth limit
      * to prevent stack overflow.
      * <p>
-     * If the expanded value itself contains {@code ${...}} expressions they
-     * will be expanded recursively. This means that if a symbol's value
-     * contains unescaped {@code ${...}} syntax that matches another symbol
-     * name, it will also be expanded.
+     * Recursively expands {@code ${...}} references with a depth limit to
+     * prevent stack overflow.
      * <p>
-     * Default value syntax {@code ${name:-default}} — if the default value
-     * itself contains {@code ${...}} it will also be expanded, so avoid
-     * introducing circular references in defaults.
+     * Default value syntax: {@code ${name:-default}} / {@code ${name:default}}
+     * (see {@link #expand(String)}).
      *
      * @param input the string to expand
-     * @param depth the current recursion depth
+     * @param depth current recursion depth
      * @return the expanded string
-     * @throws IllegalArgumentException if depth exceeds the limit or a symbol is unclosed
+     * @throws IllegalArgumentException if depth exceeds the maximum or symbol is unclosed
      */
     private String expand(String input, int depth) {
         if (depth > MAX_EXPAND_DEPTH) {

@@ -12,7 +12,8 @@ Examples below are minimal snippets. They omit imports and app-specific domain t
 - `Scope` - `SINGLETON`, `THREAD`, `PROTOTYPE`
 - `Scoping` - `within(...)`
 - `Extension<V>` - framework-internal aggregation handle. Access via `container.extension(Class)`. Application code injects `List<V>` or `Map<String, V>`, not `Extension<V>` directly.
-- `Contribution` - `before(String...)`, `after(String...)`
+- `Contribution<T>` - contribution DSL from `Binder.contribute(Class)`: `add(T)`, `add(id, T)`, `add(Class)`, `add(id, factory)`; composition-time only — the stores seal when the container is built
+- `Ordering` - handle returned by a named `add`: `before(String...)`, `after(String...)` (bind-time only, same seal)
 - `EventBus` - `publish`, `publishAsync`, `subscribe`, `unsubscribe`
 - `RuntimeHook` - `start(Container)`, `stop(Container)`
 - `LoggerSource` - owner-aware logger lookup
@@ -62,7 +63,7 @@ The provider owns only *how the object is built*. Scope and lifecycle still appl
 provider runs once per container, and the produced object still receives field injection,
 `@PostConstruct`, and `@PreDestroy`.
 
-## Choosing id, primary, marker, and Contributions
+## Choosing id, primary, marker, and contributions
 
 | Need | Use | Consumer |
 |---|---|---|
@@ -117,8 +118,9 @@ Freeway uses two annotations with distinct semantics:
 
 ## Contribution Ordering
 
+- Contributions are accepted only while modules bind — the container seals every extension store at the end of composition; later `add`/`before`/`after` fail with a "sealed" error. Late subscribers use `EventBus.subscribe`, not the store.
 - `add(value)` — unnamed, insertion order.
 - `add(id, value)` — named, supports `before()` / `after()` topological ordering.
-- `add(Class)` — auto-instantiates from the container, generates a canonical id as `snake_name@package`. Returns `Contribution` for `before`/`after` chaining.
-- Unknown ids are not ignored. They fail resolution when ordering is evaluated.
+- `add(id, factory)` / `add(Class)` — built in the deferred phase after every module has bound (config-layer entry types drain first); `add(Class)` generates a canonical id as `snake_name@package`. Both return `Ordering` for `before`/`after` chaining.
+- Unknown ids in `before`/`after` are WARNed and ignored by generic ordering (a missing sibling is harmless — the module may not be installed). Strict extension points (runtime hooks) call `Extension.validateOrdering()`, which fails startup on any unknown reference instead.
 - Cycles fail resolution.

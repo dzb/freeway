@@ -3,8 +3,8 @@ import java.util.logging.Handler;
 import java.util.logging.LogRecord;
 
 import com.jujin.freeway.ioc.annotation.*;
-import com.jujin.freeway.ioc.extension.Contribution;
 import com.jujin.freeway.ioc.extension.Extension;
+import com.jujin.freeway.ioc.extension.Ordering;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -16,7 +16,6 @@ import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -47,35 +46,66 @@ class ExtensionAggregationTest {
     }
 
     @Test
-    void extensionConcurrentReadsSurviveCacheInvalidation() throws Exception {
-        // all()/asMap()/get() are lock-free after warm-up (volatile double-check).
-        // A mid-flight add() must invalidate the caches without corrupting
-        // concurrent readers.
+    void extensionRejectsMutationAfterSeal() {
+        // The contribution window closes with composition: add() and
+        // before()/after() are bind-time only, which is what lets the read
+        // side run lock-free.
+        Extension<AppFeature> ext = new Extension<>(AppFeature.class);
+        Ordering first = ext.add("core", new AppFeature("core"));
+        ext.seal();
+
+        IllegalStateException addEx = assertThrows(IllegalStateException.class,
+            () -> ext.add("web", new AppFeature("web")));
+        assertTrue(addEx.getMessage().contains("sealed"), addEx.getMessage());
+        IllegalStateException orderEx = assertThrows(IllegalStateException.class,
+            () -> first.after("web"));
+        assertTrue(orderEx.getMessage().contains("sealed"), orderEx.getMessage());
+    }
+
+    @Test
+    void containerSealsExtensionsAfterComposition() {
+        // A handle held past Freeway.create, and a direct store lookup, must
+        // both reject mutation — the seal belongs to the container's
+        // lifecycle, not to whichever Extension instance you happen to hold.
+        Ordering[] held = new Ordering[1];
+        Container container = Freeway.create(binder ->
+            held[0] = binder.contribute(AppFeature.class).add("core", new AppFeature("core")));
+
+        IllegalStateException handleEx = assertThrows(IllegalStateException.class,
+            () -> held[0].after("web"));
+        assertTrue(handleEx.getMessage().contains("sealed"), handleEx.getMessage());
+        IllegalStateException storeEx = assertThrows(IllegalStateException.class,
+            () -> container.extension(AppFeature.class)
+                .add("late", new AppFeature("late")));
+        assertTrue(storeEx.getMessage().contains("sealed"), storeEx.getMessage());
+        container.close();
+    }
+
+    @Test
+    void sealedExtensionSupportsConcurrentReads() throws Exception {
+        // Post-seal the data is immutable — every thread must see the same
+        // snapshot, with the cache built safely on first use and no locks.
         Extension<AppFeature> ext = new Extension<>(AppFeature.class);
         ext.add("core", new AppFeature("core"));
-        ext.add("web", new AppFeature("web"));
+        ext.add("web", new AppFeature("web")).after("core");
+        ext.seal();
 
         int threads = 16;
         ExecutorService pool = Executors.newFixedThreadPool(threads);
         CountDownLatch start = new CountDownLatch(1);
         CountDownLatch done = new CountDownLatch(threads);
         AtomicReference<Throwable> error = new AtomicReference<>();
-        AtomicInteger added = new AtomicInteger();
         try {
             for (int i = 0; i < threads; i++) {
                 pool.submit(() -> {
                     try {
                         start.await();
                         for (int j = 0; j < 500; j++) {
-                            int size = ext.all().size();
-                            assertTrue(size >= 2 && size <= 3,
-                                "size must stay in [2,3] during mutation, got " + size);
+                            assertEquals(List.of("core", "web"),
+                                ext.all().stream().map(AppFeature::name).toList(),
+                                "sealed snapshot must be stable across threads");
                             assertTrue(ext.asMap().containsKey("core"));
-                            assertTrue(ext.get("core").isPresent());
-                            assertTrue(ext.get("web").isPresent());
-                            if (j == 250 && added.getAndIncrement() == 0) {
-                                ext.add("db", new AppFeature("db")); // invalidate mid-flight
-                            }
+                            assertEquals(2, ext.asMap().size());
                         }
                     } catch (Throwable t) {
                         error.compareAndSet(null, t);
@@ -91,8 +121,6 @@ class ExtensionAggregationTest {
             pool.shutdownNow();
         }
         assertNull(error.get(), "concurrent read failure: " + error.get());
-        assertEquals(List.of("core", "web", "db"), ext.all().stream()
-            .map(AppFeature::name).toList(), "final state must include the mid-flight addition");
     }
 
     @Test

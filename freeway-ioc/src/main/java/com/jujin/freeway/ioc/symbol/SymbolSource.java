@@ -2,6 +2,7 @@ package com.jujin.freeway.ioc.symbol;
 
 import com.jujin.freeway.commons.coercion.Coercer;
 import java.util.List;
+import java.util.function.Supplier;
 
 /**
  * Resolves symbolic configuration keys ({@code ${...}}) from config, system
@@ -36,50 +37,49 @@ public interface SymbolSource {
      * the given order), {@code ${...}} references are expanded, and
      * {@link SymbolSpec}s parse through {@code coercer}.
      *
-     * <p>This is the mechanism the container itself uses — it seeds the chain
-     * with its system-properties tier and its own {@code Coercer} (so
-     * contributed {@code CoerceRule}s reach {@link #resolve(SymbolSpec)}), then
-     * registers the boot cascade on top. Build a chain directly only where
-     * there is no container: a standalone adapter
-     * ({@code SymbolSource.of(coercer, SymbolProvider.systemProperties())}),
+     * <p>Build a chain directly only where there is no container: a standalone
+     * adapter ({@code SymbolSource.of(coercer, SymbolProvider.systemProperties())}),
      * a test, a benchmark. In-container code reads
      * {@code container.get(SymbolSource.class)} — the same chain plus whatever
-     * the application configured.
+     * the application contributed.
      *
      * @param coercer   parses coercer-backed specs (no per-key parser); the
      *                  container passes its own
      * @param providers the tiers, consulted by declared order
      */
     static SymbolSource of(Coercer coercer, SymbolProvider... providers) {
-        return new SymbolSourceDefault(coercer, List.of(providers));
+        List<SymbolProvider> contributed = List.of();
+        return new SymbolSourceDefault(coercer, List.of(providers), () -> contributed);
     }
 
     /**
-     * Adds one provider to this source's chain.
+     * Assembles a chain over the static tiers plus contributed tiers read
+     * <b>live</b> from {@code contributed} on every lookup — the in-container
+     * assembly. The container passes its {@code SymbolProvider} extension
+     * store as the view: boot's cascade (CLI, environment, config files),
+     * cloud's secret store, and every other module contribution reach the
+     * chain through {@code binder.contribute(SymbolProvider.class)} alone —
+     * there is no install step, and a contribution is visible the moment it
+     * is declared.
      *
-     * <p>The container calls this for every {@code SymbolProvider} a module
-     * contributes — boot contributes the application's tiers (CLI, environment,
-     * config files) that way, cloud contributes its secret store. An
-     * implementation that replaces the built-in source therefore has to accept
-     * them, or the whole cascade disappears in silence and surfaces much later
-     * as "my config file is ignored".</p>
+     * <p><b>A primary replacement must take the same view itself.</b> Its
+     * factory receives the container, so the pattern is:
+     * {@code binder.bind(SymbolSource.class).to(c ->
+     * new MySource(c.extension(SymbolProvider.class).all()))}. A replacement
+     * that ignores the view serves only its own tiers — boot's cascade
+     * silently disappears and surfaces much later as "my config file is
+     * ignored".
      *
-     * <p>A contributed provider carries its own {@link SymbolProvider#order()};
-     * ordering across providers is the implementation's job (the built-in one
-     * sorts stably by order). The default implementation throws, because a
-     * replacement that cannot take contributions is a configuration mistake
-     * that must be reported at startup rather than at the first missing key.</p>
-     *
-     * @param provider the provider to add
-     * @throws UnsupportedOperationException when this source cannot take part
-     *         in the container's contribution chain
+     * @param coercer    parses coercer-backed specs; the container passes its own
+     * @param contributed the live contributed view, re-read on every lookup
+     * @param providers  the static tiers, consulted by declared order
      */
-    default void register(SymbolProvider provider) {
-        throw new UnsupportedOperationException(
-            getClass().getName() + " cannot accept SymbolProvider contributions — override"
-                + " SymbolSource.register(SymbolProvider) to keep the container's configuration"
-                + " chain, or stop binding this source as the primary SymbolSource"
-        );
+    static SymbolSource of(
+        Coercer coercer,
+        Supplier<List<SymbolProvider>> contributed,
+        SymbolProvider... providers
+    ) {
+        return new SymbolSourceDefault(coercer, List.of(providers), contributed);
     }
 
     /**

@@ -144,7 +144,7 @@ This keeps the IoC dependency boundary at the Module level, identical to the `fr
 
 ---
 
-## Class-Based Contribution Via `Contributions.add(Class)`
+## Class-Based Contribution Via `Contribution.add(Class)`
 
 **Decision:** `binder.contribute(T).add(MyImpl.class)` defers instantiation and injection until after all bindings are registered.
 
@@ -160,13 +160,13 @@ pendingCreates.add(() -> {
 });
 
 // Bindings are registered per module (flushPending), then after the last
-// module's bind() the class contributions run together (flushPendingCreates):
+// module's bind() the class contributions drain (ContributionRegistry.drain):
 for (var action : pendingCreates) action.run();
 ```
 
-The auto-generated id uses snake_case from the class name (`MyHandler` → `"my_handler"`). `DeferredContribution` stores `before/after` ordering constraints during `add(Class)` and applies them to the real `Contribution` at flush time.
+The auto-generated id uses snake_case from the class name (`MyHandler` → `"my_handler"`). `DeferredOrdering` stores `before/after` ordering constraints during `add(Class)` and applies them to the real `Ordering` at flush time.
 
-**See also:** `BinderImpl.java`, `Contributions.java` (`freeway-ioc`)
+**See also:** `BinderImpl.java`, `Contribution.java` (`freeway-ioc`)
 
 ---
 
@@ -223,13 +223,13 @@ RouteHandler resolve(Container container) {
 
 ---
 
-## DeferredContribution: Bridge bind() → flush()
+## DeferredOrdering: Bridge bind() → drain()
 
-**Decision:** A lightweight `DeferredContribution` stores `before/after` ordering constraints during `bind()` and applies them post-instantiation.
+**Decision:** A lightweight `DeferredOrdering` stores `before/after` ordering constraints during `bind()` and applies them post-instantiation.
 
-**Why:** `add(Class)` defers instantiation until after all modules have bound (`flushPendingCreates()`), but the caller specifies ordering at `bind()` time. `DeferredContribution` captures those ordering constraints eagerly and replays them onto the real `Contribution` (from `ext.add(id, instance)`) once the instance is created. This matches `Extension.Entry`'s behavior (append-only `before`/`after` lists).
+**Why:** `add(Class)` defers instantiation until after all modules have bound (`ContributionRegistry.drain()`), but the caller specifies ordering at `bind()` time. `DeferredOrdering` captures those ordering constraints eagerly and replays them onto the real `Ordering` (from `ext.add(id, instance)`) once the instance is created. This matches `Extension.Entry`'s behavior (append-only `before`/`after` lists). After composition the stores are sealed, so a deferred handle used later fails loudly instead of buffering constraints nothing will replay.
 
-**See also:** `BinderImpl.DeferredContribution`
+**See also:** `ContributionRegistry.DeferredOrdering`
 
 ---
 

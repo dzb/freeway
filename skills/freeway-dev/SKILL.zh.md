@@ -312,28 +312,32 @@ Module.bind() 中
 
 ```java
 public interface Binder {
-    <V> Contributions<V> contribute(Class<V> entryType);
+    <V> Contribution<V> contribute(Class<V> entryType);
 }
 
-public interface Contributions<T> {
-    void add(T value);                              // 无名贡献，保持插入顺序
-    Contribution add(String id, T value);            // 命名贡献，支持 before/after 排序
+public interface Contribution<T> {
+    Contribution<T> add(T value);                   // 无名贡献，保持插入顺序
+    Ordering add(String id, T value);               // 命名贡献，支持 before/after 排序
+    Ordering add(Class<? extends T> implClass);     // 类贡献，容器自动实例化
+    Ordering add(String id, Function<Container, ? extends T> factory);
+                                                    // 延迟构造，工厂在全部 bind 之后运行
 }
 
-public interface Contribution {
-    Contribution before(String... ids);              // 声明在此 id 之前
-    Contribution after(String... ids);               // 声明在此 id 之后
+public interface Ordering {
+    Ordering before(String... ids);                 // 声明在此 id 之前
+    Ordering after(String... ids);                  // 声明在此 id 之后
 }
 ```
 
 ### 排序规则
 
+- **贡献只在组合期有效**：容器在装配结束时封印（seal）所有扩展存储，之后 `add` 或持有的 `before()`/`after()` 会抛 "sealed" 错误——运行时订阅请用 `EventBus.subscribe` 等运行时 API
 - `add(value)` — 无名贡献，按插入顺序排列
 - `add(id, value)` — 命名贡献，通过 `before()` / `after()` 声明依赖
-- `add(Class)` — 从容器自动实例化，生成 canonical id（`snake_name@package`），返回的 `Contribution` 支持 `before/after`
+- `add(Class)` / `add(id, factory)` — 延迟到全部模块 bind 之后构造（工厂/类可解析任意模块的服务），配置层（`SymbolProvider`/`CoerceRule`）先排先建；`add(Class)` 生成 canonical id（`snake_name@package`），返回的 `Ordering` 支持 `before/after`
 - 拓扑排序：容器在收集完所有模块的贡献后，按 before/after 关系执行拓扑排序
 - 重复 id 立即报错
-- 缺失的排序目标（before/after 引用不存在的 id）会报错
+- 缺失的排序目标（before/after 引用不存在的 id）在通用排序里 WARN 后忽略（兄弟模块可能未安装）；严格的扩展点（RuntimeHook）经 `Extension.validateOrdering()` 在启动期报错
 - 循环依赖在解析时报错
 
 ```java

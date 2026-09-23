@@ -58,7 +58,7 @@ public final class EventSubscriber<E> {
      *
      * <p>Naming a subscriber for {@code before/after} ordering is the
      * contribution's job, not the subscriber's — pass the id to
-     * {@code Contributions.add(id, value)}.
+     * {@code Contribution.add(id, value)}.
      */
     public static EventSubscriber<Object> of(
         String topic,

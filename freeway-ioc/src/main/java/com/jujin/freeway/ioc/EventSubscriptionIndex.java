@@ -88,18 +88,16 @@ final class EventSubscriptionIndex {
     }
 
     private void ensureIndexed() {
-        Extension<?> ext = container.extension(EventSubscriber.class);
-        long version = ext.version();
-        ModuleIndex idx = moduleIndex;
-        if (idx != null && idx.version() == version) {
+        // Contributions are sealed at composition — the store never changes
+        // again, so the index builds once (or after clearRuntime() nulls it).
+        if (moduleIndex != null) {
             return;
         }
         synchronized (this) {
-            idx = moduleIndex;
-            version = ext.version();
-            if (idx != null && idx.version() == version) {
+            if (moduleIndex != null) {
                 return;
             }
+            Extension<?> ext = container.extension(EventSubscriber.class);
             var classIdx = new HashMap<Class<?>, List<Consumer<Object>>>();
             var topicIdx = new HashMap<String, List<Consumer<Object>>>();
             for (Object entry : ext.all()) {
@@ -113,7 +111,7 @@ final class EventSubscriptionIndex {
                     topicIdx.computeIfAbsent(sub.topic(), k -> new ArrayList<>()).add(handler);
                 }
             }
-            moduleIndex = new ModuleIndex(classIdx, topicIdx, version);
+            moduleIndex = new ModuleIndex(classIdx, topicIdx);
         }
     }
 
@@ -167,7 +165,6 @@ final class EventSubscriptionIndex {
 
     private record ModuleIndex(
         Map<Class<?>, List<Consumer<Object>>> classIdx,
-        Map<String, List<Consumer<Object>>> topicIdx,
-        long version
+        Map<String, List<Consumer<Object>>> topicIdx
     ) {}
 }

@@ -92,7 +92,8 @@ class ServiceLifecycleTest {
         @Override
         public void bind(com.jujin.freeway.ioc.Binder b) {
             b.contribute(com.jujin.freeway.cloud.discovery.ServiceDeclaration.class)
-                .add("admin", container -> com.jujin.freeway.cloud.discovery.ServiceInstance.of(
+                .add("admin", (com.jujin.freeway.cloud.discovery.ServiceDeclaration)
+                    container -> com.jujin.freeway.cloud.discovery.ServiceInstance.of(
                     "admin-svc", "admin-1",
                     com.jujin.freeway.cloud.discovery.Endpoint.of("http", "0.0.0.0", 9091)));
         }

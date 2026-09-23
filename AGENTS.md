@@ -60,12 +60,14 @@ transitively) plus JUnit at test scope. Anything else belongs in an ext adapter.
     implementations (`PooledConnectionImpl`). A type stays `XDefault` even
     where the framework wires it concretely.
   - Substituting a role means honoring its whole seam, not just its lookups:
-    a replacement `SymbolSource` must implement `register(SymbolProvider)`,
-    because the container replays every module's contributed providers into
-    whatever source is bound. The interface's default implementation throws —
-    a replacement that cannot take contributions is reported at startup rather
-    than silently serving a chain without boot's tiers (`SymbolSourceReplacementTest`
-    pins both halves).
+    contributions reach the config chain through one channel —
+    `contribute(SymbolProvider.class)` into the extension store; there is no
+    register/replay step. A replacement `SymbolSource` must take that view
+    itself, in the factory that builds it:
+    `binder.bind(SymbolSource.class).to(c -> new MySource(c.extension(SymbolProvider.class)))`.
+    A replacement that ignores the view serves only its own tiers and boot's
+    cascade disappears silently (`SymbolSourceReplacementTest` pins the
+    pattern).
 - **Factory verbs**: `of` builds a *value* from the parts you hand it — the
   records do this (`Endpoint.of`, `ServiceInstance.of`, `SymbolSpec.of`,
   `ModuleNode.of`), mirroring `List.of`. `create` is the framework *entry

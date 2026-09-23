@@ -2,7 +2,6 @@ package com.jujin.freeway.ioc;
 
 import com.jujin.freeway.commons.coercion.CoerceRule;
 import com.jujin.freeway.ioc.annotation.*;
-import com.jujin.freeway.ioc.extension.Extension;
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -12,6 +11,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import static com.jujin.freeway.ioc.FreewayTestSupport.*;
@@ -120,9 +120,9 @@ class ContributionWiringTest {
     }
 
     @Test
-    void onDemandProviderFacadeCreatesExactlyOnce() {
-        // The on-demand facade (wired at declaration) and the flush must share
-        // one instance: the first lookup triggers creation, force() reuses it.
+    void classSymbolProviderCreatedExactlyOnce() {
+        // The config layer drains first and creates the provider exactly once:
+        // deferred consumers resolve against that one instance, no facade.
         SpecialSymbolProvider.instances.set(0);
         Container container = Freeway.create(binder -> {
             binder.contribute(SymbolProvider.class).add(SpecialSymbolProvider.class);
@@ -163,22 +163,28 @@ class ContributionWiringTest {
     void orderingDeclaredAfterFirstReadIsHonored() {
         // Regression: before()/after() applied after the sorted cache was
         // built were silently dropped — the stale order was served forever.
+        // The window for both the read and the constraint is composition:
+        // the deferred factory below warms the cache during the drain, then
+        // declares the constraint on the earlier entry — both after that
+        // entry landed. (Post-composition the window is sealed; see
+        // ExtensionAggregationTest.containerSealsExtensionsAfterComposition.)
         postReadHandle.set(null);
-        Container container = Freeway.create(binder -> {
-            binder.contribute(Labeled.class).add("first", new CoreBean());
-            postReadHandle.set(binder.contribute(Labeled.class).add("second", new WebBean()));
-        });
-        Extension<Labeled> ext = container.extension(Labeled.class);
+        Container container = Freeway.create(
+            binder -> binder.contribute(Labeled.class).add("first", new CoreBean()),
+            binder -> postReadHandle.set(
+                binder.contribute(Labeled.class).add("second", new WebBean())),
+            binder -> binder.contribute(Labeled.class).add("warmer", c -> {
+                // Warm the sorted cache (insertion order, no constraints yet)…
+                c.extension(Labeled.class).all();
+                // …then constrain an entry that is already in the store.
+                postReadHandle.get().before("first");
+                return (Labeled) () -> "warmer";
+            })
+        );
 
-        // Warm the cache first (insertion order, no constraints yet).
-        assertEquals(List.of("core", "web"),
-            ext.all().stream().map(Labeled::label).toList());
-
-        // Declare the ordering constraint after the first read.
-        postReadHandle.get().before("first");
-
-        assertEquals(List.of("web", "core"),
-            ext.all().stream().map(Labeled::label).toList(),
+        assertEquals(List.of("web", "core", "warmer"),
+            container.extension(Labeled.class).all().stream()
+                .map(Labeled::label).toList(),
             "ordering declared after the first all() must invalidate the cached order");
         container.close();
     }
@@ -216,5 +222,59 @@ class ContributionWiringTest {
         assertTrue(consumers.getFirst() instanceof NestedDepConsumerImpl);
         assertSame(container.get(NestedDep.class),
             ((NestedDepConsumerImpl) consumers.getFirst()).dep);
+    }
+
+    @Test
+    void factoryContributionGetsTheContainerAndSeesLaterModuleBindings() {
+        // The factory form is the container-aware sibling of add(Class): it
+        // must run in the same deferred phase — after every module has bound —
+        // so a service declared by a later module resolves inside the factory,
+        // and the container handed in is the container itself.
+        Container[] seen = new Container[1];
+        Container container = Freeway.create(
+            binder -> binder.contribute(Labeled.class).add("made", c -> {
+                seen[0] = c;
+                return () -> c.get(LaterDep.class) == null ? "missing" : "resolved";
+            }),
+            binder -> binder.bind(LaterDep.class).to(LaterDepImpl.class)
+        );
+        assertSame(container, seen[0]);
+        assertEquals(List.of("resolved"),
+            container.extension(Labeled.class).all().stream()
+                .map(Labeled::label).toList());
+        container.close();
+    }
+
+    @Test
+    void factoryContributionOrderingDeclaredAtBindTimeSurvivesDeferral() {
+        // Ordering declared on the handle returned at bind time must reach
+        // the real entry when the deferred instance lands in the extension.
+        Container container = Freeway.create(binder -> {
+            binder.contribute(Labeled.class).add("first", new CoreBean());
+            binder.contribute(Labeled.class).add("last", new WebBean());
+            binder.contribute(Labeled.class)
+                .add("middle", c -> (Labeled) () -> "middle")
+                .before("last");
+        });
+        assertEquals(List.of("core", "middle", "web"),
+            container.extension(Labeled.class).all().stream()
+                .map(Labeled::label).toList());
+        container.close();
+    }
+
+    @Test
+    void factoryContributionRejectsDuplicateId() {
+        // The id lands with the deferred instance, so the duplicate surfaces
+        // at container build — the same failure the instance form gives,
+        // under the same message.
+        IllegalStateException ex = assertThrows(
+            IllegalStateException.class,
+            () -> Freeway.create(binder -> {
+                binder.contribute(Labeled.class).add("taken", new CoreBean());
+                binder.contribute(Labeled.class)
+                    .add("taken", c -> (Labeled) () -> "other");
+            })
+        );
+        assertTrue(ex.getMessage().contains("taken"));
     }
 }

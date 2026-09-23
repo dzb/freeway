@@ -1,46 +1,42 @@
 package com.jujin.freeway.ioc;
 
 import com.jujin.freeway.commons.coercion.CoercerDefault;
+import com.jujin.freeway.ioc.extension.Extension;
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
-import com.jujin.freeway.ioc.symbol.UnknownSymbolException;
 import org.junit.jupiter.api.Test;
 
-import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CopyOnWriteArrayList;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * A module may bind its own primary {@link SymbolSource}. The container must then
- * hand that instance every {@link SymbolProvider} the modules contribute — boot
- * contributes the application's whole cascade (CLI, environment, config files)
- * that way, so wiring the contributions into the built-in instance instead means
- * the replacement never sees them and the loss is silent.
+ * A module may bind its own primary {@link SymbolSource}. Contributions reach
+ * the chain through one channel only — {@code contribute(SymbolProvider.class)}
+ * into the extension store — and there is no register/replay step. A
+ * replacement therefore takes the same view itself, in the factory that
+ * builds it: {@code c.extension(SymbolProvider.class)} (the pattern
+ * {@link SymbolSource#of} documents). Boot contributes the application's
+ * whole cascade (CLI, environment, config files) as contributions, so a
+ * replacement that ignores the view serves only its own tiers.
  */
 class SymbolSourceReplacementTest {
 
-    /** A replacement that records what it was asked to accept; a lookup consults
-     *  the accepted providers first and falls back to the standalone source, so
-     *  the test can see whether the container handed them over. */
-    private static final class RecordingSource implements SymbolSource {
+    /** A replacement that reads the contributed view live — the documented
+     *  pattern: consult it on every lookup, fall back to its own delegate. */
+    private static final class ViewSource implements SymbolSource {
 
-        final List<SymbolProvider> accepted = new CopyOnWriteArrayList<>();
+        private final Extension<SymbolProvider> contributed;
         private final SymbolSource delegate =
             SymbolSource.of(new CoercerDefault(), SymbolProvider.systemProperties());
 
-        @Override
-        public void register(SymbolProvider provider) {
-            accepted.add(provider);
+        ViewSource(Extension<SymbolProvider> contributed) {
+            this.contributed = contributed;
         }
 
         @Override
         public String resolve(String name) {
-            for (SymbolProvider provider : accepted) {
+            for (SymbolProvider provider : contributed.all()) {
                 String value = provider.lookup(name);
                 if (value != null) {
                     return value;
@@ -55,49 +51,48 @@ class SymbolSourceReplacementTest {
         }
     }
 
-    @Test
-    void replacedSourceReceivesEveryContributedProvider() {
-        RecordingSource replacement = new RecordingSource();
+    /** A class contribution: drains before the container is built, no facade. */
+    public static final class ClassTier implements SymbolProvider {
+        @Override
+        public String lookup(String name) {
+            return "class.tier".equals(name) ? "class-tier" : null;
+        }
 
+        @Override
+        public int order() {
+            return 7;
+        }
+    }
+
+    @Test
+    void replacedSourceSeesInstanceContributionThroughTheView() {
         Container container = Freeway.create(binder -> {
-                binder.bind(SymbolSource.class).to(c -> replacement).primary();
+            binder.bind(SymbolSource.class)
+                .to(c -> new ViewSource(c.extension(SymbolProvider.class)))
+                .primary();
             binder.contribute(SymbolProvider.class)
                 .add("test-tier", SymbolProvider.of(() -> Map.of("probe", "value"), 7));
         });
 
         assertEquals("value", container.get(SymbolSource.class).resolve("probe", null),
-            "a lookup through the container's SymbolSource must see the contributed tier");
-        assertEquals(1, replacement.accepted.size(),
-            "the container must register contributions into the resolved source,"
-                + " not only into its own built-in instance");
+            "a lookup through the replacement must see the contributed tier");
+        container.close();
     }
 
     @Test
-    void replacementThatCannotTakeContributionsFailsAtStartup() {
-        // The interface's default register() throws: a replacement that cannot
-        // take part in the contribution chain would otherwise drop the config
-        // cascade in silence, and the failure would surface much later as
-        // "my config file is ignored".
-        SymbolSource rigid = new SymbolSource() {
-            @Override
-            public String resolve(String name) {
-                throw new UnknownSymbolException(name);
-            }
+    void replacedSourceSeesClassContributionThroughTheView() {
+        // Class contributions materialize in the drain (config layer first)
+        // and land in the same store the view reads — no declaration-time
+        // facade, no post-load replay into the winner.
+        Container container = Freeway.create(binder -> {
+            binder.bind(SymbolSource.class)
+                .to(c -> new ViewSource(c.extension(SymbolProvider.class)))
+                .primary();
+            binder.contribute(SymbolProvider.class).add(ClassTier.class);
+        });
 
-            @Override
-            public String expand(String input) {
-                return input;
-            }
-        };
-
-        UnsupportedOperationException ex = assertThrows(UnsupportedOperationException.class, () ->
-            Freeway.create(binder -> {
-                binder.bind(SymbolSource.class).to(c -> rigid).primary();
-                binder.contribute(SymbolProvider.class)
-                    .add("test-tier", SymbolProvider.of(() -> Map.of("probe", "value"), 7));
-            }));
-
-        assertTrue(ex.getMessage().contains("SymbolProvider"), ex.getMessage());
-        assertTrue(ex.getMessage().contains("primary"), ex.getMessage());
+        assertEquals("class-tier", container.get(SymbolSource.class).resolve("class.tier", null),
+            "the replacement must see class-contributed providers from the same view");
+        container.close();
     }
 }

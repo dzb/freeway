@@ -42,6 +42,12 @@ class SymbolExpansionTest {
         assertEquals("${not-a-symbol}", symbols.expand("\\${not-a-symbol}"),
             "an escaped expression must not be resolved");
 
+        // An odd run longer than one drops exactly ONE backslash (the escape
+        // marker); the rest of the run stays literal. Dropping the whole run
+        // would swallow the surviving backslashes.
+        assertEquals("a \\\\${b} c", symbols.expand("a \\\\\\${b} c"),
+            "an odd multi-backslash run drops one, keeping the rest literal");
+
         // An even backslash run leaves the expression active — the backslashes
         // are literal and ${...} still resolves.
         System.setProperty(NAME_KEY, "resolved");

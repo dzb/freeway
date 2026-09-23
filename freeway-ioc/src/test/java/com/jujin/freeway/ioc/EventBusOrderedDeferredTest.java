@@ -11,7 +11,6 @@ import com.jujin.freeway.commons.scoped.Defer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -263,20 +262,20 @@ class EventBusOrderedDeferredTest {
     }
 
     @Test
-    void moduleSubscriberAddedAfterFirstPublishIsPickedUp() {
+    void moduleSubscriberContributionAfterCompositionIsRejected() {
+        // Contributions are composition-time only: the container seals the
+        // stores when the build ends, so the subscription index builds once
+        // against a frozen set. Late subscribers use bus.subscribe.
         Container container = Freeway.create(binder -> {});
         EventBus bus = container.get(EventBus.class);
-        AtomicBoolean received = new AtomicBoolean();
-
         bus.publish(new PostCreatedEvent(new Post("first"))); // builds the index
-        container.extension(EventSubscriber.class).add(
-            null,
-            EventSubscriber.of(PostCreatedEvent.class, e -> received.set(true))
-        );
-        bus.publish(new PostCreatedEvent(new Post("second")));
 
-        assertTrue(received.get(),
-            "module subscriber added after the first publish must receive event");
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+            () -> container.extension(EventSubscriber.class).add(
+                null,
+                EventSubscriber.of(PostCreatedEvent.class, e -> { })
+            ));
+        assertTrue(ex.getMessage().contains("sealed"), ex.getMessage());
         container.close();
     }
 

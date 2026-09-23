@@ -289,7 +289,7 @@ binder.bind(Cache.class).to(FastCache.class).marker(Fast.class);
 public class AppModule implements ModuleEx { ... }
 ```
 
-### Choosing Between id, primary, marker, and Contributions
+### Choosing Between id, primary, marker, and contributions
 
 These mechanisms answer different questions. The decision table:
 
@@ -514,9 +514,10 @@ The three `add` variants are deliberately distinct, not an API gap waiting for a
 `Extension.asMap()` returns only named contributions — this is by design, not a limitation. Unnamed entries serve iteration order; named entries serve identity. Forcing auto-generated ids onto unnamed entries would blur this distinction without solving a real problem.
 
 Rules:
+- Contributions are accepted only while modules bind: the container seals every extension store at the end of composition, so a held `Ordering` handle (or a direct `container.extension(X).add(...)`) after startup fails with a "sealed" error instead of silently mutating a frozen view.
 - `add(value)` preserves insertion order.
 - `add(id, value)` enables `before/after` constraints for topological ordering.
-- `add(Class)` auto-instantiates the contributed class from the container and generates a canonical id as `snake_name@package` (e.g. `email_sender@com.example.flow`). Supports `before`/`after` ordering on the returned `Contribution`.
+- `add(id, factory)` and `add(Class)` build the value in the deferred phase — after every module has bound, so construction can resolve any module's services; ordering declared on the returned handle reaches the entry when it lands. `add(Class)` generates a canonical id of `snake_name@package` (e.g. `email_sender@com.example.flow`).
 - Duplicate ids fail immediately. Generic `all()` ordering treats unknown order targets leniently — they are WARNed and ignored (a missing sibling is harmless for most extension points); strict consumers call `Extension.validateOrdering()`, which fails fast on any unknown reference (runtime-hook ordering in the boot layer does this, so a typo fails startup). Cycles fail at resolution time.
 - Constructor parameters are auto-resolved; fields require `@Inject`. (Contribution consumption via `List`/`Map` follows the same rule: constructor parameters implicit, fields explicit — see above.)
 

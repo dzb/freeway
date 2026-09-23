@@ -2,7 +2,6 @@ package com.jujin.freeway.ioc.internal;
 
 import com.jujin.freeway.commons.bean.BeanConstructor;
 import com.jujin.freeway.commons.bean.BeanIntrospector;
-import com.jujin.freeway.commons.coercion.CoerceRule;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.commons.metrics.Metrics;
@@ -25,16 +24,12 @@ import org.slf4j.LoggerFactory;
 import java.lang.annotation.Annotation;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.IdentityHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
-import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /** Default {@link Container} implementation: bindings, markers, extensions, scopes, and lifecycle. */
@@ -93,49 +88,30 @@ public final class ContainerImpl implements Container {
     private final ServiceRuntime serviceRuntime;
     /** The composition this container bound — see {@link #moduleTree()}. */
     private final ModuleNode moduleTree;
-    private final Map<Class<?>, Extension<?>> extensions = new ConcurrentHashMap<>();
-
-    /**
-     * Contribution entry types that extend a built-in service, keyed to the
-     * wiring action. Single source of truth for the wiring itself
-     * ({@link #wireContribution}): an entry type listed here is an
-     * infrastructure extension whose consumers may be constructed at any
-     * point. (On-demand declaration handling in {@link BinderImpl} currently
-     * covers {@code SymbolProvider} only — see {@link #isOnDemandContribution}.)
-     */
-    private final Map<Class<?>, Consumer<Object>> infrastructureWiring =
-        new HashMap<>();
-
-    /** Every {@link SymbolProvider} a module contributed, in declaration order —
-     *  replayed into a replacing {@link SymbolSource} once loading finishes. */
-    private final List<SymbolProvider> contributedProviders = new CopyOnWriteArrayList<>();
+    /** The contribution side of composition: DSL, stores, deferral, seal. */
+    private final ContributionRegistry contributions;
 
     public ContainerImpl(ModuleNode moduleTree) {
         this.moduleTree = Objects.requireNonNull(moduleTree, "moduleTree");
         this.coercer = new CoercerDefault();
+        this.contributions = new ContributionRegistry(this, coercer);
         // The chain's coercer lets one-step resolve(spec) parse coercer-backed
         // types (Duration, user rules) — no two-step idiom anywhere. It is the
         // container's own instance, so a contributed CoerceRule reaches the
-        // source's resolve(SymbolSpec) as well.
-        this.symbolSource = SymbolSource.of(this.coercer, SymbolProvider.systemProperties());
+        // source's resolve(SymbolSpec) as well. Contributed tiers flow into
+        // the chain live through the extension store — no install/replay step,
+        // and a module that replaces the source hands the same view to its
+        // replacement (see SymbolSource.of).
+        this.symbolSource = SymbolSource.of(
+            this.coercer,
+            () -> contributions.extension(SymbolProvider.class).all(),
+            SymbolProvider.systemProperties()
+        );
         this.loggerSource = LoggerSourceDefault.INSTANCE;
         this.proxyFactory = new ProxyFactoryImpl();
         this.injectResolver = new InjectionResolver(this);
         this.shutdown = new Shutdown(targetCache);
         this.serviceRuntime = new ServiceRuntime(this, proxyFactory, serviceCache, targetCache);
-        // Two steps, because a module may replace SymbolSource and because a
-        // module's own bindings only register after its bind body has run: the
-        // built-in instance is fed immediately (so a lookup during binding still
-        // sees earlier contributions), and the same list is replayed into
-        // whichever source wins once every module has bound — otherwise boot's
-        // whole config cascade lands in an instance nobody reads from.
-        infrastructureWiring.put(SymbolProvider.class, v -> {
-            SymbolProvider provider = (SymbolProvider) v;
-            contributedProviders.add(provider);
-            symbolSource.register(provider);
-        });
-        infrastructureWiring.put(CoerceRule.class,
-            v -> coercer.register((CoerceRule) v));
         registerBuiltin(SymbolSource.class, symbolSource, "SymbolSource");
         registerBuiltin(Metrics.class, NoopMetrics.INSTANCE, "Metrics");
         registerBuiltin(Coercer.class, coercer, "Coercer");
@@ -149,8 +125,13 @@ public final class ContainerImpl implements Container {
         // builtin. Their close is deferred past every lifecycle callback
         // (see Shutdown); a bus that was never resolved has nothing to close.
         registerBuiltinLazy(EventBus.class, EventBus::new, "EventBus");
-        new BinderImpl(this).load(moduleTree);
-        registerContributionsIntoFinalSymbolSource();
+        // Composition, in three acts: bind every module, create the deferred
+        // contributions (config layer first), then seal the contribution
+        // window — from here the extension stores are immutable and the read
+        // side needs no locks.
+        new BinderImpl(this, contributions).load(moduleTree);
+        contributions.drain();
+        contributions.seal();
         LOG.info("Loaded {} module(s):\n{}", moduleTree.bindOrder().size(), moduleTree.render());
     }
 
@@ -164,10 +145,9 @@ public final class ContainerImpl implements Container {
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public <T> Extension<T> extension(Class<T> entryType) {
         requireOpen();
-        return (Extension<T>) extensions.computeIfAbsent(entryType, k -> new Extension<>(k));
+        return contributions.extension(entryType);
     }
 
     private <T> void registerBuiltin(Class<T> type, T instance, String id) {
@@ -189,54 +169,6 @@ public final class ContainerImpl implements Container {
         binding.id(id).to(factory);
         binding.addMarkers(Set.of(Builtin.class));
         register(binding);
-    }
-
-    /**
-     * Hands every contributed {@link SymbolProvider} to the {@link SymbolSource}
-     * the container actually resolves.
-     *
-     * <p>Nothing to do when no module replaced the source — the built-in got
-     * them as they were declared. When one did, this is the first moment its
-     * binding is visible (a module's own bindings register after its {@code bind}
-     * body ran, so the declaration-time wiring above cannot see them yet). A
-     * replacement that does not implement {@link SymbolSource#register} fails
-     * here, at startup, instead of silently serving a chain without boot's tiers.
-     */
-    private void registerContributionsIntoFinalSymbolSource() {
-        if (contributedProviders.isEmpty()) {
-            return;
-        }
-        SymbolSource resolved = get(SymbolSource.class);
-        if (resolved == symbolSource) {
-            return;
-        }
-        for (SymbolProvider provider : contributedProviders) {
-            resolved.register(provider);
-        }
-    }
-
-    /**
-     * Wires a contributed value into its built-in consumer as soon as the
-     * contribution is added — independent of module order. Without this,
-     * contributions made through {@code contribute(...).add(Class)} in the
-     * same module as their consumers were never registered (wiring ran before
-     * deferred creates flushed).
-     */
-    void wireContribution(Class<?> entryType, Object value) {
-        Consumer<Object> wire = infrastructureWiring.get(entryType);
-        if (wire != null) {
-            wire.accept(value);
-        }
-    }
-
-    /**
-     * True for infrastructure extension types whose class contributions are
-     * wired on demand: {@link BinderImpl} registers a lazy facade at
-     * declaration time and the real instance is created on first lookup, so
-     * declaration order cannot break construction of earlier consumers.
-     */
-    boolean isOnDemandContribution(Class<?> entryType) {
-        return entryType == SymbolProvider.class;
     }
 
     private <T> T scopedWithin(Supplier<T> work) {
@@ -317,7 +249,7 @@ public final class ContainerImpl implements Container {
             bindingIndex.clear();
             markerIndex.clear();
             coercer.clearRules();
-            extensions.clear();
+            contributions.clear();
             // Thread-scope values are deliberately NOT unregistered here: their
             // lifecycle is bound to the scope, not the container. The global
             // ScopedCache close hook still runs PreDestroy/close when those

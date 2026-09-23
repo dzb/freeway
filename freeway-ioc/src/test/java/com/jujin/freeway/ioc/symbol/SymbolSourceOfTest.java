@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -93,21 +94,28 @@ class SymbolSourceOfTest {
     }
 
     @Test
-    void ordersTiersByDeclaredOrderAndAcceptsLaterContributions() {
+    void ordersTiersByDeclaredOrderOverALiveContributedView() {
         System.setProperty(KEY, "from-sys-props");
+        // The second of(...) overload takes the contributed view live — the
+        // same channel the container uses (its extension store). Swapping the
+        // view for a new list is what "a contribution landed" looks like from
+        // out here: the next lookup re-merges.
+        SymbolProvider files =
+            SymbolProvider.of(() -> Map.of(KEY, "from-files"), SymbolProvider.TIER_FILES);
+        var view = new AtomicReference<>(
+            List.of(files));
         SymbolSource symbols = SymbolSource.of(
             new CoercerDefault(),
-            SymbolProvider.systemProperties(),
-            SymbolProvider.of(() -> Map.of(KEY, "from-files"), SymbolProvider.TIER_FILES));
+            view::get,
+            SymbolProvider.systemProperties());
 
         assertEquals("from-sys-props", symbols.resolve(KEY),
             "the -D tier outranks a later tier regardless of assembly order");
 
-        // A standalone chain takes contributions too (this used to throw): the
-        // tier registered last still wins by declared order.
-        symbols.register(
-            SymbolProvider.of(() -> Map.of(KEY, "from-cli"), SymbolProvider.TIER_CLI));
-        assertEquals("from-cli", symbols.resolve(KEY));
+        view.set(List.of(files,
+            SymbolProvider.of(() -> Map.of(KEY, "from-cli"), SymbolProvider.TIER_CLI)));
+        assertEquals("from-cli", symbols.resolve(KEY),
+            "a tier arriving through the view still wins by declared order");
     }
 
     /** Standalone-chain parsing target: no built-in coercion exists for it. */

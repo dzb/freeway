@@ -137,13 +137,12 @@ final class InjectionResolver {
     }
 
     /**
-     * Resolves {@code List<Foo>}, {@code Map<String, Foo>}, and
-     * {@code Extension<Foo>} from the contribution mechanism. Constructor
-     * parameters consume contributions implicitly (the constructor is the
-     * single mandatory injection point — failure is loud at startup, so
-     * there is no silent-miss risk); fields require an explicit
-     * {@code @Inject}. An unannotated {@code List}/{@code Map} constructor
-     * parameter resolves to the contributed view, like any other
+     * Resolves {@code List<Foo>} and {@code Map<String, Foo>} from the
+     * contribution mechanism. Constructor parameters consume contributions
+     * implicitly (the constructor is the single mandatory injection point —
+     * failure is loud at startup, so there is no silent-miss risk); fields
+     * require an explicit {@code @Inject}. An unannotated {@code List}/{@code Map}
+     * constructor parameter resolves to the contributed view, like any other
      * contributed-typed parameter.
      *
      * <p>An explicit {@code @Inject("id")} on a {@code List}/{@code Map}
