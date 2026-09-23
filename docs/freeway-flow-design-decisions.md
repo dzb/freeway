@@ -175,7 +175,7 @@ The auto-generated id uses snake_case from the class name (`MyHandler` → `"my_
 ```
 freeway-commons         zero deps
  ├─ freeway-ioc         depends on commons
- │   ├─ freeway-http    depends on ioc (+ commons transitive)
+ │   ├─ freeway-http    depends on ioc + commons
  │   └─ freeway-flow    depends on ioc + commons
  └─ freeway-db          depends on commons (ioc optional)
 ```

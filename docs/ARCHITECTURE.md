@@ -15,8 +15,8 @@ hooks, config resolution or lifecycle should open it.
 ```
 freeway-commons         zero deps
  ├─ freeway-ioc         depends on commons
- │   ├─ freeway-boot    depends on ioc
- │   ├─ freeway-http    depends on ioc + commons
+ │   ├─ freeway-boot    depends on ioc + commons
+ │   ├─ freeway-http    depends on ioc + commons (boot is test-scope only)
  │   ├─ freeway-flow    depends on ioc + commons (no extra deps)
  │   └─ freeway-cloud   depends on ioc + commons + http (boot is test-scope only)
  └─ freeway-db          depends on commons (+ ioc, DbModule only)
