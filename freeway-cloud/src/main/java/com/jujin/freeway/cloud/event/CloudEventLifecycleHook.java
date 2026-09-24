@@ -18,12 +18,15 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * CloudEventBus lifecycle hook: arms bus-level inbound deduplication, wires
- * the hub, installs the outbound sink and starts the peer connector. Runs
- * <em>after</em> the HTTP server, because the mesh origin needs the port the
- * node actually serves on; peers that dial during the short window before
- * wiring are closed with 1013 and reconnect on their backoff. Stop removes the
- * sink and releases the connector's threads.
+ * CloudEventBus lifecycle hook: wires the hub and starts the peer connector.
+ * Runs <em>after</em> the HTTP server, because the mesh origin needs the port
+ * the node actually serves on; peers that dial during the short window before
+ * wiring are closed with 1013 and reconnect on their backoff. The outbound
+ * sink and the dedup policy are sealed contributions (see
+ * {@link CloudEventModule}), not runtime installs — this hook only sequences
+ * what truly needs the running server. Stop releases the connector's threads;
+ * the contributed sink needs no detach (the bus stops dispatching on close,
+ * and the sealed store was never mutable).
  *
  * <p>Dedup is a property of the bus, not of the mesh: it also suppresses a
  * single transport's own redeliveries (Kafka hands a record back after a
@@ -33,7 +36,7 @@ final class CloudEventLifecycleHook implements RuntimeHook {
 
     private static final Logger LOG = LoggerFactory.getLogger(CloudEventLifecycleHook.class);
 
-    private static final SymbolSpec<Integer> DEDUP_CAPACITY = SymbolSpec.of(
+    static final SymbolSpec<Integer> DEDUP_CAPACITY = SymbolSpec.of(
         CloudConfigKeys.EVENT_DEDUP_CAPACITY, Integer.class,
         CloudConfigKeys.EVENT_DEDUP_CAPACITY_DEFAULT, Integer::parseInt);
     /** The explicit form of the master switch, kept raw so "unset" (blank)
@@ -41,7 +44,7 @@ final class CloudEventLifecycleHook implements RuntimeHook {
      *  applies only to the unset case. */
     private static final SymbolSpec<String> EVENT_ENABLED_EXPLICIT = SymbolSpec.of(
         CloudConfigKeys.EVENT_ENABLED, String.class, "", Function.identity());
-    private static final SymbolSpec<Boolean> DEDUP_ENABLED = SymbolSpec.of(
+    static final SymbolSpec<Boolean> DEDUP_ENABLED = SymbolSpec.of(
         CloudConfigKeys.EVENT_DEDUP_ENABLED, Boolean.class, false);
 
     private static final SymbolSpec<String> TOKEN = SymbolSpec.of(
@@ -68,23 +71,15 @@ final class CloudEventLifecycleHook implements RuntimeHook {
             CloudConfigKeys.EVENT_BACKOFF_MAX_MS_DEFAULT, Long::parseLong);
 
     private final PeerHub hub;
-    private final CloudEventSink sink;
     private volatile PeerConnector connector;
 
-    CloudEventLifecycleHook(PeerHub hub, CloudEventSink sink) {
+    CloudEventLifecycleHook(PeerHub hub) {
         this.hub = hub;
-        this.sink = sink;
     }
 
     @Override
     public void start(Container container) {
         var symbols = container.get(SymbolSource.class);
-        EventBus bus = container.get(EventBus.class);
-
-        if (symbols.resolve(DEDUP_ENABLED)) {
-            bus.inboundDeduplication(
-                symbols.resolve(DEDUP_CAPACITY));
-        }
 
         List<String> peers = symbols.resolve(PEERS);
         if (!meshOn(symbols.resolve(EVENT_ENABLED_EXPLICIT), peers)) {
@@ -105,7 +100,7 @@ final class CloudEventLifecycleHook implements RuntimeHook {
                     + "the HTTP server, so the node's identity cannot be derived");
         }
         hub.wire(new PeerHub.Wiring(
-            bus,
+            container.get(EventBus.class),
             container.get(JsonCodec.class),
             self.serviceId(),
             self.instanceId(),
@@ -142,7 +137,6 @@ final class CloudEventLifecycleHook implements RuntimeHook {
                 .withHandshakeTimeout(Duration.ofMillis(symbols.resolve(HANDSHAKE_TIMEOUT_MS)))
                 .withBackoff(symbols.resolve(BACKOFF_BASE_MS), symbols.resolve(BACKOFF_MAX_MS))
                 .withSslContext(security == null ? null : security.sslContext()));
-        bus.addEventSink(sink);
         connector.start(peers);
     }
 
@@ -189,16 +183,13 @@ final class CloudEventLifecycleHook implements RuntimeHook {
 
     @Override
     public void stop(Container container) {
-        // Release the channel and the dialer: without this the sink stays
-        // installed on the bus and the connector's HttpClient and retry
-        // threads outlive the app.
-        try {
-            container.get(EventBus.class).removeEventSink(sink);
-        } finally {
-            if (connector != null) {
-                connector.close();
-                connector = null;
-            }
+        // Release the dialer: the connector's HttpClient and retry threads
+        // must not outlive the app. The contributed sink needs no detach —
+        // the bus rejects new publishes once closed, and post-close dispatches
+        // never consult it.
+        if (connector != null) {
+            connector.close();
+            connector = null;
         }
     }
 

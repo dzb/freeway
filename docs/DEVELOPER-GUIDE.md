@@ -2022,16 +2022,15 @@ publishing `EventBus` mints it once per dispatch and hands it to each bridge,
 rather than each bridge minting its own. When inbound dedup is armed, the
 second copy is recognized and dropped:
 
-```java
-bus.inboundDeduplication(4096);   // remember the last 4096 inbound ids
-```
-
-or declaratively, which `CloudEventModule` does on your behalf:
-
 ```properties
 freeway.cloud.event.dedup.enabled=true
 freeway.cloud.event.dedup.capacity=4096
 ```
+
+`CloudEventModule` contributes the policy at composition time (no bus call —
+transports are sealed contributions, not runtime installs). Without the module
+(or with `enabled` unset/false) dedup stays off: it changes delivery semantics
+and costs memory, so it is never a side effect.
 
 Dedup is **off by default**: it changes delivery semantics and costs memory,
 so it must not be a side effect of installing a second transport. `capacity`

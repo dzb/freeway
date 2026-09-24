@@ -2,6 +2,7 @@ package com.jujin.freeway.ioc;
 
 import java.util.Iterator;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.UUID;
 import java.util.function.Supplier;
 import org.slf4j.Logger;
@@ -15,49 +16,56 @@ import org.slf4j.LoggerFactory;
  * {@code Defer} buffering, ordered/async channels, streams); everything here
  * exists so events can cross a transport boundary — fanning out to message
  * queues, correlating copies of one event across transports, and dropping
- * redeliveries. That half grew up serving the cloud event mesh, and it reads
- * as one unit so a future move (next to its only consumer) is a file move,
- * not an excavation.
+ * redeliveries. Transports arrive as sealed contributions
+ * ({@code binder.contribute(EventSink.class)}), never as runtime installs, so
+ * this side holds no registry of its own: the contribution store's snapshot
+ * is the registry. Dedup capacity arrives the same way, as one contributed
+ * {@link EventBridgePolicy}.
  *
- * <p>Package-private: adapters talk to the bus ({@code addEventSink},
- * {@code publishInbound}, {@code inboundDeduplication}), never here directly.
+ * <p>Package-private: adapters talk to the bus ({@code publishInbound}), never
+ * here directly.
  */
 final class EventBridge {
 
     private static final Logger LOG = LoggerFactory.getLogger(EventBridge.class);
 
-    private final EventSinkRegistry sinks = new EventSinkRegistry();
+    /**
+     * The sealed contribution snapshot — stable for the bus's lifetime, released
+     * on {@link #clear()} so a closed bus keeps no module channel reachable.
+     */
+    private List<EventSink> sinks;
     private final EventStats stats;
-    /** Bounded window of recent inbound wire ids; null when dedup is off. */
-    private volatile IdWindow inboundIds;
+    /** The contributed dedup window; null when no policy (or off) was contributed. */
+    private final IdWindow inboundIds;
 
-    EventBridge(EventStats stats) {
+    EventBridge(EventStats stats, List<EventSink> sinks, List<EventBridgePolicy> policies) {
         this.stats = stats;
-    }
-
-    void add(EventSink sink) {
-        sinks.add(sink);
-    }
-
-    boolean remove(EventSink sink) {
-        return sinks.remove(sink);
-    }
-
-    /** Detaches every sink — bus close must not keep module channels reachable. */
-    void clear() {
-        sinks.clear();
+        this.sinks = List.copyOf(sinks);
+        if (policies.size() > 1) {
+            throw new IllegalStateException(
+                "Multiple EventBridgePolicy contributions — dedup capacity has one"
+                    + " answer per container; contribute exactly one policy");
+        }
+        int capacity = policies.isEmpty() ? 0 : policies.getFirst().dedupCapacity();
+        this.inboundIds = capacity > 0 ? new IdWindow(capacity) : null;
     }
 
     boolean isEmpty() {
         return sinks.isEmpty();
     }
 
+    /** Releases every sink — bus close must not keep module channels reachable. */
+    void clear() {
+        sinks = List.of();
+    }
+
     /**
-     * Fans one dispatched event out to every sink. Mints the dispatch identity
-     * here, once per fan-out, so every sink shares it — and a dispatch that
-     * never reaches a sink (no sinks, rolled back, inbound) never pays for a
-     * UUID. Inbound dispatches carry their wire id instead (never null here).
-     * A throwing sink is isolated and counted; the others still receive it.
+     * Fans one dispatched event out to every contributed sink. Mints the
+     * dispatch identity here, once per fan-out, so every sink shares it — and
+     * a dispatch that never reaches a sink (no sinks, rolled back, inbound)
+     * never pays for a UUID. Inbound dispatches carry their wire id instead
+     * (never null here). A throwing sink is isolated and counted; the others
+     * still receive it.
      */
     void fanOut(
         String topic,
@@ -66,25 +74,14 @@ final class EventBridge {
         String eventId,
         Supplier<String> label
     ) {
-        if (sinks.isEmpty()) {
-            return; // re-check: remove/clear may have raced the caller's guard
-        }
         String id = eventId != null ? eventId : UUID.randomUUID().toString();
-        for (EventSink sink : sinks.snapshot()) {
+        for (EventSink sink : sinks) {
             try {
                 sink.send(topic, payload, channel, id);
             } catch (Exception ex) {
                 stats.sinkFailure();
                 LOG.warn("Event sink failed for {}", label.get(), ex);
             }
-        }
-    }
-
-    synchronized void deduplication(int capacity) {
-        if (capacity <= 0) {
-            inboundIds = null;
-        } else if (inboundIds == null || inboundIds.capacity() != capacity) {
-            inboundIds = new IdWindow(capacity);
         }
     }
 
@@ -109,10 +106,6 @@ final class EventBridge {
 
         IdWindow(int capacity) {
             this.capacity = capacity;
-        }
-
-        int capacity() {
-            return capacity;
         }
 
         /** @return true if {@code id} was new; false if already present */

@@ -10,9 +10,9 @@ import org.slf4j.LoggerFactory;
  * into CloudEvents 1.0 frames and fans them out to live peer connections,
  * filtered by each peer's declared subscription prefixes.
  *
- * <p>Implements {@link EventSink} — installed via
- * {@code EventBus.addEventSink} by {@link CloudEventModule}'s hook when
- * enabled. Semantics: at-most-once, best-effort; a failed send is logged and
+ * <p>Implements {@link EventSink} — contributed by {@link CloudEventModule}
+ * (sealed at composition, no runtime install). Semantics: at-most-once,
+ * best-effort; a failed send is logged and
  * the connection is dropped (reconnect is the connector's job). Events
  * short-circuited by {@code Stoppable} never leave the JVM. This class never
  * blocks the publishing thread beyond a socket write.</p>
@@ -54,7 +54,7 @@ final class CloudEventSink implements EventSink {
             // loop (we dialed ourselves, or a duplicated instanceId). Peers
             // with a shared instanceId config are thus skipped — prefer
             // per-node instance ids.
-            if (peer.remoteOrigin().equals(origin)) {
+            if (EventOrigin.isOwn(origin, peer.remoteOrigin())) {
                 continue;
             }
             String type = channel == EventSink.Channel.CLASS

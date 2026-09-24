@@ -82,11 +82,16 @@ class EventBusStatsTest {
     void throwingSinkIsIsolatedAndCounted() {
         // A failing sink must not abort the fan-out (other sinks still get
         // the event) and must surface in stats(), not only in a log line.
-        Container container = Freeway.create(binder -> { });
-        EventBus bus = new EventBus(container);
         List<Object> delivered = new ArrayList<>();
-        bus.addEventSink((topic, event, channel, eventId) -> { throw new IllegalStateException("boom"); });
-        bus.addEventSink((topic, event, channel, eventId) -> delivered.add(event));
+        Container container = Freeway.create(binder -> {
+            binder.contribute(EventSink.class)
+                .add((EventSink) (topic, event, channel, eventId) -> {
+                    throw new IllegalStateException("boom");
+                });
+            binder.contribute(EventSink.class)
+                .add((EventSink) (topic, event, channel, eventId) -> delivered.add(event));
+        });
+        EventBus bus = container.get(EventBus.class);
 
         bus.publish("orders", "payload"); // topic channel
 
@@ -95,7 +100,7 @@ class EventBusStatsTest {
         assertEquals(List.of("payload"), delivered,
             "the healthy sink still receives the event after its sibling failed");
         assertEquals(0, stats.streamDrops(), "no stream involved");
-        bus.close();
+        container.close();
     }
 
     @Test

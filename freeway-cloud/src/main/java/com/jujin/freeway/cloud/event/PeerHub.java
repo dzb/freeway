@@ -7,6 +7,7 @@ import com.jujin.freeway.http.websocket.WebSocketEndpoint;
 import com.jujin.freeway.http.websocket.WebSocketListener;
 import com.jujin.freeway.http.websocket.WebSocketSession;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -380,7 +381,7 @@ public final class PeerHub implements WebSocketEndpoint {
 
     /** Dispatches one decoded wire frame through interceptors → local bus. */
     void receive(CloudEventEnvelope.Parsed frame) {
-        if (frame.origin().equals(origin)) {
+        if (EventOrigin.isOwn(origin, frame.origin())) {
             return; // our own event looped back through the mesh — drop
         }
         for (CloudEventInterceptor interceptor : interceptors) {
@@ -388,6 +389,12 @@ public final class PeerHub implements WebSocketEndpoint {
                 return; // dropped by interceptor
             }
         }
+        // The inbound trace, restored around dispatch so downstream handlers
+        // observe the sender's causality. Absent/unparseable runs bare — a
+        // traceless frame must not clear the consuming thread's ambient.
+        Map<String, String> trace = new LinkedHashMap<>();
+        trace.put(EventTrace.TRACEPARENT, frame.traceparent());
+        trace.put(EventTrace.TRACESTATE, frame.tracestate());
         if (frame.channel() == com.jujin.freeway.ioc.EventSink.Channel.CLASS) {
             // CLASS-channel frames deserialize an arbitrary class by name, so
             // the allowlist is deny-by-default: with no allowlist configured,
@@ -399,7 +406,7 @@ public final class PeerHub implements WebSocketEndpoint {
             try {
                 Class<?> type = Class.forName(frame.type(), false, getClass().getClassLoader());
                 Object event = codec.fromJson(frame.dataJson(), type);
-                bus.publishInbound(event, frame.id());
+                EventTrace.runWithTrace(trace, () -> bus.publishInbound(event, frame.id()));
             } catch (ClassNotFoundException e) {
                 LOG.debug("Event type not on this node's classpath — dropped: {}", frame.type());
             } catch (RuntimeException e) {
@@ -415,7 +422,7 @@ public final class PeerHub implements WebSocketEndpoint {
             Object payload = frame.dataJson() == null
                 ? null
                 : com.jujin.freeway.commons.json.JsonUtils.parse(frame.dataJson());
-            bus.publishInbound(frame.type(), payload, frame.id());
+            EventTrace.runWithTrace(trace, () -> bus.publishInbound(frame.type(), payload, frame.id()));
         }
     }
 

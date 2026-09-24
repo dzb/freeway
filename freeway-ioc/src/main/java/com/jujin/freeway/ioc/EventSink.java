@@ -18,6 +18,22 @@ package com.jujin.freeway.ioc;
  * the failure itself is the sink's to handle: log it and, for
  * connection-oriented transports, drop the channel so the transport can
  * reconnect, instead of surfacing raw exceptions to the publishing thread.
+ *
+ * <p><b>Reliability profiles differ per transport</b> — this interface sets
+ * the floor (isolated, counted, at-most-once past the local dispatch), each
+ * transport documents its own ceiling: the WS mesh is a volatile fabric
+ * (a failed send drops the connection and the event with it), while a
+ * broker-backed sink (Kafka) is durable (producer retries, consumer groups,
+ * poison records to a dead-letter topic). Do not assume one transport's
+ * guarantees on another's behalf.
+ *
+ * <p><b>No ordering across transports.</b> Every sink in a fan-out receives
+ * every event, but nothing orders one transport against another — an event
+ * that travels both mesh and broker arrives twice in either order (tell them
+ * apart by {@code eventId}, not by arrival). Ordering exists only inside one
+ * transport's own mechanism (e.g. a broker's per-key order for
+ * {@code Keyed} events); the local {@code publishOrdered} channel orders
+ * dispatches inside this JVM and makes no promise past it.
  */
 public interface EventSink {
 

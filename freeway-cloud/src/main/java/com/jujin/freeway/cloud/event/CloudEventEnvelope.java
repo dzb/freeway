@@ -20,7 +20,10 @@ import java.util.Objects;
  * {@code freeway://{serviceId}}; {@code id} = the dispatch identity the bus
  * minted once and handed to every transport (so the copies can be
  * correlated); extensions {@code fwchannel}/{@code fworigin} carry the
- * dispatch channel and the originating node identity.
+ * dispatch channel and the originating node identity, and — only when the
+ * sending thread holds a trace — {@code traceparent}/{@code tracestate}
+ * carry it (see {@link EventTrace}; the distributed-tracing extension
+ * attributes, restored around dispatch on receipt).
  *
  * <p><b>Why the id is a parameter, not minted here:</b> this method runs
  * once per sink per send. Minting inside it would give every copy of an
@@ -46,7 +49,9 @@ public final class CloudEventEnvelope {
         String subject,
         String origin,
         EventSink.Channel channel,
-        String dataJson
+        String dataJson,
+        String traceparent,
+        String tracestate
     ) {}
 
     /**
@@ -96,6 +101,9 @@ public final class CloudEventEnvelope {
         }
         frame.put(EXT_CHANNEL, channel.name().toLowerCase(java.util.Locale.ROOT));
         frame.put(EXT_ORIGIN, origin);
+        // The ambient trace, when the sending thread holds one — absent
+        // otherwise, so traceless publishes stay byte-identical to before.
+        frame.putAll(EventTrace.injectCurrent());
 
         frame.put("datacontenttype", "application/json");
         // Embed the event as a nested JSON value, NOT as a string — putting
@@ -136,7 +144,9 @@ public final class CloudEventEnvelope {
             frame.getString("subject"),
             java.util.Objects.requireNonNullElse(frame.getString(EXT_ORIGIN), ""),
             channel,
-            dataJson);
+            dataJson,
+            frame.getString(EventTrace.TRACEPARENT),
+            frame.getString(EventTrace.TRACESTATE));
     }
 
     private static String require(JsonObject frame, String name) {

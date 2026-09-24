@@ -7,8 +7,8 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
@@ -19,37 +19,42 @@ class EventBusSinkTest {
         // Regression: sink.send sat outside any try/catch, so a failing
         // sink escaped publish() to the caller in the immediate path while
         // the Defer path only warn-logged it — asymmetric behavior.
-        Container container = Freeway.create(
-            binder -> binder.contribute(EventSubscriber.class)
-                .add(EventSubscriber.of(PostCreatedEvent.class, e -> { }))
-        );
-        EventBus bus = new EventBus(container);
-        bus.addEventSink((topic, event, channel, eventId) -> {
-            throw new IllegalStateException("mq down");
+        Container container = Freeway.create(binder -> {
+            binder.contribute(EventSubscriber.class)
+                .add(EventSubscriber.of(PostCreatedEvent.class, e -> { }));
+            binder.contribute(EventSink.class)
+                .add((EventSink) (topic, event, channel, eventId) -> {
+                    throw new IllegalStateException("mq down");
+                });
         });
+        EventBus bus = container.get(EventBus.class);
 
         assertDoesNotThrow(() -> bus.publish(new PostCreatedEvent(new Post("x"))),
             "a failing sink must be isolated like a failing subscriber");
-        bus.close();
+        container.close();
     }
 
     @Test
-    void addEventSinkFansOutToEverySink() {
-        Container container = Freeway.create(
-            binder -> binder.contribute(EventSubscriber.class)
-                .add(EventSubscriber.of(PostCreatedEvent.class, e -> { }))
-        );
-        EventBus bus = new EventBus(container);
+    void contributedSinksFanOutToEverySink() {
         var first = new java.util.ArrayList<String>();
         var second = new java.util.ArrayList<String>();
-        bus.addEventSink((topic, event, channel, eventId) -> first.add(event.getClass().getSimpleName()));
-        bus.addEventSink((topic, event, channel, eventId) -> second.add(event.getClass().getSimpleName()));
+        Container container = Freeway.create(binder -> {
+            binder.contribute(EventSubscriber.class)
+                .add(EventSubscriber.of(PostCreatedEvent.class, e -> { }));
+            binder.contribute(EventSink.class)
+                .add((EventSink) (topic, event, channel, eventId) ->
+                    first.add(event.getClass().getSimpleName()));
+            binder.contribute(EventSink.class)
+                .add((EventSink) (topic, event, channel, eventId) ->
+                    second.add(event.getClass().getSimpleName()));
+        });
+        EventBus bus = container.get(EventBus.class);
 
         bus.publish(new PostCreatedEvent(new Post("x")));
 
         assertEquals(List.of("PostCreatedEvent"), first, "first sink sees the event");
         assertEquals(List.of("PostCreatedEvent"), second, "second sink sees the event too");
-        bus.close();
+        container.close();
     }
 
     @Test
@@ -57,18 +62,20 @@ class EventBusSinkTest {
         // A Stoppable event short-circuited by its subscribers must not leave
         // the process via the sink.
         List<String> sent = new ArrayList<>();
-        Container container = Freeway.create(
-            binder -> binder.contribute(EventSubscriber.class)
-                .add(EventSubscriber.of(PostCreatedEvent.class, e -> e.stop()))
-        );
-        EventBus bus = new EventBus(container);
-        bus.addEventSink((topic, event, channel, eventId) -> sent.add(event.getClass().getSimpleName()));
+        Container container = Freeway.create(binder -> {
+            binder.contribute(EventSubscriber.class)
+                .add(EventSubscriber.of(PostCreatedEvent.class, e -> e.stop()));
+            binder.contribute(EventSink.class)
+                .add((EventSink) (topic, event, channel, eventId) ->
+                    sent.add(event.getClass().getSimpleName()));
+        });
+        EventBus bus = container.get(EventBus.class);
 
         bus.publish(new PostCreatedEvent(new Post("x")));
 
         assertEquals(0, sent.size(),
             "a stopped event must not reach the sink");
-        bus.close();
+        container.close();
     }
 
     @Test
@@ -78,12 +85,14 @@ class EventBusSinkTest {
         // the event around the MQ indefinitely.
         List<PostCreatedEvent> received = new ArrayList<>();
         List<String> sent = new ArrayList<>();
-        Container container = Freeway.create(
-            binder -> binder.contribute(EventSubscriber.class)
-                .add(EventSubscriber.of(PostCreatedEvent.class, received::add))
-        );
-        EventBus bus = new EventBus(container);
-        bus.addEventSink((topic, event, channel, eventId) -> sent.add(event.getClass().getSimpleName()));
+        Container container = Freeway.create(binder -> {
+            binder.contribute(EventSubscriber.class)
+                .add(EventSubscriber.of(PostCreatedEvent.class, received::add));
+            binder.contribute(EventSink.class)
+                .add((EventSink) (topic, event, channel, eventId) ->
+                    sent.add(event.getClass().getSimpleName()));
+        });
+        EventBus bus = container.get(EventBus.class);
 
         bus.publishInbound(new PostCreatedEvent(new Post("remote")), "remote-1");
 
@@ -92,17 +101,19 @@ class EventBusSinkTest {
             "inbound event must be delivered to local class subscribers");
         assertEquals(0, sent.size(),
             "inbound event must never be sent back out to the MQ");
-        bus.close();
+        container.close();
     }
 
     @Test
     void inboundTopicEventIsDeliveredLocallyButNotSentToSink() {
         List<String> received = new ArrayList<>();
         List<String> sent = new ArrayList<>();
-        Container container = Freeway.create();
-        EventBus bus = new EventBus(container);
+        Container container = Freeway.create(binder -> {
+            binder.contribute(EventSink.class)
+                .add((EventSink) (topic, event, channel, eventId) -> sent.add(topic));
+        });
+        EventBus bus = container.get(EventBus.class);
         bus.subscribe("order.placed", payload -> received.add(String.valueOf(payload)));
-        bus.addEventSink((topic, event, channel, eventId) -> sent.add(topic));
 
         bus.publishInbound("order.placed", "from-remote", "remote-1");
 
@@ -110,7 +121,7 @@ class EventBusSinkTest {
             "inbound topic event must be delivered to local topic subscribers");
         assertEquals(0, sent.size(),
             "inbound topic event must never be sent back out to the MQ");
-        bus.close();
+        container.close();
     }
 
     @Test
@@ -119,16 +130,16 @@ class EventBusSinkTest {
         // class channel or the topic channel so adapters can stamp the
         // wire envelope accordingly (inbound dispatch must mirror it).
         List<EventSink.Channel> channels = new ArrayList<>();
-        Container container = Freeway.create();
-        EventBus bus = new EventBus(container);
-        bus.addEventSink(new EventSink() {
-            @Override
-            public void send(
-                String topic, Object event, EventSink.Channel channel, String eventId
-            ) {
-                channels.add(channel);
-            }
-        });
+        Container container = Freeway.create(binder ->
+            binder.contribute(EventSink.class).add(new EventSink() {
+                @Override
+                public void send(
+                    String topic, Object event, EventSink.Channel channel, String eventId
+                ) {
+                    channels.add(channel);
+                }
+            }));
+        EventBus bus = container.get(EventBus.class);
 
         bus.publish(new PostCreatedEvent(new Post("x")));
         bus.publish("order.placed", "payload");
@@ -137,64 +148,60 @@ class EventBusSinkTest {
             List.of(EventSink.Channel.CLASS, EventSink.Channel.TOPIC),
             channels,
             "class event must be sent as CLASS, topic event as TOPIC");
-        bus.close();
-    }
-
-    @Test
-    void addEventSinkIsIdempotentByIdentity() {
-        Container container = Freeway.create(binder -> { });
-        EventBus bus = container.get(EventBus.class);
-        List<String> seen = new ArrayList<>();
-        EventSink sink = (topic, event, channel, eventId) -> seen.add(topic);
-        bus.addEventSink(sink);
-        bus.addEventSink(sink);
-
-        bus.publish("t", "payload");
-
-        assertEquals(List.of("t"), seen,
-            "the same sink instance installed twice must not receive twice");
         container.close();
     }
 
     @Test
-    void removeEventSinkDetachesTheChannel() {
-        Container container = Freeway.create(binder -> { });
-        EventBus bus = container.get(EventBus.class);
+    void duplicateContributionFansOutTwice() {
+        // Contributions are values, not installs: contributing the same sink
+        // instance twice fans out twice — the same semantics as contributing
+        // the same subscriber twice. Deduplication by identity died with the
+        // runtime add/remove API.
         List<String> seen = new ArrayList<>();
         EventSink sink = (topic, event, channel, eventId) -> seen.add(topic);
-        bus.addEventSink(sink);
-
-        assertTrue(bus.removeEventSink(sink), "an installed sink is removable");
-        assertFalse(bus.removeEventSink(sink), "removing twice is a no-op");
+        Container container = Freeway.create(binder -> {
+            binder.contribute(EventSink.class).add(sink);
+            binder.contribute(EventSink.class).add(sink);
+        });
+        EventBus bus = container.get(EventBus.class);
 
         bus.publish("t", "payload");
-        assertTrue(seen.isEmpty(), "a removed sink must receive nothing: " + seen);
+
+        assertEquals(List.of("t", "t"), seen,
+            "each contribution is an independent channel, even for one instance");
         container.close();
     }
 
     @Test
-    void closeDetachesSinks() {
+    void closedBusRejectsPublish() {
+        // The detach dance died with removeEventSink: a closed transport is
+        // never touched because post-close publishes are rejected, not
+        // best-effort no-ops.
         Container container = Freeway.create(binder -> { });
         EventBus bus = container.get(EventBus.class);
         List<String> seen = new ArrayList<>();
-        bus.addEventSink((topic, event, channel, eventId) -> seen.add(topic));
+        bus.subscribe("t", payload -> seen.add(String.valueOf(payload)));
 
         bus.close();
 
-        // Removal stays callable during shutdown so a module's stop hook can
-        // release its channel.
-        assertDoesNotThrow(() -> bus.removeEventSink((topic, event, channel, eventId) -> { }));
-        assertTrue(seen.isEmpty(), "close must not leave sinks attached");
+        assertThrows(IllegalStateException.class, () -> bus.publish("t", "payload"),
+            "publishing on a closed bus must fail instead of reaching sinks");
+        assertTrue(seen.isEmpty(), "nothing dispatches after close: " + seen);
         container.close();
     }
 
     @Test
     void failingSinkDoesNotStopTheNextOne() {
-        Container container = Freeway.create(binder -> { });
-        EventBus bus = container.get(EventBus.class);
         List<String> seen = new ArrayList<>();
-        bus.addEventSink((topic, event, channel, eventId) -> { throw new IllegalStateException("down"); });
-        bus.addEventSink((topic, event, channel, eventId) -> seen.add(topic));
+        Container container = Freeway.create(binder -> {
+            binder.contribute(EventSink.class)
+                .add((EventSink) (topic, event, channel, eventId) -> {
+                    throw new IllegalStateException("down");
+                });
+            binder.contribute(EventSink.class)
+                .add((EventSink) (topic, event, channel, eventId) -> seen.add(topic));
+        });
+        EventBus bus = container.get(EventBus.class);
 
         bus.publish("t", "payload");
 
@@ -208,12 +215,13 @@ class EventBusSinkTest {
         // The whole point of the 4-arg send: an event fanned out to N
         // transports must carry ONE identity, or the copies cannot be
         // correlated by whoever receives two of them.
-        Container container = Freeway.create(binder -> { });
-        EventBus bus = container.get(EventBus.class);
         IdRecordingSink first = new IdRecordingSink();
         IdRecordingSink second = new IdRecordingSink();
-        bus.addEventSink(first);
-        bus.addEventSink(second);
+        Container container = Freeway.create(binder -> {
+            binder.contribute(EventSink.class).add(first);
+            binder.contribute(EventSink.class).add(second);
+        });
+        EventBus bus = container.get(EventBus.class);
 
         bus.publish("t", "payload");
         bus.publish(new PostCreatedEvent(new Post("x")));
@@ -222,7 +230,7 @@ class EventBusSinkTest {
         assertEquals(first.ids, second.ids,
             "both sinks must see the same ids — a fresh id per sink would "
                 + "make the two copies of one event unrelatable");
-        assertFalse(first.ids.get(0).isBlank());
+        assertTrue(!first.ids.get(0).isBlank());
         // One id per dispatch, not one per event: the two publishes differ.
         assertNotEquals(first.ids.get(0), first.ids.get(1));
         container.close();
@@ -232,10 +240,10 @@ class EventBusSinkTest {
     void sinksSeeNoIdWhenNoneCanBeFannedOut() {
         // Sanity: the id is minted per dispatch, so two publishes never
         // share one even through a single sink.
-        Container container = Freeway.create(binder -> { });
-        EventBus bus = container.get(EventBus.class);
         IdRecordingSink sink = new IdRecordingSink();
-        bus.addEventSink(sink);
+        Container container = Freeway.create(binder ->
+            binder.contribute(EventSink.class).add(sink));
+        EventBus bus = container.get(EventBus.class);
 
         bus.publish("t", "one");
         bus.publish("t", "two");

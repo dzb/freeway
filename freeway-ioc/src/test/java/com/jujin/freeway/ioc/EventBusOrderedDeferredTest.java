@@ -261,7 +261,9 @@ class EventBusOrderedDeferredTest {
         assertThrows(IllegalStateException.class,
             () -> bus.subscribe("topic", p -> {}));
         assertThrows(IllegalStateException.class,
-            () -> bus.addEventSink((t, e, c, i) -> {}));
+            () -> container.extension(EventSink.class).add(
+                "late", (EventSink) (t, e, c, i) -> {}),
+            "a contribution after composition is rejected like every other late add");
         container.close();
     }
 
@@ -303,12 +305,12 @@ class EventBusOrderedDeferredTest {
 
     @Test
     void deadEventIsNotSentToSink() {
-        Container container = Freeway.create(binder -> {});
-        EventBus bus = container.get(EventBus.class);
         List<String> sent = new ArrayList<>();
-        bus.addEventSink(
-            (topic, event, channel, eventId) -> sent.add(topic + "=" + event.getClass().getSimpleName())
-        );
+        Container container = Freeway.create(binder ->
+            binder.contribute(EventSink.class).add(
+                (EventSink) (topic, event, channel, eventId) ->
+                    sent.add(topic + "=" + event.getClass().getSimpleName())));
+        EventBus bus = container.get(EventBus.class);
 
         bus.publish(new PostCreatedEvent(new Post("x"))); // zero subscribers -> DeadEvent
 

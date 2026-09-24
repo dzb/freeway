@@ -95,11 +95,34 @@ EventBus 两处形状变化（record 规范构造器/组件类型随内容迁移
 | `Binding` 句柄在模块绑定结束后仍可 `id/marker/to/scope/primary/advise`（晚 `id` 曾孤立已实例、晚 `marker` 曾进不了索引，各由一套迁移/同步机器兜底） | 绑定随其模块的 flush 注册即封印，此后六个 DSL 方法一律 `IllegalStateException`（"is sealed — …accepted only while its module is binding"）。`BindingIndex.updateId/contains`、`ContainerImpl.syncMarkers/updateId`、`ServiceRuntime.rekey` 删除；`lateIdChangeMigratesRealizedInstance` / `markerDeclaredAfterFlushStillResolves` 翻转为拒绝断言 |
 | `@IntermediateType`（两步 coercion：先转中间类型再转目标） | 删除：自定义形状改为一条 `CoerceRule<String, T>` 从原始字符串直接解析（`Endpoint` 测试早已是此形，`Timeout` 测试随之改写）。`InjectionResolver.coerceConfiguredValue` 去 `lookup` 参数、`resolveMarkers` 跳过表减一项 |
 | `@ThreadSafe`（标记，唯一作用是"与 `@NotThreadSafe` 并存即错"与按标记解析） | 删除：`@NotThreadSafe` 独立存在即是完整契约（未标注 = 无契约不校验），冲突检查与 `MarkerIndex` 的 `ThreadSafe` 分支删除；`ScopeProxyAdvisorTest` 的冲突测试与按标记解析测试删除，`ThreadSafeGreeterImpl` 更名 `SafeGreeterImpl` 去注解；`@NotThreadSafe` javadoc 去双标注段、`InjectionResolver` 的修复建议改为"去标记/转 THREAD 作用域/换 holder" |
-| `EventBus` 门面直管桥接（sink 注册表、eventId 铸造、去重窗口、扇出循环全在 bus/dispatcher 身上） | 新包内 `EventBridge` 独占"出 JVM"一半：sink 增删清、单枚 eventId 铸造与扇出隔离计数、去重窗口与 claim；`EventBus` 只留行为相同的委托（公开签名、javadoc 语义、开闭约束一个字不动），`EventDispatcher` 改调 `bridge.fanOut`。云 mesh 长出来的语义第一次有了自己的名字——将来跟着主人走（cloud）时是文件搬家，不再是开膛。无公开变化，既有测试零改动即过 |
+| `EventBus` 门面直管桥接（sink 注册表、eventId 铸造、去重窗口、扇出循环全在 bus/dispatcher 身上） | 新包内 `EventBridge` 独占"出 JVM"一半：sink 增删清、单枚 eventId 铸造与扇出隔离计数、去重窗口与 claim；`EventBus` 只留行为相同的委托（公开签名、javadoc 语义、开闭约束一个字不动），`EventDispatcher` 改调 `bridge.fanOut`。无公开变化，既有测试零改动即过。分层定格：故事/策略/传输归 cloud（配置、policy、sink、信封本来就在），匿名机制内核（loop/window/ids，零 cloud 特有代码）留 ioc 做进程边缘——类比 commons 之于 ioc；kafka 作为 MQ 传输实现零新增依赖 |
+| `EventBus.add/removeEventSink`、`inboundDeduplication` 三个运行时织物方法（传输在 hook start 时安装、stop 时摘除、容量现调） | 传输改走密封贡献：`CloudEventModule`/`KafkaModule` 在 `bind` 期 `contribute(EventSink.class)`（mesh 经绑定复用单实例，kafka 经绑定复用单 producer——贡献工厂直 `new` 会造出第二个实例，已规避）；去重容量改走新公开 `EventBridgePolicy` 值贡献（cloud 在 drain 期用自己的 keys 填充，缺席/非正即关、两个即大声失败）。bus 脸只剩 `publishInbound` 一扇门（只有 bus 能投递给本地订阅者）。`EventSinkRegistry` 删除（扩展快照即注册表）。hook 收缩到真正的运行时（hub 接线、connector/producer 生命周期）。测试全迁贡献形（`EventSink` 是函数式接口，裸 lambda 需显式转型，编译器指路）；`remove/close-detach` 语义测试翻转为"关后发布被拒绝"与"同实例贡献两次扇出两次"；kafka 两个纯配置测试补绑 `JsonCodec` + mock-backed sink 覆盖（组合期迫切实例化把缺失从首次发布提前为组合失败，fail fast）。`DEVELOPER-GUIDE` 去重示例改设 symbols |
 | scope 校验的属主靠类型猜（`findOwnerBinding`：精确类型→接口递归→超类链） | realize 路径把属主 `BindingImpl` 穿下来读精确 scope，`create()` 传 null 回退启发式。两处行为修正（无签名变化，编译器不报警）：同类型多绑定无 primary 时 singleton 属主曾整段跳过校验（`uniqueOrNull` 吞歧义→"属主未知"→放行），现在按自己绑定的 scope 判；prototype 属主曾被实现的 singleton 接口"认领"而误拦，现在不拦。`Container.create/create/constructInstance/initialize` 与 resolver 全链加 `owner` 参数；`multiBoundSingletonOwnerDoesNotEscapeScopeValidation` / `multiBoundPrototypeOwnerIsNotJudgedByItsSingletonInterface` 各钉一条（HEAD 下双双失败） |
 
 ### Added
 
+- 事件跨 JVM 不再掐断 trace：发送线程持有 trace 时，mesh 帧盖 `traceparent`/`tracestate`
+  扩展、Kafka 记录盖 `ce-traceparent`/`ce-tracestate` 头（无 trace 则两者都不盖章，保持字节一致）；
+  收端在分发周围恢复（mesh `PeerHub.receive`、Kafka `KafkaSubscriber.processRecord`），下游 handler
+  观察到发送方的因果。复用 `TracePropagator` 的注入/抽取（与 HTTP 同一语义），收敛点是新的
+  `cloud.event.EventTrace`（静态、无状态；出站读 ambient、入站缺席/畸形跑裸——绝不清空消费线程既有
+  ambient）。只传 trace：principal/baggage 不从线包恢复（事件路径无认证，身份断言不可伪造）。
+  代价如实记录：kafka 因此依赖 `freeway-cloud`（传输增强 cloud，context 住 cloud；连带拖进 http
+  栈——只用 Kafka桥接的部署会多带用不上的 artifact）；`Parsed` 加两字段（record 变形，编译器即迁移，
+  两处测试构造点跟进）；`publishAsync/publishOrdered` 走执行器线程，trace 在提交线程采集不到——
+  异步通道的 trace 仍是缺口，单列后续。`EventTraceTest` 四条（盖章/解析/恢复/无痕不碰 ambient/畸形跑裸，
+  后三条缺一即漏语义）+ kafka 收发各一条。
+- F3（mesh 入站包 `Defer.within`，与 Kafka 消费者对齐）调查后否决：`Defer.withinScope`
+  把 drain 放在 scope 绑定之外，handler 在 drain 期观察到的是未绑定——为 mesh 加上后，
+  写出的收敛测试（handler 内断言 scope 存在）如预期变红，证实了这点；且三条入站路径
+  在 publish 点之后已无可抛之处，回滚分支事实上不可达。此时加包是零可观测差别的
+  theater，按"测不出的改不动"原则不做；Kafka 侧既有包裹保持不动（绿代码不折腾）。
+  若将来 drain 改到绑定之内，两边同等受益，届时再对齐。
+- F4/F5/F6（织物收尾，无行为变化）：自环判断三处各写一遍收成 `cloud.event.EventOrigin::isOwn`
+  （空身份永不算自己，真值表 `EventOriginTest` 三条钉住；kafka 侧同义改写）；`EventSink`
+  补"可靠性画像"与"跨传输无序"两段契约——mesh 是易失织物（失败丢连接连带丢事件），Kafka
+  是持久骨干（重试/消费组/DLQ），扇出不保证跨传输顺序（`eventId` 辨身份不辨先后，有序只存在
+  于各传输自家机制如 `Keyed` per-key）；`publishOrdered` 的"全局有序"限定为 JVM 内。
 - `SymbolSpec.orDefault(fallback)`：叠加式读取的默认由**被构建的值**给出，键表因此不必重述默认；
   `SymbolSource.resolve(spec)` 一行一键（`SymbolSpecTest` 钉住"缺省键留原值、空值留原值、存在则
   经链的 `Coercer` 解析"）。

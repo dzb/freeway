@@ -9,6 +9,7 @@ import com.jujin.freeway.commons.scoped.Defer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Inbound deduplication — the reason an event carries one identity across
@@ -18,16 +19,24 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
  * receives every event once per transport. Both copies carry the id the
  * originating bus minted, so the second arrival is recognizable and can be
  * dropped instead of delivered twice.
+ *
+ * <p>Dedup is armed at composition time, by contributing an
+ * {@link EventBridgePolicy} — there is no mid-flight toggle.
  */
 class EventBusInboundDedupTest {
 
+    /** A container whose bus carries a dedup window of the given capacity. */
+    private static Container busWithDedup(int capacity) {
+        return Freeway.create(binder ->
+            binder.contribute(EventBridgePolicy.class).add(new EventBridgePolicy(capacity)));
+    }
+
     @Test
     void secondCopyOfTheSameIdIsDropped() {
-        Container container = Freeway.create(binder -> { });
+        Container container = busWithDedup(16);
         EventBus bus = container.get(EventBus.class);
         List<String> received = new ArrayList<>();
         bus.subscribe(String.class, received::add);
-        bus.inboundDeduplication(16);
 
         // One event, two transports, one id — one delivery.
         bus.publishInbound("hello", "evt-1");
@@ -40,11 +49,10 @@ class EventBusInboundDedupTest {
 
     @Test
     void distinctIdsAreAllDelivered() {
-        Container container = Freeway.create(binder -> { });
+        Container container = busWithDedup(16);
         EventBus bus = container.get(EventBus.class);
         List<String> received = new ArrayList<>();
         bus.subscribe(String.class, received::add);
-        bus.inboundDeduplication(16);
 
         bus.publishInbound("one", "evt-1");
         bus.publishInbound("two", "evt-2");
@@ -73,15 +81,14 @@ class EventBusInboundDedupTest {
     }
 
     @Test
-    void disablingRestoresDuplicateDelivery() {
-        Container container = Freeway.create(binder -> { });
+    void zeroCapacityPolicyDisablesDedup() {
+        // Capacity is composition-time: zero (like absence) means off.
+        Container container = busWithDedup(0);
         EventBus bus = container.get(EventBus.class);
         List<String> received = new ArrayList<>();
         bus.subscribe(String.class, received::add);
 
-        bus.inboundDeduplication(16);
         bus.publishInbound("hello", "evt-1");
-        bus.inboundDeduplication(0);
         bus.publishInbound("hello", "evt-1");
 
         assertEquals(List.of("hello", "hello"), received);
@@ -89,14 +96,30 @@ class EventBusInboundDedupTest {
     }
 
     @Test
+    void duplicatePoliciesFailLoudly() {
+        // Two capacities is a composition error, not a "last wins" — the bus
+        // is built lazily, so the failure surfaces on first resolution.
+        Container container = Freeway.create(binder -> {
+            binder.contribute(EventBridgePolicy.class).add(new EventBridgePolicy(16));
+            binder.contribute(EventBridgePolicy.class).add(new EventBridgePolicy(32));
+        });
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+            () -> container.get(EventBus.class),
+            "two dedup policies must fail instead of silently picking one");
+        assertTrue(ex.getMessage().contains("Multiple EventBridgePolicy"),
+            "the error must name the cause, got: " + ex.getMessage());
+        container.close();
+    }
+
+    @Test
     void blankOrNullIdIsAlwaysDelivered() {
         // An older producer may omit the id header. There is then nothing to
         // correlate on, so the event must be delivered rather than dropped.
-        Container container = Freeway.create(binder -> { });
+        Container container = busWithDedup(16);
         EventBus bus = container.get(EventBus.class);
         List<String> received = new ArrayList<>();
         bus.subscribe(String.class, received::add);
-        bus.inboundDeduplication(16);
 
         bus.publishInbound("a", null);
         bus.publishInbound("a", null);
@@ -110,11 +133,10 @@ class EventBusInboundDedupTest {
 
     @Test
     void windowIsBounded() {
-        Container container = Freeway.create(binder -> { });
+        Container container = busWithDedup(2);
         EventBus bus = container.get(EventBus.class);
         List<String> received = new ArrayList<>();
         bus.subscribe(String.class, received::add);
-        bus.inboundDeduplication(2);
 
         bus.publishInbound("a", "id-a");
         bus.publishInbound("b", "id-b");
@@ -128,11 +150,10 @@ class EventBusInboundDedupTest {
 
     @Test
     void topicChannelDedupsToo() {
-        Container container = Freeway.create(binder -> { });
+        Container container = busWithDedup(16);
         EventBus bus = container.get(EventBus.class);
         List<String> received = new ArrayList<>();
         bus.subscribe("orders", payload -> received.add(String.valueOf(payload)));
-        bus.inboundDeduplication(16);
 
         bus.publishInbound("orders", "first", "evt-1");
         bus.publishInbound("orders", "second", "evt-1");
@@ -146,11 +167,10 @@ class EventBusInboundDedupTest {
     void localPublishesAreNeverDeduped() {
         // Only inbound traffic carries a wire id; a local publish has none,
         // so arming the window must not start swallowing local event.
-        Container container = Freeway.create(binder -> { });
+        Container container = busWithDedup(16);
         EventBus bus = container.get(EventBus.class);
         List<String> received = new ArrayList<>();
         bus.subscribe(String.class, received::add);
-        bus.inboundDeduplication(16);
 
         bus.publish("local");
         bus.publish("local");
@@ -165,11 +185,10 @@ class EventBusInboundDedupTest {
         // Defer buffer. A rollback discarded the dispatch but kept the id
         // burned, so the broker's redelivery of the same wire id was dropped
         // as a "duplicate" — permanent event loss.
-        Container container = Freeway.create(binder -> { });
+        Container container = busWithDedup(16);
         EventBus bus = container.get(EventBus.class);
         List<String> received = new ArrayList<>();
         bus.subscribe(String.class, received::add);
-        bus.inboundDeduplication(16);
 
         assertThrows(RuntimeException.class, () -> {
             Defer.within(() -> {
@@ -192,11 +211,10 @@ class EventBusInboundDedupTest {
     void committedInboundStillDedupsRedelivery() {
         // The claim merely moved later, not vanished: once the deferred
         // dispatch runs, the id is claimed and a later copy is dropped.
-        Container container = Freeway.create(binder -> { });
+        Container container = busWithDedup(16);
         EventBus bus = container.get(EventBus.class);
         List<String> received = new ArrayList<>();
         bus.subscribe(String.class, received::add);
-        bus.inboundDeduplication(16);
 
         Defer.within(() -> bus.publishInbound("hello", "evt-1"));
         bus.publishInbound("hello", "evt-1"); // duplicate after commit
@@ -208,13 +226,10 @@ class EventBusInboundDedupTest {
 
     @Test
     void nonPositiveCapacityDisablesInsteadOfRejecting() {
-        Container container = Freeway.create(binder -> { });
+        Container container = busWithDedup(-1);
         EventBus bus = container.get(EventBus.class);
         List<String> received = new ArrayList<>();
         bus.subscribe(String.class, received::add);
-
-        bus.inboundDeduplication(16);
-        bus.inboundDeduplication(-1);
 
         bus.publishInbound("hello", "evt-1");
         bus.publishInbound("hello", "evt-1");

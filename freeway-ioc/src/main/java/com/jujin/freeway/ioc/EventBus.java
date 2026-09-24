@@ -77,35 +77,16 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
         // Metrics is a container builtin (NoopMetrics by default) — always
         // resolvable; a contributed/primary implementation observes the bus.
         this.stats = new EventStats(container.get(Metrics.class));
-        this.bridge = new EventBridge(stats);
+        // Transports and the dedup policy arrive as sealed contributions —
+        // the store below never changes again, so the snapshot is the registry.
+        // The bus is built lazily on first resolution, always after composition.
+        this.bridge = new EventBridge(
+            stats,
+            container.extension(EventSink.class).all(),
+            container.extension(EventBridgePolicy.class).all());
         this.subscriptions = new EventSubscriptionIndex(container);
         this.dispatcher = new EventDispatcher(this, subscriptions, bridge, stats);
         this.executors = new EventExecutorSupport(this::requireOpen);
-    }
-
-    /** Adds a sink alongside existing ones — every sink receives every
-     *  outbound event (design: fan-out to N channels, e.g. WS mesh + Kafka
-     *  broker simultaneously).
-     *
-     *  <p>Idempotent by identity: installing the same instance twice does not
-     *  deliver the event twice. Distinct instances stay independent, so two
-     *  brokers (or one sink per channel) still fan out side by side.
-     *
-     *  @throws IllegalStateException if the bus is closed */
-    public void addEventSink(EventSink sink) {
-        requireOpen();
-        Objects.requireNonNull(sink, "sink");
-        bridge.add(sink);
-    }
-
-    /** Detaches a sink previously installed by {@link #addEventSink}
-     *  (matched by identity). Allowed after {@link #close()} so a module's
-     *  stop hook can release its channel during shutdown.
-     *
-     *  @return {@code true} if the sink was installed and is now detached */
-    public boolean removeEventSink(EventSink sink) {
-        Objects.requireNonNull(sink, "sink");
-        return bridge.remove(sink);
     }
 
     // ==================== class-based publish ====================
@@ -236,10 +217,6 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
      * @param capacity bound on the number of remembered ids; zero or negative
      *                 disables deduplication
      */
-    public void inboundDeduplication(int capacity) {
-        bridge.deduplication(capacity);
-    }
-
     private void deferOrRun(boolean defer, Runnable action) {
         if (defer) {
             Defer.defer(action);
@@ -287,9 +264,11 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
      * inside one {@code Defer} scope drain in call order and are dispatched
      * in that same order after the scope commits.
      *
-     * <p>Ordering is global: any two ordered events are ordered relative to
-     * each other. Subscriber failures are isolated and counted, never
-     * propagated to the submitter.
+     * <p>Ordering is global <em>inside this JVM</em>: any two ordered events
+     * are ordered relative to each other here, but the channel makes no
+     * promise past it — see the ordering note on {@link EventSink}.
+     * Subscriber failures are isolated and counted, never propagated to the
+     * submitter.
      */
     public void publishOrdered(Object event) {
         Objects.requireNonNull(event, "event");
@@ -467,9 +446,9 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
         if (!closed.compareAndSet(false, true)) {
             return;
         }
-        // Detach every sink: a closed bus must not keep module channels
-        // (and their sockets) reachable, and post-close publishes are
-        // best-effort no-ops anyway.
+        // Release the contributed sinks: a closed bus must not keep module
+        // channels (and their sockets) reachable, and post-close publishes
+        // are best-effort no-ops anyway.
         bridge.clear();
         subscriptions.clearRuntime();
         // Broadcast semantics: post-close publishes are silent no-ops — a
