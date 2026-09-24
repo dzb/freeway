@@ -9,7 +9,7 @@ crosses a process boundary only where the code says so, on a named plane.
 │  Node A  (publisher)       │  ────────────────────────────────►  │  Node B  (subscriber)      │
 │  port 18081                │        /cloud/event                 │  port 18080                │
 │                            │                                     │  CloudEventBus subscription│
-│  fabric.publish(...)  ─────┼──── crosses the boundary ───►       │    → mirror line            │
+│  CloudEventBus.publish(…)  ┼──── crosses the boundary ───►       │    → mirror line            │
 │  bus.publish(...)     stays HERE                                 │  EventBus subscriber ──►   │
 └────────────────────────────┘                                     └────────────────────────────┘
 ```
@@ -25,7 +25,7 @@ and **mirrors it to its local bus on purpose** — one line, in the handler.
 | Capability | Where it shows |
 |---|---|
 | Plane separation: a local publish never crosses | `bus.publish` on A prints only on A — no peer receives it |
-| Explicit cross-JVM broadcast | `fabric.publish("greet.hello", …)` arrives on B |
+| Explicit cross-JVM broadcast | `CloudEventBus.publish("greet.hello", …)` arrives on B |
 | Subscriptions are declared, not configured | B contributes a `CloudEventSubscription` — the same declaration drives the hello pull-prefix, the inbound gate, and delivery |
 | The subscription table **is** the allowlist | the declared `Class` is the only type inbound frames deserialize into; undeclared topics are dropped unread |
 | Remote facts become local facts only by mirroring | B's subscription handler calls `bus.publish(event)` — deliberate, visible, one line |

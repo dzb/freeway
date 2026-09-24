@@ -116,9 +116,10 @@ compile errors point the way. The three that need knowing rather than grepping:
 mesh upgrades are fleet-wide (same-version nodes only, legacy in-flight frames
 decode but drop with a counted trace), framework lifecycle events no longer
 ride any wire (they were bridge traffic; mirror them if you actually wanted
-them on the fabric), and `EventBusStats` lost its `sinkFailures` component —
-per-plane stats now, no merged view across planes with different delivery
-promises.
+them on the fabric), and `EventBusStats` is per-plane only — no merged view
+across planes with different delivery promises (it gained `streamDrops`; the
+bridge-era `sinkFailures` counter died with the bridge before release and
+never shipped).
 
 ## Numbers
 

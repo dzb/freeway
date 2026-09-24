@@ -1987,10 +1987,10 @@ one declaration drives the hello pull-prefixes, the inbound gate, and delivery.
 string chosen at the call site; Java class names never go on the wire:
 
 ```java
-@Inject CloudEventBus fabric;
+@Inject CloudEventBus mesh;
 
-fabric.publish("order.created", new OrderCreated("order-42"));
-fabric.publish("metrics.tick", report, "tenant-7");   // optional subject (ordering hint)
+mesh.publish("order.created", new OrderCreated("order-42"));
+mesh.publish("metrics.tick", report, "tenant-7");   // optional subject (ordering hint)
 ```
 
 `publish` is Defer-aware: inside a transaction the frame is buffered until
