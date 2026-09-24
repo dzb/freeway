@@ -318,7 +318,7 @@ final class PeerConnector implements AutoCloseable {
      * open, consumes the ack (registers the connection with the peer's own
      * subscriptions), then feeds CE frames into the hub's inbound pipeline.
      * A lost session is re-dialed unless the hub still serves that origin
-     * (duplicate resolution); the sink's failed-send drop re-dials too.
+     * (duplicate resolution); the plane's failed-send drop re-dials too.
      */
     private final class ClientSessionHandler implements WebSocket.Listener {
         private final PeerAddress peer;
@@ -473,7 +473,7 @@ final class PeerConnector implements AutoCloseable {
                 // followed by a re-dial is decided by handleDisconnect from
                 // the hub registry (the origin may still be served by the
                 // duplicate-resolution twin) — not by who invoked close():
-                // the sink's send-failure drop unregisters first and expects
+                // the plane's send-failure drop unregisters first and expects
                 // the connector to dial again.
                 this::abort);
             // Ack accepted — from here on frames are CE, and a second hello
