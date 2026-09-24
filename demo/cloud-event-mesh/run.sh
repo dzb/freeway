@@ -6,7 +6,7 @@
 #   ./run.sh --no-build # skip the maven package step
 #
 # Requires: JDK 25 and a local Maven repo with matching freeway
-# 1.5.5-SNAPSHOT artifacts installed (mvn install in the freeway repo root
+# 1.5.5 artifacts installed (mvn install in the freeway repo root
 # first). No broker needed — this demo is the WS mesh plane only.
 set -euo pipefail
 # The JVM inherits the console code page (GBK on a zh-CN host), which

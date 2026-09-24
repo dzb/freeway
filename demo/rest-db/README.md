@@ -38,7 +38,7 @@ when composing a new app.
 
 ## Prerequisites
 
-The demo resolves `com.jujin8.freeway:*:1.5.5-SNAPSHOT` from the local
+The demo resolves `com.jujin8.freeway:*:1.5.5` from the local
 repository — install the core once from the repository root:
 
 ```bash

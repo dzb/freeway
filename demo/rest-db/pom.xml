@@ -18,17 +18,17 @@
         <dependency>
             <groupId>com.jujin8.freeway</groupId>
             <artifactId>freeway-boot</artifactId>
-            <version>1.5.5-SNAPSHOT</version>
+            <version>1.5.5</version>
         </dependency>
         <dependency>
             <groupId>com.jujin8.freeway</groupId>
             <artifactId>freeway-http</artifactId>
-            <version>1.5.5-SNAPSHOT</version>
+            <version>1.5.5</version>
         </dependency>
         <dependency>
             <groupId>com.jujin8.freeway</groupId>
             <artifactId>freeway-db</artifactId>
-            <version>1.5.5-SNAPSHOT</version>
+            <version>1.5.5</version>
         </dependency>
         <dependency>
             <groupId>com.h2database</groupId>

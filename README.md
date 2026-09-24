@@ -19,7 +19,7 @@ every API deliberate, every concept pulling its weight. In an ecosystem where
 ceremony is often mistaken for rigor, Freeway bets that **clarity, simplicity, and
 good taste** still have a place.
 
-**Latest release: 1.5.3** — [Release notes](docs/RELEASE-NOTES-1.5.3.md) · [Changelog](CHANGELOG.md)
+**Latest release: 1.5.5** — [Release notes](docs/RELEASE-NOTES-1.5.5.md) · [Changelog](CHANGELOG.md)
 
 | Module | Description                                               |
 |-------------------------|------------------------------------------------------|
@@ -353,7 +353,7 @@ Extensions are released to Maven Central alongside the core at the same version.
 <dependency>
     <groupId>com.jujin8.freeway</groupId>
     <artifactId>freeway-mq-kafka</artifactId>
-    <version>1.5.3-SNAPSHOT</version>
+    <version>1.5.5</version>
 </dependency>
 ```
 
