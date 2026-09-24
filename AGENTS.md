@@ -30,12 +30,12 @@ adapters (Undertow/Jetty engines, HikariCP, Kafka) live in
 | Module | Purpose | Module dependencies |
 |--------|---------|---------------------|
 | `freeway-commons` | JSON, coercion, defer, scoped cache, validation, logging | — |
-| `freeway-ioc` | Container, binding DSL, scopes, injection, extensions, symbol config | commons |
+| `freeway-ioc` | Container, binding DSL, scopes, injection, extensions, symbol config, in-process event bus | commons |
 | `freeway-boot` | Launcher, runtime lifecycle, profiles, config cascade (hot reload) | ioc + commons |
 | `freeway-http` | Routing, built-in HTTP engine, WebSocket, SSE | ioc + commons (+ boot, test) |
 | `freeway-db` | JDBC, ORM, pooling, transactions, migrations | commons (+ ioc, DbModule only) |
 | `freeway-flow` | Graph workflow engine — 7 node types, v3 DAG format (boot-validated), task vocabulary, branch isolation | ioc + commons |
-| `freeway-cloud` | Cloud-native foundation — discovery, remote invocation (JDK HttpClient), observability, resilience, health, secrets, storage | ioc + commons + http (+ boot, test) |
+| `freeway-cloud` | Cloud-native foundation — discovery, remote invocation (JDK HttpClient), event fabric (`CloudEventBus`), observability, resilience, health, secrets, storage | ioc + commons + http (+ boot, test) |
 
 No module adds an external dependency beyond SLF4J 2.0.18 (declared explicitly
 by every module that logs — currently all but `ioc`, which inherits it

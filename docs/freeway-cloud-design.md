@@ -123,7 +123,7 @@ com.jujin.freeway.cloud
 ```
 
 可见性是刻意的：`internal/` 里的类型可以 `public`（跨包装配需要），但不在
-稳定性承诺内；反过来 `PeerConnector` / `CloudEventSink` / `RpcTarget` /
+稳定性承诺内；反过来 `PeerConnector` / `RpcTarget` /
 `RpcExportHook` / `RpcPaths` 是**包内实现**，`PeerHub` / `PeerConnection`
 是 public 的**检视面**（运维与测试读连接状态），不是扩展点。
 
@@ -153,7 +153,7 @@ start:
   freeway.cloud.secret / storage / resilience                     只做启动期校验，无排序约束
 
 stop（逆序）:
-  freeway.cloud.event             摘 sink、关连接（1001 going away）
+  freeway.cloud.event             停拨号器、关连接（1001 going away）
   freeway.cloud.registry          先摘流量（deregister），按 shutdown-drain 留传播窗口（auto = 问注册表后端）
   RPC 传输                         等待在途调用（shutdown-grace）
   freeway.http.server             关服务器
@@ -352,10 +352,11 @@ POST，幂等性由 consumer 接口的 `@Idempotent`（方法级或接口级）�
 
 ### 5.3 跨节点事件 events
 
-立场：**本地派发不变**。`EventBus` 依旧是进程内广播 + 流的主通道，事件网格
-只是它的一个 `EventSink`（出站）与一个入站漏斗（进站），不改变本地语义。
-跨节点是**至多一次（at-most-once）**，并如实说明——不做 ack/重投，需要
-可靠投递时用 MQ（ext 的 `freeway-mq-kafka`）。
+立场：**平面分离**。`EventBus` 是进程内广播 + 流的主通道，不知道有任何传输；
+跨节点广播是 `CloudEventBus` 门面（出站 `publish`、入站投递到门面的订阅表），
+一条事实是否出境由调用点决定。跨节点是**至多一次（at-most-once）**，并如实
+说明——不做 ack/重投；需要可靠、按键有序投递时用 Kafka 平面（ext 的
+`freeway-mq-kafka`，`KafkaEvents`）。
 
 **连接与握手**（`WS /cloud/event`，子协议 `freeway.event.v1`）：
 
@@ -387,31 +388,28 @@ POST，幂等性由 consumer 接口的 `@Idempotent`（方法级或接口级）�
 host+port；同一 origin 只保留一条连接，规则是**字典序小的一方发起的连接胜出**
 （两侧同规则，同时拨号必然收敛到一条）。
 
-**出站管道**：`EventBus` publish → `CloudEventSink` → 按 peer 的订阅前缀
-过滤 → 逐连接发送。发送失败即丢弃该帧并触发重拨；**没有背压**（发布线程
-直接扇出，慢 peer 不阻塞发布方）。
+**出站管道**：`CloudEventBus.publish(topic, payload[, subject])`（Defer 感知：
+事务内缓冲，提交后才出境，回滚即弃）→ 按 peer 声明的订阅前缀过滤（filter-then-
+translate：无人感兴趣就不序列化）→ 逐连接发送。发送失败即丢弃该帧并触发重拨；
+**没有背压**（发布线程直接扇出，慢 peer 不阻塞发布方）。
 
-**入站管道**：`PeerHub.receive` → 拦截器（`CloudEventInterceptor`，可丢弃）
-→ 渠道门禁 → `EventBus.publishInbound`。本地来源的事件（origin = 自己）
-直接丢弃，避免网格回环。
+**入站管道**：帧解析（CloudEvents 1.0，`fwchannel`/`fworigin` 扩展属性）→
+origin 自环抑制 → 拦截器链 → 门面订阅表匹配。订阅声明的 `Class` 即入站白名单：
+未匹配任何订阅的 topic **不反序列化即弃**，未声明的类永不上反射。在途的旧桥
+CLASS 帧照解析、按 channel 弃投并计数（`stats().droppedLegacy()`）。本地来源的事件
+（origin = 自己）直接丢弃，避免网格回环。
 
-| 渠道 | 门禁 |
-|---|---|
-| CLASS（按类名反序列化） | 白名单**默认拒绝**：未配置则不解析任何类，永不回落到"接受任意类型" |
-| TOPIC（peer 自带 topic + payload） | 白名单为空 = 接受任意 topic；非空则按前缀匹配 |
+门禁不再是配置键对：订阅表本身就是白名单——topic 未匹配任何订阅即弃且不
+反序列化，"空白名单接受一切 / 空 CLASS 白名单拒绝一切"两种松散姿态随之
+消失，启动告警只剩 token 一项（无 token = 任何能连上的 peer 都可连）。
 
-入站节点若声明了订阅，启动时对松散姿态逐条告警：无 CLASS 白名单（该渠道
-事件被丢弃）、无 TOPIC 白名单（接受任意 topic）、无 token（任何能连上的
-peer 都可连）。
-
-**去重**：事实的 id 由 bus 铸造并随帧携带；`EventBus` 的入站窗口按 id 去重，
-由 `freeway.cloud.event.dedup.enabled` 打开（默认关，键与容量见
-`docs/freeway-config.md`）。去重**不是拦截器**——它放在每个传输都要经过的
-那一个漏斗（`publishInbound`）上，否则同一条事件经多条传输到达时会漏判。
+**去重已随桥退役**：一个事件不再有"经多传输的多副本"——平面分离后 mesh 帧只
+进门面订阅表，mesh 本身 at-most-once 无重投，kafka 的 at-least-once 幂等归消费者
+业务键。共享 id、去重窗口与 `dedup.*` 键整体删除；跨平面相关性不是框架职责。
 
 **装配与关停**：`CloudEventModule` 显式安装；`freeway.cloud.event.enabled`
 显式 true/false 优先，未设时"配了 peers"即为开启，什么都不设则模块保持
-惰性（装模块本身不产生副作用）。停机时先摘 sink 再关连接，出站连接发
+惰性（装模块本身不产生副作用）。停机时停拨号器再关连接，出站连接发
 `1001 going away`，并留出极短的关帧窗口，不让容器关闭等一个已经走掉的 peer。
 
 ### 5.4 可观测性 observe
@@ -609,7 +607,11 @@ API**，遵循 `Database`/`Pool` 模式，并发交给虚拟线程。
   组合（绑定）里。曾有一版 `CallBus`（topic 寻址的调用总线 + 本地未命中自动
   跨进程）与配套的 `CallBridge` / `RemoteProxyFactory.localFirst()`，因概念
   膨胀且把"调用去哪儿"藏进运行期而整体删除，`freeway-ioc` 里也没有为它准备
-  的桥接缝。
+  的桥接缝。**广播域的同型接缝已于 1.5.5 按同一判例拆除**：本地
+  `EventBus.publish` 曾按模块装载悄悄出境（`EventSink` 扇出桥 + `publishInbound`
+  入站漏斗 + `@Topic` 类型路由注解——本文件同节"不做路由注解"条目的违例者），
+  现总线不知传输、云生广播走显式 `CloudEventBus`、持久流走 `KafkaEvents`，
+  `freeway-ioc` 与 `freeway-cloud` 之间不再有事件桥接缝。
 - **注解路由 / `@CloudClient` 透明 bean / `CloudExporter` 自动导出 / `@CloudEvent`
   注解实体**：导出、调用与事件路由都是显式声明，不往业务类型上挂路由注解，
   也不做注解驱动的自动注册。
@@ -658,7 +660,7 @@ API**，遵循 `Database`/`Pool` 模式，并发交给虚拟线程。
 | 对象存储后端（S3 兼容） | `ObjectStorage` | 版本能力与版本寻址的读/删一起排期，不要只交一半 |
 | 指标导出（OTel/Prometheus push） | 不装 `CloudObserveModule`，primary 绑定 `Metrics` + 自备导出路由 | 顺带把 §8.2 的标签维度一起设计 |
 | trace 导出（OTLP） | 同上（`Tracer`） | `tracestate` 已透传，`TraceContext` 够用 |
-| Kafka 事件桥 | `EventSink`（`freeway-mq-kafka` 已在 ext） | 可靠投递走它，不是网格 |
+| Kafka 持久流平面 | `KafkaEvents`（`freeway-mq-kafka` 已在 ext） | 可靠投递走它，不是网格 |
 
 ### 8.2 已评估、待排期
 
@@ -702,3 +704,4 @@ API**，遵循 `Database`/`Pool` 模式，并发交给虚拟线程。
 | 2026-09-12 | 配置面审计：`registry.service-scheme` / `service-host` / `shutdown-drain` 默认改为 `auto`（分别跟随 HTTP 服务器 TLS、推导可路由地址、由注册表后端回答），网格拨号方案改读解析出的实例端点；布尔键统一 `Coercer` 解析（垃圾值启动失败，不再静默 `false`）；override 文件重复键启动告警点名两个文件；新增 `HttpServer.secure()` 与 `ServiceRegistry.drainWindow()` |
 | 2026-09-12 | 文档合并：本文取代 `freeway-cloud-unified-design.md` / `freeway-cloud-events-design.md` / `freeway-cloud-rpc-design.md` / `freeway-cloud-implementation-plan.md`；四份文档仍然有效的排除项与能力边界（无应用层心跳、MQ 语义、全局成员视图、webhook 出站、`@CloudEvent` 注解实体）与 core 后续项（含 `Advisor` 织入、网格心跳）并入 §5 / §7 / §8；配置键清单移出为对 `docs/freeway-config.md` 的索引 |
 | 2026-09-14 | 兼容不再是目标：`AGENTS.md` 的可选输入规则删除"记录作为适配器装配点保留旧 arity 委托构造器"（上一轮 09-12 写入）——新增组件直接改变规范构造器形状，编译错误即迁移路径；随之删除 `CloudHttpClientDefault.Wiring` 的 9 参兼容构造（ext `RemoteRpcContract` 同批改传 10 参）与 `freeway-log.properties` 的过渡读取（旧名只检测、告警，不加载） |
+| 2026-09-24 | 广播域平面分离：拆除 `EventSink` 桥——`EventBridge`/`EventBridgePolicy`/`EventBusInbound`/`@Topic`/`Keyed` 删除，`subscriptions`/`allowed-types`/`allowed-topics`/`dedup.*` 四键退役；`CloudEventBus` 显式门面（`publish` topic 定址、Defer 提交耦合、订阅申报-only 且订阅表=入站闸门）；ext kafka 改独立平面 `KafkaEvents`；在途 CLASS 帧解析后按因弃投并计数，wire 格式不变 |

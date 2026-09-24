@@ -637,14 +637,7 @@ CLI 参数（`--freeway.config.file=...`）同样无效——启动时会打 WAR
       "event": {
         "enabled": false,
         "peers": "",
-        "subscriptions": "",
-        "allowed-types": "",
-        "allowed-topics": "",
         "token": "",
-        "dedup": {
-          "enabled": false,
-          "capacity": 4096
-        },
         "connect-timeout-ms": 3000,
         "handshake-timeout-ms": 10000,
         "backoff-base-ms": 1000,
