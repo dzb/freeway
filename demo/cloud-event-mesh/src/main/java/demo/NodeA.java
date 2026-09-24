@@ -5,7 +5,7 @@ import com.jujin.freeway.cloud.CloudConfigKeys;
 import com.jujin.freeway.cloud.event.CloudEventModule;
 import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.HttpModule;
-import com.jujin.freeway.ioc.EventBus;
+import com.jujin.freeway.ioc.event.EventBus;
 import com.jujin.freeway.mq.kafka.KafkaModule;
 
 /**

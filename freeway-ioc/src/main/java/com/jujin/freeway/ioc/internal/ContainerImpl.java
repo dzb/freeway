@@ -8,7 +8,7 @@ import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.commons.metrics.NoopMetrics;
 import com.jujin.freeway.commons.scoped.ScopedCache;
 import com.jujin.freeway.ioc.Container;
-import com.jujin.freeway.ioc.EventBus;
+import com.jujin.freeway.ioc.event.EventBus;
 import com.jujin.freeway.ioc.LoggerSource;
 import com.jujin.freeway.ioc.MissingBindingException;
 import com.jujin.freeway.ioc.ModuleNode;

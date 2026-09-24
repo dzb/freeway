@@ -1,7 +1,8 @@
-package com.jujin.freeway.ioc;
+package com.jujin.freeway.ioc.event;
 
 import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.commons.scoped.Defer;
+import com.jujin.freeway.ioc.Container;
 
 import java.util.Objects;
 import java.util.concurrent.Executor;
@@ -196,26 +197,10 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
     }
 
     /**
-     * Configures inbound deduplication: an inbound event whose wire id has
-     * already been claimed is dropped, so an event that reaches this node over
-     * two transports is delivered once.
-     *
-     * <p>Off by default: dedup changes delivery semantics and costs memory,
-     * so it is a deliberate opt-in rather than a side effect of installing a
-     * second transport. A positive {@code capacity} bounds the window — the
-     * last {@code capacity} ids are remembered, roughly "how far back two copies
-     * of the same event may be spread". Too small a window lets a slow
-     * second copy through; too large one costs memory for nothing. Zero or
-     * negative turns deduplication off and releases the window.
-     *
-     * <p>Ids are claimed at dispatch time — inside the deferred action when
-     * a {@code Defer} scope buffers the publish — so a rollback leaves the
-     * id unclaimed and the broker's redelivery is accepted. Two copies race
-     * freely at dispatch; whichever claims first wins and the other is
-     * dropped.</p>
-     *
-     * @param capacity bound on the number of remembered ids; zero or negative
-     *                 disables deduplication
+     * Runs {@code action} inside the active {@code Defer} scope when asked to
+     * defer, immediately otherwise — the one seam where a publish waits for a
+     * commit (and where inbound ids are claimed, so a rollback leaves the
+     * wire id unclaimed).
      */
     private void deferOrRun(boolean defer, Runnable action) {
         if (defer) {
@@ -234,6 +219,15 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
      * <p>Ownership: a caller-supplied executor is <b>never</b> closed by the
      * bus — its lifecycle stays with the installer. Only the bus-created
      * defaults are shut down (bounded wait) on {@link #close()}.</p>
+     *
+     * <p><b>Deliberately a runtime setter, not a contribution.</b> Everything
+     * else that used to be installed on the bus at runtime (transports, dedup
+     * capacity) is a sealed composition-time contribution; an executor is the
+     * documented exception because it is a <em>swappable operational
+     * handle</em> with its own lifecycle — replaceable while the bus runs,
+     * owned (and shut down) by whoever created it. Composition-time data
+     * cannot express either half of that. Runtime {@code subscribe} is the
+     * other documented post-composition operation.</p>
      */
     public void setAsyncExecutor(Executor executor) {
         requireOpen();

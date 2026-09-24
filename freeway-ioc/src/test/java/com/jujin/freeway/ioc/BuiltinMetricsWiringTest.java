@@ -1,5 +1,7 @@
 package com.jujin.freeway.ioc;
 
+import com.jujin.freeway.ioc.event.*;
+
 import com.jujin.freeway.commons.metrics.Metrics;
 import org.junit.jupiter.api.Test;
 

@@ -8,7 +8,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
 
 import com.jujin.freeway.ioc.Container;
-import com.jujin.freeway.ioc.EventBus;
+import com.jujin.freeway.ioc.event.EventBus;
 import com.jujin.freeway.ioc.Freeway;
 import com.jujin.freeway.ioc.annotation.PreDestroy;
 

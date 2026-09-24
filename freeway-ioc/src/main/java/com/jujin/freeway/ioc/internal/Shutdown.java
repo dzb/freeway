@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import com.jujin.freeway.ioc.EventBus;
+import com.jujin.freeway.ioc.event.EventBus;
 
 final class Shutdown {
     /**

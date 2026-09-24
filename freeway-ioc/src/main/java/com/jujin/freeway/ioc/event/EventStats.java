@@ -1,4 +1,4 @@
-package com.jujin.freeway.ioc;
+package com.jujin.freeway.ioc.event;
 
 import com.jujin.freeway.commons.metrics.Metrics;
 import java.util.concurrent.atomic.LongAdder;

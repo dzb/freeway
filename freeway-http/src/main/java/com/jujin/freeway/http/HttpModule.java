@@ -37,7 +37,7 @@ import com.jujin.freeway.http.websocket.WebSocketIndex;
 import com.jujin.freeway.http.websocket.WebSocketRoute;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
-import com.jujin.freeway.ioc.EventBus;
+import com.jujin.freeway.ioc.event.EventBus;
 import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.RuntimeHook;
 import com.jujin.freeway.ioc.annotation.Builtin;

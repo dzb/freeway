@@ -2,8 +2,8 @@ package com.jujin.freeway.cloud.event;
 
 import com.jujin.freeway.commons.json.JsonCodecDefault;
 import com.jujin.freeway.ioc.Container;
-import com.jujin.freeway.ioc.EventSink;
-import com.jujin.freeway.ioc.EventBus;
+import com.jujin.freeway.ioc.event.EventSink;
+import com.jujin.freeway.ioc.event.EventBus;
 import com.jujin.freeway.ioc.Freeway;
 
 import java.util.ArrayList;

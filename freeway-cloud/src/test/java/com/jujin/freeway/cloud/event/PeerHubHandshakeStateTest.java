@@ -11,7 +11,7 @@ import com.jujin.freeway.http.websocket.WebSocketListener;
 import com.jujin.freeway.http.websocket.WebSocketRoute;
 import com.jujin.freeway.http.websocket.WebSocketSession;
 import com.jujin.freeway.ioc.Binder;
-import com.jujin.freeway.ioc.EventBus;
+import com.jujin.freeway.ioc.event.EventBus;
 import com.jujin.freeway.ioc.ModuleEx;
 
 import java.net.URI;

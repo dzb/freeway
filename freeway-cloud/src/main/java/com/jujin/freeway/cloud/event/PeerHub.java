@@ -2,7 +2,7 @@ package com.jujin.freeway.cloud.event;
 
 import com.jujin.freeway.commons.json.JsonArray;
 import com.jujin.freeway.commons.json.JsonCodec;
-import com.jujin.freeway.ioc.EventBusInbound;
+import com.jujin.freeway.ioc.event.EventBusInbound;
 import com.jujin.freeway.http.websocket.WebSocketEndpoint;
 import com.jujin.freeway.http.websocket.WebSocketListener;
 import com.jujin.freeway.http.websocket.WebSocketSession;
@@ -395,7 +395,7 @@ public final class PeerHub implements WebSocketEndpoint {
         Map<String, String> trace = new LinkedHashMap<>();
         trace.put(EventTrace.TRACEPARENT, frame.traceparent());
         trace.put(EventTrace.TRACESTATE, frame.tracestate());
-        if (frame.channel() == com.jujin.freeway.ioc.EventSink.Channel.CLASS) {
+        if (frame.channel() == com.jujin.freeway.ioc.event.EventSink.Channel.CLASS) {
             // CLASS-channel frames deserialize an arbitrary class by name, so
             // the allowlist is deny-by-default: with no allowlist configured,
             // no class is ever resolved. Never fall back to accepting any type.

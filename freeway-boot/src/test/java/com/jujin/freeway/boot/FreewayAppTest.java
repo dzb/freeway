@@ -12,7 +12,7 @@ import com.jujin.freeway.boot.event.AppStoppingEvent;
 import com.jujin.freeway.boot.internal.AppConfigDefault;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
-import com.jujin.freeway.ioc.EventSubscriber;
+import com.jujin.freeway.ioc.event.EventSubscriber;
 import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.ModuleNode;
 import com.jujin.freeway.ioc.RuntimeHook;

@@ -1,4 +1,4 @@
-package com.jujin.freeway.ioc;
+package com.jujin.freeway.ioc.event;
 
 /**
  * Adapter SPI for publishing events received from an external transport.

@@ -356,6 +356,17 @@ EventBus 两处形状变化（record 规范构造器/组件类型随内容迁移
 - 测试清扫：`EventBusAsyncPublishTest` 两处 `Thread.sleep(200)` 换成仓内统一的 `Await.until`
   （消灭固定睡量的 flaky 面）；新增回归钉住本批契约——回滚后重投、有界关停不吊死、sink 失败
   计数与隔离、stream 溢出计数、ordered topic 通道、`DeadEvent.source` 即 bus。
+- **event 类型收进 `ioc.event` 包**：根包 13 个事件类型（`EventBus`、`EventSink`、
+  `EventSubscriber`、`EventBridge`、`Subscription`、`DeadEvent` 等）整体迁入
+  `com.jujin.freeway.ioc.event`——根包回归纯容器面孔，`EventBridge`/`EventDispatcher`/
+  `EventStats` 等包私有机制的可见性域从"整个根包"收窄到事件域自身。纯 import 变化、
+  零语义改动（仓内外 import 与全限定名编译器驱动改写；`EventBusAsyncPublishTest` 里对
+  `EventExecutorSupport` 的白盒关闭测试拆成 `event.EventExecutorSupportTest`，按"测试居
+  其类旁"落位）。同批三处契约文档：`setAsyncExecutor` 写明是封印世界里**刻意的运行时
+  例外**（可热换、生命周期归安装者——组合期数据两头都表达不了）；`deferOrRun` 头上指向
+  已删 dedup 方法的孤儿 javadoc 清除（容量取舍与 claim-at-dispatch 语义迁入
+  `EventBridgePolicy` 参数文档）；`EventSink` 补"fan-out 访问序 = 贡献拓扑序
+ （before/after 生效），但只是本 JVM 循环序"一条契约。
 
 ## [1.5.3] - 2026-09-20
 

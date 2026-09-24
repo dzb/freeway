@@ -1,4 +1,4 @@
-package com.jujin.freeway.ioc;
+package com.jujin.freeway.ioc.event;
 
 /**
  * Sink from the local event bus to an external message queue (Kafka, RabbitMQ, etc.).
@@ -26,6 +26,12 @@ package com.jujin.freeway.ioc;
  * broker-backed sink (Kafka) is durable (producer retries, consumer groups,
  * poison records to a dead-letter topic). Do not assume one transport's
  * guarantees on another's behalf.
+ *
+ * <p><b>Visit order is contribution order.</b> The bus walks sinks in the
+ * order their {@code contribute(EventSink.class)} entries resolve — topological
+ * when {@code before}/{@code after} constraints were declared. That sequences
+ * only this JVM's fan-out loop; it is not a delivery-order promise across
+ * transports.
  *
  * <p><b>No ordering across transports.</b> Every sink in a fan-out receives
  * every event, but nothing orders one transport against another — an event

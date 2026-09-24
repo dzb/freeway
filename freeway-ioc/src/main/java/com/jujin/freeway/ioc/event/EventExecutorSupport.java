@@ -1,4 +1,4 @@
-package com.jujin.freeway.ioc;
+package com.jujin.freeway.ioc.event;
 
 import java.util.Objects;
 import java.util.concurrent.Executor;
@@ -10,7 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Internal executor management for {@link com.jujin.freeway.ioc.EventBus}.
+ * Internal executor management for {@link com.jujin.freeway.ioc.event.EventBus}.
  */
 final class EventExecutorSupport {
 
@@ -39,7 +39,7 @@ final class EventExecutorSupport {
      * Installs a custom async executor. The bus never closes a caller-supplied
      * executor — its lifecycle belongs to the installer; only the bus-created
      * defaults (virtual-thread async / ordered) are shut down on
-     * {@link com.jujin.freeway.ioc.EventBus#close()}.
+     * {@link com.jujin.freeway.ioc.event.EventBus#close()}.
      */
     void setAsyncExecutor(Executor executor) {
         this.asyncExecutor = Objects.requireNonNull(executor, "executor");

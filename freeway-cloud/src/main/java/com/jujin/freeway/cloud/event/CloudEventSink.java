@@ -1,6 +1,6 @@
 package com.jujin.freeway.cloud.event;
 
-import com.jujin.freeway.ioc.EventSink;
+import com.jujin.freeway.ioc.event.EventSink;
 import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,7 +29,7 @@ final class CloudEventSink implements EventSink {
 
     @Override
     public void send(String topic, Object event, EventSink.Channel channel, String eventId) {
-        if (event instanceof com.jujin.freeway.ioc.EventBus.Stoppable s && s.isStopped()) {
+        if (event instanceof com.jujin.freeway.ioc.event.EventBus.Stoppable s && s.isStopped()) {
             return; // short-circuited locally — a vetoed fact does not broadcast
         }
         String origin = hub.origin();

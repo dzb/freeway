@@ -1,4 +1,4 @@
-package com.jujin.freeway.ioc;
+package com.jujin.freeway.ioc.event;
 
 /**
  * Published by EventBus when an event has zero subscribers. Useful for

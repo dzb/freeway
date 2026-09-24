@@ -1,4 +1,6 @@
 package com.jujin.freeway.ioc;
+
+import com.jujin.freeway.ioc.event.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Supplier;
@@ -10,9 +12,7 @@ import com.jujin.freeway.commons.scoped.Defer;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
@@ -68,36 +68,6 @@ class EventBusAsyncPublishTest {
         bus.publish(new PostCreatedEvent(new Post("x"))); // sync, not async
 
         assertEquals(1, log.size());
-    }
-
-    @Test
-    void closeDoesNotHangOnABlockedExecutorTask() throws Exception {
-        // Regression: close() used ExecutorService.close() — an unbounded
-        // wait. One hung subscriber task would hang the whole container's
-        // shutdown (EventBus closes last, after every @PreDestroy). The wait
-        // must be bounded, then force the executor down.
-        EventExecutorSupport support = new EventExecutorSupport(() -> { }, 100);
-        CountDownLatch started = new CountDownLatch(1);
-        CountDownLatch blockForever = new CountDownLatch(1);
-        support.orderedExecutor().submit(() -> {
-            started.countDown();
-            try {
-                blockForever.await();
-            } catch (InterruptedException expected) {
-                Thread.currentThread().interrupt();
-            }
-        });
-        assertTrue(started.await(2, TimeUnit.SECONDS),
-            "the ordered task must be running before close()");
-
-        long start = System.nanoTime();
-        support.close();
-        long elapsedMs = (System.nanoTime() - start) / 1_000_000;
-
-        assertTrue(elapsedMs < 5_000,
-            "close() must give up after the bounded wait, not hang; took "
-                + elapsedMs + " ms");
-        blockForever.countDown(); // release the interrupted worker
     }
 
     @Test

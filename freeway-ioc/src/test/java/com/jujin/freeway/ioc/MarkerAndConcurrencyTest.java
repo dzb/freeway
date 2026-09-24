@@ -1,5 +1,7 @@
 package com.jujin.freeway.ioc;
 
+import com.jujin.freeway.ioc.event.*;
+
 import com.jujin.freeway.ioc.annotation.*;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 import org.junit.jupiter.api.AfterEach;

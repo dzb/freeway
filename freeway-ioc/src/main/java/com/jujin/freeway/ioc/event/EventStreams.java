@@ -1,4 +1,4 @@
-package com.jujin.freeway.ioc;
+package com.jujin.freeway.ioc.event;
 
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;

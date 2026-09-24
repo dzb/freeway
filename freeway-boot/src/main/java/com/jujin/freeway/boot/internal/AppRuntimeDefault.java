@@ -7,7 +7,7 @@ import com.jujin.freeway.boot.event.AppStartedEvent;
 import com.jujin.freeway.boot.event.AppStoppingEvent;
 
 import com.jujin.freeway.ioc.Container;
-import com.jujin.freeway.ioc.EventBus;
+import com.jujin.freeway.ioc.event.EventBus;
 import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

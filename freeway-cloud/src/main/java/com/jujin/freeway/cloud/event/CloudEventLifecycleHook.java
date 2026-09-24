@@ -8,7 +8,7 @@ import com.jujin.freeway.cloud.internal.HttpServiceDeclaration;
 import com.jujin.freeway.ioc.symbol.SymbolSpec;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.ioc.Container;
-import com.jujin.freeway.ioc.EventBus;
+import com.jujin.freeway.ioc.event.EventBus;
 import com.jujin.freeway.ioc.RuntimeHook;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 import java.time.Duration;

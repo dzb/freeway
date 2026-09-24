@@ -4,8 +4,8 @@ import com.jujin.freeway.cloud.context.InvocationContext;
 import com.jujin.freeway.cloud.context.TraceContext;
 import com.jujin.freeway.commons.json.JsonCodecDefault;
 import com.jujin.freeway.ioc.Container;
-import com.jujin.freeway.ioc.EventBus;
-import com.jujin.freeway.ioc.EventSink;
+import com.jujin.freeway.ioc.event.EventBus;
+import com.jujin.freeway.ioc.event.EventSink;
 import com.jujin.freeway.ioc.Freeway;
 
 import java.util.List;

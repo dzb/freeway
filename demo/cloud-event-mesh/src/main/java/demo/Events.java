@@ -12,7 +12,7 @@ public final class Events {
      * record key — per-aggregate ordering across both channels.
      */
     @Topic("greet.hello")
-    public record Greeting(String name) implements com.jujin.freeway.ioc.EventBus.Keyed {
+    public record Greeting(String name) implements com.jujin.freeway.ioc.event.EventBus.Keyed {
         @Override
         public String key() {
             return name;
