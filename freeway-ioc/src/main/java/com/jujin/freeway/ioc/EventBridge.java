@@ -32,8 +32,10 @@ final class EventBridge {
     /**
      * The sealed contribution snapshot — stable for the bus's lifetime, released
      * on {@link #clear()} so a closed bus keeps no module channel reachable.
+     * Volatile: {@code clear()} runs on the closing thread while dispatches
+     * may still be in flight.
      */
-    private List<EventSink> sinks;
+    private volatile List<EventSink> sinks;
     private final EventStats stats;
     /** The contributed dedup window; null when no policy (or off) was contributed. */
     private final IdWindow inboundIds;

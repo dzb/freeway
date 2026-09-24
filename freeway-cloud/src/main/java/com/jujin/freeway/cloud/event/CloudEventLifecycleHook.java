@@ -27,10 +27,6 @@ import org.slf4j.LoggerFactory;
  * what truly needs the running server. Stop releases the connector's threads;
  * the contributed sink needs no detach (the bus stops dispatching on close,
  * and the sealed store was never mutable).
- *
- * <p>Dedup is a property of the bus, not of the mesh: it also suppresses a
- * single transport's own redeliveries (Kafka hands a record back after a
- * consumer rebalance), so it is armed even when the WS mesh is disabled.
  */
 final class CloudEventLifecycleHook implements RuntimeHook {
 

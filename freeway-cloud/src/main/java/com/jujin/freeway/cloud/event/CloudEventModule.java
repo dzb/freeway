@@ -35,10 +35,8 @@ import com.jujin.freeway.http.websocket.WebSocketRoute;
  * when a discovery backend feeds {@code setPeers}), {@code subscriptions}
  * (CE type prefixes this node pulls from the mesh; empty = outbound-only),
  * {@code allowed-types} (CLASS-channel deserialization allowlist; empty =
- * deny-by-default — CLASS-channel event are dropped). Installing this module
- * still arms {@code freeway.cloud.event.dedup.*} when configured: dedup is a
- * property of the EventBus, not of the WS mesh (see
- * {@code CloudEventLifecycleHook}).</p>
+ * deny-by-default — CLASS-channel events are dropped), {@code dedup.*}
+ * (inbound-dedup window, contributed unconditionally — see the bind body).</p>
  */
 @Marker(Builtin.class)
 public final class CloudEventModule implements ModuleEx {

@@ -2028,16 +2028,14 @@ freeway.cloud.event.dedup.capacity=4096
 ```
 
 `CloudEventModule` contributes the policy at composition time (no bus call —
-transports are sealed contributions, not runtime installs). Without the module
-(or with `enabled` unset/false) dedup stays off: it changes delivery semantics
-and costs memory, so it is never a side effect.
+transports are sealed contributions, not runtime installs).
 
 Dedup is **off by default**: it changes delivery semantics and costs memory,
 so it must not be a side effect of installing a second transport. `capacity`
 is the window in which a straggling second copy is still recognized — too
 small and a slow copy slips through, too large and the window costs memory
 for nothing. Events arriving with no id (an older producer without the
-`X-Event-Id` header) are always delivered. Dedup applies to inbound events
+`ce-id` header) are always delivered. Dedup applies to inbound events
 only; local `publish` calls are never deduplicated.
 
 ---
