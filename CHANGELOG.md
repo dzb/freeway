@@ -5,6 +5,20 @@ All notable changes to Freeway 2 will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Rule ② carve-out (single-transport redelivery suppression)**: the rule kills cross-transport
+  identity machinery (shared ids, windows keyed on them, bus coupling) — and stays killed.
+  What returns, by explicit exception, is strictly less: an opt-in bounded seen-set inside
+  ext's `KafkaEvents`, keyed on the record's own CE id, default off, poison-first ordering,
+  no bus contact. Rebalance redelivery is routine (every deploy/scale), business-key
+  idempotency doesn't cover keyless signals, and the old `dedup.enabled` switch died with
+  the bridge — this restores exactly the single-transport half, nothing of the cross-transport
+  machinery. See the ext CHANGELOG for the shape (`freeway.kafka.dedup-capacity`,
+  `duplicatesDropped`).
+
 ## [1.5.5] - 2026-09-24
 
 ### Migration

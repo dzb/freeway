@@ -209,6 +209,12 @@ binder.contribute(CloudEventSubscription.class)
 **`Keyed`、`@Topic`** 一个都不许以"实用工具"名义回归。kafka at-least-once 的幂等按
 既有 javadoc 归业务键；mesh at-most-once 本无重投。"以后觉得少了什么"是预期戒断反应。
 
+> 但书（2026-09-24，单传输重投抑制）：本条处决的是**多副本同一性**（共享身份、跨传输
+> 键、总线耦合），以下各项同时成立者除外——有界 seen-set 活在 `KafkaEvents` 实例内，
+> 以记录自带 CE id 为键，默认关闭，认领在解码成功后、分发之前（poison 先抛），不接触
+> 总线。rebalance 重投是日常（每次发版扩缩容），业务键覆盖不了无键信号；旧
+> `dedup.enabled` 开关已随桥死亡，此为例外不是回归。
+
 ③ **入站无自动镜像**。远端事件只进门面/kafka 自有订阅表；镜像是 app 显式一行。
 
 ④ **入站白名单 = 订阅表（外审 F4 新增，守则级安全条款）**：门面/kafka 入站 payload
