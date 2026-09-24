@@ -2,19 +2,22 @@ package com.jujin.freeway.cloud.event;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
 import com.jujin.freeway.cloud.CloudConfigKeys;
+import com.jujin.freeway.commons.json.JsonCodecDefault;
+import com.jujin.freeway.commons.scoped.Defer;
 import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.HttpModule;
-import com.jujin.freeway.commons.json.JsonCodecDefault;
-import com.jujin.freeway.ioc.event.EventSink;
+import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.event.EventBus;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Consumer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -22,17 +25,14 @@ import org.junit.jupiter.api.Test;
 /**
  * Design-doc E2 contract tests: two real nodes (each a full FreewayApp with
  * HttpModule + CloudEventModule) exchanging CloudEvents 1.0 frames over a
- * real WebSocket mesh — round-trip both directions, subscription filtering,
- * CLASS-channel whitelist, Keyed ordering subject, origin loop protection.
+ * real WebSocket mesh — round-trip both directions, sender-side prefix
+ * filtering, plane separation (a local bus publish never crosses the
+ * boundary), the Defer commit gate on the cloud plane, and the wire subject
+ * as an explicit publish argument.
  */
 class CloudEventBusTest {
 
     record GreetEvent(String name) {}
-
-    @com.jujin.freeway.ioc.annotation.Topic("order.created")
-    record OrderedEvent(String id) implements EventBus.Keyed {
-        @Override public String key() { return id; }
-    }
 
     private AppRuntime nodeA;
     private AppRuntime nodeB;
@@ -48,27 +48,30 @@ class CloudEventBusTest {
         if (nodeB != null) nodeB.close();
         System.clearProperty(HttpConfigKeys.SERVER_PORT);
         System.clearProperty(CloudConfigKeys.EVENT_PEERS);
-        System.clearProperty(CloudConfigKeys.EVENT_SUBSCRIPTIONS);
-        System.clearProperty(CloudConfigKeys.EVENT_ALLOWED_TYPES);
         System.clearProperty(CloudConfigKeys.EVENT_ENABLED);
     }
 
-    /** Starts node B first (peers empty — waits for inbound connections). */
-    private AppRuntime startB(String subscriptions, String allowedTypes) {
-        System.setProperty(CloudConfigKeys.EVENT_ENABLED, "true");
-        System.setProperty(CloudConfigKeys.EVENT_SUBSCRIPTIONS, subscriptions);
-        if (allowedTypes != null) {
-            System.setProperty(CloudConfigKeys.EVENT_ALLOWED_TYPES, allowedTypes);
-        }
-        return FreewayApp.run(new String[0], new HttpModule(), new CloudEventModule());
+    /** Declares mesh interest for one prefix; payloads land in {@code sink}. */
+    private static ModuleEx listening(String prefix, Consumer<String> sink) {
+        return binder -> binder.contribute(CloudEventSubscription.class)
+            .add("listen-" + prefix, CloudEventSubscription.of(prefix, String.class, sink::accept));
     }
 
-    /** Starts node A dialing node B. */
-    private AppRuntime startA(int bPort, String subscriptions) {
+    /** Starts a node dialing nobody (pure listener side unless given peers). */
+    private AppRuntime start(String peers, ModuleEx... extra) {
         System.setProperty(CloudConfigKeys.EVENT_ENABLED, "true");
-        System.setProperty(CloudConfigKeys.EVENT_PEERS, "127.0.0.1:" + bPort);
-        System.setProperty(CloudConfigKeys.EVENT_SUBSCRIPTIONS, subscriptions);
-        return FreewayApp.run(new String[0], new HttpModule(), new CloudEventModule());
+        if (peers != null) {
+            System.setProperty(CloudConfigKeys.EVENT_PEERS, peers);
+        }
+        List<ModuleEx> mods = new ArrayList<>();
+        mods.add(new HttpModule());
+        mods.add(new CloudEventModule());
+        for (ModuleEx m : extra) mods.add(m);
+        return FreewayApp.run(new String[0], mods.toArray(new ModuleEx[0]));
+    }
+
+    private static int port(AppRuntime app) {
+        return app.get(com.jujin.freeway.http.HttpServer.class).port();
     }
 
     /** Waits until both nodes see the mesh connection established. */
@@ -83,149 +86,125 @@ class CloudEventBusTest {
         throw new AssertionError("mesh not established within 5s");
     }
 
+    private static void awaitUntil(java.util.function.BooleanSupplier condition)
+        throws InterruptedException {
+        long deadline = System.currentTimeMillis() + 5000;
+        while (System.currentTimeMillis() < deadline) {
+            if (condition.getAsBoolean()) return;
+            Thread.sleep(50);
+        }
+        throw new AssertionError("condition not met within 5s");
+    }
+
     @Test
     void topicEventRoundTripBothDirectionsOverOneConnection() throws Exception {
-        nodeB = startB("greet.", null);
-        int bPort = nodeB.get(com.jujin.freeway.http.HttpServer.class).port();
-        nodeA = startA(bPort, "ack.");
+        var atB = new CopyOnWriteArrayList<String>();
+        var atA = new CopyOnWriteArrayList<String>();
+        nodeB = start(null, listening("greet.", atB::add));
+        nodeA = start("127.0.0.1:" + port(nodeB), listening("ack.", atA::add));
         awaitMesh(nodeA, nodeB);
 
-        var receivedByB = new CountDownLatch(1);
-        var receivedByA = new CountDownLatch(1);
-        var payloadAtB = new AtomicReference<String>();
-        var payloadAtA = new AtomicReference<String>();
-
-        nodeB.get(EventBus.class).subscribe("greet.hello",
-            payload -> { payloadAtB.set(String.valueOf(payload)); receivedByB.countDown(); });
-        nodeA.get(EventBus.class).subscribe("ack.done",
-            payload -> { payloadAtA.set(String.valueOf(payload)); receivedByA.countDown(); });
-
-        nodeA.get(EventBus.class).publish("greet.hello", "bob");
-        assertTrue(receivedByB.await(awaitSeconds(), TimeUnit.SECONDS),
-            "A's publish must reach B over the mesh");
-        assertEquals("bob", payloadAtB.get());
+        nodeA.get(CloudEventBus.class).publish("greet.hello", "bob");
+        awaitUntil(() -> !atB.isEmpty());
+        assertEquals(List.of("bob"), atB);
 
         // Reverse direction over the SAME connection (A dialed B).
-        nodeB.get(EventBus.class).publish("ack.done", "ok");
-        assertTrue(receivedByA.await(awaitSeconds(), TimeUnit.SECONDS),
-            "B's publish must reach A over the reverse direction");
-        assertEquals("ok", payloadAtA.get());
+        nodeB.get(CloudEventBus.class).publish("ack.done", "ok");
+        awaitUntil(() -> !atA.isEmpty());
+        assertEquals(List.of("ok"), atA);
     }
 
     @Test
-    void subscriptionPrefixFiltersOutUnsubscribedTopics() throws Exception {
-        nodeB = startB("greet.", null);
-        int bPort = nodeB.get(com.jujin.freeway.http.HttpServer.class).port();
-        nodeA = startA(bPort, "");
+    void subscriptionPrefixFiltersAtTheSender() throws Exception {
+        var atB = new CopyOnWriteArrayList<String>();
+        nodeB = start(null, listening("greet.", atB::add));
+        nodeA = start("127.0.0.1:" + port(nodeB));
         awaitMesh(nodeA, nodeB);
 
-        var unexpected = new CountDownLatch(1);
-        nodeB.get(EventBus.class).subscribe("user.created",
-            payload -> unexpected.countDown());
-
-        // B subscribed only to "greet." — this must not arrive.
-        nodeA.get(EventBus.class).publish("user.created", "spam");
-        assertFalse(unexpected.await(700, TimeUnit.MILLISECONDS),
-            "unsubscribed topic must be filtered at the sender");
+        // B subscribed only to "greet." — this must not even be translated.
+        nodeA.get(CloudEventBus.class).publish("user.created", "spam");
+        Thread.sleep(700);
+        assertTrue(atB.isEmpty(), "unsubscribed topic must be filtered at the sender");
+        assertEquals(0, nodeA.get(CloudEventBus.class).stats().framesSent(),
+            "filter-then-translate: no interested peer means no serialization, no send");
     }
 
     @Test
-    void classEventRoundTripsThroughWhitelist() throws Exception {
-        String type = GreetEvent.class.getName();
-        nodeB = startB(type, type); // subscribe + whitelist by class name
-        int bPort = nodeB.get(com.jujin.freeway.http.HttpServer.class).port();
-        nodeA = startA(bPort, "");
+    void localBusPublishNeverCrossesTheBoundary() throws Exception {
+        var atB = new CopyOnWriteArrayList<String>();
+        nodeB = start(null, listening("greet.", atB::add));
+        nodeA = start("127.0.0.1:" + port(nodeB));
         awaitMesh(nodeA, nodeB);
 
-        var received = new CountDownLatch(1);
-        var eventAtB = new AtomicReference<GreetEvent>();
-        nodeB.get(EventBus.class).subscribe(GreetEvent.class,
-            event -> { eventAtB.set(event); received.countDown(); });
-
-        // A publishes a CLASS event; B rebuilds it by whitelist type.
-        nodeA.get(EventBus.class).publish(new GreetEvent("typed"));
-        assertTrue(received.await(awaitSeconds(), TimeUnit.SECONDS),
-            "CLASS event must round-trip through the CE envelope");
-        assertEquals(new GreetEvent("typed"), eventAtB.get());
+        // The plane separation, pinned: loading the mesh module does NOT
+        // turn a local bus publish into a broadcast.
+        nodeA.get(EventBus.class).publish("greet.hello", "local-only");
+        Thread.sleep(700);
+        assertTrue(atB.isEmpty(), "a local fact must stay a local fact");
+        assertEquals(0, nodeA.get(CloudEventBus.class).stats().published(),
+            "the cloud plane was never handed this publish");
     }
 
     @Test
-    void classEventOutsideWhitelistIsDropped() throws Exception {
-        nodeB = startB(GreetEvent.class.getName(), OrderedEvent.class.getName());
-        int bPort = nodeB.get(com.jujin.freeway.http.HttpServer.class).port();
-        nodeA = startA(bPort, "");
-        awaitMesh(nodeA, nodeB);
+    void meshPublishIsBufferedByDeferAndDiscardedOnRollback() {
+        // Unit level: an unwired hub measures only the commit gate — the
+        // flush itself (never the transport) is what Defer controls.
+        PeerHub hub = new PeerHub();
+        CloudEventBus mesh = new CloudEventBus(hub, new JsonCodecDefault(), List.of());
 
-        var received = new CountDownLatch(1);
-        nodeB.get(EventBus.class).subscribe(GreetEvent.class, e -> received.countDown());
+        Defer.within(() -> {
+            mesh.publish("greet.hello", "pending");
+            assertEquals(0, mesh.stats().published(),
+                "inside a Defer scope the publish is buffered, not sent");
+        });
+        assertEquals(1, mesh.stats().published(), "commit drains the buffered publish");
 
-        // GreetEvent is NOT whitelisted on B (only OrderedEvent is) — dropped.
-        nodeA.get(EventBus.class).publish(new GreetEvent("intruder"));
-        assertFalse(received.await(700, TimeUnit.MILLISECONDS),
-            "non-whitelisted type must be dropped at the receiver");
+        Defer.within(scope -> {
+            mesh.publish("greet.hello", "doomed");
+            scope.rollback();
+        });
+        assertEquals(1, mesh.stats().published(),
+            "a rolled-back scope must discard: an uncommitted fact never leaves the JVM");
+
+        assertThrows(IllegalStateException.class, () -> Defer.within(() -> {
+            mesh.publish("greet.hello", "doomed-too");
+            throw new IllegalStateException("boom");
+        }));
+        assertEquals(1, mesh.stats().published(),
+            "an aborted scope discards the same way");
     }
 
     @Test
-    void keyedEventsPreserveTheOrderingSubject() throws Exception {
-        // OrderedEvent is a CLASS-channel event, so node B must allowlist its
-        // type — CLASS delivery is deny-by-default.
-        nodeB = startB("order.", OrderedEvent.class.getName());
-        int bPort = nodeB.get(com.jujin.freeway.http.HttpServer.class).port();
-        nodeA = startA(bPort, "");
-        awaitMesh(nodeA, nodeB);
-
-        var received = new CountDownLatch(1);
-        var eventAtB = new AtomicReference<OrderedEvent>();
-        nodeB.get(EventBus.class).subscribe(OrderedEvent.class,
-            e -> { eventAtB.set(e); received.countDown(); });
-
-        nodeA.get(EventBus.class).publish(new OrderedEvent("order-42"));
-        assertTrue(received.await(awaitSeconds(), TimeUnit.SECONDS));
-        assertEquals("order-42", eventAtB.get().id);
-    }
-
-    @Test
-    void keyedEventCarriesItsKeyAsTheWireSubject() throws Exception {
-        // The wire contract the Kafka bridge reads as the record key: a Keyed
-        // event's key() becomes the envelope's `subject`. The mesh test above
-        // only asserts the delivered event, so without this the subject could
-        // stop being written and nothing would notice.
-        var envelope = CloudEventEnvelope.translate(
-            new OrderedEvent("order-42"), OrderedEvent.class.getName(), EventSink.Channel.CLASS,
-            "node-a@127.0.0.1:8080", "orders", new JsonCodecDefault(),
-            "wire-id-1");
-        var frame = com.jujin.freeway.commons.json.JsonUtils.parseObject(envelope);
+    void publishedFramesCarryTheirExplicitSubjectAndTopicType() {
+        var codec = new JsonCodecDefault();
+        var json = CloudEventEnvelope.translate(
+            "order.created", new GreetEvent("x"), "order-42",
+            "node-a@127.0.0.1:8080", "orders", codec, "wire-id-1");
+        var frame = com.jujin.freeway.commons.json.JsonUtils.parseObject(json);
 
         assertEquals("order-42", frame.getString("subject"),
-            "a keyed typed event carries its key as the subject, got: " + envelope);
-        assertEquals(OrderedEvent.class.getName(), frame.getString("type"),
-            "the CLASS channel types the frame by event class");
-        assertEquals("wire-id-1", frame.getString("id"),
-            "the bus-minted id is carried verbatim");
+            "the subject is the publish-site argument, carried verbatim");
+        assertEquals("order.created", frame.getString("type"),
+            "the topic is the type — class names never reach the wire");
+        assertEquals("topic", frame.getString(CloudEventEnvelope.EXT_CHANNEL));
+        assertEquals("wire-id-1", frame.getString("id"));
 
-        // A topic payload is opaque: no subject, and the topic is the type.
-        var topicFrame = com.jujin.freeway.commons.json.JsonUtils.parseObject(
-            CloudEventEnvelope.translate(
-                "plain", "order.placed", EventSink.Channel.TOPIC,
-                "node-a@127.0.0.1:8080", "orders", new JsonCodecDefault(), "wire-id-2"));
-        assertFalse(topicFrame.containsKey("subject"),
-            "a topic payload has no ordering key, got: " + topicFrame);
-        assertEquals("order.placed", topicFrame.getString("type"));
+        var bare = com.jujin.freeway.commons.json.JsonUtils.parseObject(
+            CloudEventEnvelope.translate("order.created", "plain", null,
+                "node-a@127.0.0.1:8080", "orders", codec, "wire-id-2"));
+        assertFalse(bare.containsKey("subject"),
+            "no subject argument means no subject attribute: " + bare);
     }
 
     @Test
     void disabledModuleIsInert() {
         System.setProperty(CloudConfigKeys.EVENT_ENABLED, "false");
         nodeA = FreewayApp.run(new String[0], new HttpModule(), new CloudEventModule());
-        // publish with no sink, no peers — must be a clean local-only no-op
-        nodeA.get(EventBus.class).publish("greet.hello", "bob");
-        nodeA.get(EventBus.class).publish(new GreetEvent("bob"));
-        // The endpoint is not wired, so it cannot accept inbound mesh frames.
+        var mesh = nodeA.get(CloudEventBus.class);
+        // Publish against an unwired mesh: a counted, debug-logged no-op.
+        mesh.publish("greet.hello", "bob");
+        assertEquals(0, nodeA.get(CloudEventBus.class).stats().framesSent());
         assertFalse(nodeA.get(PeerHub.class).wired(),
             "disabled CloudEventModule must not wire the mesh hub");
-    }
-
-    private static long awaitSeconds() {
-        return 3;
     }
 }

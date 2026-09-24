@@ -5,14 +5,19 @@ import com.jujin.freeway.cloud.CloudConfigKeys;
 import com.jujin.freeway.cloud.event.CloudEventModule;
 import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.HttpModule;
+import com.jujin.freeway.ioc.Binder;
+import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.event.EventBus;
-import com.jujin.freeway.mq.kafka.KafkaModule;
+import com.jujin.freeway.ioc.event.EventSubscriber;
 
 /**
  * Publisher node of the cross-JVM event-mesh demo.
  *
- * <p>Dials node B over the WS mesh and bridges to Kafka — a single
- * {@code publish} fans out over BOTH channels. Publish once, then exit.</p>
+ * <p>Dials node B over the WS mesh and publishes once on the cloud plane —
+ * that publish leaves the JVM because the call names the plane. It then
+ * publishes the same fact on the local bus to prove the separation: a local
+ * publish stays inside this process even with the mesh loaded. Publish,
+ * observe, exit.</p>
  *
  * <p>See README.md for the full demo walkthrough.</p>
  */
@@ -24,22 +29,27 @@ public final class NodeA {
         // CloudEventBus: dial B; A declares no subscriptions (outbound-only).
         System.setProperty(CloudConfigKeys.EVENT_ENABLED, "true");
         System.setProperty(CloudConfigKeys.EVENT_PEERS, "127.0.0.1:18080");
-        System.setProperty(CloudConfigKeys.EVENT_SUBSCRIPTIONS, "");
-        // Kafka: same broker, distinct consumer group and origin identity.
-        System.setProperty("freeway.kafka.bootstrap-servers", "127.0.0.1:9092");
-        System.setProperty("freeway.kafka.group-id", "mesh-demo-a");
-        System.setProperty("freeway.kafka.client-id", "node-a");
-        System.setProperty("freeway.kafka.topics", "greet.hello");
 
-        var app = FreewayApp.run(args, new HttpModule(), new CloudEventModule(), new KafkaModule());
+        var app = FreewayApp.run(args, new HttpModule(), new CloudEventModule(), new ModuleEx() {
+            @Override
+            public void bind(Binder binder) {
+                // The local counterpart: prints to show a LOCAL publish never
+                // leaves this JVM — no mesh frame is built for it.
+                binder.contribute(EventSubscriber.class).add("local-print",
+                    EventSubscriber.of(Events.Greeting.class, g ->
+                        System.out.println("[A] local bus heard (and NO peer receives this): " + g)));
+            }
+        });
+
+        var mesh = app.get(com.jujin.freeway.cloud.event.CloudEventBus.class);
         EventBus bus = app.get(EventBus.class);
 
-        // Let the mesh handshake and the Kafka consumer group settle.
+        // Let the mesh handshake settle.
         Thread.sleep(3000);
 
-        System.out.println("[A] publishing Greeting(bob) + greet.hello=hello-topic …");
-        bus.publish(new Events.Greeting("bob"));    // CLASS channel
-        bus.publish("greet.hello", "hello-topic");   // TOPIC channel
+        System.out.println("[A] publishing Greeting(bob): once on the mesh plane, once on the local plane");
+        mesh.publish(Events.GREET_TOPIC, new Events.Greeting("bob")); // → crosses to B
+        bus.publish(new Events.Greeting("bob"));                       // → stays here
 
         // Stay alive long enough for B's logs to be observed, then exit.
         Thread.sleep(10_000);

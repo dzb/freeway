@@ -21,17 +21,16 @@ import java.time.Duration;
  *       built-in local backend), everything the registry derives from the HTTP
  *       server, and every feature flag whose default is the recommended
  *       posture ({@link #EVENT_ENABLED} is presence-driven,
- *       {@link #AUTH_EXTRACT_ENABLED} and {@link #EVENT_DEDUP_ENABLED} are
- *       opt-in, {@link #RPC_TRACE_ENABLED} is on).</li>
+ *       {@link #AUTH_EXTRACT_ENABLED} is opt-in, {@link #RPC_TRACE_ENABLED}
+ *       is on).</li>
  *   <li><b>Advanced (rare)</b> — the tuning numbers, and <em>each cluster
  *       already names one aggregate that governs it</em>:
  *       {@link #RPC_RESILIENCE} ({@code auto} = the nine retry / breaker /
  *       limiter keys below govern, {@code off} = one kill switch for all of
- *       them), {@link #EVENT_ENABLED} (presence decides, so the four transport
- *       timeouts are only reachable once the mesh exists), and
- *       {@link #EVENT_DEDUP_ENABLED} (the capacity below it only matters when
- *       dedup is on). Adding a second aggregate over the same keys would be a
- *       second way to say "off" — the duplication this catalog avoids.</li>
+ *       them) and {@link #EVENT_ENABLED} (presence decides, so the four
+ *       transport timeouts are only reachable once the mesh exists). Adding
+ *       a second aggregate over the same keys would be a second way to say
+ *       "off" — the duplication this catalog avoids.</li>
  * </ol>
  *
  * <p>Consequence for readers and for the docs: the number of keys is not the
@@ -79,29 +78,16 @@ public final class CloudConfigKeys {
      *  unwired: installing CloudEventModule alone stays inert. */
     public static final String EVENT_ENABLED        = PREFIX + ".event.enabled";
     public static final String RPC_TRACE_ENABLED       = PREFIX + ".rpc.trace.enabled";
-    /** Off by default: dedup changes delivery semantics (an event reaching
-     *  this node over two transports is delivered once) and costs memory, so
-     *  it is opt-in rather than a side effect of installing a second
-     *  transport. Only meaningful when inbound event carry the bus-minted
-     *  wire id. */
-    public static final String EVENT_DEDUP_ENABLED  = PREFIX + ".event.dedup.enabled";
     /** Off by default: inbound {@code x-principal} extraction trusts client
      *  headers and must be enabled explicitly (ideally only inside a trusted
      *  service mesh / with an ext token-verifying security module). */
     public static final String AUTH_EXTRACT_ENABLED = PREFIX + ".auth.extract.enabled";
 
-    // ── Default-optimal: receiver routing and derived placement ──────────
-    // The subscriptions/allowlists are receiver-side routing and security
-    // decisions (empty allowed-types silently drops every CLASS event), and
-    // the registry entries default to what the HTTP server bound.
-    /** CE type/topic prefixes this node declares in its hello — peers fan out
-     *  only what matches, so empty = outbound-only (nothing to receive). */
-    public static final String EVENT_SUBSCRIPTIONS  = PREFIX + ".event.subscriptions";
-    /** CLASS-channel deserialization allowlist; empty = deny-by-default
-     *  (CLASS-channel event are dropped). */
-    public static final String EVENT_ALLOWED_TYPES  = PREFIX + ".event.allowed-types";
-    /** TOPIC-channel allowlist; empty = accept any topic from an admitted peer. */
-    public static final String EVENT_ALLOWED_TOPICS = PREFIX + ".event.allowed-topics";
+    // ── Default-optimal: derived placement ────────────────────────────────
+    // The registry entries default to what the HTTP server bound. Mesh
+    // interest is not a key at all: it is the CloudEventSubscription
+    // contributions, which simultaneously drive the hello pull-prefixes,
+    // the inbound gate and delivery.
     public static final String STORAGE_BASE_PATH  = PREFIX + ".storage.base-path";
     /** Local backend root under the working directory. */
     public static final String STORAGE_BASE_PATH_DEFAULT = "cloud-storage";
@@ -237,11 +223,6 @@ public final class CloudConfigKeys {
     public static final String RPC_TLS_TRUST_STORE_PASSWORD_DEFAULT = "";
 
     // ── Advanced: mesh transport, reachable only once the mesh exists ─────
-    /** How many inbound ids to remember — the window in which a second copy
-     *  of an event is still recognized. Too small and a slow second copy
-     *  slips through; too large and the window costs memory for nothing. */
-    public static final String EVENT_DEDUP_CAPACITY = PREFIX + ".event.dedup.capacity";
-    public static final int EVENT_DEDUP_CAPACITY_DEFAULT = 4096;
     public static final String EVENT_PATH_DEFAULT   = "/cloud/event";
 
     // Shared by the CloudEventLifecycleHook specs and PeerConnector's

@@ -39,15 +39,24 @@ class PeerConnectorReconnectTest {
         System.clearProperty(HttpConfigKeys.SERVER_PORT);
         System.clearProperty(CloudConfigKeys.EVENT_ENABLED);
         System.clearProperty(CloudConfigKeys.EVENT_PEERS);
-        System.clearProperty(CloudConfigKeys.EVENT_SUBSCRIPTIONS);
         System.clearProperty(CloudConfigKeys.EVENT_TOKEN);
     }
 
     private static AppRuntime startEventsNode(String peers, String subscriptions) {
         System.setProperty(CloudConfigKeys.EVENT_ENABLED, "true");
         System.setProperty(CloudConfigKeys.EVENT_PEERS, peers);
-        System.setProperty(CloudConfigKeys.EVENT_SUBSCRIPTIONS, subscriptions);
-        return FreewayApp.run(new HttpModule(), new CloudEventModule());
+        // Declared interest shapes the hello pull-prefixes (no-op handlers —
+        // these tests assert connection state, never delivery).
+        List<com.jujin.freeway.ioc.ModuleEx> mods =
+            new java.util.ArrayList<>(List.of(new HttpModule(), new CloudEventModule()));
+        for (String prefix : subscriptions.split(",")) {
+            if (!prefix.isBlank()) {
+                mods.add(binder -> binder.contribute(CloudEventSubscription.class)
+                    .add("test-" + prefix,
+                        CloudEventSubscription.of(prefix, String.class, p -> { })));
+            }
+        }
+        return FreewayApp.run(mods.toArray(new com.jujin.freeway.ioc.ModuleEx[0]));
     }
 
     private static int port(AppRuntime app) {
@@ -55,13 +64,13 @@ class PeerConnectorReconnectTest {
     }
 
     /**
-     * The sink's failed-send drop does {@code hub.unregister(peer)} then
-     * {@code peer.close()} (CloudEventSink) — that exact sequence on the
-     * outbound leg must end with the connector dialing again, because after
-     * the drop nothing serves that origin anymore. (A real outbound send
-     * failure surfaces through the sender's completion stage instead of the
-     * sink's synchronous false branch, so the drop sequence is driven
-     * directly here — same code path the sink executes.)
+     * The broadcast plane's failed-send drop does {@code hub.unregister(peer)}
+     * then {@code peer.close()} (CloudEventBus.doPublish) — that exact
+     * sequence on the outbound leg must end with the connector dialing again,
+     * because after the drop nothing serves that origin anymore. (A real
+     * outbound send failure surfaces through the sender's completion stage
+     * instead of the synchronous false branch, so the drop sequence is driven
+     * directly here — same code path the plane executes.)
      */
     @Test
     void failedSendDropOnOutboundConnectionIsRedialed() throws Exception {
@@ -76,7 +85,7 @@ class PeerConnectorReconnectTest {
         PeerConnection outbound = hubA.connections().get(0);
         assertTrue(outbound.isOutbound(), "A dialed B, so A's connection must be outbound");
 
-        // CloudEventSink's failed-send branch (unregister + close).
+        // CloudEventBus's failed-send branch (unregister + close).
         hubA.unregister(outbound);
         outbound.close();
 

@@ -14,7 +14,6 @@ final class EventStats {
     private final Tally delivered;
     private final Tally subscriberFailures;
     private final Tally deadEvents;
-    private final Tally sinkFailures;
     private final Tally streamDrops;
 
     EventStats(Metrics metrics) {
@@ -22,7 +21,6 @@ final class EventStats {
         this.delivered = new Tally(metrics.counter("eventbus.delivered"));
         this.subscriberFailures = new Tally(metrics.counter("eventbus.subscriber_failures"));
         this.deadEvents = new Tally(metrics.counter("eventbus.dead_events"));
-        this.sinkFailures = new Tally(metrics.counter("eventbus.sink_failures"));
         this.streamDrops = new Tally(metrics.counter("eventbus.stream_drops"));
     }
 
@@ -42,10 +40,6 @@ final class EventStats {
         deadEvents.increment();
     }
 
-    void sinkFailure() {
-        sinkFailures.increment();
-    }
-
     void streamDrop() {
         streamDrops.increment();
     }
@@ -56,7 +50,6 @@ final class EventStats {
             delivered.sum(),
             subscriberFailures.sum(),
             deadEvents.sum(),
-            sinkFailures.sum(),
             streamDrops.sum()
         );
     }

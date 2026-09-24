@@ -91,19 +91,30 @@ EventBus 两处形状变化（record 规范构造器/组件类型随内容迁移
 |---|---|
 | `new EventBus.EventBusStats(published, delivered, subscriberFailures, deadEvents)` | 规范构造器多两个尾参 `…, deadEvents, sinkFailures, streamDrops`；读取方（`stats().delivered()` 等）不受影响 |
 | `DeadEvent` 记录 `source` 为内部 `EventDispatcher`、组件类型 `Object` | `source` 是发布诊断的 `EventBus` 本身，组件类型收窄为 `EventBus`（record 形状不变，仓内零调用点受影响） |
-| `EventSink` 三个 `send` 重载（`send(topic, event)` / `send(topic, event, channel)` / 四参形） | 只剩 `send(topic, event, channel, eventId)`：总线永远只调四参形，两档窄形只是"老实现能编译"的兼容垫片（与已删的构建器/快照同类，见 AGENTS 无兼容垫片）。`CloudEventSink` / `KafkaEventSink` 各删两转发方法；sink 测试的 lambda 一律四参；`KafkaEventSinkTest.twoArgSendDefaultsToClassChannel` 删除（"裸调默认 CLASS 通道"的约定随窄形消失，直调者自己传 `Channel`） |
+| `EventSink` 桥接缝（本地 publish 扇出给已贡献的传输 sink；本未发布周期内曾把三个 `send` 重载收敛成四参正形） | `EventSink` 整体删除：本地总线回归进程内概念，不知道有任何传输（`EventBusInbound`/`publishInbound` 同删，入站不再进本地总线）。扇出税（全量序列化、包名否决名单）与"装模块即改 publish 语义"的漂移一并斩断——"事实去哪儿"回到调用点可见 |
 | `Binding` 句柄在模块绑定结束后仍可 `id/marker/to/scope/primary/advise`（晚 `id` 曾孤立已实例、晚 `marker` 曾进不了索引，各由一套迁移/同步机器兜底） | 绑定随其模块的 flush 注册即封印，此后六个 DSL 方法一律 `IllegalStateException`（"is sealed — …accepted only while its module is binding"）。`BindingIndex.updateId/contains`、`ContainerImpl.syncMarkers/updateId`、`ServiceRuntime.rekey` 删除；`lateIdChangeMigratesRealizedInstance` / `markerDeclaredAfterFlushStillResolves` 翻转为拒绝断言 |
 | `@IntermediateType`（两步 coercion：先转中间类型再转目标） | 删除：自定义形状改为一条 `CoerceRule<String, T>` 从原始字符串直接解析（`Endpoint` 测试早已是此形，`Timeout` 测试随之改写）。`InjectionResolver.coerceConfiguredValue` 去 `lookup` 参数、`resolveMarkers` 跳过表减一项 |
 | `@ThreadSafe`（标记，唯一作用是"与 `@NotThreadSafe` 并存即错"与按标记解析） | 删除：`@NotThreadSafe` 独立存在即是完整契约（未标注 = 无契约不校验），冲突检查与 `MarkerIndex` 的 `ThreadSafe` 分支删除；`ScopeProxyAdvisorTest` 的冲突测试与按标记解析测试删除，`ThreadSafeGreeterImpl` 更名 `SafeGreeterImpl` 去注解；`@NotThreadSafe` javadoc 去双标注段、`InjectionResolver` 的修复建议改为"去标记/转 THREAD 作用域/换 holder" |
-| `EventBus` 门面直管桥接（sink 注册表、eventId 铸造、去重窗口、扇出循环全在 bus/dispatcher 身上） | 新包内 `EventBridge` 独占"出 JVM"一半：sink 增删清、单枚 eventId 铸造与扇出隔离计数、去重窗口与 claim；`EventBus` 只留行为相同的委托（公开签名、javadoc 语义、开闭约束一个字不动），`EventDispatcher` 改调 `bridge.fanOut`。无公开变化，既有测试零改动即过。分层定格：故事/策略/传输归 cloud（配置、policy、sink、信封本来就在），匿名机制内核（loop/window/ids，零 cloud 特有代码）留 ioc 做进程边缘——类比 commons 之于 ioc；kafka 作为 MQ 传输实现零新增依赖 |
-| `EventBus.add/removeEventSink`、`inboundDeduplication` 三个运行时织物方法（传输在 hook start 时安装、stop 时摘除、容量现调） | 传输改走密封贡献：`CloudEventModule`/`KafkaModule` 在 `bind` 期 `contribute(EventSink.class)`（mesh 经绑定复用单实例，kafka 经绑定复用单 producer——贡献工厂直 `new` 会造出第二个实例，已规避）；去重容量改走新公开 `EventBridgePolicy` 值贡献（cloud 在 drain 期用自己的 keys 填充，缺席/非正即关、两个即大声失败）。bus 脸只剩 `publishInbound` 一扇门（只有 bus 能投递给本地订阅者）。`EventSinkRegistry` 删除（扩展快照即注册表）。hook 收缩到真正的运行时（hub 接线、connector/producer 生命周期）。测试全迁贡献形（`EventSink` 是函数式接口，裸 lambda 需显式转型，编译器指路）；`remove/close-detach` 语义测试翻转为"关后发布被拒绝"与"同实例贡献两次扇出两次"；kafka 两个纯配置测试补绑 `JsonCodec` + mock-backed sink 覆盖（组合期迫切实例化把缺失从首次发布提前为组合失败，fail fast）。`DEVELOPER-GUIDE` 去重示例改设 symbols |
+| `EventBus` 门面直管桥接（sink 注册表、eventId 铸造、去重窗口、扇出循环全在 bus/dispatcher 身上；本周期中段曾抽成包内 `EventBridge`） | "出 JVM"一半整体随桥拆除：`EventBridge`/`EventBridgePolicy` 删除，去重窗口与之同休——它们服务的"一个事件多副本跨传输"问题在分平面模型里不存在（mesh 是 at-most-once 织物，本无重投；kafka 幂等按既有契约归业务键）。`EventBusStats` 去 `sinkFailures` 组件（record 形状破坏，仓内零消费者，外部读者改 pattern）；`EventBus.Keyed`、`@Topic`（javadoc 自证"for MQ bridging"的路由注解，违反 cloud-design §7"不往业务类型挂路由注解"）随桥删除——分区键归 Kafka 调用点参数，云生 topic 是门面 publish 的实参 |
+| 传输以密封贡献安装（`contribute(EventSink.class)`）+ `publishInbound` 单漏斗 | 跨 JVM 广播走显式门面 `CloudEventBus`（见 Added）；入站改投门面的订阅表。**订阅即闸门**：`contribute(CloudEventSubscription.class)` 的同一份声明派生 hello 拉取前缀、入站白名单（未声明 topic 丢弃且不触发反射加载——取代 `allowed-types`/`allowed-topics` 两键的结构性安全）与投递路由；`freeway.cloud.event.subscriptions/allowed-types/allowed-topics/dedup.enabled/dedup.capacity` 五键退役（`token`/`peers`/`enabled` 存活），`warnWhenInboundIsUngated` 收敛为 token 告警。旧桥在途的 CLASS 帧照解析、按 channel 弃投并计数（在途兼容、跨版本路由不互保——fabric 升级要求同版本舰队） |
 | scope 校验的属主靠类型猜（`findOwnerBinding`：精确类型→接口递归→超类链） | realize 路径把属主 `BindingImpl` 穿下来读精确 scope，`create()` 传 null 回退启发式。两处行为修正（无签名变化，编译器不报警）：同类型多绑定无 primary 时 singleton 属主曾整段跳过校验（`uniqueOrNull` 吞歧义→"属主未知"→放行），现在按自己绑定的 scope 判；prototype 属主曾被实现的 singleton 接口"认领"而误拦，现在不拦。`Container.create/create/constructInstance/initialize` 与 resolver 全链加 `owner` 参数；`multiBoundSingletonOwnerDoesNotEscapeScopeValidation` / `multiBoundPrototypeOwnerIsNotJudgedByItsSingletonInterface` 各钉一条（HEAD 下双双失败） |
 
 ### Added
 
+- **`CloudEventBus`——云生广播平面门面**：`publish(topic, payload[, subject])` 是唯一出口，
+  Defer 提交耦合（事务内缓冲、提交后出境、回滚即弃——契约测试成对钉死"回滚无帧/提交有帧"）；
+  filter-then-translate（无 interested peer 不再序列化，消灭桥时代的全量税）；自有计数器
+  （published/framesSent/sendFailures/inboundDelivered/droppedLegacy/droppedNoSubscriber——各平面各账，
+  与本地 stats 无合并视图）。`CloudEventSubscription(prefix, Class<T>, handler)` 为订阅申报形且
+  **只有申报形**：运行时注册改不了 peer 侧的 hello 过滤，开运行时口子即造"有 handler 收不到"
+  半死面——订阅表因此同时是 hello 前缀源、入站闸门与投递路由。javadoc 首句写死防复合误读
+  （publish 仅出站；本地事实仍走本地 EventBus）。远端事实回流本地是 app 的显式一行
+  （订阅 handler 里调 `bus.publish`），`demo/cloud-event-mesh` 重写为"门面 + 镜像 + 本地/云生
+  对照"的活演示。CE 1.0 信封、`EventTrace`、PeerHub/connector/origin 自环——wire 一字未动，
+  旧桥时代的信封机器原封搬进新平面。
 - 事件跨 JVM 不再掐断 trace：发送线程持有 trace 时，mesh 帧盖 `traceparent`/`tracestate`
   扩展、Kafka 记录盖 `ce-traceparent`/`ce-tracestate` 头（无 trace 则两者都不盖章，保持字节一致）；
-  收端在分发周围恢复（mesh `PeerHub.receive`、Kafka `KafkaSubscriber.processRecord`），下游 handler
+  收端在分发周围恢复（mesh `CloudEventBus.deliver`、Kafka `KafkaSubscriber.processRecord`），下游 handler
   观察到发送方的因果。复用 `TracePropagator` 的注入/抽取（与 HTTP 同一语义），收敛点是新的
   `cloud.event.EventTrace`（静态、无状态；出站读 ambient、入站缺席/畸形跑裸——绝不清空消费线程既有
   ambient）。只传 trace：principal/baggage 不从线包恢复（事件路径无认证，身份断言不可伪造）。
@@ -172,6 +183,16 @@ EventBus 两处形状变化（record 规范构造器/组件类型随内容迁移
 
 ### Removed
 
+- **总线桥接缝整体拆除**（事件平面分离，方案见 `docs/plan-event-plane-separation.md`）：
+  `EventSink`、`EventBridge`、`EventBridgePolicy`、`EventBusInbound`、`EventBus.Keyed`、
+  `annotation/Topic` 删除；`CloudEventSink` 消失（出站循环住进 `CloudEventBus.publish`）。
+  判例是自家 RPC 域：`CallBus` 之删（`358bbf42`，"hiding the one fact that matters —
+  where the service lives"）同款病灶在广播域的最后一个幸存接缝——桥让"事实是否出境"由
+  模块装载与 peer 订阅决定、调用点不可见。RPC 域两周前已把"悄悄跨进程"关进笼子，这一轮
+  把同一道闸门装回广播域。`EventBus` 的 javadoc 明写新契约："The bus is the in-process
+  plane, and knows no other"。框架生命周期事件（`AppStoppingEvent` 等）随桥不再自动出境，
+  需要即显式镜像。ext kafka 的桥形态（`KafkaEventSink`/`publishInbound`）为批次 2 待拆，
+  1.5.5 与 ext 兼容版同车发布是前置条件。
 - `WebServerBuilder`（209 行）与 `internal.HttpModuleConfig`（151 行）：前者是第二个组装根，后者是
   第二个默认值所有者；派生规则现在只有 `HttpServer.create` 一处，键与默认只有值类型一处。
 - `DatabaseBuilder`（175 行）：独立面的第二个组装根——coercion 装配、`DatabaseImpl` 构造、

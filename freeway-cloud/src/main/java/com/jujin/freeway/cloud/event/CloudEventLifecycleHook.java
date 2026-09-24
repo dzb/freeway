@@ -8,7 +8,6 @@ import com.jujin.freeway.cloud.internal.HttpServiceDeclaration;
 import com.jujin.freeway.ioc.symbol.SymbolSpec;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.ioc.Container;
-import com.jujin.freeway.ioc.event.EventBus;
 import com.jujin.freeway.ioc.RuntimeHook;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 import java.time.Duration;
@@ -21,36 +20,24 @@ import org.slf4j.LoggerFactory;
  * CloudEventBus lifecycle hook: wires the hub and starts the peer connector.
  * Runs <em>after</em> the HTTP server, because the mesh origin needs the port
  * the node actually serves on; peers that dial during the short window before
- * wiring are closed with 1013 and reconnect on their backoff. The outbound
- * sink and the dedup policy are sealed contributions (see
- * {@link CloudEventModule}), not runtime installs — this hook only sequences
- * what truly needs the running server. Stop releases the connector's threads;
- * the contributed sink needs no detach (the bus stops dispatching on close,
- * and the sealed store was never mutable).
+ * wiring are closed with 1013 and reconnect on their backoff. The facade and
+ * its subscription table exist from composition (see
+ * {@link CloudEventModule}) — this hook only sequences what truly needs the
+ * running server. Stop releases the connector's threads; the hub keeps no
+ * detachable state.
  */
 final class CloudEventLifecycleHook implements RuntimeHook {
 
     private static final Logger LOG = LoggerFactory.getLogger(CloudEventLifecycleHook.class);
 
-    static final SymbolSpec<Integer> DEDUP_CAPACITY = SymbolSpec.of(
-        CloudConfigKeys.EVENT_DEDUP_CAPACITY, Integer.class,
-        CloudConfigKeys.EVENT_DEDUP_CAPACITY_DEFAULT, Integer::parseInt);
     /** The explicit form of the master switch, kept raw so "unset" (blank)
      *  is distinguishable from an explicit {@code false} — the presence rule
      *  applies only to the unset case. */
     private static final SymbolSpec<String> EVENT_ENABLED_EXPLICIT = SymbolSpec.of(
         CloudConfigKeys.EVENT_ENABLED, String.class, "", Function.identity());
-    static final SymbolSpec<Boolean> DEDUP_ENABLED = SymbolSpec.of(
-        CloudConfigKeys.EVENT_DEDUP_ENABLED, Boolean.class, false);
 
     private static final SymbolSpec<String> TOKEN = SymbolSpec.of(
         CloudConfigKeys.EVENT_TOKEN, String.class, "", Function.identity());
-    private static final SymbolSpec<List<String>> SUBSCRIPTIONS =
-        SymbolSpec.list(CloudConfigKeys.EVENT_SUBSCRIPTIONS, List.of());
-    private static final SymbolSpec<List<String>> ALLOWED_TYPES =
-        SymbolSpec.list(CloudConfigKeys.EVENT_ALLOWED_TYPES, List.of());
-    private static final SymbolSpec<List<String>> ALLOWED_TOPICS =
-        SymbolSpec.list(CloudConfigKeys.EVENT_ALLOWED_TOPICS, List.of());
     private static final SymbolSpec<List<String>> PEERS =
         SymbolSpec.list(CloudConfigKeys.EVENT_PEERS, List.of());
     private static final SymbolSpec<Long> CONNECT_TIMEOUT_MS =
@@ -96,13 +83,10 @@ final class CloudEventLifecycleHook implements RuntimeHook {
                     + "the HTTP server, so the node's identity cannot be derived");
         }
         hub.wire(new PeerHub.Wiring(
-            container.get(EventBus.class),
+            container.get(CloudEventBus.class),
             container.get(JsonCodec.class),
             self.serviceId(),
             self.instanceId(),
-            symbols.resolve(SUBSCRIPTIONS),
-            symbols.resolve(ALLOWED_TYPES),
-            symbols.resolve(ALLOWED_TOPICS),
             symbols.resolve(TOKEN)));
 
         // Contributions are resolved lazily at lookup — safe even when the
@@ -180,9 +164,7 @@ final class CloudEventLifecycleHook implements RuntimeHook {
     @Override
     public void stop(Container container) {
         // Release the dialer: the connector's HttpClient and retry threads
-        // must not outlive the app. The contributed sink needs no detach —
-        // the bus rejects new publishes once closed, and post-close dispatches
-        // never consult it.
+        // must not outlive the app.
         if (connector != null) {
             connector.close();
             connector = null;

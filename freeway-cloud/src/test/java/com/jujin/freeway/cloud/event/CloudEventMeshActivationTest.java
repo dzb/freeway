@@ -9,7 +9,7 @@ import com.jujin.freeway.boot.FreewayApp;
 import com.jujin.freeway.cloud.CloudConfigKeys;
 import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.HttpModule;
-import com.jujin.freeway.ioc.event.EventBus;
+import com.jujin.freeway.ioc.ModuleEx;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
@@ -52,31 +52,38 @@ class CloudEventMeshActivationTest {
         System.clearProperty(HttpConfigKeys.SERVER_PORT);
         System.clearProperty(CloudConfigKeys.EVENT_PEERS);
         System.clearProperty(CloudConfigKeys.EVENT_ENABLED);
-        System.clearProperty(CloudConfigKeys.EVENT_SUBSCRIPTIONS);
+    }
+
+    /** Declares mesh interest for "greet." and reports each payload to the latch. */
+    private static ModuleEx greetListener(CountDownLatch latch,
+                                          java.util.concurrent.atomic.AtomicReference<String> sink) {
+        return binder -> binder.contribute(CloudEventSubscription.class)
+            .add("greet-listen",
+                CloudEventSubscription.of("greet.", String.class, p -> {
+                    sink.set(p);
+                    latch.countDown();
+                }));
     }
 
     @Test
     void peersActivateTheMeshWithoutEnabled() throws Exception {
-        // Listener side: explicit true (a pure listener has no peers to name).
+        // Listener side: explicit true (a pure listener has no peers to name);
+        // interest declared as a subscription contribution.
+        var receivedByB = new CountDownLatch(1);
+        var payloadAtB = new AtomicReference<String>();
         System.setProperty(CloudConfigKeys.EVENT_ENABLED, "true");
-        System.setProperty(CloudConfigKeys.EVENT_SUBSCRIPTIONS, "greet.");
-        nodeB = FreewayApp.run(new String[0], new HttpModule(), new CloudEventModule());
+        nodeB = FreewayApp.run(new String[0], new HttpModule(), new CloudEventModule(),
+            greetListener(receivedByB, payloadAtB));
 
         // Dialing side: peers alone — no event.enabled anywhere.
         System.clearProperty(CloudConfigKeys.EVENT_ENABLED);
-        System.clearProperty(CloudConfigKeys.EVENT_SUBSCRIPTIONS);
         System.setProperty(CloudConfigKeys.EVENT_PEERS,
             "127.0.0.1:" + nodeB.get(com.jujin.freeway.http.HttpServer.class).port());
         nodeA = FreewayApp.run(new String[0], new HttpModule(), new CloudEventModule());
 
         awaitMesh(nodeA, nodeB);
 
-        var receivedByB = new CountDownLatch(1);
-        var payloadAtB = new AtomicReference<String>();
-        nodeB.get(EventBus.class).subscribe("greet.hello",
-            payload -> { payloadAtB.set(String.valueOf(payload)); receivedByB.countDown(); });
-
-        nodeA.get(EventBus.class).publish("greet.hello", "presence");
+        nodeA.get(CloudEventBus.class).publish("greet.hello", "presence");
         assertTrue(receivedByB.await(awaitSeconds(), java.util.concurrent.TimeUnit.SECONDS),
             "peers alone must activate the mesh");
         assertEquals("presence", payloadAtB.get());
@@ -84,9 +91,11 @@ class CloudEventMeshActivationTest {
 
     @Test
     void explicitFalseSuppressesConfiguredPeers() throws Exception {
+        var receivedByB = new CountDownLatch(1);
+        var sink = new AtomicReference<String>();
         System.setProperty(CloudConfigKeys.EVENT_ENABLED, "true");
-        System.setProperty(CloudConfigKeys.EVENT_SUBSCRIPTIONS, "greet.");
-        nodeB = FreewayApp.run(new String[0], new HttpModule(), new CloudEventModule());
+        nodeB = FreewayApp.run(new String[0], new HttpModule(), new CloudEventModule(),
+            greetListener(receivedByB, sink));
 
         // Kill switch wins over presence: peers configured, enabled=false.
         System.setProperty(CloudConfigKeys.EVENT_ENABLED, "false");
@@ -98,9 +107,7 @@ class CloudEventMeshActivationTest {
         assertTrue(nodeA.get(PeerHub.class).connections().isEmpty(),
             "an explicit false must suppress the configured peer list");
 
-        var receivedByB = new CountDownLatch(1);
-        nodeB.get(EventBus.class).subscribe("greet.hello", payload -> receivedByB.countDown());
-        nodeA.get(EventBus.class).publish("greet.hello", "bob");
+        nodeA.get(CloudEventBus.class).publish("greet.hello", "bob");
         assertTrue(!receivedByB.await(700, java.util.concurrent.TimeUnit.MILLISECONDS),
             "a suppressed mesh must not deliver remotely");
     }

@@ -3,10 +3,6 @@ package com.jujin.freeway.cloud.event;
 import com.jujin.freeway.cloud.context.InvocationContext;
 import com.jujin.freeway.cloud.context.TraceContext;
 import com.jujin.freeway.commons.json.JsonCodecDefault;
-import com.jujin.freeway.ioc.Container;
-import com.jujin.freeway.ioc.event.EventBus;
-import com.jujin.freeway.ioc.event.EventSink;
-import com.jujin.freeway.ioc.Freeway;
 
 import java.util.List;
 import java.util.Optional;
@@ -22,7 +18,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Trace continuity across the mesh: the sender's span must reach the
- * receiver's handlers, and a traceless frame must not disturb the receiver.
+ * receiver's subscription handlers, and a traceless frame must not disturb
+ * the receiver.
  */
 class EventTraceTest {
 
@@ -43,18 +40,28 @@ class EventTraceTest {
         }
     }
 
+    /** A wired hub + plane whose "greet." handler captures the ambient context. */
+    private static PeerHub planeWith(AtomicReference<Optional<InvocationContext>> seen) {
+        PeerHub hub = new PeerHub();
+        CloudEventBus mesh = new CloudEventBus(hub, new JsonCodecDefault(), List.of(
+            CloudEventSubscription.of("greet.", String.class,
+                p -> seen.set(InvocationContext.current()))));
+        hub.wire(new PeerHub.Wiring(mesh, new JsonCodecDefault(), "svc", "inst-1", ""));
+        return hub;
+    }
+
     @Test
     void ambientTraceIsStampedOnOutboundFrames() {
         var codec = new JsonCodecDefault();
 
         String bare = CloudEventEnvelope.translate(
-            "hi", "greet.hello", EventSink.Channel.TOPIC, "peer-a", "svc", codec, "id-1");
+            "greet.hello", "hi", null, "peer-a", "svc", codec, "id-1");
         assertFalse(bare.contains("traceparent"),
             "a traceless publish stays byte-identical to before: " + bare);
 
         var stamped = new AtomicReference<String>();
         withAmbientTrace(() -> stamped.set(CloudEventEnvelope.translate(
-            "hi", "greet.hello", EventSink.Channel.TOPIC, "peer-a", "svc", codec, "id-1")));
+            "greet.hello", "hi", null, "peer-a", "svc", codec, "id-1")));
         assertTrue(stamped.get().contains("\"traceparent\":\"" + TRACEPARENT + "\""),
             "the ambient span must ride the frame: " + stamped.get());
         assertTrue(stamped.get().contains("\"tracestate\":\"rojo=00f067aa0ba902b7\""),
@@ -66,44 +73,31 @@ class EventTraceTest {
     }
 
     @Test
-    void inboundTraceIsRestoredAroundDispatch() {
-        Container container = Freeway.create();
-        EventBus bus = container.get(EventBus.class);
+    void inboundTraceIsRestoredAroundDelivery() {
         var seen = new AtomicReference<Optional<InvocationContext>>();
-        bus.subscribe("greet.hello", payload -> seen.set(InvocationContext.current()));
-
-        PeerHub hub = new PeerHub();
-        hub.wire(new PeerHub.Wiring(bus, new JsonCodecDefault(), "svc", "inst-1",
-            List.of("greet."), List.of(), List.of(), ""));
+        PeerHub hub = planeWith(seen);
 
         // Built through the real envelope path, under ambient trace — then the
-        // ambient is cleared, so whatever the subscriber sees came off the wire.
+        // ambient is cleared, so whatever the handler sees came off the wire.
         var wire = new AtomicReference<CloudEventEnvelope.Parsed>();
         withAmbientTrace(() -> wire.set(CloudEventEnvelope.parse(
-            CloudEventEnvelope.translate("hi", "greet.hello", EventSink.Channel.TOPIC,
+            CloudEventEnvelope.translate("greet.hello", "hi", null,
                 "peer-a", "svc", new JsonCodecDefault(), "id-9"))));
 
         hub.receive(wire.get());
 
         InvocationContext restored = seen.get().orElseThrow(
-            () -> new AssertionError("the subscriber never ran"));
-        assertNotNull(restored.trace(), "the wire trace must be restored around dispatch");
+            () -> new AssertionError("the subscription never ran"));
+        assertNotNull(restored.trace(), "the wire trace must be restored around delivery");
         assertEquals("0af7651916cd43dd8448eb211c80319c", restored.trace().traceId());
         assertEquals(TRACEPARENT, restored.trace().toTraceparent());
         assertEquals("rojo=00f067aa0ba902b7", restored.trace().traceState());
-        container.close();
     }
 
     @Test
     void tracelessFrameLeavesAmbientUntouched() {
-        Container container = Freeway.create();
-        EventBus bus = container.get(EventBus.class);
         var seen = new AtomicReference<Optional<InvocationContext>>();
-        bus.subscribe("greet.hello", payload -> seen.set(InvocationContext.current()));
-
-        PeerHub hub = new PeerHub();
-        hub.wire(new PeerHub.Wiring(bus, new JsonCodecDefault(), "svc", "inst-1",
-            List.of("greet."), List.of(), List.of(), ""));
+        PeerHub hub = planeWith(seen);
 
         InvocationContext ambient =
             InvocationContext.of(new TraceContext(
@@ -112,29 +106,22 @@ class EventTraceTest {
         try {
             hub.receive(new CloudEventEnvelope.Parsed(
                 "id-1", "freeway://svc", "greet.hello", null, "peer-a",
-                EventSink.Channel.TOPIC, "\"hi\"", null, null));
+                CloudEventEnvelope.Channel.TOPIC, "\"hi\"", null, null));
         } finally {
             InvocationContext.replaceAmbient(previous);
         }
 
         assertSame(ambient, seen.get().orElseThrow(
-            () -> new AssertionError("the subscriber never ran")),
+            () -> new AssertionError("the subscription never ran")),
             "a traceless frame must not shadow the consumer thread's ambient");
-        container.close();
     }
 
     @Test
     void malformedTraceparentRunsBare() {
         // Lenient where the wire is untrusted (mirrors TracePropagator): a bad
         // traceparent degrades to traceless delivery, never a failed dispatch.
-        Container container = Freeway.create();
-        EventBus bus = container.get(EventBus.class);
         var seen = new AtomicReference<Optional<InvocationContext>>();
-        bus.subscribe("greet.hello", payload -> seen.set(InvocationContext.current()));
-
-        PeerHub hub = new PeerHub();
-        hub.wire(new PeerHub.Wiring(bus, new JsonCodecDefault(), "svc", "inst-1",
-            List.of("greet."), List.of(), List.of(), ""));
+        PeerHub hub = planeWith(seen);
 
         InvocationContext ambient =
             InvocationContext.of(new TraceContext(
@@ -143,14 +130,13 @@ class EventTraceTest {
         try {
             hub.receive(new CloudEventEnvelope.Parsed(
                 "id-1", "freeway://svc", "greet.hello", null, "peer-a",
-                EventSink.Channel.TOPIC, "\"hi\"", "not-a-traceparent", null));
+                CloudEventEnvelope.Channel.TOPIC, "\"hi\"", "not-a-traceparent", null));
         } finally {
             InvocationContext.replaceAmbient(previous);
         }
 
         assertSame(ambient, seen.get().orElseThrow(
-            () -> new AssertionError("the subscriber never ran")),
+            () -> new AssertionError("the subscription never ran")),
             "a malformed traceparent must degrade to bare delivery");
-        container.close();
     }
 }

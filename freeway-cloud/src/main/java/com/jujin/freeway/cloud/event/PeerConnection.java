@@ -67,20 +67,16 @@ public final class PeerConnection {
     }
 
     /**
-     * True when this peer declared interest in the message — prefix match
-     * over the hello declaration against ANY of the message's routing keys:
-     * the CE {@code type} (event class FQN for the CLASS channel) and the
-     * resolved topic ({@code @Topic} value or simple name).
+     * True when this peer declared interest in the topic — prefix match over
+     * the hello declaration (an empty prefix pulls everything). The mesh's
+     * only routing key is the topic string; class names never reach here.
      */
-    boolean matches(String type, String topic) {
+    boolean matchesTopic(String topic) {
+        if (topic == null) {
+            return false;
+        }
         for (String prefix : remotePrefixes) {
-            if (prefix.isEmpty()) {
-                return true;
-            }
-            if (type != null && type.startsWith(prefix)) {
-                return true;
-            }
-            if (topic != null && topic.startsWith(prefix)) {
+            if (prefix.isEmpty() || topic.startsWith(prefix)) {
                 return true;
             }
         }

@@ -263,8 +263,8 @@ class EventBusOrderedDeferredTest {
         assertThrows(IllegalStateException.class,
             () -> bus.subscribe("topic", p -> {}));
         assertThrows(IllegalStateException.class,
-            () -> container.extension(EventSink.class).add(
-                "late", (EventSink) (t, e, c, i) -> {}),
+            () -> container.extension(EventSubscriber.class).add(
+                "late", EventSubscriber.of(PostCreatedEvent.class, e -> { })),
             "a contribution after composition is rejected like every other late add");
         container.close();
     }
@@ -302,24 +302,6 @@ class EventBusOrderedDeferredTest {
                 EventSubscriber.of(PostCreatedEvent.class, e -> { })
             ));
         assertTrue(ex.getMessage().contains("sealed"), ex.getMessage());
-        container.close();
-    }
-
-    @Test
-    void deadEventIsNotSentToSink() {
-        List<String> sent = new ArrayList<>();
-        Container container = Freeway.create(binder ->
-            binder.contribute(EventSink.class).add(
-                (EventSink) (topic, event, channel, eventId) ->
-                    sent.add(topic + "=" + event.getClass().getSimpleName())));
-        EventBus bus = container.get(EventBus.class);
-
-        bus.publish(new PostCreatedEvent(new Post("x"))); // zero subscribers -> DeadEvent
-
-        assertFalse(sent.stream().anyMatch(s -> s.startsWith("DeadEvent")),
-            "DeadEvent diagnostics must not reach the MQ sink: " + sent);
-        assertEquals(1, sent.size(),
-            "the original event should still be sent: " + sent);
         container.close();
     }
 

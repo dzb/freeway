@@ -11,7 +11,6 @@ import com.jujin.freeway.http.websocket.WebSocketListener;
 import com.jujin.freeway.http.websocket.WebSocketRoute;
 import com.jujin.freeway.http.websocket.WebSocketSession;
 import com.jujin.freeway.ioc.Binder;
-import com.jujin.freeway.ioc.event.EventBus;
 import com.jujin.freeway.ioc.ModuleEx;
 
 import java.net.URI;
@@ -38,8 +37,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * session and is one-shot. The token check lives in the hello path, so a CE
  * frame before hello must be closed (server leg) / aborted (client leg)
  * rather than dispatched — otherwise any client that can open a socket skips
- * admission and injects TOPIC event (the allowlist is accept-any by
- * default). Uses real WS transport on both legs.
+ * admission and injects frames into the plane. Uses real WS transport on
+ * both legs.
  */
 class PeerHubHandshakeStateTest {
 
@@ -53,10 +52,13 @@ class PeerHubHandshakeStateTest {
         "{\"proto\":1,\"origin\":\"probe-1\",\"subscribe\":[]}";
 
     private AppRuntime node;
+    /** What the cloud plane delivered to this node's declared subscriptions. */
+    private final List<String> delivered = new java.util.concurrent.CopyOnWriteArrayList<>();
 
     @BeforeEach
     void randomPort() {
         System.setProperty(HttpConfigKeys.SERVER_PORT, "0");
+        delivered.clear();
     }
 
     @AfterEach
@@ -67,18 +69,24 @@ class PeerHubHandshakeStateTest {
         System.clearProperty(HttpConfigKeys.SERVER_PORT);
         System.clearProperty(CloudConfigKeys.EVENT_ENABLED);
         System.clearProperty(CloudConfigKeys.EVENT_PEERS);
-        System.clearProperty(CloudConfigKeys.EVENT_SUBSCRIPTIONS);
         System.clearProperty(CloudConfigKeys.EVENT_TOKEN);
     }
 
-    /** A real event node (HttpModule + CloudEventModule). */
+    /** A real event node; mesh interest is declared as subscriptions, not config. */
     private AppRuntime startEventsNode(String subscriptions, String token) {
         System.setProperty(CloudConfigKeys.EVENT_ENABLED, "true");
-        System.setProperty(CloudConfigKeys.EVENT_SUBSCRIPTIONS, subscriptions);
         if (token != null) {
             System.setProperty(CloudConfigKeys.EVENT_TOKEN, token);
         }
-        return FreewayApp.run(new HttpModule(), new CloudEventModule());
+        List<ModuleEx> mods = new ArrayList<>(List.of(new HttpModule(), new CloudEventModule()));
+        for (String prefix : subscriptions.split(",")) {
+            if (!prefix.isBlank()) {
+                mods.add(binder -> binder.contribute(CloudEventSubscription.class)
+                    .add("test-" + prefix,
+                        CloudEventSubscription.of(prefix, String.class, delivered::add)));
+            }
+        }
+        return FreewayApp.run(mods.toArray(new ModuleEx[0]));
     }
 
     private static int port(AppRuntime app) {
@@ -99,8 +107,6 @@ class PeerHubHandshakeStateTest {
             }
             return true;
         });
-        CountDownLatch delivered = new CountDownLatch(1);
-        node.get(EventBus.class).subscribe("greet.hello", p -> delivered.countDown());
 
         RawClient attacker = RawClient.connect(port(node));
         attacker.send(CE_TOPIC_FRAME);
@@ -108,7 +114,7 @@ class PeerHubHandshakeStateTest {
         assertEquals(1002, attacker.awaitCloseCode(5),
             "pre-hello CE frame must be closed with 1002, not dispatched");
         assertTrue(intercepted.isEmpty(), "pre-hello CE frame must never reach receive()");
-        assertEquals(1, delivered.getCount(), "no event may reach the local bus");
+        assertTrue(delivered.isEmpty(), "no frame may reach the cloud plane");
         assertTrue(node.get(PeerHub.class).connections().isEmpty(),
             "a session that never completed hello must not be registered");
     }

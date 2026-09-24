@@ -2,7 +2,6 @@ package com.jujin.freeway.cloud.event;
 
 import com.jujin.freeway.commons.json.JsonArray;
 import com.jujin.freeway.commons.json.JsonCodec;
-import com.jujin.freeway.ioc.event.EventBusInbound;
 import com.jujin.freeway.http.websocket.WebSocketEndpoint;
 import com.jujin.freeway.http.websocket.WebSocketListener;
 import com.jujin.freeway.http.websocket.WebSocketSession;
@@ -46,83 +45,54 @@ public final class PeerHub implements WebSocketEndpoint {
     /** Contributed at hook time, read per inbound frame on WS threads —
      *  copy-on-write keeps add-after-wire safe without external locking. */
     private final List<CloudEventInterceptor> interceptors = new CopyOnWriteArrayList<>();
-    private volatile EventBusInbound bus;
+    /** The broadcast plane this hub feeds: inbound frames arrive here, and
+     *  the declared subscriptions (its table) are the hello prefixes peers pull. */
+    private volatile CloudEventBus facade;
     private volatile JsonCodec codec;
     private volatile String origin;
     private volatile String serviceId;
-    private volatile List<String> subscriptions = List.of();
-    private volatile List<String> allowedTypes = List.of();
-    private volatile List<String> allowedTopics = List.of();
     private volatile String token = "";
     private volatile boolean wired;
 
     /**
      * One-shot wiring for the hub — every cross-module input in one place,
-     * so the eight values cannot drift apart at a call site.
+     * so the values cannot drift apart at a call site.
      *
-     * @param bus            the inbound face of the local event bus
-     * @param codec          JSON codec for frames and acks
-     * @param serviceId      logical service id (envelope source)
-     * @param instanceId     this node's mesh identity; blank derives one
-     * @param subscriptions  CE type/topic prefixes pulled from the mesh
-     * @param allowedTypes   CLASS-channel deserialization allowlist (empty = deny-by-default)
-     * @param allowedTopics  TOPIC-channel allowlist (empty = any)
-     * @param token          mesh handshake token (blank = peer auth off)
+     * @param facade     the CloudEventBus owning subscriptions and delivery
+     * @param codec      JSON codec for frames and acks
+     * @param serviceId  logical service id (envelope source)
+     * @param instanceId this node's mesh identity; blank derives one
+     * @param token      mesh handshake token (blank = peer auth off)
      */
     record Wiring(
-        EventBusInbound bus,
+        CloudEventBus facade,
         JsonCodec codec,
         String serviceId,
         String instanceId,
-        List<String> subscriptions,
-        List<String> allowedTypes,
-        List<String> allowedTopics,
         String token
     ) {}
 
     /** RuntimeHook-time wiring: resolves builtins and config-derived state. */
     void wire(Wiring w) {
-        this.bus = Objects.requireNonNull(w.bus(), "bus");
+        this.facade = Objects.requireNonNull(w.facade(), "facade");
         this.codec = Objects.requireNonNull(w.codec(), "codec");
         this.serviceId = w.serviceId();
         this.origin = Objects.requireNonNull(w.instanceId(), "instanceId");
-        this.subscriptions = List.copyOf(w.subscriptions());
-        this.allowedTypes = List.copyOf(w.allowedTypes());
-        this.allowedTopics = List.copyOf(w.allowedTopics());
         this.token = w.token() == null ? "" : w.token();
         this.wired = true;
-        LOG.info("CloudEventBus wired: origin={} subscriptions={} allowedTypes={} allowedTopics={}",
-            origin, subscriptions, allowedTypes.size(), allowedTopics.size());
-        warnWhenInboundIsUngated();
+        LOG.info("CloudEventBus wired: origin={} subscriptions={}", origin, facade.prefixes());
+        warnWhenUnauthenticated();
     }
 
     /**
-     * A node that accepts inbound (it declared subscriptions) is reachable by
-     * every peer that can open a socket to it. Loose or surprising defaults
-     * must be visible at startup rather than discovered after an incident: an
-     * empty TOPIC allowlist accepts any topic, an empty CLASS allowlist
-     * silently drops every typed event, and an absent token lets any peer
-     * connect.
+     * A node reachable on the mesh accepts sockets from any peer that passes
+     * the token check — so an absent token must be visible at startup rather
+     * than discovered after an incident. Inbound data gating is structural
+     * now (the subscription table drops undeclared topics before any
+     * deserialization), so the token posture is the one loose default left
+     * to warn about.
      */
-    private void warnWhenInboundIsUngated() {
-        if (subscriptions.isEmpty()) {
-            // Outbound-only role: the node declared no inbound interest, so
-            // protocol-correct peers fan nothing out to it and the loose
-            // allowlist/token posture below is moot. The endpoint still
-            // accepts sockets, though — event.allowed-topics / event.token
-            // gate what a direct push can do, with or without subscriptions.
-            return;
-        }
-        if (allowedTypes.isEmpty()) {
-            LOG.warn("CloudEventBus has no CLASS-channel type allowlist — CLASS-channel "
-                + "event are dropped (deny-by-default); set {} to accept typed event",
-                com.jujin.freeway.cloud.CloudConfigKeys.EVENT_ALLOWED_TYPES);
-        }
-        if (allowedTopics.isEmpty()) {
-            LOG.warn("CloudEventBus accepts TOPIC-channel payloads on ANY topic from "
-                + "connected peers — set {} to restrict inbound topics",
-                com.jujin.freeway.cloud.CloudConfigKeys.EVENT_ALLOWED_TOPICS);
-        }
+    private void warnWhenUnauthenticated() {
         if (token.isBlank()) {
             LOG.warn("CloudEventBus has no mesh token — any peer that can reach the "
                 + "endpoint may connect; set {} to require one",
@@ -200,10 +170,10 @@ public final class PeerHub implements WebSocketEndpoint {
         peers.remove(connection.remoteOrigin(), connection);
     }
 
-    /** Live peer connections — the sink iterates this for outbound fan-out. */
     /** The peers currently connected, in either direction — the mesh's
-     *  inspection point for health checks, admin routes and tests. The
-     *  returned connections are live views, not snapshots. */
+     *  inspection point for health checks, admin routes and tests, and the
+     *  fan-out target list for the broadcast plane. The returned connections
+     *  are live views, not snapshots. */
     public List<PeerConnection> connections() {
         return List.copyOf(peers.values());
     }
@@ -233,7 +203,8 @@ public final class PeerHub implements WebSocketEndpoint {
     }
 
     List<String> subscriptions() {
-        return subscriptions;
+        CloudEventBus f = facade;
+        return f == null ? List.of() : f.prefixes();
     }
 
     boolean wired() {
@@ -266,9 +237,8 @@ public final class PeerHub implements WebSocketEndpoint {
      * must be hello (origin + subscriptions) → ack with own hello; the token
      * check runs only on that path, so CE frames before hello are closed
      * (1002) rather than dispatched — otherwise any client that can open a
-     * socket could skip admission and inject event (allowed-topics is
-     * accept-any by default). Hello is one-shot per session: a second hello
-     * is a protocol error too.
+     * socket could skip admission and inject frames into the plane. Hello
+     * is one-shot per session: a second hello is a protocol error too.
      */
     private final class ServerSessionHandler implements WebSocketListener {
         private final WebSocketSession session;
@@ -295,9 +265,10 @@ public final class PeerHub implements WebSocketEndpoint {
                     }
                 } else if (frame.containsKey("specversion")) {
                     if (!handshaken) {
-                        // Admission gate: receive() dispatches to the local
-                        // bus, but the token check lives in the hello path —
-                        // a CE frame before hello must never reach it.
+                        // Admission gate: receive() hands frames to the
+                        // broadcast plane, but the token check lives in the
+                        // hello path — a CE frame before hello must never
+                        // reach it.
                         LOG.warn("CE frame from peer before hello — closing");
                         session.close(1002, "hello expected");
                     } else {
@@ -357,7 +328,7 @@ public final class PeerHub implements WebSocketEndpoint {
             ack.put("proto", 1);
             ack.put("accept", true);
             ack.put("origin", origin);
-            ack.put("subscribe", subscriptions);
+            ack.put("subscribe", subscriptions());
             session.sendText(codec.toJson(ack));
             LOG.info("Peer connected: {} (subscriptions={})", remoteOrigin, remoteSubs);
         }
@@ -379,7 +350,7 @@ public final class PeerHub implements WebSocketEndpoint {
 
     // ── inbound pipeline (shared by server + client legs) ─────────────────
 
-    /** Dispatches one decoded wire frame through interceptors → local bus. */
+    /** Dispatches one decoded wire frame through interceptors → the broadcast plane. */
     void receive(CloudEventEnvelope.Parsed frame) {
         if (EventOrigin.isOwn(origin, frame.origin())) {
             return; // our own event looped back through the mesh — drop
@@ -389,40 +360,11 @@ public final class PeerHub implements WebSocketEndpoint {
                 return; // dropped by interceptor
             }
         }
-        // The inbound trace, restored around dispatch so downstream handlers
-        // observe the sender's causality. Absent/unparseable runs bare — a
-        // traceless frame must not clear the consuming thread's ambient.
-        Map<String, String> trace = new LinkedHashMap<>();
-        trace.put(EventTrace.TRACEPARENT, frame.traceparent());
-        trace.put(EventTrace.TRACESTATE, frame.tracestate());
-        if (frame.channel() == com.jujin.freeway.ioc.event.EventSink.Channel.CLASS) {
-            // CLASS-channel frames deserialize an arbitrary class by name, so
-            // the allowlist is deny-by-default: with no allowlist configured,
-            // no class is ever resolved. Never fall back to accepting any type.
-            if (!allowedTypes.contains(frame.type())) {
-                LOG.debug("Type not allowlisted for CLASS-channel delivery — dropped: {}", frame.type());
-                return;
-            }
-            try {
-                Class<?> type = Class.forName(frame.type(), false, getClass().getClassLoader());
-                Object event = codec.fromJson(frame.dataJson(), type);
-                EventTrace.runWithTrace(trace, () -> bus.publishInbound(event, frame.id()));
-            } catch (ClassNotFoundException e) {
-                LOG.debug("Event type not on this node's classpath — dropped: {}", frame.type());
-            } catch (RuntimeException e) {
-                LOG.error("Inbound event dispatch failed for {}", frame.type(), e);
-            }
-        } else {
-            // The TOPIC channel is a gate too, not just the CLASS one: the peer
-            // names the topic and supplies the payload.
-            if (!allowedTopics.isEmpty() && !matchesPrefix(allowedTopics, frame.type())) {
-                LOG.debug("Topic not in allowlist — dropped: {}", frame.type());
-                return;
-            }
-            Object payload = frame.dataJson() == null
-                ? null
-                : com.jujin.freeway.commons.json.JsonUtils.parse(frame.dataJson());
-            EventTrace.runWithTrace(trace, () -> bus.publishInbound(frame.type(), payload, frame.id()));
+        CloudEventBus f = facade;
+        if (f != null) {
+            // The plane owns channel routing, the subscription gate and trace
+            // restoration — this hub stays the connection/protocol machine.
+            f.deliver(frame);
         }
     }
 
@@ -442,19 +384,6 @@ public final class PeerHub implements WebSocketEndpoint {
             }
         }
         return prefixes;
-    }
-
-    /** True when {@code value} starts with any of {@code prefixes}. */
-    private static boolean matchesPrefix(List<String> prefixes, String value) {
-        if (value == null) {
-            return false;
-        }
-        for (String prefix : prefixes) {
-            if (value.startsWith(prefix)) {
-                return true;
-            }
-        }
-        return false;
     }
 
     /** Length-independent comparison so the token cannot be probed by timing. */

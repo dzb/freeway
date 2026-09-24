@@ -31,11 +31,6 @@
             <artifactId>freeway-cloud</artifactId>
             <version>1.5.5-SNAPSHOT</version>
         </dependency>
-        <dependency>
-            <groupId>com.jujin8.freeway</groupId>
-            <artifactId>freeway-mq-kafka</artifactId>
-            <version>1.5.5-SNAPSHOT</version>
-        </dependency>
     </dependencies>
 
     <build>

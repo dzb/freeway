@@ -1,14 +1,9 @@
 package com.jujin.freeway.cloud.event;
 
 import com.jujin.freeway.commons.json.JsonCodecDefault;
-import com.jujin.freeway.ioc.Container;
-import com.jujin.freeway.ioc.event.EventSink;
-import com.jujin.freeway.ioc.event.EventBus;
-import com.jujin.freeway.ioc.Freeway;
-
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.Test;
 
@@ -17,81 +12,99 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Inbound admission on the CloudEventBus: the mesh accepts frames from any
- * connected peer, so every channel needs a gate — and the gates must be
- * separate, because a CLASS-channel allowlist says nothing about TOPIC
- * payloads (the peer names the topic and supplies the body).
+ * Inbound admission on the cloud plane: the mesh accepts frames from any
+ * connected peer that passed the token check, so data gating is structural —
+ * the subscription table is the allowlist. A frame whose topic matches no
+ * declared subscription is dropped before its payload is read, and no class
+ * is ever materialized for a topic nobody declared.
  */
 class PeerHubInboundGateTest {
 
-    private static CloudEventEnvelope.Parsed frame(EventSink.Channel channel, String type) {
+    private static CloudEventEnvelope.Parsed frame(
+        CloudEventEnvelope.Channel channel, String type) {
         return new CloudEventEnvelope.Parsed(
             "id-1", "freeway://svc", type, null, "peer-a", channel, "\"payload\"", null, null);
     }
 
-    private record Rig(PeerHub hub, EventBus bus, List<Object> inbound) {}
+    private record Rig(PeerHub hub, CloudEventBus mesh, List<Object> inbound) {}
 
-    private static Rig rig(List<String> allowedTypes, List<String> allowedTopics) {
-        Container container = Freeway.create();
-        EventBus bus = container.get(EventBus.class);
+    /** Declares "prefix"-subscriptions over a recording String handler. */
+    private static Rig rig(String... prefixes) {
+        List<CloudEventSubscription> subs = new ArrayList<>();
         List<Object> inbound = new ArrayList<>();
-        bus.subscribe("greet.hello", inbound::add);
-        bus.subscribe("other.topic", inbound::add);
+        for (String p : prefixes) {
+            subs.add(CloudEventSubscription.of(p, String.class, inbound::add));
+        }
+        return rigSubs(subs, inbound);
+    }
 
+    private static Rig rigSubs(List<CloudEventSubscription> subs, List<Object> inbound) {
         PeerHub hub = new PeerHub();
-        hub.wire(new PeerHub.Wiring(bus, new JsonCodecDefault(), "svc", "inst-1",
-            List.of("greet."), allowedTypes, allowedTopics, ""));
-        return new Rig(hub, bus, inbound);
+        CloudEventBus mesh = new CloudEventBus(hub, new JsonCodecDefault(), subs);
+        hub.wire(new PeerHub.Wiring(mesh, new JsonCodecDefault(), "svc", "inst-1", ""));
+        return new Rig(hub, mesh, inbound);
+    }
+
+    /** Counts construction; Jackson instantiates this only when it is asked to. */
+    static final class Probed {
+        static final AtomicInteger CTOR = new AtomicInteger();
+        public Probed() { CTOR.incrementAndGet(); }
     }
 
     @Test
-    void topicChannelIsGatedByTheTopicAllowlist() {
-        Rig rig = rig(List.of(), List.of("greet."));
+    void topicFramesAreDeliveredOnlyToDeclaredSubscriptions() {
+        Rig rig = rig("greet.");
 
-        rig.hub().receive(frame(EventSink.Channel.TOPIC, "other.topic"));
+        rig.hub().receive(frame(CloudEventEnvelope.Channel.TOPIC, "other.topic"));
         assertTrue(rig.inbound().isEmpty(),
-            "a topic outside the allowlist must not reach the local bus");
+            "a topic with no declared subscription must not be delivered");
+        assertEquals(1, rig.mesh().stats().droppedNoSubscriber());
 
-        rig.hub().receive(frame(EventSink.Channel.TOPIC, "greet.hello"));
-        assertEquals1(rig.inbound(), "an allowlisted topic must be delivered");
+        rig.hub().receive(frame(CloudEventEnvelope.Channel.TOPIC, "greet.hello"));
+        assertEquals(List.of("payload"), rig.inbound(),
+            "the declared prefix receives the deserialized payload");
     }
 
     @Test
-    void classChannelIsGatedByTheTypeAllowlist() {
-        Rig rig = rig(List.of("demo.Greeting"), List.of("greet."));
+    void undeclaredTypesAreNeverMaterialized() {
+        // The stronger half of the gate: dropping must not even deserialize —
+        // Probed has a matching JSON body waiting, but its prefix is not
+        // declared, so its constructor must never run.
+        List<CloudEventSubscription> subs =
+            List.of(CloudEventSubscription.of("greet.", Probed.class, p -> {}));
+        PeerHub hub = new PeerHub();
+        CloudEventBus mesh = new CloudEventBus(hub, new JsonCodecDefault(), subs);
+        hub.wire(new PeerHub.Wiring(mesh, new JsonCodecDefault(), "svc", "inst-1", ""));
 
-        // Not on this classpath at all — the allowlist must reject it before
-        // any type resolution is attempted.
-        rig.hub().receive(frame(EventSink.Channel.CLASS, "com.evil.Gadget"));
+        hub.receive(new CloudEventEnvelope.Parsed("id-1", "freeway://svc", "other.topic",
+            null, "peer-a", CloudEventEnvelope.Channel.TOPIC, "{}", null, null));
+
+        assertEquals(0, Probed.CTOR.get(),
+            "no reflective materialization for an undeclared topic");
+        assertEquals(1, mesh.stats().droppedNoSubscriber());
+    }
+
+    @Test
+    void legacyClassFramesAreDroppedByReason() {
+        // In-flight frames from pre-teardown nodes route by class name — the
+        // plane has no class routing anymore, so they die by channel, before
+        // any subscription match and without resolving anything.
+        Rig rig = rig("greet.");
+
+        rig.hub().receive(frame(CloudEventEnvelope.Channel.CLASS, "com.evil.Gadget"));
+
         assertTrue(rig.inbound().isEmpty(),
-            "a class outside the allowlist must never be resolved");
-    }
-
-    @Test
-    void emptyTypeAllowlistDropsClassChannelByDefault() {
-        // CLASS-channel frames resolve an arbitrary class by name, so an empty
-        // allowlist must be deny-by-default — never "accept any class".
-        Rig rig = rig(List.of(), List.of());
-        rig.hub().receive(frame(EventSink.Channel.CLASS, "com.evil.Gadget"));
-        assertTrue(rig.inbound().isEmpty(),
-            "empty CLASS allowlist must never resolve a class by name");
-    }
-
-    @Test
-    void emptyTopicAllowlistStillAcceptsAnyTopic() {
-        // TOPIC-channel payloads are generic JSON (no class resolution), so an
-        // empty allowlist keeps its documented accept-all semantics.
-        Rig rig = rig(List.of(), List.of());
-        rig.hub().receive(frame(EventSink.Channel.TOPIC, "other.topic"));
-        assertEquals1(rig.inbound(), "empty topic allowlist = documented accept-all");
+            "class-channel frames must never be delivered or resolved");
+        assertEquals(1, rig.mesh().stats().droppedLegacy(),
+            "the rollout window keeps evidence: drops are counted");
     }
 
     @Test
     void ownOriginIsNeverDispatched() {
-        Rig rig = rig(List.of(), List.of());
+        Rig rig = rig("greet.");
         CloudEventEnvelope.Parsed looped = new CloudEventEnvelope.Parsed(
             "id-1", "freeway://svc", "greet.hello", null, "inst-1",
-            EventSink.Channel.TOPIC, "\"payload\"", null, null);
+            CloudEventEnvelope.Channel.TOPIC, "\"payload\"", null, null);
 
         rig.hub().receive(looped);
 
@@ -100,13 +113,13 @@ class PeerHubInboundGateTest {
 
     @Test
     void duplicateSimultaneousDialsKeepSingleConnectionByOriginOrder() {
-        Container container = Freeway.create();
         PeerHub smallerHub = new PeerHub();
-        smallerHub.wire(new PeerHub.Wiring(container.get(EventBus.class), new JsonCodecDefault(),
-            "svc", "a-node", List.of(), List.of(), List.of(), ""));
+        smallerHub.wire(new PeerHub.Wiring(
+            new CloudEventBus(smallerHub, new JsonCodecDefault(), List.of()),
+            new JsonCodecDefault(), "svc", "a-node", ""));
 
-        AtomicBoolean outboundClosed = new AtomicBoolean();
-        AtomicBoolean inboundClosed = new AtomicBoolean();
+        java.util.concurrent.atomic.AtomicBoolean outboundClosed = new java.util.concurrent.atomic.AtomicBoolean();
+        java.util.concurrent.atomic.AtomicBoolean inboundClosed = new java.util.concurrent.atomic.AtomicBoolean();
         PeerConnection outbound = new PeerConnection("b-node", List.of(),
             s -> true, true, () -> outboundClosed.set(true));
         PeerConnection inbound = new PeerConnection("b-node", List.of(),
@@ -122,10 +135,11 @@ class PeerHubInboundGateTest {
 
         // Larger origin applies the mirror rule: keep the inbound connection.
         PeerHub largerHub = new PeerHub();
-        largerHub.wire(new PeerHub.Wiring(container.get(EventBus.class), new JsonCodecDefault(),
-            "svc", "z-node", List.of(), List.of(), List.of(), ""));
-        AtomicBoolean largerOutboundClosed = new AtomicBoolean();
-        AtomicBoolean largerInboundClosed = new AtomicBoolean();
+        largerHub.wire(new PeerHub.Wiring(
+            new CloudEventBus(largerHub, new JsonCodecDefault(), List.of()),
+            new JsonCodecDefault(), "svc", "z-node", ""));
+        java.util.concurrent.atomic.AtomicBoolean largerOutboundClosed = new java.util.concurrent.atomic.AtomicBoolean();
+        java.util.concurrent.atomic.AtomicBoolean largerInboundClosed = new java.util.concurrent.atomic.AtomicBoolean();
         PeerConnection largerOutbound = new PeerConnection("a-node", List.of(),
             s -> true, true, () -> largerOutboundClosed.set(true));
         PeerConnection largerInbound = new PeerConnection("a-node", List.of(),
@@ -149,9 +163,5 @@ class PeerHubInboundGateTest {
         assertFalse(PeerHub.acceptsToken("S3CRET", "s3cret"), "comparison is case-sensitive");
         assertFalse(PeerHub.acceptsToken(null, "s3cret"), "absent token rejected");
         assertFalse(PeerHub.acceptsToken("", "s3cret"), "blank token rejected");
-    }
-
-    private static void assertEquals1(List<Object> actual, String message) {
-        assertTrue(actual.size() == 1, message + " — got " + actual);
     }
 }

@@ -13,9 +13,8 @@ import java.util.function.Supplier;
 
 /**
  * In-process event bus with class-based and string-topic subscriptions,
- * optional {@code Defer}-scoped buffering, async dispatch, reactive streams
- * ({@link #stream(Class)}/{@link #stream(String)}, JDK {@link Flow}), and an
- * optional outbound bridge to external transports ({@link EventBridge}).
+ * optional {@code Defer}-scoped buffering, async dispatch, and reactive
+ * streams ({@link #stream(Class)}/{@link #stream(String)}, JDK {@link Flow}).
  *
  * <p><b>The message domain has two channels:</b></p>
  * <ul>
@@ -30,31 +29,27 @@ import java.util.function.Supplier;
  * through the binding table, across processes through freeway-cloud's
  * typed remote invocation.</p>
  *
+ * <p><b>The bus is the in-process plane, and knows no other.</b> A fact
+ * that must cross a process boundary is published on the plane that owns
+ * the boundary — freeway-cloud's {@code CloudEventBus} for the mesh, an MQ
+ * client for durable streams. Whether an event leaves this JVM is visible
+ * at the call site, never a property of which modules happen to be loaded.</p>
+ *
  * <p><b>Delivery semantics:</b> at-most-once, best-effort. A throwing
  * subscriber is isolated (other subscribers still receive the event) and
- * counted in {@link #stats()}; the event is not retried. A failing sink is
- * similarly isolated. Inside a {@code Defer} scope (e.g. a DB transaction),
- * events are buffered and dispatched only after the scope commits — a
- * rollback discards them. Async dispatch ({@link #publishAsync}) has no
- * ordering guarantee; {@link #publishOrdered} provides a globally ordered
- * channel. Within one dispatch, module subscribers (composition-time
- * contributions, in their ordering) run first, then runtime subscribers
- * (in subscription order). Runtime subscribers live until {@link #close()}
- * or explicit {@link #unsubscribe}.
- *
- * <p><b>Inbound events:</b> events received from an external source (e.g. an
- * MQ subscriber) are injected through the adapter SPI
- * {@link EventBusInbound#publishInbound(Object, String)} /
- * {@link EventBusInbound#publishInbound(String, Object, String)} — they are
- * delivered to local subscribers exactly like {@link #publish}, but are never
- * sent back out to the external MQ. Sending inbound traffic back out would
- * loop the event back into the queue and re-dispatch it indefinitely.</p>
+ * counted in {@link #stats()}; the event is not retried. Inside a
+ * {@code Defer} scope (e.g. a DB transaction), events are buffered and
+ * dispatched only after the scope commits — a rollback discards them.
+ * Async dispatch ({@link #publishAsync}) has no ordering guarantee;
+ * {@link #publishOrdered} provides a globally ordered channel. Within one
+ * dispatch, module subscribers (composition-time contributions, in their
+ * ordering) run first, then runtime subscribers (in subscription order).
+ * Runtime subscribers live until {@link #close()} or explicit
+ * {@link #unsubscribe}.
  */
-public final class EventBus implements EventBusInbound, AutoCloseable {
+public final class EventBus implements AutoCloseable {
 
     private final EventStats stats;
-    /** The "leaves the JVM" half: sinks, dispatch identities, inbound dedup. */
-    private final EventBridge bridge;
     private final EventSubscriptionIndex subscriptions;
     private final EventDispatcher dispatcher;
     private final AtomicBoolean closed = new AtomicBoolean();
@@ -78,23 +73,17 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
         // Metrics is a container builtin (NoopMetrics by default) — always
         // resolvable; a contributed/primary implementation observes the bus.
         this.stats = new EventStats(container.get(Metrics.class));
-        // Transports and the dedup policy arrive as sealed contributions —
-        // the store below never changes again, so the snapshot is the registry.
-        // The bus is built lazily on first resolution, always after composition.
-        this.bridge = new EventBridge(
-            stats,
-            container.extension(EventSink.class).all(),
-            container.extension(EventBridgePolicy.class).all());
+        // The bus is built lazily on first resolution, always after
+        // composition; its subscribers arrive as sealed contributions.
         this.subscriptions = new EventSubscriptionIndex(container);
-        this.dispatcher = new EventDispatcher(this, subscriptions, bridge, stats);
+        this.dispatcher = new EventDispatcher(this, subscriptions, stats);
         this.executors = new EventExecutorSupport(this::requireOpen);
     }
 
     // ==================== class-based publish ====================
 
     /**
-     * Publish an event to all class-matched subscribers (module + runtime),
-     * then send to external sinks if configured.
+     * Publish an event to all class-matched subscribers (module + runtime).
      *
      * <p>This is the <b>class-event</b> channel: subscribers are matched on
      * the runtime type of {@code event}. In particular,
@@ -109,40 +98,13 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
      * If no scope is active, the event is published immediately.</p>
      */
     public <E> void publish(E event) {
-        // No id minted here: an id is only needed by the outbound sink fan-out,
-        // so it is minted lazily at send time (EventBridge.fanOut) — a publish
-        // with no sinks, or one discarded by a rollback, pays nothing.
-        publishEvent(event, null, false);
-    }
-
-    /**
-     * Adapter SPI: publishes an event received from an external transport.
-     * The {@code eventId} must be the id carried on the wire, so copies of
-     * the same event arriving over multiple transports can be deduplicated.
-     * Business code should use {@link #publish(Object)} instead.
-     */
-    @Override
-    public <E> void publishInbound(E event, String eventId) {
-        publishEvent(event, eventId, true);
-    }
-
-    private <E> void publishEvent(E event, String eventId, boolean inbound) {
         Objects.requireNonNull(event, "event");
         requireOpen();
         // DeadEvent always dispatches immediately — it is a diagnostic
         // event that fires when zero subscribers exist, and must not be
         // re-deferred during drain of committed events.
         boolean defer = Defer.isActive() && !(event instanceof DeadEvent);
-        // The inbound id is claimed inside the deferred action, not here:
-        // a rollback discards the buffered dispatch, and claiming at publish
-        // time would leave the id burned — the broker's redelivery of the
-        // same wire id would then be dropped as a "duplicate" (event loss).
-        deferOrRun(defer, () -> {
-            if (inbound && !bridge.claim(eventId)) {
-                return; // duplicate — already delivered over another channel
-            }
-            dispatcher.dispatchEvent(event, inbound, eventId);
-        });
+        deferOrRun(defer, () -> dispatcher.dispatchEvent(event));
     }
 
     // ==================== string-topic publish ====================
@@ -164,43 +126,15 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
      * <p>Like {@link #publish(Object)}, respects the active {@code Defer} scope.</p>
      */
     public void publish(String topic, Object payload) {
-        publishTopic(topic, payload, null, false); // id minted at sink send time
-    }
-
-    /**
-     * Adapter SPI: publishes a topic payload received from an external
-     * transport. The {@code eventId} must be the wire id so copies of the
-     * same event can be deduplicated. Business code should use
-     * {@link #publish(String, Object)} instead.
-     */
-    @Override
-    public void publishInbound(String topic, Object payload, String eventId) {
-        publishTopic(topic, payload, eventId, true);
-    }
-
-    private void publishTopic(
-        String topic,
-        Object payload,
-        String eventId,
-        boolean inbound
-    ) {
         Objects.requireNonNull(topic, "topic");
         requireOpen();
-        // Claim inside the deferred action — see publishEvent: claiming at
-        // publish time would burn the wire id on a rollback.
-        deferOrRun(Defer.isActive(), () -> {
-            if (inbound && !bridge.claim(eventId)) {
-                return; // duplicate — already delivered over another channel
-            }
-            dispatcher.dispatchTopic(topic, payload, inbound, eventId);
-        });
+        deferOrRun(Defer.isActive(), () -> dispatcher.dispatchTopic(topic, payload));
     }
 
     /**
      * Runs {@code action} inside the active {@code Defer} scope when asked to
-     * defer, immediately otherwise — the one seam where a publish waits for a
-     * commit (and where inbound ids are claimed, so a rollback leaves the
-     * wire id unclaimed).
+     * defer, immediately otherwise — the one seam where a publish waits for
+     * a commit.
      */
     private void deferOrRun(boolean defer, Runnable action) {
         if (defer) {
@@ -221,13 +155,13 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
      * defaults are shut down (bounded wait) on {@link #close()}.</p>
      *
      * <p><b>Deliberately a runtime setter, not a contribution.</b> Everything
-     * else that used to be installed on the bus at runtime (transports, dedup
-     * capacity) is a sealed composition-time contribution; an executor is the
-     * documented exception because it is a <em>swappable operational
-     * handle</em> with its own lifecycle — replaceable while the bus runs,
-     * owned (and shut down) by whoever created it. Composition-time data
-     * cannot express either half of that. Runtime {@code subscribe} is the
-     * other documented post-composition operation.</p>
+     * else that used to be installed on the bus at runtime is a sealed
+     * composition-time contribution; an executor is the documented exception
+     * because it is a <em>swappable operational handle</em> with its own
+     * lifecycle — replaceable while the bus runs, owned (and shut down) by
+     * whoever created it. Composition-time data cannot express either half of
+     * that. Runtime {@code subscribe} is the other documented post-composition
+     * operation.</p>
      */
     public void setAsyncExecutor(Executor executor) {
         requireOpen();
@@ -260,9 +194,8 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
      *
      * <p>Ordering is global <em>inside this JVM</em>: any two ordered events
      * are ordered relative to each other here, but the channel makes no
-     * promise past it — see the ordering note on {@link EventSink}.
-     * Subscriber failures are isolated and counted, never propagated to the
-     * submitter.
+     * promise past it. Subscriber failures are isolated and counted, never
+     * propagated to the submitter.
      */
     public void publishOrdered(Object event) {
         Objects.requireNonNull(event, "event");
@@ -382,8 +315,6 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
      * @param delivered          successful subscriber deliveries (one per subscriber)
      * @param subscriberFailures throwing subscriber executions
      * @param deadEvents         DeadEvent diagnostics emitted for zero-subscriber events
-     * @param sinkFailures       throwing {@link EventSink} sends (isolated —
-     *                           the other sinks still receive the event)
      * @param streamDrops        events dropped by a slow/absent-demand stream
      *                           consumer (overflow-drop, never blocks dispatch)
      */
@@ -392,7 +323,6 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
         long delivered,
         long subscriberFailures,
         long deadEvents,
-        long sinkFailures,
         long streamDrops
     ) {}
 
@@ -440,10 +370,6 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
         if (!closed.compareAndSet(false, true)) {
             return;
         }
-        // Release the contributed sinks: a closed bus must not keep module
-        // channels (and their sockets) reachable, and post-close publishes
-        // are best-effort no-ops anyway.
-        bridge.clear();
         subscriptions.clearRuntime();
         // Broadcast semantics: post-close publishes are silent no-ops — a
         // fact nobody consumes must not abort shutdown.
@@ -463,29 +389,10 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
      * Events (or topic payloads) that can signal the publisher to stop
      * processing subsequent subscribers. Published by subscriber in a
      * multi-handler chain to short-circuit remaining handlers. Applies to
-     * both channels: class event and string-topic payloads — a stopped
-     * message is also withheld from the outbound {@link EventSink}.
+     * both channels: class event and string-topic payloads.
      */
     public interface Stoppable {
         void stop();
         boolean isStopped();
-    }
-
-    /**
-     * Events that carry a partitioning key for cross-JVM ordering.
-     *
-     * <p>Optional contract: when an event type implements this interface,
-     * external event sinks (Kafka, RabbitMQ, ...) use {@link #key()} as the
-     * message key, so the broker keeps event of the same aggregate ordered
-     * and parallel consumers stay per-key serial. Events that do not
-     * implement it are sent with a null key — no cross-JVM ordering
-     * guarantee and no key-based parallelism on the consuming side.</p>
-     *
-     * <p>Passive contract like {@link Stoppable}: the bus and its sinks
-     * only ever read it; the event type opts in with zero coupling.</p>
-     */
-    public interface Keyed {
-        /** Partitioning key — the ordering domain, e.g. the aggregate id. */
-        String key();
     }
 }

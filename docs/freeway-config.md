@@ -466,12 +466,12 @@ CLI 参数（`--freeway.config.file=...`）同样无效——启动时会打 WAR
 ### 配置项
 
 **分档**（规则见开头"配置分类规则"）：决策 = `event.peers` + `event.token`、
-`event.subscriptions` + 两个白名单、`rpc.tls.key-store` + `-password`（走 mTLS 时）、
+`rpc.tls.key-store` + `-password`（走 mTLS 时）、
 `registry.service-host`（`auto` 在容器里通常够用，多网卡主机需点名）；姿态 = 各
 `.enabled`、presence 主键，以及三个 `auto` 键（`registry.service-scheme` /
 `.service-host` / `registry.shutdown-drain`）；声明 = 四个 `*.type`；机制 =
 `secret.file`/`secret.keys`（仅 `-D`）；其余为**调优**，且每簇已有一个键在管
-（`rpc.resilience=auto|off`、`event.enabled` presence、`event.dedup.enabled`）。
+（`rpc.resilience=auto|off`、`event.enabled` presence）。
 
 **两类键，别混淆**（云后端相关键尤其容易）：
 
@@ -554,16 +554,14 @@ CLI 参数（`--freeway.config.file=...`）同样无效——启动时会打 WAR
 
 #### CloudEventBus — 跨节点事件网格
 
+入站兴趣**不是配置键**：由组合期的 `CloudEventSubscription` 贡献声明——同一份声明
+同时生成 hello 拉取前缀、入站闸门（未声明的 topic 到达即弃、不反序列化）与投递路由。
+
 | 键 | 档 | 类型 | 默认值 | 必填 | 说明 |
 |----|------|------|--------|------|------|
 | `freeway.cloud.event.peers` | 姿态·presence | String | *(空)* | 否 | **对等节点列表（presence 主键）**——非空即启用 mesh；空 = 纯监听方需显式 `enabled=true`。启用前确认网络可达 |
 | `freeway.cloud.event.enabled` | 姿态 | Boolean | *(未设)* | 否 | 显式主开关，**设了就赢**：`true` 开（含无 peers 的 discovery-fed mesh）、`false` = 总闸（连已配置的 peers 也压制）。未设时退到 presence 规则（peers 非空即开）。什么都不设 = 模块装了也不动 |
-| `freeway.cloud.event.subscriptions` | 决策 | String | *(空)* | 否 | 订阅列表 |
-| `freeway.cloud.event.allowed-types` | 决策 | String | *(空)* | 否 | CLASS 通道反序列化白名单，**空 = 拒绝全部**（deny-by-default，不回退到"放行任意类"） |
-| `freeway.cloud.event.allowed-topics` | 决策 | String | *(空)* | 否 | TOPIC 通道白名单，空 = 放行全部 |
 | `freeway.cloud.event.token` | 决策 | String | *(空)* | 否 | Mesh 握手共享密钥（空 = 无对等认证）。**多节点生产必配**：全节点值一致、经 `FREEWAY_CLOUD_EVENT_TOKEN` 注入；不一致以 WS `1008` 断开，轮换需滚动重启 |
-| `freeway.cloud.event.dedup.enabled` | 姿态 | Boolean | `false` | 否 | 启用事件去重（消耗内存，按需开启） |
-| `freeway.cloud.event.dedup.capacity` | 调优 | Integer | `4096` | 否 | 去重 ID 缓存容量 |
 | `freeway.cloud.event.connect-timeout-ms` | 调优 | Long | `3000` | 否 | 出站拨号 socket 连接超时（毫秒） |
 | `freeway.cloud.event.handshake-timeout-ms` | 调优 | Long | `10000` | 否 | 握手看门狗：连接建立后等待 hello/ack 的超时（毫秒） |
 | `freeway.cloud.event.backoff-base-ms` | 调优 | Long | `1000` | 否 | 断线重连退避基数（毫秒，指数退避） |

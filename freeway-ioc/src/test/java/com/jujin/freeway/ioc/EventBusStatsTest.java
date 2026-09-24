@@ -81,31 +81,6 @@ class EventBusStatsTest {
     }
 
     @Test
-    void throwingSinkIsIsolatedAndCounted() {
-        // A failing sink must not abort the fan-out (other sinks still get
-        // the event) and must surface in stats(), not only in a log line.
-        List<Object> delivered = new ArrayList<>();
-        Container container = Freeway.create(binder -> {
-            binder.contribute(EventSink.class)
-                .add((EventSink) (topic, event, channel, eventId) -> {
-                    throw new IllegalStateException("boom");
-                });
-            binder.contribute(EventSink.class)
-                .add((EventSink) (topic, event, channel, eventId) -> delivered.add(event));
-        });
-        EventBus bus = container.get(EventBus.class);
-
-        bus.publish("orders", "payload"); // topic channel
-
-        EventBus.EventBusStats stats = bus.stats();
-        assertEquals(1, stats.sinkFailures(), "the throwing sink is counted");
-        assertEquals(List.of("payload"), delivered,
-            "the healthy sink still receives the event after its sibling failed");
-        assertEquals(0, stats.streamDrops(), "no stream involved");
-        container.close();
-    }
-
-    @Test
     void deadEventSourceIsThePublishingBus() {
         // New contract pin: DeadEvent.source identifies the bus that emitted
         // the diagnostic (it used to leak the internal EventDispatcher).

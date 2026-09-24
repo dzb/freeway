@@ -1,23 +1,15 @@
 package demo;
 
-import com.jujin.freeway.ioc.annotation.Topic;
-
-/** Shared event contract for the cross-JVM demo (both nodes compile against it). */
+/** Shared event contract for the cross-JVM mesh demo (both nodes compile against it). */
 public final class Events {
 
-    /**
-     * A CLASS-channel event. {@code @Topic} gives the CE routing key
-     * ({@code greet.hello}) that peers declare in their subscriptions;
-     * {@code Keyed} makes {@code key()} the CE {@code subject} and the Kafka
-     * record key — per-aggregate ordering across both channels.
-     */
-    @Topic("greet.hello")
-    public record Greeting(String name) implements com.jujin.freeway.ioc.event.EventBus.Keyed {
-        @Override
-        public String key() {
-            return name;
-        }
-    }
+    /** The mesh topic the greeting travels on — the CE {@code type} on the wire.
+     *  Routing names on the cloud plane are strings chosen here, never Java
+     *  class names: renaming this record cannot break the wire contract. */
+    public static final String GREET_TOPIC = "greet.hello";
+
+    /** A plain payload record — no framework annotation, no transport contract. */
+    public record Greeting(String name) {}
 
     private Events() {}
 }
