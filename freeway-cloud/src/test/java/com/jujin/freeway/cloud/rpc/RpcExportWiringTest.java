@@ -1,6 +1,7 @@
 package com.jujin.freeway.cloud.rpc;
 
 import com.jujin.freeway.cloud.CloudModule;
+import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -10,19 +11,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
-import com.jujin.freeway.cloud.CloudConfigKeys;
 import com.jujin.freeway.cloud.CloudHooks;
 import com.jujin.freeway.cloud.discovery.Endpoint;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.cloud.discovery.ServiceRegistry;
 import com.jujin.freeway.commons.json.JsonCodecDefault;
-import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.HttpModule;
 import com.jujin.freeway.http.HttpServer;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.ModuleEx;
-import com.jujin.freeway.ioc.ModuleNode;
 import com.jujin.freeway.ioc.RuntimeHook;
 import com.jujin.freeway.ioc.annotation.Inject;
 import java.lang.reflect.Type;
@@ -114,19 +112,17 @@ class RpcExportWiringTest {
             app.close();
             app = null;
         }
-        System.clearProperty(HttpConfigKeys.SERVER_PORT);
-        System.clearProperty(CloudConfigKeys.RPC_REQUEST_TIMEOUT);
+        System.clearProperty(HttpModule.ConfigKeys.SERVER_PORT);
+        System.clearProperty(ConfigKeys.RPC_REQUEST_TIMEOUT);
     }
 
     private AppRuntime run(ModuleEx... modules) {
-        System.setProperty(HttpConfigKeys.SERVER_PORT, "0");
-        List<ModuleNode> children = new ArrayList<>();
-        children.add(ModuleNode.of(new HttpModule()));
-        children.add(ModuleNode.of(CloudModule.class));
-        for (ModuleEx module : modules) {
-            children.add(ModuleNode.of(module));
-        }
-        return FreewayApp.run(ModuleNode.app("test", children.toArray(ModuleNode[]::new)));
+        System.setProperty(HttpModule.ConfigKeys.SERVER_PORT, "0");
+        ModuleEx[] composed = new ModuleEx[modules.length + 2];
+        composed[0] = new HttpModule();
+        composed[1] = new CloudModule();
+        System.arraycopy(modules, 0, composed, 2, modules.length);
+        return FreewayApp.run(composed);
     }
 
     private static void pointDiscoveryAt(AppRuntime app, String serviceId) {

@@ -1,6 +1,5 @@
 package com.jujin.freeway.cloud.event;
 
-import com.jujin.freeway.cloud.CloudConfigKeys;
 import com.jujin.freeway.cloud.CloudHooks;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.ModuleEx;
@@ -8,6 +7,8 @@ import com.jujin.freeway.ioc.RuntimeHook;
 import com.jujin.freeway.ioc.annotation.Builtin;
 import com.jujin.freeway.ioc.annotation.Marker;
 import com.jujin.freeway.http.websocket.WebSocketRoute;
+import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
+import com.jujin.freeway.cloud.CloudModule;
 
 /**
  * Assembles the {@link CloudEventBus} — the cloud-native broadcast plane:
@@ -59,7 +60,7 @@ public final class CloudEventModule implements ModuleEx {
 
         binder.contribute(WebSocketRoute.class)
             .add("freeway.cloud.event", WebSocketRoute.of(
-                CloudConfigKeys.EVENT_PATH_DEFAULT, hub));
+                ConfigKeys.EVENT_PATH_DEFAULT, hub));
 
         binder.contribute(RuntimeHook.class)
             .add(CloudHooks.EVENT, new CloudEventLifecycleHook(hub))

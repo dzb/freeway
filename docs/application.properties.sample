@@ -357,19 +357,10 @@
 # for a discovery-fed mesh without static peers. Nothing set = module inert.
 # freeway.cloud.event.peers=
 # freeway.cloud.event.enabled=
-# freeway.cloud.event.subscriptions=
-# CLASS-channel deserialization allowlist (empty = deny all typed events).
-# freeway.cloud.event.allowed-types=
-# TOPIC-channel allowlist (empty = allow any topic).
-# freeway.cloud.event.allowed-topics=
 # Shared secret for mesh handshake (empty = no peer auth).
 # Scenario: multi-node production MUST set it — identical on every node,
 #   injected via FREEWAY_CLOUD_EVENT_TOKEN; a mismatch closes with WS 1008.
 # freeway.cloud.event.token=
-# Enable event deduplication (opt-in; consumes memory for dedup IDs).
-# freeway.cloud.event.dedup.enabled=false
-# Dedup ID cache capacity (default 4096).
-# freeway.cloud.event.dedup.capacity=4096
 # Mesh network timeouts (ms): outbound connect, hello/ack watchdog, backoff.
 # freeway.cloud.event.connect-timeout-ms=3000
 # freeway.cloud.event.handshake-timeout-ms=10000
@@ -392,7 +383,6 @@
 
 # freeway.kafka.bootstrap-servers=localhost:9092
 # freeway.kafka.group-id=freeway
-# Comma-separated topic names for EventBus <-> Kafka bridging.
-# KafkaEventSink sends matching events to these topics;
-# KafkaSubscriber polls these topics and publishes to local EventBus.
+# Comma-separated topic names the subscriber polls.
+# KafkaEvents.send targets topics by name; subscribe() registers interest by prefix.
 # freeway.kafka.topics=

@@ -1,5 +1,6 @@
 package com.jujin.freeway.boot.internal;
 
+import com.jujin.freeway.commons.logging.LogConfig;
 import com.jujin.freeway.commons.logging.LogConfigSource;
 
 import java.util.LinkedHashMap;
@@ -24,7 +25,8 @@ import java.util.Map;
  */
 public final class AppLogSource implements LogConfigSource {
 
-    private static final String LOG_PREFIX = "freeway.log.";
+    /** The namespace, spelled by its owner ({@code commons.logging.LogKeys}) — never re-typed. */
+    private static final String LOG_PREFIX = LogConfig.PREFIX;
 
     /** ServiceLoader instantiates via the public no-arg constructor. */
     public AppLogSource() {}
@@ -32,7 +34,7 @@ public final class AppLogSource implements LogConfigSource {
     @Override
     public Map<String, String> values() {
         // The loader's own classpath resolution — the same loader rule the
-        // main cascade uses (AppBuilder's resolveClassLoader: TCCL first).
+        // main cascade uses (FreewayApp's resolveClassLoader: TCCL first).
         ClassLoader loader = Thread.currentThread().getContextClassLoader();
         ConfigSources sources = ConfigLoaderImpl.loadLayers(
             loader != null ? loader : AppLogSource.class.getClassLoader(),

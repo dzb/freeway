@@ -1,6 +1,7 @@
 package com.jujin.freeway.cloud.rpc;
 
 import com.jujin.freeway.cloud.CloudModule;
+import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -10,11 +11,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
-import com.jujin.freeway.cloud.CloudConfigKeys;
 import com.jujin.freeway.cloud.discovery.Endpoint;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.cloud.discovery.ServiceRegistry;
-import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.HttpModule;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.ModuleEx;
@@ -75,8 +74,8 @@ class RemoteCallerTest {
 
     @BeforeEach
     void startApps() {
-        System.setProperty(HttpConfigKeys.SERVER_PORT, "0");
-        System.setProperty(CloudConfigKeys.RPC_REQUEST_TIMEOUT, "2000");
+        System.setProperty(HttpModule.ConfigKeys.SERVER_PORT, "0");
+        System.setProperty(ConfigKeys.RPC_REQUEST_TIMEOUT, "2000");
         server = FreewayApp.create(new HttpModule()).add(CloudModule.class).add(new RpcExportModule()).start();
         var webServer = server.get(com.jujin.freeway.http.HttpServer.class);
         caller = server.get(RemoteCaller.class);   // framework-bound, not hand-wired
@@ -92,8 +91,8 @@ class RemoteCallerTest {
     @AfterEach
     void stopApps() {
         if (server != null) server.close();
-        System.clearProperty(HttpConfigKeys.SERVER_PORT);
-        System.clearProperty(CloudConfigKeys.RPC_REQUEST_TIMEOUT);
+        System.clearProperty(HttpModule.ConfigKeys.SERVER_PORT);
+        System.clearProperty(ConfigKeys.RPC_REQUEST_TIMEOUT);
     }
 
     @Test

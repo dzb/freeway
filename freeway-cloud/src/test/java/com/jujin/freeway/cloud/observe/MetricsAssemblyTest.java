@@ -5,13 +5,11 @@ import com.jujin.freeway.cloud.CloudModule;
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
 import com.jujin.freeway.commons.metrics.Metrics;
-import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.route.Route;
 import com.jujin.freeway.ioc.AmbiguousBindingException;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Freeway;
-import com.jujin.freeway.ioc.ModuleNode;
 import com.jujin.freeway.ioc.ModuleEx;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -25,6 +23,8 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Supplier;
+import com.jujin.freeway.http.HttpModule.ConfigKeys;
+import com.jujin.freeway.http.HttpModule;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -41,12 +41,12 @@ class MetricsAssemblyTest {
 
     @BeforeEach
     void randomPort() {
-        System.setProperty(HttpConfigKeys.SERVER_PORT, "0");
+        System.setProperty(ConfigKeys.SERVER_PORT, "0");
     }
 
     @AfterEach
     void clearProperties() {
-        System.clearProperty(HttpConfigKeys.SERVER_PORT);
+        System.clearProperty(ConfigKeys.SERVER_PORT);
     }
 
     @Test
@@ -86,9 +86,8 @@ class MetricsAssemblyTest {
 
     @Test
     void coexistingSecondMetricsPrimaryFailsLoudly() {
-        try (Container container = Freeway.create(ModuleNode.app("test",
-                ModuleNode.of(CloudModule.class),
-                ModuleNode.of(new SecondMetricsPrimaryModule())))) {
+        try (Container container =
+                Freeway.create(new CloudModule(), new SecondMetricsPrimaryModule())) {
             assertThrows(AmbiguousBindingException.class,
                 () -> container.get(Metrics.class),
                 "two primary Metrics bindings must fail loudly at first resolution — "

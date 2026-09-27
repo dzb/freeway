@@ -8,6 +8,8 @@ import java.util.Objects;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
+import com.jujin.freeway.cloud.CloudModule;
 
 /**
  * Dynamic {@link SymbolProvider} backed by {@link SecretStore}: makes secrets
@@ -39,7 +41,7 @@ public final class SecretSymbolSource implements SymbolProvider {
     public SecretSymbolSource(SecretStore store) {
         this.store = Objects.requireNonNull(store, "store");
         this.allowedKeys = parseAllowedKeys(
-            System.getProperty(com.jujin.freeway.cloud.CloudConfigKeys.SECRET_KEYS));
+            System.getProperty(ConfigKeys.SECRET_KEYS));
         if (allowedKeys == null) {
             // Same visible-at-startup stance as PeerHub's ungated-mesh
             // warning: the permissive default answers for EVERY name, so any
@@ -50,7 +52,7 @@ public final class SecretSymbolSource implements SymbolProvider {
                     + "system property) — every symbol name is checked against the "
                     + "environment first, which can shadow config keys with "
                     + "unrelated variables",
-                com.jujin.freeway.cloud.CloudConfigKeys.SECRET_KEYS);
+                ConfigKeys.SECRET_KEYS);
         }
     }
 

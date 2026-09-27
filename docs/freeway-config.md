@@ -708,6 +708,46 @@ IoC 容器不提供外部化配置键。所有配置通过编程式 API 完成�
 
 ---
 
+## 未知键检测
+
+启动时，boot 把配置实际声明的 `freeway.*` 键——文件层、CLI、环境变量映射，外加容器自行汇集的 `-D` 系统属性层——与各模块贡献的词表逐一比对，发现没人读的键就输出一条 WARN。**每个未知键只在启动期报一次、且只报不拦**：告警点名即止，配置照常生效，启动不失败；检查随启动钩子跑一遍，**热重载不重报**。
+
+### 词表从哪来
+
+模块经 `binder.contribute(KnownKeys.class)` 贡献自己命名空间的词表，两种构造方式：
+
+- `KnownKeys.of(ConfigKeys.class, prefixes...)` —— 反射从键表（`*ConfigKeys`）收割该前缀下的全部键名，新键自动入表、不必维护第二份清单；键表与词表必须一致，表里出现前缀之外的键在绑定期直接失败，而不是被悄悄丢下（丢下它等于让那个命名空间整个退出检测）。
+- `KnownKeys.admit(prefix)` —— 纯前缀准入：只声明前缀、不列键名，用于键名无法枚举的动态命名空间；在该前缀下永不给建议，也永不按下面的命名空间规则点名（准入即豁免标记）。
+
+部分动态的命名空间按“固定键入表、动态键经准入豁免”处理：`freeway.log.*` 的固定键都在词表里（拼错即得建议），而 `freeway.log.file.<name>.*` 这类按数据构造的名字由 boot 以 `admit(LogConfig.FILE_PREFIX)` 准入——存在本身不构成缺陷，永不按命名空间规则报告。
+
+### 什么时候点名
+
+- **近邻给建议**：未知键与词表中某个键的编辑距离 ≤ 2 时点名，并给出拼写建议；建议按距离从近到远、同距离按字母序给出，最多 3 个。
+- **已声明命名空间直接点名**：没有近邻、但键落在某个模块已声明的命名空间（`freeway.http`、`freeway.cloud` 这类非根前缀）之下时，同样点名——命名空间被声明意味着检测有据可依，词表里没有这个键就意味着没有模块读取它：
+
+  ```text
+  Unknown config key 'freeway.cloud.service-addr' — namespace 'freeway.cloud' is declared but no module reads this key
+  ```
+
+- **未声明即静默**：键所在的命名空间没有任何词表贡献（子集装配下常见——模块未装载，检测无从判断），或者只被根 `freeway.` 覆盖（boot 的键表坐在根上，根不声明任何模块表面）——两类都保持沉默，凭空猜测只会制造噪音。
+- **动态键族豁免**：`admit` 准入的前缀（如 `freeway.log.file.`）下，键名无法枚举，存在本身不构成缺陷——只报近邻建议，永不按命名空间规则点名。
+- **只报不拦**：告警不改变任何行为，未知键不会被拒绝加载，配置照常生效。
+- **退役前缀走独立通告**：`freeway.web.*` 不进本检测——它由 HttpModule 单独精确通告，逐条点名 `旧键 → 新键` 的改名，且只在旧键已配置、当前键缺席时告警一次。
+- **应用键不参与**：`freeway.` 前缀之外的键（`app.name`、`slf4j.provider` 这类进程级键）不在检测范围内——框架的词表只覆盖 `freeway.*`。
+
+### 示例
+
+把 `freeway.log.file` 少写一个字母，启动日志给出这条 WARN（消息原文）：
+
+```text
+Unknown config key 'freeway.log.fil' — did you mean 'freeway.log.file' or 'freeway.log.files'?
+```
+
+只有一个近邻时省略 ` or `（如 `Unknown config key 'freeway.profil' — did you mean 'freeway.profile'?`），建议至多 3 个。
+
+---
+
 ## 环境变量映射
 
 默认前缀 `FREEWAY_`，下划线转点号：
@@ -724,7 +764,7 @@ freeway.http.ssl.key-store-password  →  FREEWAY_HTTP_SSL_KEY-STORE-PASSWORD
 freeway.db.pool.max-size             →  FREEWAY_DB_POOL_MAX-SIZE
 ```
 
-shell 的 `export` 不接受含 `-` 的名字，这是 shell 的限制、不是映射的例外：用 `-D`、`env 'NAME=value'`、systemd `Environment=` 或容器 `-e` 传入。变量名写错（例如用 `_` 代替 `-`）不会被特殊处理——它会映射成另一个键名；若没人声明那个键，它就像任何拼错的键一样静默无效（与 CLI 拼错参数的行为一致）。
+shell 的 `export` 不接受含 `-` 的名字，这是 shell 的限制、不是映射的例外：用 `-D`、`env 'NAME=value'`、systemd `Environment=` 或容器 `-e` 传入。变量名写错（例如用 `_` 代替 `-`）不会被特殊处理——它会映射成另一个键名；若没人声明那个键，这个映射出的键名会进入未知键检测：与词表中某个键相距 ≤2 时启动期 WARN 并给出拼写建议，更远则保持静默（见上一节「未知键检测」）——两种情形下该配置都不生效，CLI 拼错参数同理。
 
 例外（读自 JVM 系统属性，不参与上述级联）：`freeway.cloud.secret.file`、
 `freeway.cloud.secret.keys` —— 两者只能 `-D` 设置，否则静默无效。

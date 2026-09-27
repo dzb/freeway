@@ -37,12 +37,12 @@ the hello pull-prefixes, the inbound gate, and delivery**, and the declared
 nothing reaches `Class.forName`). There is deliberately no runtime subscribe and
 no automatic mirror: a remote fact becomes a local one only where a handler says
 so, in one visible line. The wire is untouched — CloudEvents 1.0, `fwchannel`/
-`fworigin`, W3C trace, origin loop-guard, and the `X-Event-*` read-compat row all
-carry over; the CE envelope and mesh machinery move into the new plane intact.
+`fworigin`, W3C trace, origin loop-guard, and the `X-Event-Origin` fallback all
+carry over (the other `X-Event-*` headers need no fallback: routing is by topic
+prefix and deserialization by declared type, so there is nothing to fall back
+to); the CE envelope and mesh machinery move into the new plane intact.
 The "one event, several copies" machinery (shared ids, the dedup window,
-`publishInbound`) is gone as a concept, not as a feature. See
-[plan-event-plane-separation.md](plan-event-plane-separation.md) — seven review
-rounds, and every claim in it pinned by tests.
+`publishInbound`) is gone as a concept, not as a feature.
 
 ### One assembly derivation each (freeway-http / freeway-db)
 
@@ -85,7 +85,7 @@ Sending threads carrying a trace stamp `traceparent`/`tracestate` onto mesh
 frames and Kafka records; receiving planes restore them around delivery.
 Absent or malformed traces run bare — a traceless frame never clears the
 consumer thread's ambient. The async bus channels remain a documented gap
-(single-listed, not hidden).
+(listed here once, not hidden).
 
 ## Bug Fixes
 
@@ -117,9 +117,7 @@ mesh upgrades are fleet-wide (same-version nodes only, legacy in-flight frames
 decode but drop with a counted trace), framework lifecycle events no longer
 ride any wire (they were bridge traffic; mirror them if you actually wanted
 them on the fabric), and `EventBusStats` is per-plane only — no merged view
-across planes with different delivery promises (it gained `streamDrops`; the
-bridge-era `sinkFailures` counter died with the bridge before release and
-never shipped).
+across planes with different delivery promises (it gained `streamDrops`).
 
 ## Numbers
 

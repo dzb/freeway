@@ -9,7 +9,6 @@ import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.cloud.discovery.ServiceRegistry;
 import com.jujin.freeway.cloud.rpc.CloudHttpClient;
 import com.jujin.freeway.cloud.rpc.CloudRequest;
-import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.HttpModule;
 import com.jujin.freeway.http.route.Route;
@@ -26,6 +25,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
+import com.jujin.freeway.http.HttpModule.ConfigKeys;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -42,12 +42,12 @@ class TracePropagationTest {
 
     @BeforeEach
     void randomPort() {
-        System.setProperty(HttpConfigKeys.SERVER_PORT, "0");
+        System.setProperty(ConfigKeys.SERVER_PORT, "0");
     }
 
     @AfterEach
     void clearProperties() {
-        System.clearProperty(HttpConfigKeys.SERVER_PORT);
+        System.clearProperty(ConfigKeys.SERVER_PORT);
     }
 
     private static final String TRACE_STATE = "vendor=t61rcWkgMzE,other=1";

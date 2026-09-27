@@ -57,6 +57,22 @@ public final class BeanIntrospector {
             }
         };
 
+    /**
+     * Completed selections: type → (preferred annotation → chosen constructor),
+     * with {@link Annotation} itself as the "no preferred annotation" sentinel.
+     * Selection is deterministic per (type, annotation), so a computed winner is
+     * reused instead of re-scanning declared constructors on every instance
+     * creation. Failures are not cached — they re-derive on demand, and a broken
+     * class must fail the same way every time.
+     */
+    private static final ClassValue<Map<Class<? extends Annotation>, BeanConstructor>> SELECTED =
+        new ClassValue<>() {
+            @Override
+            protected Map<Class<? extends Annotation>, BeanConstructor> computeValue(Class<?> type) {
+                return new ConcurrentHashMap<>();
+            }
+        };
+
     private BeanIntrospector() {
     }
 
@@ -96,6 +112,11 @@ public final class BeanIntrospector {
      *       (single-constructor classes without a no-arg constructor).</li>
      * </ul>
      *
+     * <p>The selection is cached per (type, annotation): instance creation is a
+     *     hot path for prototypes and {@code Container.create}, and the winner is
+     *     deterministic. Failures (no constructor, duplicate preferred) are not
+     *     cached — a broken class must fail the same way every time.</p>
+     *
      * @param type                 the class to inspect
      * @param preferredAnnotation  optional annotation to prefer (e.g. {@code @Inject})
      * @return the best constructor
@@ -106,7 +127,24 @@ public final class BeanIntrospector {
         Class<?> type,
         Class<? extends Annotation> preferredAnnotation
     ) throws NoSuchMethodException {
-        Constructor<?>[] constructors = Objects.requireNonNull(type, "type").getDeclaredConstructors();
+        Objects.requireNonNull(type, "type");
+        Class<? extends Annotation> marker =
+            preferredAnnotation == null ? Annotation.class : preferredAnnotation;
+        Map<Class<? extends Annotation>, BeanConstructor> perType = SELECTED.get(type);
+        BeanConstructor cached = perType.get(marker);
+        if (cached != null) {
+            return cached;
+        }
+        BeanConstructor selected = computeSelection(type, preferredAnnotation);
+        perType.putIfAbsent(marker, selected);
+        return selected;
+    }
+
+    private static BeanConstructor computeSelection(
+        Class<?> type,
+        Class<? extends Annotation> preferredAnnotation
+    ) throws NoSuchMethodException {
+        Constructor<?>[] constructors = type.getDeclaredConstructors();
         if (constructors.length == 0) {
             return constructor(type.getDeclaredConstructor());
         }

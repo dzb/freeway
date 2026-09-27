@@ -1,9 +1,11 @@
 package com.jujin.freeway.cloud.event;
 
+import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
+import com.jujin.freeway.cloud.CloudModule;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
-import com.jujin.freeway.cloud.CloudConfigKeys;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
 
@@ -17,12 +19,12 @@ class PeerConnectorWiringTest {
     void defaultsAreTheConfigKeysDefaults() {
         PeerConnector.Wiring wiring = PeerConnector.Wiring.defaults();
 
-        assertEquals(Duration.ofMillis(CloudConfigKeys.EVENT_CONNECT_TIMEOUT_MS_DEFAULT),
+        assertEquals(Duration.ofMillis(ConfigKeys.EVENT_CONNECT_TIMEOUT_MS_DEFAULT),
             wiring.connectTimeout());
-        assertEquals(Duration.ofMillis(CloudConfigKeys.EVENT_HANDSHAKE_TIMEOUT_MS_DEFAULT),
+        assertEquals(Duration.ofMillis(ConfigKeys.EVENT_HANDSHAKE_TIMEOUT_MS_DEFAULT),
             wiring.handshakeTimeout());
-        assertEquals(CloudConfigKeys.EVENT_BACKOFF_BASE_MS_DEFAULT, wiring.backoffBaseMs());
-        assertEquals(CloudConfigKeys.EVENT_BACKOFF_MAX_MS_DEFAULT, wiring.backoffMaxMs());
+        assertEquals(ConfigKeys.EVENT_BACKOFF_BASE_MS_DEFAULT, wiring.backoffBaseMs());
+        assertEquals(ConfigKeys.EVENT_BACKOFF_MAX_MS_DEFAULT, wiring.backoffMaxMs());
         assertEquals("ws", wiring.scheme(), "plaintext unless TLS is asked for");
         assertNull(wiring.sslContext(), "null means the JDK default trust/identity");
     }
@@ -40,13 +42,13 @@ class PeerConnectorWiringTest {
         // The two backoff values are one call: swapping them is not expressible.
         assertEquals(50, wiring.backoffBaseMs());
         assertEquals(900, wiring.backoffMaxMs());
-        assertEquals(Duration.ofMillis(CloudConfigKeys.EVENT_HANDSHAKE_TIMEOUT_MS_DEFAULT),
+        assertEquals(Duration.ofMillis(ConfigKeys.EVENT_HANDSHAKE_TIMEOUT_MS_DEFAULT),
             wiring.handshakeTimeout(), "an untouched knob keeps its default");
 
         // A non-positive backoff is a missing value, not a schedule.
-        assertEquals(CloudConfigKeys.EVENT_BACKOFF_BASE_MS_DEFAULT,
+        assertEquals(ConfigKeys.EVENT_BACKOFF_BASE_MS_DEFAULT,
             wiring.withBackoff(0, -1).backoffBaseMs());
-        assertEquals(CloudConfigKeys.EVENT_BACKOFF_MAX_MS_DEFAULT,
+        assertEquals(ConfigKeys.EVENT_BACKOFF_MAX_MS_DEFAULT,
             wiring.withBackoff(0, -1).backoffMaxMs());
     }
 }

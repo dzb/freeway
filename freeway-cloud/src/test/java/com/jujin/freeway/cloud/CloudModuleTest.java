@@ -11,21 +11,26 @@ import com.jujin.freeway.cloud.observe.CloudObserveModule;
 import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.cloud.observe.Tracer;
 import com.jujin.freeway.cloud.resilience.CloudResilienceModule;
+import com.jujin.freeway.cloud.resilience.Retryer;
 import com.jujin.freeway.cloud.resilience.RateLimiter;
 import com.jujin.freeway.cloud.rpc.CloudHttpClient;
 import com.jujin.freeway.cloud.rpc.CloudRpcModule;
 import com.jujin.freeway.cloud.secret.CloudSecretModule;
 import com.jujin.freeway.cloud.secret.SecretStore;
+import com.jujin.freeway.cloud.storage.ObjectStorage;
 import com.jujin.freeway.cloud.storage.CloudStorageModule;
+import com.jujin.freeway.ioc.event.AsyncCarrier;
+import com.jujin.freeway.http.route.Route;
 import com.jujin.freeway.ioc.Container;
+import com.jujin.freeway.ioc.symbol.KnownKeys;
 import com.jujin.freeway.ioc.Freeway;
 import com.jujin.freeway.ioc.ModuleEx;
-import com.jujin.freeway.ioc.ModuleNode;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Target;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
+import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -51,24 +56,45 @@ class CloudModuleTest {
         CloudStorageModule.class);
 
     @Test
-    void bundleDeclaresEveryStandardCloudModule() {
-        ModuleNode bundle = ModuleNode.of(CloudModule.class);
+    void cloudDeclaresEveryNamespaceItsKeyTableSpells() {
+        // The vocabulary follows the table, not one literal: freeway.cloud.* and the app-name
+        // fallback are both cloud's, and a key of the table outside the declared namespaces would
+        // be refused at bind time (KnownKeys.of) — which is how this stayed a single table.
+        try (Container container = Freeway.create(new CloudModule())) {   // the bundle owns the table
+            Set<String> known = container.extension(KnownKeys.class).all().stream()
+                .flatMap(vocabulary -> vocabulary.keys().stream())
+                .collect(java.util.stream.Collectors.toSet());
 
-        assertEquals("CloudModule", bundle.name());
-        assertEquals(STANDARD.size() + 1, bundle.size(), "the bundle node plus one submodule each");
-        assertTrue(bundle.classes().containsAll(STANDARD),
-            "discovery must not add a second instance of any bundled class");
-        assertTrue(bundle.classes().contains(CloudModule.class));
+            assertTrue(known.contains(ConfigKeys.EVENT_TOKEN), "freeway.cloud.* is declared");
+            assertTrue(known.contains(ConfigKeys.APP_NAME), "freeway.app.* is declared too");
+        }
     }
 
     @Test
-    void bundleIsPlacedInTheApplicationTree() {
-        ModuleNode app = ModuleNode.app("order-service",
-            ModuleNode.of(AppMarkerModule.class),
-            ModuleNode.of(CloudModule.class));
+    void bundleInstallsEveryStandardModule() {
+        // Placing the bundle is placing its eight submodules — asserted through what each one makes
+        // available, not through the tree the framework builds internally.
+        try (Container container = Freeway.create(new CloudModule())) {
+            assertNotNull(container.get(AsyncCarrier.class), "context: the async carrier is bound");
+            assertNotNull(container.get(SecretStore.class), "secret");
+            assertNotNull(container.get(ServiceRegistry.class), "discovery: registry");
+            assertNotNull(container.get(ServiceDiscovery.class), "discovery: client");
+            assertNotNull(container.get(CloudHttpClient.class), "rpc");
+            assertNotNull(container.get(Tracer.class), "observe");
+            assertNotNull(container.get(Retryer.class), "resilience");
+            assertTrue(container.extension(Route.class).all().stream()
+                    .map(Route::path)
+                    .toList()
+                    .containsAll(List.of("/health/live", "/health/ready")),
+                "health: its two routes are contributed");
+            assertNotNull(container.get(ObjectStorage.class), "storage");
+        }
+    }
 
-        try (Container container = Freeway.create(app)) {
-            assertSame(app, container.moduleTree());
+    @Test
+    void bundleSitsBesideApplicationModules() {
+        // One ordered call of modules: the application's own module first, then the bundle.
+        try (Container container = Freeway.create(new AppMarkerModule(), new CloudModule())) {
             assertNotNull(container.get(AppMarkerModule.Marker.class));
             assertNotNull(container.get(ServiceRegistry.class));
             assertNotNull(container.get(ServiceDiscovery.class));
@@ -86,11 +112,9 @@ class CloudModuleTest {
 
     @Test
     void aModuleCanBePlacedWithoutTheRestOfTheBundle() {
-        // The subset form: taking the bundle apart is placing the individual
-        // module — one cloud module, configured by the application.
-        ModuleNode app = ModuleNode.app("test", CloudRpcModule.class);
-
-        try (Container container = Freeway.create(app)) {
+        // The subset form: taking the bundle apart is placing the individual module — one cloud
+        // module, configured by the application.
+        try (Container container = Freeway.create(CloudRpcModule.class)) {
             assertNotNull(container.get(CloudHttpClient.class));
             assertThrows(com.jujin.freeway.ioc.MissingBindingException.class,
                 () -> container.get(SecretStore.class),
@@ -101,9 +125,7 @@ class CloudModuleTest {
     @Test
     void placingABundleAndASubmoduleOfItIsRefused() {
         IllegalStateException failure = assertThrows(IllegalStateException.class,
-            () -> ModuleNode.app("test",
-                ModuleNode.of(CloudModule.class),
-                ModuleNode.of(CloudRpcModule.class)));
+            () -> Freeway.create(CloudModule.class, CloudRpcModule.class));
 
         assertTrue(failure.getMessage().contains(CloudRpcModule.class.getName()),
             "the duplicate names the submodule and the fix (place the class once): "
@@ -114,8 +136,7 @@ class CloudModuleTest {
     void eachModuleInstallsIndependently() {
         for (Class<?> module : STANDARD) {
             ModuleEx instance = newModule(module);
-            try (Container container = Freeway.create(ModuleNode.app("test",
-                    ModuleNode.of(instance)))) {
+            try (Container container = Freeway.create(instance)) {
                 // Every module must be installable on its own (subset assembly).
             }
         }
@@ -145,8 +166,7 @@ class CloudModuleTest {
         // rate-limit.enabled defaults to false; without any config the
         // resolved limiter must be the no-op singleton, not a 100 req/s
         // token bucket from the library fallback.
-        try (Container container = Freeway.create(
-                ModuleNode.app("test", ModuleNode.of(new CloudResilienceModule())))) {
+        try (Container container = Freeway.create(new CloudResilienceModule())) {
             RateLimiter limiter = container.get(RateLimiter.class);
             assertTrue(limiter.tryAcquire());
             assertTrue(limiter.tryAcquire());

@@ -243,9 +243,9 @@ FreewayApp.run(args, new AppModule(), new HttpModule(), new JettyModule());
 | 同步阻塞 I/O + goroutine | 同步阻塞 I/O + 虚拟线程 |
 | 不用 NIO/epoll | 不用 Netty/Vert.x |
 | 简单代码，运行时处理并发 | 简单代码，JVM 处理并发 |
-| 性能不差，甚至更好 | **性能最好** |
+| 性能不差，甚至更好 | 中等裸吞吐（约为 native 引擎 60–80%），WS 与自家 adapter 对比领先 |
 
-**复杂性不是免费的**——NIO/Netty 的复杂性带来了概念成本，但在虚拟线程时代，这些复杂性不再带来性能收益。Freeway 选择不付这个成本，结果是代码更简单、性能更好。
+**复杂性不是免费的**——NIO/Netty 的复杂性带来了概念成本，但在虚拟线程时代，这些复杂性不再带来性能收益。Freeway 选择不付这个成本，结果是代码更简单；裸吞吐落后于 native 引擎（见 §八），这是为简单付的已知代价。
 
 ---
 
@@ -256,28 +256,28 @@ FreewayApp.run(args, new AppModule(), new HttpModule(), new JettyModule());
 | **组合方式** | 注解扫描 + Auto-Configuration | Extension 模型 | 依赖即功能 | **ModuleEx 显式组合** |
 | **可见性** | 隐式（黑盒） | 半显式（扩展注册） | 半隐式（编译时处理） | **完全显式** |
 | **冲突检测** | 运行时可能冲突 | 构建时检测 | 编译时检测 | **启动时显式报告** |
-| **ModuleNode 树** | 无 | 无 | 无 | **有——不可变树，启动时验证** |
+| **组合结构** | 无 | 无 | 无 | **有——显式模块列表，启动时验证** |
 
 > 注：Freeway 的"完全显式"有一个已披露的例外——`FreewayApp.run(...)` 默认通过
 > ServiceLoader SPI 加载 `META-INF/services` 声明的额外模块（`autoDiscovery(false)`
 > 关闭）。绑定本身从不扫描，每个绑定都写在可读的 `bind(Binder)` 里。
 
-### Freeway 的 ModuleNode 机制
+### Freeway 的模块组合机制
 
 ```java
-// 模块组合是一棵显式的树
-ModuleNode app = ModuleNode.app("order-service",
-    ModuleNode.of(new OrderModule()),
-    ModuleNode.of(CloudModule.class));  // bundle 自动展开子模块
+// 模块组合是入口处的一份显式列表
+FreewayApp.run(
+    new OrderModule(),
+    CloudModule.class);                 // bundle 自动展开子模块
 
-// 树在启动时验证：
-// - 同一实例到达两次 → 折叠
+// 组装时验证：
+// - 同一实例放两次 → 折叠
 // - 同一类两次声明 → 报错（带两条路径）
 // - 循环依赖 → 拒绝
 // - 未知 hook id → 启动失败
 ```
 
-这是其他三个框架没有的——**组合是数据，不是代码**。你可以在启动前看到完整的模块树。
+这是其他三个框架没有的——**组合是数据，不是代码**。启动日志打印完整组合结构，看到的就是实际加载的。
 
 ---
 
@@ -310,18 +310,23 @@ order  tier
 
 | 指标 | Spring Boot 4 | Quarkus 3.x | Micronaut 4.x/5.x | Freeway 1.5.x |
 |------|---------------|-------------|-------------------|-------------|
-| **JVM 启动** | 2,400–3,200ms | 500–900ms | 600–1,000ms | 待测（核心零依赖，预期较快） |
+| **JVM 启动** | 2,400–3,200ms | 500–900ms | 600–1,000ms | 77ms（框架口径，中位，单空模块；7 模块 HTTP 应用同口径 ~65ms） |
 | **Native 启动** | 70–120ms | 12–25ms | 25–50ms | 未投入（无 native 构建，无从测起） |
 | **空闲内存（Native）** | 50–75MB | 35–60MB | 18–58MB | 未投入 |
-| **吞吐量（JVM）** | ~18k req/s | ~16k req/s | ~14k req/s | 待测 |
+| **吞吐量（JVM）** | ~18k req/s | ~16k req/s | ~14k req/s | ping ~376k / json ~437k（内置引擎，同机后 5 轮中位；去 pipeline 的 freeway-native ping 第 6、json 第 7，紧咬 jetty-native；native 系前五，adapter 系垫底） |
 | **GraalVM Native** | 需要配置反射 hint | 自动（大多数） | 最可靠（零反射） | 未投入：DI/JSON/ORM 皆运行时反射，需 reachability metadata，未配置未验证 |
+
+Freeway 一栏有实测出处：ext 仓 `docs/benchmark-1.5.6-SNAPSHOT.md`（环境锁 + JMH 全表 + 黑盒中位； worktree 基准，非干净 commit）。
 
 ### Freeway 的性能特征
 
 - 核心模块零外部依赖 → native 下没有第三方依赖问题；但 DI/JSON/ORM 都在
   运行时反射，GraalVM 下需要 reachability metadata——该工作目前未投入，
   任何"编译应最简单"的说法都未经验证
-- 同步阻塞 I/O + 虚拟线程 → 代码简单，JIT 优化友好
+- 同步阻塞 I/O + 虚拟线程 → 代码简单，JIT 优化友好；但同机实测裸吞吐落后于
+  native 引擎（undertow/jetty/robaho ~450–565k vs 内置 ~375–400k），内置引擎排
+  中游（jdk-native 与自家 adapter 之上；WS 与 undertow 系并列，噪声线内）——"性能最好" 的说法已随数撤回，
+  JSON 路径的 30% 短轮差距证实为瞬态税（稳态 6%），见 §八
 - HTTP/2 内置 → 无容器切换成本
 - 连接池内置 → 无 HikariCP 依赖
 - 内置 HTTP 引擎性能测试表现最好
@@ -356,8 +361,8 @@ order  tier
 | **生态最广** | Spring Boot | Spring Cloud/Security/AI 的深度集成 |
 | **Native 最可靠** | Micronaut | 零反射，编译时 DI |
 | **Kubernetes 最优** | Quarkus | 构建时启动，最低内存 |
-| **HTTP 引擎最简** | Freeway | 同步阻塞 + 虚拟线程，零 NIO 复杂性，性能最好 |
-| **模块组合最透明** | Freeway | ModuleNode 树，启动前可见 |
+| **HTTP 引擎最简** | Freeway | 同步阻塞 + 虚拟线程，零 NIO 复杂性（裸吞吐约为 native 系 60–80%，见 §八） |
+| **模块组合最透明** | Freeway | 显式模块列表，启动日志打印完整组合结构 |
 | **配置级联最清晰** | Freeway | 5 个显式 tier，order 声明优先级 |
 
 ### 一句话总结

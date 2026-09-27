@@ -3,7 +3,6 @@ package demo;
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
 import com.jujin.freeway.db.DbModule;
-import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.HttpModule;
 import com.jujin.freeway.http.HttpServer;
 
@@ -16,6 +15,7 @@ import java.util.regex.Pattern;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import com.jujin.freeway.http.HttpModule.ConfigKeys;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -33,12 +33,12 @@ class RestDbDemoTest {
 
     @BeforeEach
     void randomPort() {
-        System.setProperty(HttpConfigKeys.SERVER_PORT, "0");
+        System.setProperty(ConfigKeys.SERVER_PORT, "0");
     }
 
     @AfterEach
     void clearProperties() {
-        System.clearProperty(HttpConfigKeys.SERVER_PORT);
+        System.clearProperty(ConfigKeys.SERVER_PORT);
     }
 
     @Test

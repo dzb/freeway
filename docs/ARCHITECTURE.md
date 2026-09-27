@@ -26,26 +26,29 @@ freeway-commons         zero deps
 
 - **`Container`** — IoC boundary only: `get(type[, id | markers])`,
   `isActiveBinding`, `extension`, `create` (a factory — full injection without
-  caching), `moduleTree()` (the loaded `ModuleNode`: structure via `children()`
-  / `render()`, bind order via `bindOrder()`), `close()`.
-  Created via `Freeway.create(ModuleEx...)` or `Freeway.create(ModuleNode)`.
+  caching), `close()`.
+  Created via `Freeway.create(ModuleEx...)` or `Freeway.create(Class...)`,
+  optionally named — `Freeway.create(appName, ModuleEx...)` — for the startup
+  log's root line.
 - **`AppRuntime`** — application boundary above Container: owns config,
   profiles, startup/shutdown and runtime hooks. Created via
-  `FreewayApp.run(args, ModuleEx...)`.
+  `FreewayApp.run(args, ModuleEx...)`, or through the launcher
+  `FreewayApp.create(...).name(...).start()`.
 - **`ModuleEx`** — declares its bindings in `bind(Binder)`; how it is placed is
-  not its concern. **`ModuleNode`** is the composition — an immutable tree built
-  at the entry point (`app` / `of`), validated while it is built: the same
-  instance reached twice collapses, two declarations of one module class fail
-  with both paths named, cycles are refused (through values and through
-  `@SubModule`). A module whose class declares `@SubModule` is a **bundle**: its
-  submodules follow it in the tree as static metadata the entry point reads, and
-  any submodule can be placed on its own instead. Each node holds its
-  declaration — a class to instantiate at load time, or a configured instance
-  (the only form a lambda/anonymous module can take) — so composition runs no
-  module constructor and the same class-only tree can be loaded by more than one
-  container. The container resolves and binds the tree's module nodes in
-  pre-order (the application root binds nothing, a module binds before the
-  modules below it, siblings in declaration order) and holds the value it bound.
+  not its concern. Composition is the ordered modules handed to the entry point;
+  the structure behind them (`ModuleNode`, package-private in `ioc.internal`) is
+  internal — it exists to own the invariants and to render the startup log, not
+  as an API. A module whose class declares `@SubModule` is a **bundle**: its
+  submodules follow it as static metadata the entry point reads, and any
+  submodule can be placed on its own instead. A class is a declaration
+  instantiated at load time, an instance a configured module (the only form a
+  lambda/anonymous module can take), so composition runs no module constructor
+  and the same class declaration can be loaded by more than one container. The
+  container resolves and binds the declared modules in pre-order (a module binds
+  before the modules it bundles, siblings in declaration order) and validates
+  the composition while it is built: the same instance placed twice collapses,
+  two declarations of one module class fail with both paths named, cycles are
+  refused (through values and through `@SubModule`).
 - **`ServiceId`** is intentionally not a public type — service ids are plain
   strings, normalized internally by `ServiceIds`.
 - **Scopes** are declared only through `bind().scope(...)`: `SINGLETON`,
@@ -119,7 +122,9 @@ freeway-commons         zero deps
 
 ## Injection Annotations
 
-All in `com.jujin.freeway.ioc.annotation`:
+All in `com.jujin.freeway.ioc.annotation`. The framework's reflective machinery
+lives in `commons.bean` with a documented site list — see
+[freeway-reflection.md](freeway-reflection.md) before adding a new site.
 
 - `@Inject` — field/constructor/parameter injection; `@Inject("id")` for
   qualified injection.

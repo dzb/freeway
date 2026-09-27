@@ -16,6 +16,8 @@ import org.slf4j.LoggerFactory;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.concurrent.CopyOnWriteArrayList;
+import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
+import com.jujin.freeway.cloud.CloudModule;
 
 /**
  * The hub: registry of live peer connections + the server-side WS endpoint
@@ -96,7 +98,7 @@ public final class PeerHub implements WebSocketEndpoint {
         if (token.isBlank()) {
             LOG.warn("CloudEventBus has no mesh token — any peer that can reach the "
                 + "endpoint may connect; set {} to require one",
-                com.jujin.freeway.cloud.CloudConfigKeys.EVENT_TOKEN);
+                ConfigKeys.EVENT_TOKEN);
         }
     }
 

@@ -9,6 +9,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.Flow;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
@@ -54,6 +55,16 @@ public final class EventBus implements AutoCloseable {
     private final EventDispatcher dispatcher;
     private final AtomicBoolean closed = new AtomicBoolean();
     private final EventExecutorSupport executors;
+    /**
+     * Restores the submitting thread's ambient context on the executor
+     * thread. Identity when no {@link AsyncCarrier} is bound (a bus
+     * without the cloud context module dispatches bare, as before).
+     * Binding the type more than once without a primary does not fall
+     * back to identity: {@code isActiveBinding} raises the same
+     * AmbiguousBindingException the binding index reports, so the bus
+     * fails loudly at construction instead of dispatching bare.
+     */
+    private final Function<Runnable, Runnable> contextCarrier;
     /** Live stream subscriptions, closed (and detached) on {@link #close()}. */
     private final EventStreams streams = new EventStreams(this);
 
@@ -78,6 +89,12 @@ public final class EventBus implements AutoCloseable {
         this.subscriptions = new EventSubscriptionIndex(container);
         this.dispatcher = new EventDispatcher(this, subscriptions, stats);
         this.executors = new EventExecutorSupport(this::requireOpen);
+        // The bus is built after composition, so a cloud-bound carrier is
+        // already in place when one exists; otherwise dispatch stays bare.
+        // Resolved once — dispatch must not pay a lookup per event.
+        this.contextCarrier = container.isActiveBinding(AsyncCarrier.class)
+            ? container.get(AsyncCarrier.class)::capture
+            : work -> work;
     }
 
     // ==================== class-based publish ====================
@@ -168,7 +185,13 @@ public final class EventBus implements AutoCloseable {
         executors.setAsyncExecutor(executor);
     }
 
-    /** Async version of {@link #publish(Object)}. */
+    /** Async version of {@link #publish(Object)}.
+     *
+     * <p>The submitting thread's ambient async context (see
+     * {@link AsyncCarrier} — the cloud context module binds the
+     * {@code InvocationContext} carrier) is captured here and restored
+     * around dispatch on the executor thread. A traceless submit dispatches
+     * bare, like the mesh plane's inbound rule. */
     public <E> void publishAsync(E event) {
         Objects.requireNonNull(event, "event");
         requireOpen();
@@ -228,7 +251,10 @@ public final class EventBus implements AutoCloseable {
      * sync path's post-close semantics.
      */
     private void executeDeferred(Supplier<Executor> exec, Runnable publish) {
-        Runnable guarded = () -> {
+        // Capture the submitter's ambient context now: neither the Defer
+        // drain (commit thread) nor the executor thread inherits it, and the
+        // causal claim belongs to the thread that called publish.
+        Runnable guarded = contextCarrier.apply(() -> {
             if (closed.get()) {
                 return;
             }
@@ -241,7 +267,7 @@ public final class EventBus implements AutoCloseable {
                     throw e;
                 }
             }
-        };
+        });
         if (Defer.isActive()) {
             Defer.defer(() -> {
                 if (closed.get()) {

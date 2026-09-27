@@ -16,6 +16,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.LinkedHashMap;
+import java.util.Set;
 import java.util.List;
 import java.util.Map;
 
@@ -129,6 +130,37 @@ class AppConfigDefaultTest {
                     SymbolProvider.TIER_FILES),
                 providers.stream().map(SymbolProvider::order).toList(),
                 "cli, env and files tiers in declared order");
+        } finally {
+            config.close();
+        }
+    }
+
+    @Test
+    void keysCoversEveryTierTheUnknownKeyCheckMustSee() {
+        // The declared universe for the unknown-key check: names from every tier the chain answers
+        // from. Losing one tier here silently weakens the check, so all three are pinned.
+        AppConfigDefault config = new AppConfigDefault(
+            new ConfigSources(
+                Map.of("freeway.cli.key", "1"), Map.of("freeway.env.key", "2"),
+                Map.of("freeway.file.key", "3"),
+                List.of()),
+            List.of());
+        try {
+            assertEquals(
+                Set.of("freeway.cli.key", "freeway.env.key", "freeway.file.key"),
+                config.keys());
+        } finally {
+            config.close();
+        }
+    }
+
+    @Test
+    void keysReportsTheFileTierForTheStaticForm() {
+        // The static form has no CLI/env sources, but its given map IS the file tier — the
+        // interface's "default no-op" belongs to implementations that hold no sources at all.
+        AppConfigDefault config = AppConfigDefault.of(Map.of("freeway.file.key", "1"), List.of());
+        try {
+            assertEquals(Set.of("freeway.file.key"), config.keys());
         } finally {
             config.close();
         }

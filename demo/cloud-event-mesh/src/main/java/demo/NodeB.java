@@ -1,10 +1,8 @@
 package demo;
 
 import com.jujin.freeway.boot.FreewayApp;
-import com.jujin.freeway.cloud.CloudConfigKeys;
 import com.jujin.freeway.cloud.event.CloudEventModule;
 import com.jujin.freeway.cloud.event.CloudEventSubscription;
-import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.HttpModule;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.ModuleEx;
@@ -12,6 +10,8 @@ import com.jujin.freeway.ioc.event.EventBus;
 import com.jujin.freeway.ioc.event.EventSubscriber;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
+import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
+import com.jujin.freeway.cloud.CloudModule;
 
 /**
  * Subscriber node of the cross-JVM event-mesh demo.
@@ -31,9 +31,9 @@ public final class NodeB {
 
     public static void main(String[] args) throws Exception {
         // HTTP port for the /cloud/event WS endpoint (fixed for peer config).
-        System.setProperty(HttpConfigKeys.SERVER_PORT, "18080");
+        System.setProperty(HttpModule.ConfigKeys.SERVER_PORT, "18080");
         // CloudEventBus: no dial peers — this node waits for inbound connections.
-        System.setProperty(CloudConfigKeys.EVENT_ENABLED, "true");
+        System.setProperty(ConfigKeys.EVENT_ENABLED, "true");
 
         var app = FreewayApp.run(args, new HttpModule(), new CloudEventModule(), new ModuleEx() {
             @Override

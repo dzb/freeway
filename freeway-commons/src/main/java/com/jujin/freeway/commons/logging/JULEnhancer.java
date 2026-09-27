@@ -729,7 +729,7 @@ final class JULEnhancer {
     }
 
     private static String resolveDefaultPath() {
-        String appName = System.getProperty("app.name");
+        String appName = System.getProperty(LogKeys.APP_NAME);
         if (appName == null || appName.isBlank()) appName = "freeway";
         return "logs/" + appName + ".log";
     }

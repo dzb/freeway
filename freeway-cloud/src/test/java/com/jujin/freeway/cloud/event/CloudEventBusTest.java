@@ -1,5 +1,8 @@
 package com.jujin.freeway.cloud.event;
 
+import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
+import com.jujin.freeway.cloud.CloudModule;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -7,10 +10,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
-import com.jujin.freeway.cloud.CloudConfigKeys;
 import com.jujin.freeway.commons.json.JsonCodecDefault;
 import com.jujin.freeway.commons.scoped.Defer;
-import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.HttpModule;
 import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.event.EventBus;
@@ -39,16 +40,16 @@ class CloudEventBusTest {
 
     @BeforeEach
     void randomPorts() {
-        System.setProperty(HttpConfigKeys.SERVER_PORT, "0");
+        System.setProperty(HttpModule.ConfigKeys.SERVER_PORT, "0");
     }
 
     @AfterEach
     void cleanup() {
         if (nodeA != null) nodeA.close();
         if (nodeB != null) nodeB.close();
-        System.clearProperty(HttpConfigKeys.SERVER_PORT);
-        System.clearProperty(CloudConfigKeys.EVENT_PEERS);
-        System.clearProperty(CloudConfigKeys.EVENT_ENABLED);
+        System.clearProperty(HttpModule.ConfigKeys.SERVER_PORT);
+        System.clearProperty(ConfigKeys.EVENT_PEERS);
+        System.clearProperty(ConfigKeys.EVENT_ENABLED);
     }
 
     /** Declares mesh interest for one prefix; payloads land in {@code sink}. */
@@ -59,9 +60,9 @@ class CloudEventBusTest {
 
     /** Starts a node dialing nobody (pure listener side unless given peers). */
     private AppRuntime start(String peers, ModuleEx... extra) {
-        System.setProperty(CloudConfigKeys.EVENT_ENABLED, "true");
+        System.setProperty(ConfigKeys.EVENT_ENABLED, "true");
         if (peers != null) {
-            System.setProperty(CloudConfigKeys.EVENT_PEERS, peers);
+            System.setProperty(ConfigKeys.EVENT_PEERS, peers);
         }
         List<ModuleEx> mods = new ArrayList<>();
         mods.add(new HttpModule());
@@ -198,7 +199,7 @@ class CloudEventBusTest {
 
     @Test
     void disabledModuleIsInert() {
-        System.setProperty(CloudConfigKeys.EVENT_ENABLED, "false");
+        System.setProperty(ConfigKeys.EVENT_ENABLED, "false");
         nodeA = FreewayApp.run(new String[0], new HttpModule(), new CloudEventModule());
         var mesh = nodeA.get(CloudEventBus.class);
         // Publish against an unwired mesh: a counted, debug-logged no-op.

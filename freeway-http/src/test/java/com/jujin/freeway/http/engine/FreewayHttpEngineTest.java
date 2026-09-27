@@ -47,7 +47,6 @@ import com.jujin.freeway.boot.FreewayApp;
 import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.commons.json.JsonCodecDefault;
 import com.jujin.freeway.commons.json.JsonUtils;
-import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.HttpServerConfig;
 import com.jujin.freeway.http.HttpServer;
@@ -65,6 +64,8 @@ import com.jujin.freeway.http.websocket.WebSocketSession;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.annotation.Inject;
+import com.jujin.freeway.http.HttpModule.ConfigKeys;
+import com.jujin.freeway.http.HttpModule;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -86,30 +87,30 @@ class FreewayHttpEngineTest {
             app.close();
             app = null;
         }
-        System.clearProperty(HttpConfigKeys.SERVER_PORT);
-        System.clearProperty(HttpConfigKeys.SERVER_HOST);
-        System.clearProperty(HttpConfigKeys.MAX_BODY_SIZE);
-        System.clearProperty(HttpConfigKeys.SSL_ENABLED);
-        System.clearProperty(HttpConfigKeys.SSL_KEY_STORE);
-        System.clearProperty(HttpConfigKeys.SSL_KEY_STORE_PASSWORD);
-        System.clearProperty(HttpConfigKeys.SSL_KEY_STORE_TYPE);
-        System.clearProperty(HttpConfigKeys.SSL_HTTP2);
-        System.clearProperty(HttpConfigKeys.SSL_TRUST_STORE);
-        System.clearProperty(HttpConfigKeys.SSL_TRUST_STORE_PASSWORD);
-        System.clearProperty(HttpConfigKeys.SSL_TRUST_STORE_TYPE);
-        System.clearProperty(HttpConfigKeys.SSL_CLIENT_AUTH);
-        System.clearProperty(HttpConfigKeys.SSL_PROTOCOLS);
-        System.clearProperty(HttpConfigKeys.SSL_CIPHERS);
-        System.clearProperty("freeway.http.server.port");
-        System.clearProperty("freeway.http.server.host");
+        System.clearProperty(ConfigKeys.SERVER_PORT);
+        System.clearProperty(ConfigKeys.SERVER_HOST);
+        System.clearProperty(ConfigKeys.MAX_BODY_SIZE);
+        System.clearProperty(ConfigKeys.SSL_ENABLED);
+        System.clearProperty(ConfigKeys.SSL_KEY_STORE);
+        System.clearProperty(ConfigKeys.SSL_KEY_STORE_PASSWORD);
+        System.clearProperty(ConfigKeys.SSL_KEY_STORE_TYPE);
+        System.clearProperty(ConfigKeys.SSL_HTTP2);
+        System.clearProperty(ConfigKeys.SSL_TRUST_STORE);
+        System.clearProperty(ConfigKeys.SSL_TRUST_STORE_PASSWORD);
+        System.clearProperty(ConfigKeys.SSL_TRUST_STORE_TYPE);
+        System.clearProperty(ConfigKeys.SSL_CLIENT_AUTH);
+        System.clearProperty(ConfigKeys.SSL_PROTOCOLS);
+        System.clearProperty(ConfigKeys.SSL_CIPHERS);
+        System.clearProperty(ConfigKeys.SERVER_PORT);
+        System.clearProperty(ConfigKeys.SERVER_HOST);
     }
 
     @Test
     void maxBodySizeConfigKeyIsHonored() throws Exception {
         int port = freePort();
-        System.setProperty(HttpConfigKeys.SERVER_HOST, "127.0.0.1");
-        System.setProperty(HttpConfigKeys.SERVER_PORT, String.valueOf(port));
-        System.setProperty(HttpConfigKeys.MAX_BODY_SIZE, "8");
+        System.setProperty(ConfigKeys.SERVER_HOST, "127.0.0.1");
+        System.setProperty(ConfigKeys.SERVER_PORT, String.valueOf(port));
+        System.setProperty(ConfigKeys.MAX_BODY_SIZE, "8");
 
         app = FreewayApp.run(new String[0], binder ->
             binder.contribute(Route.class).add(
@@ -315,8 +316,8 @@ class FreewayHttpEngineTest {
     @Test
     void servesRoutes() throws Exception {
         int port = freePort();
-        System.setProperty(HttpConfigKeys.SERVER_HOST, "127.0.0.1");
-        System.setProperty(HttpConfigKeys.SERVER_PORT, String.valueOf(port));
+        System.setProperty(ConfigKeys.SERVER_HOST, "127.0.0.1");
+        System.setProperty(ConfigKeys.SERVER_PORT, String.valueOf(port));
 
         app = FreewayApp.run(new String[0], new PingModule());
         assertTrue(app.get(HttpServer.class).isRunning());
@@ -336,8 +337,8 @@ class FreewayHttpEngineTest {
     @Test
     void servesRoutesWithLegacyWebKeys() throws Exception {
         int port = freePort();
-        System.setProperty("freeway.http.server.host", "127.0.0.1");
-        System.setProperty("freeway.http.server.port", String.valueOf(port));
+        System.setProperty(ConfigKeys.SERVER_HOST, "127.0.0.1");
+        System.setProperty(ConfigKeys.SERVER_PORT, String.valueOf(port));
 
         app = FreewayApp.run(new String[0], new PingModule());
         assertTrue(app.get(HttpServer.class).isRunning());
@@ -357,8 +358,8 @@ class FreewayHttpEngineTest {
     @Test
     void websocketEchoesMessages() throws Exception {
         int port = freePort();
-        System.setProperty(HttpConfigKeys.SERVER_HOST, "127.0.0.1");
-        System.setProperty(HttpConfigKeys.SERVER_PORT, String.valueOf(port));
+        System.setProperty(ConfigKeys.SERVER_HOST, "127.0.0.1");
+        System.setProperty(ConfigKeys.SERVER_PORT, String.valueOf(port));
 
         app = FreewayApp.run(new String[0], new PingModule());
         assertTrue(app.get(HttpServer.class).isRunning());
@@ -397,8 +398,8 @@ class FreewayHttpEngineTest {
     @Test
     void websocketRejectsInvalidKey() throws Exception {
         int port = freePort();
-        System.setProperty(HttpConfigKeys.SERVER_HOST, "127.0.0.1");
-        System.setProperty(HttpConfigKeys.SERVER_PORT, String.valueOf(port));
+        System.setProperty(ConfigKeys.SERVER_HOST, "127.0.0.1");
+        System.setProperty(ConfigKeys.SERVER_PORT, String.valueOf(port));
         app = FreewayApp.run(new String[0], new PingModule());
         assertTrue(app.get(HttpServer.class).isRunning());
 
@@ -425,8 +426,8 @@ class FreewayHttpEngineTest {
     @Test
     void sseStreamReturnsEvents() throws Exception {
         int port = freePort();
-        System.setProperty(HttpConfigKeys.SERVER_HOST, "127.0.0.1");
-        System.setProperty(HttpConfigKeys.SERVER_PORT, String.valueOf(port));
+        System.setProperty(ConfigKeys.SERVER_HOST, "127.0.0.1");
+        System.setProperty(ConfigKeys.SERVER_PORT, String.valueOf(port));
 
         CompletableFuture<Void> serverDone = new CompletableFuture<>();
 
@@ -463,8 +464,8 @@ class FreewayHttpEngineTest {
     @Test
     void websocketLifecycleInvokesOpenAndErrorCallbacks() throws Exception {
         int port = freePort();
-        System.setProperty(HttpConfigKeys.SERVER_HOST, "127.0.0.1");
-        System.setProperty(HttpConfigKeys.SERVER_PORT, String.valueOf(port));
+        System.setProperty(ConfigKeys.SERVER_HOST, "127.0.0.1");
+        System.setProperty(ConfigKeys.SERVER_PORT, String.valueOf(port));
 
         CompletableFuture<Void> opened = new CompletableFuture<>();
         CompletableFuture<Void> errored = new CompletableFuture<>();
@@ -513,8 +514,8 @@ class FreewayHttpEngineTest {
     @Test
     void oversizedRequestBodyReturnsPayloadTooLarge() throws Exception {
         int port = freePort();
-        System.setProperty(HttpConfigKeys.SERVER_HOST, "127.0.0.1");
-        System.setProperty(HttpConfigKeys.SERVER_PORT, String.valueOf(port));
+        System.setProperty(ConfigKeys.SERVER_HOST, "127.0.0.1");
+        System.setProperty(ConfigKeys.SERVER_PORT, String.valueOf(port));
 
         app = FreewayApp.run(new String[0], binder ->
             binder.contribute(Route.class).add(Route.post("/echo", ctx -> {
@@ -541,8 +542,8 @@ class FreewayHttpEngineTest {
         Files.writeString(tempDir.resolve("existing.txt"), "static file");
 
         int port = freePort();
-        System.setProperty(HttpConfigKeys.SERVER_HOST, "127.0.0.1");
-        System.setProperty(HttpConfigKeys.SERVER_PORT, String.valueOf(port));
+        System.setProperty(ConfigKeys.SERVER_HOST, "127.0.0.1");
+        System.setProperty(ConfigKeys.SERVER_PORT, String.valueOf(port));
 
         app = FreewayApp.run(new String[0], binder -> {
             binder.contribute(StaticResourceMount.class).add(
@@ -1144,13 +1145,13 @@ class FreewayHttpEngineTest {
     void httpsModuleLoadsKeyStoreFromConfig(@TempDir Path tempDir) throws Exception {
         Path keystore = generateKeyStore(tempDir);
         int port = freePort();
-        System.setProperty(HttpConfigKeys.SERVER_HOST, "127.0.0.1");
-        System.setProperty(HttpConfigKeys.SERVER_PORT, String.valueOf(port));
-        System.setProperty(HttpConfigKeys.SSL_ENABLED, "true");
-        System.setProperty(HttpConfigKeys.SSL_KEY_STORE, keystore.toString());
-        System.setProperty(HttpConfigKeys.SSL_KEY_STORE_PASSWORD, "changeit");
-        System.setProperty(HttpConfigKeys.SSL_KEY_STORE_TYPE, "PKCS12");
-        System.setProperty(HttpConfigKeys.SSL_HTTP2, "true");
+        System.setProperty(ConfigKeys.SERVER_HOST, "127.0.0.1");
+        System.setProperty(ConfigKeys.SERVER_PORT, String.valueOf(port));
+        System.setProperty(ConfigKeys.SSL_ENABLED, "true");
+        System.setProperty(ConfigKeys.SSL_KEY_STORE, keystore.toString());
+        System.setProperty(ConfigKeys.SSL_KEY_STORE_PASSWORD, "changeit");
+        System.setProperty(ConfigKeys.SSL_KEY_STORE_TYPE, "PKCS12");
+        System.setProperty(ConfigKeys.SSL_HTTP2, "true");
 
         app = FreewayApp.run(new String[0], binder ->
             binder.contribute(Route.class).add(
@@ -1223,15 +1224,15 @@ class FreewayHttpEngineTest {
             throws Exception {
         Path keystore = generateKeyStore(tempDir);
         int port = freePort();
-        System.setProperty(HttpConfigKeys.SERVER_HOST, "127.0.0.1");
-        System.setProperty(HttpConfigKeys.SERVER_PORT, String.valueOf(port));
-        System.setProperty(HttpConfigKeys.SSL_ENABLED, "true");
-        System.setProperty(HttpConfigKeys.SSL_KEY_STORE, keystore.toString());
-        System.setProperty(HttpConfigKeys.SSL_KEY_STORE_PASSWORD, "changeit");
-        System.setProperty(HttpConfigKeys.SSL_KEY_STORE_TYPE, "PKCS12");
-        System.setProperty(HttpConfigKeys.SSL_HTTP2, "false");
-        System.setProperty(HttpConfigKeys.SSL_PROTOCOLS, "TLSv1.3");
-        System.setProperty(HttpConfigKeys.SSL_CIPHERS, "TLS_AES_128_GCM_SHA256");
+        System.setProperty(ConfigKeys.SERVER_HOST, "127.0.0.1");
+        System.setProperty(ConfigKeys.SERVER_PORT, String.valueOf(port));
+        System.setProperty(ConfigKeys.SSL_ENABLED, "true");
+        System.setProperty(ConfigKeys.SSL_KEY_STORE, keystore.toString());
+        System.setProperty(ConfigKeys.SSL_KEY_STORE_PASSWORD, "changeit");
+        System.setProperty(ConfigKeys.SSL_KEY_STORE_TYPE, "PKCS12");
+        System.setProperty(ConfigKeys.SSL_HTTP2, "false");
+        System.setProperty(ConfigKeys.SSL_PROTOCOLS, "TLSv1.3");
+        System.setProperty(ConfigKeys.SSL_CIPHERS, "TLS_AES_128_GCM_SHA256");
 
         app = FreewayApp.run(new String[0], binder ->
             binder.contribute(Route.class).add(
@@ -1275,17 +1276,17 @@ class FreewayHttpEngineTest {
         Path clientKeystore = generateClientKeyStore(tempDir);
         Path trustStore = generateTrustStore(tempDir, clientKeystore);
         int port = freePort();
-        System.setProperty(HttpConfigKeys.SERVER_HOST, "127.0.0.1");
-        System.setProperty(HttpConfigKeys.SERVER_PORT, String.valueOf(port));
-        System.setProperty(HttpConfigKeys.SSL_ENABLED, "true");
-        System.setProperty(HttpConfigKeys.SSL_KEY_STORE, keystore.toString());
-        System.setProperty(HttpConfigKeys.SSL_KEY_STORE_PASSWORD, "changeit");
-        System.setProperty(HttpConfigKeys.SSL_KEY_STORE_TYPE, "PKCS12");
-        System.setProperty(HttpConfigKeys.SSL_HTTP2, "false");
-        System.setProperty(HttpConfigKeys.SSL_TRUST_STORE, trustStore.toString());
-        System.setProperty(HttpConfigKeys.SSL_TRUST_STORE_PASSWORD, "changeit");
-        System.setProperty(HttpConfigKeys.SSL_TRUST_STORE_TYPE, "PKCS12");
-        System.setProperty(HttpConfigKeys.SSL_CLIENT_AUTH, "true");
+        System.setProperty(ConfigKeys.SERVER_HOST, "127.0.0.1");
+        System.setProperty(ConfigKeys.SERVER_PORT, String.valueOf(port));
+        System.setProperty(ConfigKeys.SSL_ENABLED, "true");
+        System.setProperty(ConfigKeys.SSL_KEY_STORE, keystore.toString());
+        System.setProperty(ConfigKeys.SSL_KEY_STORE_PASSWORD, "changeit");
+        System.setProperty(ConfigKeys.SSL_KEY_STORE_TYPE, "PKCS12");
+        System.setProperty(ConfigKeys.SSL_HTTP2, "false");
+        System.setProperty(ConfigKeys.SSL_TRUST_STORE, trustStore.toString());
+        System.setProperty(ConfigKeys.SSL_TRUST_STORE_PASSWORD, "changeit");
+        System.setProperty(ConfigKeys.SSL_TRUST_STORE_TYPE, "PKCS12");
+        System.setProperty(ConfigKeys.SSL_CLIENT_AUTH, "true");
 
         app = FreewayApp.run(new String[0], binder ->
             binder.contribute(Route.class).add(
@@ -1455,8 +1456,8 @@ class FreewayHttpEngineTest {
     @Test
     void servesRouteWithInjectedHandlerClass() throws Exception {
         int port = freePort();
-        System.setProperty(HttpConfigKeys.SERVER_HOST, "127.0.0.1");
-        System.setProperty(HttpConfigKeys.SERVER_PORT, String.valueOf(port));
+        System.setProperty(ConfigKeys.SERVER_HOST, "127.0.0.1");
+        System.setProperty(ConfigKeys.SERVER_PORT, String.valueOf(port));
 
         app = FreewayApp.run(new String[0], binder -> {
             binder.bind(GreetingService.class).to(GreetingService.class);
@@ -1480,8 +1481,8 @@ class FreewayHttpEngineTest {
     @Test
     void http2HandlerExceptionReturnsErrorNot200() throws Exception {
         int port = freePort();
-        System.setProperty(HttpConfigKeys.SERVER_HOST, "127.0.0.1");
-        System.setProperty(HttpConfigKeys.SERVER_PORT, String.valueOf(port));
+        System.setProperty(ConfigKeys.SERVER_HOST, "127.0.0.1");
+        System.setProperty(ConfigKeys.SERVER_PORT, String.valueOf(port));
 
         app = FreewayApp.run(new String[0], binder ->
                 binder.contribute(Route.class).add(

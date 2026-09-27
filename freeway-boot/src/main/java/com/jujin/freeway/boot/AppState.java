@@ -5,7 +5,7 @@ package com.jujin.freeway.boot;
  *
  * <p>{@code CREATED → STARTING → RUNNING → STOPPING → STOPPED} is the happy
  * path; {@code FAILED} is terminal and means startup threw (the runtime is
- * closed at that point, so a retry needs a new builder).
+ * closed at that point, so a retry needs a new launcher).
  */
 public enum AppState {
     /** Built but not started. */

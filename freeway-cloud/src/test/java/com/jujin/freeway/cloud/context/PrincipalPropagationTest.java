@@ -4,14 +4,12 @@ import com.jujin.freeway.cloud.CloudModule;
 
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
-import com.jujin.freeway.cloud.CloudConfigKeys;
 import com.jujin.freeway.cloud.discovery.Endpoint;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.cloud.discovery.ServiceRegistry;
 import com.jujin.freeway.cloud.internal.AuthPropagator;
 import com.jujin.freeway.cloud.rpc.CloudHttpClient;
 import com.jujin.freeway.cloud.rpc.CloudRequest;
-import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.HttpModule;
 import com.jujin.freeway.http.HttpServer;
@@ -29,6 +27,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
+import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -42,14 +41,14 @@ class PrincipalPropagationTest {
 
     @BeforeEach
     void randomPort() {
-        System.setProperty(HttpConfigKeys.SERVER_PORT, "0");
-        System.setProperty(CloudConfigKeys.AUTH_EXTRACT_ENABLED, "true");
+        System.setProperty(HttpModule.ConfigKeys.SERVER_PORT, "0");
+        System.setProperty(ConfigKeys.AUTH_EXTRACT_ENABLED, "true");
     }
 
     @AfterEach
     void clearProperties() {
-        System.clearProperty(HttpConfigKeys.SERVER_PORT);
-        System.clearProperty(CloudConfigKeys.AUTH_EXTRACT_ENABLED);
+        System.clearProperty(HttpModule.ConfigKeys.SERVER_PORT);
+        System.clearProperty(ConfigKeys.AUTH_EXTRACT_ENABLED);
     }
 
     @Test

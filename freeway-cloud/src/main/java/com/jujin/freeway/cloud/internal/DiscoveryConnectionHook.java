@@ -1,10 +1,11 @@
 package com.jujin.freeway.cloud.internal;
 
-import com.jujin.freeway.cloud.CloudConfigKeys;
 import com.jujin.freeway.cloud.discovery.ServiceDiscovery;
 import com.jujin.freeway.cloud.discovery.ServiceRegistry;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.RuntimeHook;
+import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
+import com.jujin.freeway.cloud.CloudModule;
 
 /**
  * Registry-client connection hook: runs BEFORE {@code freeway.http.server}.
@@ -22,9 +23,9 @@ public final class DiscoveryConnectionHook implements RuntimeHook {
     public void start(Container container) {
         BackendTypeGuard.warnIfExternal(
             container, ServiceDiscovery.class,
-            CloudConfigKeys.DISCOVERY_TYPE, "discovery");
+            ConfigKeys.DISCOVERY_TYPE, "discovery");
         BackendTypeGuard.warnIfExternal(
             container, ServiceRegistry.class,
-            CloudConfigKeys.REGISTRY_TYPE, "registry");
+            ConfigKeys.REGISTRY_TYPE, "registry");
     }
 }

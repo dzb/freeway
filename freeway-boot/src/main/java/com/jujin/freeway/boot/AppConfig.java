@@ -3,6 +3,7 @@ package com.jujin.freeway.boot;
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
 
 import java.util.List;
+import java.util.Set;
 
 /**
  * The loaded configuration cascade: active profiles, the symbol sources it
@@ -29,7 +30,7 @@ import java.util.List;
  * implementation; for a custom source, call
  * {@link com.jujin.freeway.boot.internal.AppConfigDefault#of(java.util.Map, java.util.List)}
  * or implement this interface and hand it to
- * {@code AppBuilder.config(config)}.
+ * {@code FreewayApp.create(...).config(config)}.
  */
 public interface AppConfig extends AutoCloseable {
 
@@ -65,6 +66,21 @@ public interface AppConfig extends AutoCloseable {
      * per tier (cli → env → files).
      */
     List<SymbolProvider> providers();
+
+    /**
+     * Every key this config declares across its tiers (files, CLI,
+     * environment) — the universe boot validates against contributed
+     * {@code KnownKeys}. Names only, never values: the no-values-map rule
+     * above stands, key names cannot leak secrets. The JVM system-properties
+     * tier is built by the container itself, so it is read separately and is
+     * not included here.
+     *
+     * <p>The default is an empty set, for implementations that hold no sources of their own;
+     * boot's own static form still reports the file-tier keys it was built with.
+     */
+    default Set<String> keys() {
+        return Set.of();
+    }
 
     /**
      * Releases resources held by this config (e.g. a hot-reload watcher).

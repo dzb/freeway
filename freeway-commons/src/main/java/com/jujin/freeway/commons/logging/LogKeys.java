@@ -1,7 +1,14 @@
 package com.jujin.freeway.commons.logging;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+import java.util.LinkedHashSet;
+import java.util.Set;
+
 /**
- * Every {@code freeway.log.*} key name in one place.
+ * Every logging key name in one place: the {@code freeway.log.*} namespace plus the
+ * {@code -D}-only {@link #APP_NAME}, which names the default log file and is the one
+ * key logging owns outside the framework prefix.
  *
  * <p>These names used to live as 23 string literals across five classes, so a
  * rename could not break the build — it just stopped matching, quietly, in
@@ -18,6 +25,12 @@ final class LogKeys {
      *  the exclusion that keeps {@code freeway.log.*} from being read as logger
      *  levels. */
     static final String PREFIX = "freeway.log.";
+
+    /** The default log file's base name ({@code logs/<app.name>.log}). Read as a
+     *  plain {@code -D} at class-load time, so it never enters the config cascade
+     *  and is deliberately outside {@link #PREFIX}: it is the application's name,
+     *  not a logging option. */
+    static final String APP_NAME = "app.name";
 
     /** Root level for every logger ({@code INFO} when unset). */
     static final String LEVEL = "freeway.log.level";
@@ -73,6 +86,31 @@ final class LogKeys {
     static final String FILE_MAX_HISTORY = "freeway.log.file.max-history";
     static final String FILE_COMPRESS = "freeway.log.file.compress";
     static final String FILE_FLUSH_INTERVAL = "freeway.log.file.flush-interval";
+
+    /**
+     * The fixed key names of {@link #PREFIX} — what the unknown-key vocabulary needs, without
+     * publishing the constants. Read off this class, so the table and the list cannot drift:
+     * a fragment ends with {@code '.'}, and {@link #APP_NAME} is outside the namespace.
+     */
+    static Set<String> knownKeys() {
+        Set<String> keys = new LinkedHashSet<>();
+        for (Field field : LogKeys.class.getDeclaredFields()) {
+            if (field.getType() != String.class || !Modifier.isStatic(field.getModifiers())) {
+                continue;
+            }
+            try {
+                String value = (String) field.get(null);
+                if (value != null && value.startsWith(PREFIX) && !value.endsWith(".")) {
+                    keys.add(value);
+                }
+            } catch (IllegalAccessException e) {
+                throw new IllegalStateException(
+                    "Cannot read log key constant " + field.getName()
+                        + " — the vocabulary must be readable, not silently empty", e);
+            }
+        }
+        return Set.copyOf(keys);
+    }
 
     private LogKeys() {}
 }

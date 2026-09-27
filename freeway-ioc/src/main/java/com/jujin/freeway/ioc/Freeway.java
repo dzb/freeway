@@ -29,30 +29,44 @@ public final class Freeway {
 
     /** Creates an empty container — no modules, so nothing is bound. */
     public static Container create() {
-        return create(ModuleNode.app());
-    }
-
-    public static Container create(ModuleEx... modules) {
-        return create(ModuleNode.app(modules == null ? new ModuleEx[0] : modules));
+        return ContainerImpl.empty();
     }
 
     /**
-     * Creates the container over an explicitly composed module tree — the form
-     * that expresses grouping and per-fragment reuse:
+     * Creates the container over the given modules. Grouping is declared by the
+     * modules themselves ({@code @SubModule} turns a class into a bundle), never
+     * by the caller assembling a structure:
      *
      * <pre>{@code
-     * Container c = Freeway.create(ModuleNode.app("orders",
-     *     ModuleNode.of(new OrderModule()),
-     *     ModuleNode.of(CloudModule.class)));
+     * Container c = Freeway.create(new OrderModule(), CloudModule.class);
      * }</pre>
      */
-    public static Container create(ModuleNode tree) {
-        return new ContainerImpl(tree);
+    public static Container create(ModuleEx... modules) {
+        return ContainerImpl.of(modules);
+    }
+
+    /**
+     * Creates the container over the given modules, with the composition root
+     * named. The name is presentation only — it is what the startup log and
+     * composition errors show as the application line — and it must not be
+     * blank.
+     *
+     * <p>Modules are instances here: a named class-declaring form would make a
+     * lone name ambiguous between the two varargs overloads, so a class
+     * declaration is passed as {@code new OrderModule()} — or named through
+     * boot's chain, {@code FreewayApp.create(OrderModule.class).name("order-service")}.
+     *
+     * <pre>{@code
+     * Container c = Freeway.create("order-service", new OrderModule(), new CloudModule());
+     * }</pre>
+     */
+    public static Container create(String appName, ModuleEx... modules) {
+        return ContainerImpl.of(appName, modules);
     }
 
     /** Creates the container over modules named by class — the normal form. */
     @SafeVarargs
     public static Container create(Class<? extends ModuleEx>... types) {
-        return create(ModuleNode.app(types));
+        return ContainerImpl.of(types);
     }
 }

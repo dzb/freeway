@@ -19,6 +19,8 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
+import com.jujin.freeway.http.HttpModule;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -32,7 +34,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class SecurityTest {
     @BeforeEach
     void randomPort() {
-        System.setProperty(com.jujin.freeway.http.HttpConfigKeys.SERVER_PORT, "0");
+        System.setProperty(com.jujin.freeway.http.HttpModule.ConfigKeys.SERVER_PORT, "0");
     }
 
 
@@ -41,13 +43,13 @@ class SecurityTest {
 
     @AfterEach
     void clearProperties() {
-        System.clearProperty(com.jujin.freeway.cloud.CloudConfigKeys.SECRET_FILE);
+        System.clearProperty(ConfigKeys.SECRET_FILE);
         System.clearProperty("freeway.config.file");
     }
 
     @Test
     void authPropagatorRoundTripsPrincipalAndRolesWhenEnabled() {
-        System.setProperty(com.jujin.freeway.cloud.CloudConfigKeys.AUTH_EXTRACT_ENABLED, "true");
+        System.setProperty(ConfigKeys.AUTH_EXTRACT_ENABLED, "true");
         try {
             AuthPropagator propagator = new AuthPropagator(sysProps());
             PrincipalContext principal = PrincipalContext.of("alice", List.of("admin", "user"));
@@ -63,7 +65,7 @@ class SecurityTest {
             assertEquals("alice", extracted.principal().name());
             assertTrue(extracted.principal().hasRole("admin"));
         } finally {
-            System.clearProperty(com.jujin.freeway.cloud.CloudConfigKeys.AUTH_EXTRACT_ENABLED);
+            System.clearProperty(ConfigKeys.AUTH_EXTRACT_ENABLED);
         }
     }
 
@@ -85,7 +87,7 @@ class SecurityTest {
     void secretSymbolSourceResolvesSecrets() throws Exception {
         Path secrets = dir.resolve("secrets.properties");
         Files.writeString(secrets, "db.password=hunter2\n");
-        System.setProperty(com.jujin.freeway.cloud.CloudConfigKeys.SECRET_FILE, secrets.toString());
+        System.setProperty(ConfigKeys.SECRET_FILE, secrets.toString());
         try (AppRuntime app = FreewayApp.create().add(CloudModule.class).start()) {
             SymbolSource symbols = app.get(SymbolSource.class);
             assertEquals("hunter2", symbols.resolve("db.password"));
@@ -99,7 +101,7 @@ class SecurityTest {
         Files.writeString(secrets, "db.password=secret-value\n");
         Path config = dir.resolve("config.properties");
         Files.writeString(config, "db.password=config-value\napp.feature=true\n");
-        System.setProperty(com.jujin.freeway.cloud.CloudConfigKeys.SECRET_FILE, secrets.toString());
+        System.setProperty(ConfigKeys.SECRET_FILE, secrets.toString());
         System.setProperty("freeway.config.file", config.toString());
         try (AppRuntime app = FreewayApp.create().add(CloudModule.class).start()) {
             SymbolSource symbols = app.get(SymbolSource.class);
@@ -118,9 +120,9 @@ class SecurityTest {
         Files.writeString(secrets, "db.password=secret-value\napi.token=token-value\n");
         Path config = dir.resolve("config.properties");
         Files.writeString(config, "api.token=config-token\n");
-        System.setProperty(com.jujin.freeway.cloud.CloudConfigKeys.SECRET_FILE, secrets.toString());
+        System.setProperty(ConfigKeys.SECRET_FILE, secrets.toString());
         System.setProperty("freeway.config.file", config.toString());
-        System.setProperty(com.jujin.freeway.cloud.CloudConfigKeys.SECRET_KEYS, "db.password");
+        System.setProperty(ConfigKeys.SECRET_KEYS, "db.password");
         try (AppRuntime app = FreewayApp.create().add(CloudModule.class).start()) {
             SymbolSource symbols = app.get(SymbolSource.class);
             assertEquals("secret-value", symbols.resolve("db.password"),
@@ -128,7 +130,7 @@ class SecurityTest {
             assertEquals("config-token", symbols.resolve("api.token"),
                 "an undeclared key falls through to files instead of the secret store");
         } finally {
-            System.clearProperty(com.jujin.freeway.cloud.CloudConfigKeys.SECRET_KEYS);
+            System.clearProperty(ConfigKeys.SECRET_KEYS);
             System.clearProperty("freeway.config.file");
         }
     }

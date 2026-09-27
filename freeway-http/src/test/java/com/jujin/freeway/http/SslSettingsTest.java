@@ -5,6 +5,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import com.jujin.freeway.http.HttpModule.ConfigKeys;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -38,47 +39,47 @@ class SslSettingsTest {
     @Test
     void keystorePresenceActivatesTlsAndTheKillSwitchSuppressesIt() {
         assertTrue(
-            SslSettings.from(source(Map.of(HttpConfigKeys.SSL_KEY_STORE, "/tmp/k.p12"))).enabled(),
+            SslSettings.from(source(Map.of(ConfigKeys.SSL_KEY_STORE, "/tmp/k.p12"))).enabled(),
             "a configured keystore is an HTTPS server");
         assertTrue(
             SslSettings.from(
                     source(
                         Map.of(
-                            HttpConfigKeys.SSL_KEY_STORE, "/tmp/k.p12",
-                            HttpConfigKeys.SSL_ENABLED, "true")))
+                            ConfigKeys.SSL_KEY_STORE, "/tmp/k.p12",
+                            ConfigKeys.SSL_ENABLED, "true")))
                 .enabled(),
             "an explicit true enables TLS");
         assertFalse(
             SslSettings.from(
                     source(
                         Map.of(
-                            HttpConfigKeys.SSL_KEY_STORE, "/tmp/k.p12",
-                            HttpConfigKeys.SSL_ENABLED, "false")))
+                            ConfigKeys.SSL_KEY_STORE, "/tmp/k.p12",
+                            ConfigKeys.SSL_ENABLED, "false")))
                 .enabled(),
             "an explicit false suppresses a configured keystore");
         assertTrue(
-            SslSettings.from(source(Map.of(HttpConfigKeys.SSL_ENABLED, "true"))).enabled(),
+            SslSettings.from(source(Map.of(ConfigKeys.SSL_ENABLED, "true"))).enabled(),
             "an explicit true enables TLS even before the keystore is resolved");
         assertFalse(
-            SslSettings.from(source(Map.of(HttpConfigKeys.SSL_KEY_STORE, "  "))).enabled(),
+            SslSettings.from(source(Map.of(ConfigKeys.SSL_KEY_STORE, "  "))).enabled(),
             "a blank keystore path is not a configured keystore");
     }
 
     @Test
     void readsEveryAdapterRelevantKey() {
         Map<String, String> values = new HashMap<>();
-        values.put(HttpConfigKeys.SSL_KEY_STORE, "/tmp/k.p12");
-        values.put(HttpConfigKeys.SSL_KEY_STORE_PASSWORD, "secret");
-        values.put(HttpConfigKeys.SSL_KEY_STORE_TYPE, "JKS");
-        values.put(HttpConfigKeys.SSL_HTTP2, "false");
-        values.put(HttpConfigKeys.SSL_TRUST_STORE, "/tmp/t.p12");
-        values.put(HttpConfigKeys.SSL_TRUST_STORE_PASSWORD, "trust");
-        values.put(HttpConfigKeys.SSL_TRUST_STORE_TYPE, "JKS");
-        values.put(HttpConfigKeys.SSL_CLIENT_AUTH, "true");
-        values.put(HttpConfigKeys.SSL_PROTOCOLS, "TLSv1.3, TLSv1.2");
-        values.put(HttpConfigKeys.SSL_CIPHERS, "TLS_AES_128_GCM_SHA256");
-        values.put(HttpConfigKeys.SSL_SNI_DIRECTORY, "/tmp/sni");
-        values.put(HttpConfigKeys.SSL_RELOAD_INTERVAL, "PT5M");
+        values.put(ConfigKeys.SSL_KEY_STORE, "/tmp/k.p12");
+        values.put(ConfigKeys.SSL_KEY_STORE_PASSWORD, "secret");
+        values.put(ConfigKeys.SSL_KEY_STORE_TYPE, "JKS");
+        values.put(ConfigKeys.SSL_HTTP2, "false");
+        values.put(ConfigKeys.SSL_TRUST_STORE, "/tmp/t.p12");
+        values.put(ConfigKeys.SSL_TRUST_STORE_PASSWORD, "trust");
+        values.put(ConfigKeys.SSL_TRUST_STORE_TYPE, "JKS");
+        values.put(ConfigKeys.SSL_CLIENT_AUTH, "true");
+        values.put(ConfigKeys.SSL_PROTOCOLS, "TLSv1.3, TLSv1.2");
+        values.put(ConfigKeys.SSL_CIPHERS, "TLS_AES_128_GCM_SHA256");
+        values.put(ConfigKeys.SSL_SNI_DIRECTORY, "/tmp/sni");
+        values.put(ConfigKeys.SSL_RELOAD_INTERVAL, "PT5M");
 
         SslSettings ssl = SslSettings.from(source(values));
 

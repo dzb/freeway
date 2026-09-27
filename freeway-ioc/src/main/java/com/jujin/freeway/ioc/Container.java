@@ -120,16 +120,6 @@ public interface Container extends AutoCloseable {
      */
     <T> T create(Class<T> type);
 
-    /**
-     * The module tree this container loaded — the same value the container
-     * bound, not a second walk of the composition. Structure comes from
-     * {@link ModuleNode#children()} and {@link ModuleNode#render()}, binding
-     * order from {@link ModuleNode#bindOrder()}: module nodes in
-     * pre-order, parents before children, siblings in declaration order.
-     *
-     * @return the loaded composition, never null
-     */
-    ModuleNode moduleTree();
 
     /**
      * Closes the container: runs {@code @PreDestroy} and {@code AutoCloseable}

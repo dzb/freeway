@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -383,6 +384,24 @@ class BeanPlanTest {
         assertEquals(0, selected.constructor().getParameterCount());
         assertNotNull(selected.newInstance(),
             "private constructor handle must be invocable");
+    }
+
+    @Test
+    void selectConstructorCachesTheWinnerAndReDerivesFailures() throws NoSuchMethodException {
+        BeanConstructor first = BeanIntrospector.selectConstructor(
+            PrefersAnnotated.class, Preferred.class);
+        assertSame(first, BeanIntrospector.selectConstructor(PrefersAnnotated.class, Preferred.class),
+            "the cached selection must be the same BeanConstructor");
+        // A different preferred annotation is a different key: MaxParamsOnly has
+        // no annotated constructor, so both markers must still agree on the winner.
+        assertSame(BeanIntrospector.selectConstructor(MaxParamsOnly.class, Preferred.class),
+            BeanIntrospector.selectConstructor(MaxParamsOnly.class, Marker.class));
+        // Failures are deterministic and uncached — they must repeat.
+        for (int i = 0; i < 2; i++) {
+            assertThrows(IllegalArgumentException.class,
+                () -> BeanIntrospector.selectConstructor(
+                    MultiplePreferred.class, Preferred.class));
+        }
     }
 
     @Test

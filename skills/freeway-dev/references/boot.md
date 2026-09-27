@@ -5,14 +5,15 @@ Examples below are minimal snippets. They omit imports and app-specific domain t
 ## Entrypoints
 
 - `FreewayApp.run(String[] args, ModuleEx...)` - accepts command-line args and module instances
-- `FreewayApp.create(ModuleEx...)` - builder for composing module instances
-- `AppBuilder.add(...)`
-- `AppBuilder.args(...)`
-- `AppBuilder.config(...)`
-- `AppBuilder.autoDiscovery(...)`
-- `AppBuilder.classLoader(...)`
-- `AppBuilder.shutdownHook(...)`
-- `AppBuilder.start()`
+- `FreewayApp.create(ModuleEx...)` / `create(Class...)` - the application before it runs; chain on it:
+- `FreewayApp.add(...)` - append modules (the way to mix instances and class declarations)
+- `FreewayApp.name(...)` - the application's root line in the startup log (default `application`)
+- `FreewayApp.args(...)`
+- `FreewayApp.config(...)`
+- `FreewayApp.autoDiscovery(...)`
+- `FreewayApp.classLoader(...)`
+- `FreewayApp.shutdownHook(...)`
+- `FreewayApp.start()` - the only effect: returns the running `AppRuntime`; a launcher is single-use
 
 ## Runtime Contract
 

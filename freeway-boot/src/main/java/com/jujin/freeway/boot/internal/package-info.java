@@ -3,7 +3,7 @@
  *
  * <p>{@code internal} is part of Freeway, not a visibility gate: classes here
  * are public only where they are assembled across packages (e.g.
- * {@code AppBuilder} calls the static {@code ConfigLoaderImpl.load} and
+ * {@code FreewayApp} calls the static {@code ConfigLoaderImpl.load} and
  * constructs {@code AppRuntimeDefault} and {@code BootModule};
  * {@code AppConfigDefault.of(...)} is the custom-config building block;
  * {@code ConfigSources} is public because a cross-module test

@@ -1,5 +1,8 @@
 package com.jujin.freeway.cloud.internal;
 
+import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
+import com.jujin.freeway.cloud.CloudModule;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -112,7 +115,7 @@ class RegistryRenewalTest {
             binder.contribute(ServiceDeclaration.class).add("test", (ServiceDeclaration) c -> INSTANCE);
             // 60 ms window: long enough to observe, short enough to keep the suite fast.
             binder.bind(com.jujin.freeway.ioc.symbol.SymbolSource.class)
-                .to(c -> symbols(com.jujin.freeway.cloud.CloudConfigKeys.REGISTRY_SHUTDOWN_DRAIN, "60ms"))
+                .to(c -> symbols(ConfigKeys.REGISTRY_SHUTDOWN_DRAIN, "60ms"))
                 .primary();
         })) {
             RegistryLifecycleHook hook =

@@ -4,18 +4,19 @@ import java.util.Objects;
 
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 import com.jujin.freeway.ioc.symbol.SymbolSpec;
-import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.HttpStatus;
 
 import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.route.PathPattern;
 import com.jujin.freeway.http.route.RouteHandler;
+import com.jujin.freeway.http.HttpModule.ConfigKeys;
+import com.jujin.freeway.http.HttpModule;
 
 /**
  * Filter that intercepts the health endpoint before routing.
  * <p>
- * Configured via {@link com.jujin.freeway.http.HttpConfigKeys#HEALTH_ENABLED} (default {@code true}) and
- * {@link com.jujin.freeway.http.HttpConfigKeys#HEALTH_PATH} (default {@code /healthz}).
+ * Configured via {@link ConfigKeys#HEALTH_ENABLED} (default {@code true}) and
+ * {@link ConfigKeys#HEALTH_PATH} (default {@code /healthz}).
  * The response body is produced by {@link HealthCheck}; bind a custom
  * implementation to replace the default {@code {"status":"ok"}}.
  */
@@ -25,9 +26,9 @@ public final class HealthFilter implements HttpFilter {
     public static final String DEFAULT_PATH = "/healthz";
 
     private static final SymbolSpec<Boolean> ENABLED =
-        SymbolSpec.of(HttpConfigKeys.HEALTH_ENABLED, Boolean.class, null);
+        SymbolSpec.of(ConfigKeys.HEALTH_ENABLED, Boolean.class, null);
     private static final SymbolSpec<String> PATH =
-        SymbolSpec.of(HttpConfigKeys.HEALTH_PATH, String.class, null);
+        SymbolSpec.of(ConfigKeys.HEALTH_PATH, String.class, null);
 
     private final boolean enabled;
     private final String healthPath;

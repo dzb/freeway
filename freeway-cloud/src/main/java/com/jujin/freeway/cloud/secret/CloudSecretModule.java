@@ -1,6 +1,5 @@
 package com.jujin.freeway.cloud.secret;
 
-import com.jujin.freeway.cloud.CloudConfigKeys;
 import com.jujin.freeway.cloud.CloudHooks;
 import com.jujin.freeway.cloud.annotation.Local;
 import com.jujin.freeway.cloud.internal.BackendTypeGuard;
@@ -13,6 +12,8 @@ import com.jujin.freeway.ioc.annotation.Marker;
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
 
 import java.nio.file.Path;
+import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
+import com.jujin.freeway.cloud.CloudModule;
 
 /**
  * IoC wiring for the secret subsystem: {@link SecretStore} →
@@ -46,7 +47,7 @@ public final class CloudSecretModule implements ModuleEx {
                     // depends on SecretStore) while SecretStore is mid-construction.
                     BackendTypeGuard.warnIfExternal(
                         container, SecretStore.class,
-                        CloudConfigKeys.SECRET_TYPE, "secret");
+                        ConfigKeys.SECRET_TYPE, "secret");
                 }
             });
     }
@@ -58,7 +59,7 @@ public final class CloudSecretModule implements ModuleEx {
      * through it would recurse (same rule as the config module).
      */
     private static Path secretFile() {
-        String path = System.getProperty(CloudConfigKeys.SECRET_FILE);
+        String path = System.getProperty(ConfigKeys.SECRET_FILE);
         return Path.of(path == null ? "application-secrets.properties" : path);
     }
 }

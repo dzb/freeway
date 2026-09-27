@@ -18,6 +18,7 @@ import javax.net.ssl.TrustManagerFactory;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import com.jujin.freeway.http.HttpModule.ConfigKeys;
 
 
 /**
@@ -35,9 +36,9 @@ public final class SslContexts {
 
     public static SSLContext build(SslSettings s) {
         if (s.keyStorePath() == null || s.keyStorePath().isBlank()) {
-            throw new IllegalStateException(HttpConfigKeys.SSL_KEY_STORE
+            throw new IllegalStateException(ConfigKeys.SSL_KEY_STORE
                 + " is required when the HTTPS engine is enabled"
-                + " (set the keystore path, or " + HttpConfigKeys.SSL_ENABLED
+                + " (set the keystore path, or " + ConfigKeys.SSL_ENABLED
                 + "=false to serve plain HTTP)");
         }
         try {
@@ -149,7 +150,7 @@ public final class SslContexts {
         }
         if (s.trustStorePassword() == null) {
             throw new IllegalStateException(
-                "SSL trust-store requires " + HttpConfigKeys.SSL_TRUST_STORE_PASSWORD);
+                "SSL trust-store requires " + ConfigKeys.SSL_TRUST_STORE_PASSWORD);
         }
         KeyStore trustStore = loadKeyStore(
             Path.of(s.trustStorePath()), s.trustStoreType(), s.trustStorePassword());

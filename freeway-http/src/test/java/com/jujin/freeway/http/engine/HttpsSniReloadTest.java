@@ -22,8 +22,9 @@ import org.junit.jupiter.api.io.TempDir;
 
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
-import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.route.Route;
+import com.jujin.freeway.http.HttpModule.ConfigKeys;
+import com.jujin.freeway.http.HttpModule;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -38,15 +39,15 @@ class HttpsSniReloadTest {
             app.close();
             app = null;
         }
-        System.clearProperty(HttpConfigKeys.SERVER_HOST);
-        System.clearProperty(HttpConfigKeys.SERVER_PORT);
-        System.clearProperty(HttpConfigKeys.SSL_ENABLED);
-        System.clearProperty(HttpConfigKeys.SSL_KEY_STORE);
-        System.clearProperty(HttpConfigKeys.SSL_KEY_STORE_PASSWORD);
-        System.clearProperty(HttpConfigKeys.SSL_KEY_STORE_TYPE);
-        System.clearProperty(HttpConfigKeys.SSL_HTTP2);
-        System.clearProperty(HttpConfigKeys.SSL_SNI_DIRECTORY);
-        System.clearProperty(HttpConfigKeys.SSL_RELOAD_INTERVAL);
+        System.clearProperty(ConfigKeys.SERVER_HOST);
+        System.clearProperty(ConfigKeys.SERVER_PORT);
+        System.clearProperty(ConfigKeys.SSL_ENABLED);
+        System.clearProperty(ConfigKeys.SSL_KEY_STORE);
+        System.clearProperty(ConfigKeys.SSL_KEY_STORE_PASSWORD);
+        System.clearProperty(ConfigKeys.SSL_KEY_STORE_TYPE);
+        System.clearProperty(ConfigKeys.SSL_HTTP2);
+        System.clearProperty(ConfigKeys.SSL_SNI_DIRECTORY);
+        System.clearProperty(ConfigKeys.SSL_RELOAD_INTERVAL);
     }
 
     @Test
@@ -56,14 +57,14 @@ class HttpsSniReloadTest {
         generateKeyStore(certs, "alt.example.p12", "CN=alt.example");
 
         int port = freePort();
-        System.setProperty(HttpConfigKeys.SERVER_HOST, "127.0.0.1");
-        System.setProperty(HttpConfigKeys.SERVER_PORT, String.valueOf(port));
-        System.setProperty(HttpConfigKeys.SSL_ENABLED, "true");
-        System.setProperty(HttpConfigKeys.SSL_KEY_STORE, localhost.toString());
-        System.setProperty(HttpConfigKeys.SSL_KEY_STORE_PASSWORD, "changeit");
-        System.setProperty(HttpConfigKeys.SSL_KEY_STORE_TYPE, "PKCS12");
-        System.setProperty(HttpConfigKeys.SSL_HTTP2, "false");
-        System.setProperty(HttpConfigKeys.SSL_SNI_DIRECTORY, certs.toString());
+        System.setProperty(ConfigKeys.SERVER_HOST, "127.0.0.1");
+        System.setProperty(ConfigKeys.SERVER_PORT, String.valueOf(port));
+        System.setProperty(ConfigKeys.SSL_ENABLED, "true");
+        System.setProperty(ConfigKeys.SSL_KEY_STORE, localhost.toString());
+        System.setProperty(ConfigKeys.SSL_KEY_STORE_PASSWORD, "changeit");
+        System.setProperty(ConfigKeys.SSL_KEY_STORE_TYPE, "PKCS12");
+        System.setProperty(ConfigKeys.SSL_HTTP2, "false");
+        System.setProperty(ConfigKeys.SSL_SNI_DIRECTORY, certs.toString());
 
         app = FreewayApp.run(new String[0], binder ->
             binder.contribute(Route.class).add(
@@ -84,14 +85,14 @@ class HttpsSniReloadTest {
         generateKeyStoreTo(keystore, "CN=old.example");
 
         int port = freePort();
-        System.setProperty(HttpConfigKeys.SERVER_HOST, "127.0.0.1");
-        System.setProperty(HttpConfigKeys.SERVER_PORT, String.valueOf(port));
-        System.setProperty(HttpConfigKeys.SSL_ENABLED, "true");
-        System.setProperty(HttpConfigKeys.SSL_KEY_STORE, keystore.toString());
-        System.setProperty(HttpConfigKeys.SSL_KEY_STORE_PASSWORD, "changeit");
-        System.setProperty(HttpConfigKeys.SSL_KEY_STORE_TYPE, "PKCS12");
-        System.setProperty(HttpConfigKeys.SSL_HTTP2, "false");
-        System.setProperty(HttpConfigKeys.SSL_RELOAD_INTERVAL, "200ms");
+        System.setProperty(ConfigKeys.SERVER_HOST, "127.0.0.1");
+        System.setProperty(ConfigKeys.SERVER_PORT, String.valueOf(port));
+        System.setProperty(ConfigKeys.SSL_ENABLED, "true");
+        System.setProperty(ConfigKeys.SSL_KEY_STORE, keystore.toString());
+        System.setProperty(ConfigKeys.SSL_KEY_STORE_PASSWORD, "changeit");
+        System.setProperty(ConfigKeys.SSL_KEY_STORE_TYPE, "PKCS12");
+        System.setProperty(ConfigKeys.SSL_HTTP2, "false");
+        System.setProperty(ConfigKeys.SSL_RELOAD_INTERVAL, "200ms");
 
         app = FreewayApp.run(new String[0], binder ->
             binder.contribute(Route.class).add(

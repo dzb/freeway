@@ -10,6 +10,7 @@ import org.slf4j.MDC;
 
 import java.time.Duration;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -159,7 +160,7 @@ class ObserveTest {
         // context for the span's duration (and for outbound propagation).
         Baggage baggage = Baggage.of(Map.of("tenant", "acme"));
         InvocationContext prior = InvocationContext.of(
-            null, PrincipalContext.of("alice", java.util.List.of()), baggage);
+            null, PrincipalContext.of("alice", List.of()), baggage);
         TracerDefault tracer = new TracerDefault();
         InvocationContext.runWith(prior, () -> {
             try (Tracer.Span span = tracer.start("op")) {

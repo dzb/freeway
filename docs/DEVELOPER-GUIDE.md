@@ -124,7 +124,7 @@ freeway-boot        freeway-http        freeway-db
 
 ## Module — The Fundamental Building Block
 
-> **Auto-discovery**: `FreewayApp.run(...)` / `AppBuilder.start()` load additional
+> **Auto-discovery**: `FreewayApp.run(...)` and `FreewayApp.create(...).start()` load additional
 > `ModuleEx` implementations declared via `META-INF/services/com.jujin.freeway.ioc.ModuleEx`
 > (ServiceLoader SPI) **by default**. This is opt-out — call
 > `FreewayApp.create(...).autoDiscovery(false)` (or `.shutdownHook(false)` for the JVM
@@ -700,23 +700,24 @@ instance's configuration would be worse. The identical instance added twice
 is deduplicated harmlessly, and SPI-discovered duplicates of an explicit
 module are dropped in favor of the explicit one.
 
-For more control, use `AppBuilder`:
+For more control, chain on `FreewayApp` — what `create(...)` returns is the application
+before it runs, and `start()` is the only thing that runs it:
 
 ```java
 AppRuntime app = FreewayApp.create(new MyModule())
+    .name("order-service")                   // the root line in the startup log
     .add(new HttpModule(), new DbModule())   // additional modules
-    .args("--freeway.profile=dev")            // config overrides
+    .args("--freeway.profile=dev")           // config overrides
     .classLoader(customLoader)               // custom class loader for SPI/resources
-    .autoDiscovery(false)                     // disable SPI module discovery
-    .shutdownHook(false)                      // skip JVM shutdown hook
-    .config(myConfig)                           // pre-built AppConfig
+    .autoDiscovery(false)                    // disable SPI module discovery
+    .shutdownHook(false)                     // skip JVM shutdown hook
+    .config(myConfig)                        // pre-built AppConfig
     .start();
 ```
 
 | Type | Purpose |
 |------|---------|
-| `FreewayApp` | Application entry point: `run(args, ModuleEx...)`, `of(ModuleEx...)` |
-| `AppBuilder` | Fluent builder for advanced control: `autoDiscovery`, `shutdownHook`, `classLoader`, `config` |
+| `FreewayApp` | Application entry point and launcher: `run(...)` starts immediately; `create(...)` returns the chain (`name`, `add`, `args`, `autoDiscovery`, `shutdownHook`, `classLoader`, `config`) that ends in `start()` |
 | `AppRuntime` | Runtime API: container, config, state, start, close, `get(Class)`, `get(Class, String)` |
 | `AppState` | `CREATED` → `STARTING` → `RUNNING` → `STOPPING` → `STOPPED` (or `FAILED`) |
 
@@ -1747,12 +1748,13 @@ code — and since a submodule is an ordinary module, taking a subset is placing
 the modules you want:
 
 ```java
-FreewayApp.run(ModuleNode.app("order-service",
-    ModuleNode.of(new OrderModule()),
-    CloudModule.class));                              // the whole bundle
+FreewayApp.run(
+    new OrderModule(),
+    CloudModule.class);                               // the whole bundle
 
-FreewayApp.run(ModuleNode.app("order-service",
-    ModuleNode.of(new CloudRpcModule())));          // just the client
+FreewayApp.run(
+    new OrderModule(),
+    new CloudRpcModule());                            // just the client
 ```
 
 **Three ways an application touches the module:**

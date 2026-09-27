@@ -1,6 +1,7 @@
 package com.jujin.freeway.cloud.rpc;
 
 import com.jujin.freeway.cloud.CloudModule;
+import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -8,11 +9,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
-import com.jujin.freeway.cloud.CloudConfigKeys;
 import com.jujin.freeway.cloud.discovery.Endpoint;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.cloud.discovery.ServiceRegistry;
-import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.HttpModule;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,26 +27,26 @@ class ResilienceKillSwitchTest {
 
     @BeforeEach
     void randomPort() {
-        System.setProperty(HttpConfigKeys.SERVER_PORT, "0");
+        System.setProperty(HttpModule.ConfigKeys.SERVER_PORT, "0");
     }
 
     @AfterEach
     void clearProperties() {
-        System.clearProperty(HttpConfigKeys.SERVER_PORT);
-        System.clearProperty(CloudConfigKeys.RPC_RESILIENCE);
-        System.clearProperty(CloudConfigKeys.RPC_RETRY_MAX_ATTEMPTS);
-        System.clearProperty(CloudConfigKeys.RPC_RETRY_BACKOFF_BASE);
-        System.clearProperty(CloudConfigKeys.RPC_RATE_LIMIT_ENABLED);
-        System.clearProperty(CloudConfigKeys.RPC_RATE_LIMIT_PER_SECOND);
+        System.clearProperty(HttpModule.ConfigKeys.SERVER_PORT);
+        System.clearProperty(ConfigKeys.RPC_RESILIENCE);
+        System.clearProperty(ConfigKeys.RPC_RETRY_MAX_ATTEMPTS);
+        System.clearProperty(ConfigKeys.RPC_RETRY_BACKOFF_BASE);
+        System.clearProperty(ConfigKeys.RPC_RATE_LIMIT_ENABLED);
+        System.clearProperty(ConfigKeys.RPC_RATE_LIMIT_PER_SECOND);
         CloudHttpClientTest.CountingFailModule.reset();
     }
 
     @Test
     void offOverridesFineGrainedRetryKeys() {
-        System.setProperty(CloudConfigKeys.RPC_RESILIENCE, "off");
+        System.setProperty(ConfigKeys.RPC_RESILIENCE, "off");
         // A generous retry budget that the kill switch must ignore.
-        System.setProperty(CloudConfigKeys.RPC_RETRY_MAX_ATTEMPTS, "5");
-        System.setProperty(CloudConfigKeys.RPC_RETRY_BACKOFF_BASE, "10");
+        System.setProperty(ConfigKeys.RPC_RETRY_MAX_ATTEMPTS, "5");
+        System.setProperty(ConfigKeys.RPC_RETRY_BACKOFF_BASE, "10");
         try (AppRuntime app = FreewayApp.create(new CloudHttpClientTest.CountingFailModule(), new HttpModule()).add(CloudModule.class).start()) {
             WebServerHolder.register(app, "failing");
 
@@ -60,11 +59,11 @@ class ResilienceKillSwitchTest {
 
     @Test
     void offKeepsBreakerAndLimiterInert() {
-        System.setProperty(CloudConfigKeys.RPC_RESILIENCE, "off");
+        System.setProperty(ConfigKeys.RPC_RESILIENCE, "off");
         // Both would reject rapid calls on their own (1/s limiter, breaker
         // counting successes/failures) — under the kill switch neither fires.
-        System.setProperty(CloudConfigKeys.RPC_RATE_LIMIT_ENABLED, "true");
-        System.setProperty(CloudConfigKeys.RPC_RATE_LIMIT_PER_SECOND, "1");
+        System.setProperty(ConfigKeys.RPC_RATE_LIMIT_ENABLED, "true");
+        System.setProperty(ConfigKeys.RPC_RATE_LIMIT_PER_SECOND, "1");
         try (AppRuntime app = FreewayApp.create(new CloudHttpClientTest.EchoModule(), new HttpModule()).add(CloudModule.class).start()) {
             WebServerHolder.register(app, "echo");
             CloudHttpClient client = app.get(CloudHttpClient.class);
@@ -79,7 +78,7 @@ class ResilienceKillSwitchTest {
 
     @Test
     void unknownModeValueFailsStartupNamingTheKey() {
-        System.setProperty(CloudConfigKeys.RPC_RESILIENCE, "yolo");
+        System.setProperty(ConfigKeys.RPC_RESILIENCE, "yolo");
         // The startup hook validates the mode before anything can use it —
         // run() itself must fail, naming the key and the offending value.
         IllegalStateException failure = assertThrows(IllegalStateException.class, () ->

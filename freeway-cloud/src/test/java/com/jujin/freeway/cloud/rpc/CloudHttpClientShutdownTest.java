@@ -1,5 +1,7 @@
 package com.jujin.freeway.cloud.rpc;
 
+import com.jujin.freeway.http.HttpModule.ConfigKeys;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -10,7 +12,6 @@ import com.jujin.freeway.boot.FreewayApp;
 import com.jujin.freeway.cloud.discovery.Endpoint;
 import com.jujin.freeway.cloud.discovery.LoadBalancerDefault;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
-import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.HttpModule;
 import com.jujin.freeway.http.HttpServer;
 import com.jujin.freeway.http.route.Route;
@@ -36,12 +37,12 @@ class CloudHttpClientShutdownTest {
 
     @BeforeEach
     void randomPort() {
-        System.setProperty(HttpConfigKeys.SERVER_PORT, "0");
+        System.setProperty(ConfigKeys.SERVER_PORT, "0");
     }
 
     @AfterEach
     void clear() {
-        System.clearProperty(HttpConfigKeys.SERVER_PORT);
+        System.clearProperty(ConfigKeys.SERVER_PORT);
     }
 
     @Test

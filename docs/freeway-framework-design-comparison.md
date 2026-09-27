@@ -102,7 +102,7 @@ public class OrderService {
 public class App { }
 ```
 
-这一行背后触发了 200+ 个自动配置类的条件评估。需要通过 `/actuator/conditions` 端点来"事后取证"。**故障模式与直觉无关**。
+这一行背后要评估上百个自动配置类的条件。需要通过 `/actuator/conditions` 端点来"事后取证"。**故障模式与直觉无关**。
 
 ### Solon：有控制的隐式
 
@@ -171,14 +171,12 @@ public interface Plugin {
 
 ```
 freeway-http/
-├── src/main/java/com/jujin/freeway/http/
-│   ├── route/Route.java        ← record，零容器依赖
-│   ├── route/RouteHandler.java ← @FunctionalInterface，零容器依赖
-│   ├── route/RouteIndex.java   ← 纯 trie 数据结构，零容器依赖
-│   ├── HttpPipeline.java       ← record，处理声明（HttpServer.create 是唯一推导）
-│   └── ...
-├── freeway-http-ioc/（概念上）
-│   └── HttpModule.java         ← 唯一的容器感知点
+└── src/main/java/com/jujin/freeway/http/
+    ├── route/Route.java        ← record，零容器依赖
+    ├── route/RouteHandler.java ← @FunctionalInterface，零容器依赖
+    ├── route/RouteIndex.java   ← 纯 trie 数据结构，零容器依赖
+    ├── HttpPipeline.java       ← record，处理声明（HttpServer.create 是唯一推导）
+    └── HttpModule.java         ← 唯一的容器感知点（同模块，不同职责——概念边界不以 artifact 为界）
 ```
 
 `RouteIndex` 不知道 `Container`，`DatabaseImpl` 不知道 `Container`。IoC 属于 Module，不属于核心实现。这是一个**架构上的分层策略，不是接口约定，而是设计文化**。
@@ -204,7 +202,7 @@ freeway-http/
 
 - `BeanPostProcessor` 签名还是 `Object postProcessBeforeInitialization(Object bean, String beanName)`——不是泛型的
 - 配置属性仍使用字符串字面量（`"classpath:..."`、`"${...}"`）
-- 启动流程仍硬编码在 `AbstractApplicationContext.refresh()`（一个 700+ 行的方法）
+- 启动流程固定编排在一个 `refresh()` 模板方法里——十余个生命周期步骤、顺序硬编码
 - 核心运行时抽象没有充分利用 JDK 17 的 sealed class、pattern matching、record
 
 设计语言**定格在了 Java 5-8 的时代**。
@@ -228,7 +226,7 @@ Solon.start(MyApp.class, args, app -> {
 - **ScopedValue**：作为 Defer、事务作用域、线程作用域的基础——替代了 ThreadLocal
 - **Record**：`Route`、`RouteGroup`、`HttpPipeline` 都是 record——声明即定义
 - **@FunctionalInterface**：`RouteHandler`、`HttpFilter`、`ModuleEx` 都是函数式接口
-- **Pattern matching / 虚拟线程**：`instanceof` 绑定与 switch 箭头分发常态化（全仓 140+ 处），
+- **Pattern matching / 虚拟线程**：`instanceof` 绑定与 switch 箭头分发常态化（全仓 230+ 处），
   每连接一个虚拟线程承载 HTTP 引擎。`sealed class` 未用于类型层次——现代化是选择性的，
   不是特性堆砌
 

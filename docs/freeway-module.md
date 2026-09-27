@@ -9,7 +9,7 @@ Module is the unit of composition in Freeway. `ModuleEx` is the Java type name u
 
 `bind()` declares. It does not start work. Initialization happens when services are resolved or when runtime hooks fire.
 
-A module declares its bindings and nothing about how the application is composed; grouping lives in the composition itself — a `ModuleNode` tree built at the entry point and handed to the container as a value. A library that ships several modules declares them on a bundle class with `@SubModule`.
+A module declares its bindings and nothing about how the application is composed; grouping lives in the composition itself — the modules the entry point is handed, in order. A library that ships several modules declares them on a bundle class with `@SubModule`.
 
 ```java
 public final class OrderModule implements ModuleEx {
@@ -22,48 +22,29 @@ public final class OrderModule implements ModuleEx {
 
 ## Composing Modules
 
-### The module tree is a value
+### Composition is the modules you place
 
-`ModuleNode` is the composition. Build it where the application is assembled, name it there, and pass it to the container:
+Place modules where the application is assembled, in the order they should bind, and hand them to the entry point:
 
 ```java
-ModuleNode app = ModuleNode.app("order-service",
+FreewayApp.run(
     OrderModule.class,                 // declare by class — the normal way
     HttpModule.class,
     CloudModule.class);                // a bundle: CloudModule + its @SubModule
-
-FreewayApp.run(app);
 ```
 
 ### Declaring modules: class by default, instance for configuration
 
 ```java
-ModuleNode.of(OrderModule.class);          // normal: no-arg constructor
-ModuleNode.of(new TenantModule("acme"));  // an instance, when the constructor takes configuration
-FreewayApp.run(OrderModule.class, HttpModule.class);
-FreewayApp.run(ModuleNode.app("orders", OrderModule.class));
+FreewayApp.run(OrderModule.class, new TenantModule("acme"));
+Freeway.create(new OrderModule(), CloudModule.class);   // the same shape
 ```
 
-Naming the class is still explicit — the composition names it, so nothing is scanned — and it is instantiated through its **no-arg constructor** when **loading starts**, not while the tree is composed: each node holds its declaration (a class, or an instance for a configured module). A module's constructor carries configuration, not dependencies: there is nothing to inject before the container exists, so dependencies are declared in `bind(Binder)` as always. A class without a no-arg constructor fails at load, naming itself and the fix (`ModuleNode.of(new X(…))`) — inside the framework the only such module is the internal `BootModule`, which the boot layer constructs itself.
+A class is instantiated through its **no-arg constructor** when the composition is resolved, not where the call is written — a call site only ever names declarations. A module's constructor carries configuration, not dependencies: there is nothing to inject before the container exists, so dependencies are declared in `bind(Binder)` as always. A class without a no-arg constructor fails at load, naming itself and the fix (`new X(…)`) — inside the framework the only such module is the internal `BootModule`, which the boot layer constructs itself.
 
-Declaring one class twice is refused the same way whether it was named by class or given as an instance — the tree holds one declaration per module class, so `run(A.class, A.class)` fails and names the fix: declare the class once. Sharing between branches goes through a **shared node value**, not through a repeated declaration. A class-only tree can be loaded by more than one container: each load resolves its own module.
+Declaring one class twice is refused whether it was named by class or given as an instance: `run(A.class, A.class)` fails and names the fix — declare the class once. A module **instance** belongs to one place in one composition; sharing one instance across two containers is normal, and a class declaration is resolved per load, so each container builds its own module.
 
-| Factory | Meaning |
-|---|---|
-| `app(name, …)` | the application root: it names the tree and binds nothing |
-| `of(class \| module)` | a module node — a single module, or a bundle's subtree when its class declares `@SubModule` |
-
-Every factory takes either a module **class** (resolved through its no-arg constructor at load) or an **instance** (for a module whose constructor takes arguments, and the only form a lambda or anonymous module can take); `app` accepts a varargs list of classes, and anything mixed is expressed with `of` children.
-
-The flat entry points stay as sugar for "the application root's children":
-
-```java
-FreewayApp.run(HttpModule.class, DbModule.class);
-// ≡ FreewayApp.run(ModuleNode.app("application",
-//       ModuleNode.of(HttpModule.class), ModuleNode.of(DbModule.class)));
-```
-
-`Freeway.create(...)` (test and standalone usage) takes the same two forms. `FreewayApp.create(...)` + `.add(...)` accepts modules and composed trees in any order:
+`FreewayApp.create(...)` + `.add(...)` assembles the same ordered list:
 
 ```java
 FreewayApp.create(OrderModule.class)
@@ -89,41 +70,46 @@ public final class CloudModule implements ModuleEx {
 }
 ```
 
-The declaration is static data read while the composition tree is built — not a method the framework calls back into — so the entry point still decides what is placed. A submodule is an ordinary module: placing `ModuleNode.of(CloudRpcModule.class)` alone is the subset form, and no exclusion list exists because taking the bundle apart is just composing the modules you want.
+The declaration is static data read while the composition is assembled — not a method the framework calls back into — so the caller still decides what is placed. A submodule is an ordinary module: placing `CloudRpcModule.class` alone is the subset form, and no exclusion list exists because taking the bundle apart is just composing the modules you want.
 
-### What construction guarantees
+### What composition guarantees
 
-`ModuleNode` normalizes and validates while it is built — cycles are refused (through the value graph, and through `@SubModule`: a class cannot bundle itself), and a tree that names a module twice is refused:
+Assembling the composition normalizes and validates it — cycles are refused (through the module values, and through `@SubModule`: a class cannot bundle itself), and a composition that names a module twice is refused:
 
 | Case | Result |
 |---|---|
-| two **declarations** of one module class | `IllegalStateException` naming both paths (`app → web → HttpModule`, …) and stating the rule |
-| the same **instance** reached twice | collapsed, keeping the first placement — sharing a node value is normal |
+| two **declarations** of one module class | `IllegalStateException` naming both paths (`application → CloudModule → HttpModule`, …) and stating the rule |
+| the same **instance** placed twice | collapsed, keeping the first placement — sharing a module instance is normal |
 | anonymous / lambda modules | compared by identity only (no meaningful class); they are instance declarations |
-| the application root | structural: it binds nothing and is exempt from the class rule |
-| a `@SubModule` cycle | `IllegalStateException` naming the cycle while the tree is built |
+| a `@SubModule` cycle | `IllegalStateException` naming the cycle while the composition is assembled |
 
-Failures surface where the tree is built — the assembly code — not at container startup.
+Failures surface where the composition is assembled — the code that places the modules — not at container startup.
 
-### The container holds the tree
+### Binding order
 
-```java
-Container c = Freeway.create(app);
-c.moduleTree();                 // the same ModuleNode the container bound
-c.moduleTree().render();        // indented structure, as shown in the startup log
-c.moduleTree().children();      // child nodes in order; a plain module has none
-c.moduleTree().bindOrder();     // module nodes in binding order (pre-order); each resolves to its module
-c.moduleTree().bindOrder().get(0).resolve();  // the module behind a declaration
+**Binding order is the pre-order over the placed modules**: a bundle's own `bind()` runs before the modules it declares, and siblings bind in the order they were placed. It is deterministic but **not a contract** — sequencing belongs to `RuntimeHook` anchors (`before`/`after` ids) and contribution `order()`, not to where a module sits. Loading resolves each class declaration while binding, so a class declaration is constructed only then.
+
+The structure is still visible, in the startup log rather than through an API — the container renders the composition it bound, ready for the log:
+
+```
+Loaded 9 module(s):
+- application
+  - OrderModule
+  - CloudModule
+    - CloudContextModule
+    …
 ```
 
-**Binding order is the tree's pre-order over module nodes**: the application root binds nothing, a module binds before the modules below it, and siblings bind in declaration order. It is deterministic but **not a contract** — sequencing belongs to `RuntimeHook` anchors (`before`/`after` ids) and contribution `order()`, not to where a module sits in the tree. Loading resolves each declaration while binding, so a class declaration is constructed only then.
+The root line is the application's name: `application` unless the launch names it (`FreewayApp.create(...).name("order-service")`, or `Freeway.create("order-service", new OrderModule())` without boot — the named container entry takes module instances, since a named class-declaring overload would make a lone name ambiguous). It is presentation only — no binding, ordering or identity depends on it — and it appears in composition errors too, as the first segment of the path that names a duplicate (`order-service → CloudModule → HttpModule`).
 
 ### Entry points
 
 ```java
-Freeway.create(app);                                   // returns the Container
-FreewayApp.run(app);                                   // returns the AppRuntime
-FreewayApp.run(new String[]{"--freeway.profile=dev"}, app);
+Freeway.create(OrderModule.class, HttpModule.class);      // returns the Container
+Freeway.create("order-service", new OrderModule());       // the same, with a named root
+FreewayApp.run(OrderModule.class, CloudModule.class);     // returns the AppRuntime
+FreewayApp.run(new String[]{"--freeway.profile=dev"}, OrderModule.class);
+FreewayApp.create(OrderModule.class).name("order-service").start();
 ```
 
 ## SPI auto-discovery
@@ -143,7 +129,7 @@ and `freeway-http` with:
 com.jujin.freeway.http.HttpModule
 ```
 
-Discovery **fills gaps**: it is skipped for any class the tree already declares — anywhere, bundles included — so a bundle that places `new HttpModule()` and an application with discovery on do not collide. The author's declaration wins.
+Discovery **fills gaps**: it is skipped for any class the composition already declares — anywhere, bundles included — so a bundle that declares `HttpModule` and an application with discovery on do not collide. The author's declaration wins.
 
 ```java
 AppRuntime app = FreewayApp.run(new AppModule());
@@ -153,7 +139,7 @@ AppRuntime app = FreewayApp.run(new AppModule());
 Auto-discovery is enabled by default. Disable it when you want only the modules you placed:
 
 ```java
-AppRuntime app = FreewayApp.create(app).autoDiscovery(false).start();
+AppRuntime app = FreewayApp.create(new AppModule()).autoDiscovery(false).start();
 ```
 
 `Freeway.create` performs no discovery at all.
@@ -180,4 +166,4 @@ AppRuntime app = FreewayApp.create(app).autoDiscovery(false).start();
 - keep public library types free of IoC imports
 - use stable ids for runtime hooks and ordered contributions
 - keep module code declarative and testable
-- place a bundle once per tree: one module instance belongs to one place in one composition
+- place a bundle once per composition: one module instance belongs to one place

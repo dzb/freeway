@@ -1,6 +1,5 @@
 package com.jujin.freeway.cloud.rpc;
 
-import com.jujin.freeway.cloud.CloudConfigKeys;
 import com.jujin.freeway.cloud.annotation.Local;
 import com.jujin.freeway.cloud.context.Propagator;
 import com.jujin.freeway.cloud.discovery.LoadBalancer;
@@ -26,6 +25,8 @@ import com.jujin.freeway.ioc.symbol.SymbolSpec;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.function.Function;
+import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
+import com.jujin.freeway.cloud.CloudModule;
 
 /**
  * IoC wiring for remote invocation: {@link CloudHttpClient} →
@@ -45,36 +46,36 @@ public final class CloudRpcModule implements ModuleEx {
 
     // Key, type and default declared once per key; the symbol chain resolves
     // the raw value and the spec post-processes it. Defaults come from the
-    // shared CloudConfigKeys sources so the config layer and the library
+    // shared ConfigKeys sources so the config layer and the library
     // fallback (CloudHttpClientDefault.Wiring) cannot drift apart.
     private static final SymbolSpec<Long> REQUEST_TIMEOUT_MS = SymbolSpec.of(
-        CloudConfigKeys.RPC_REQUEST_TIMEOUT, Long.class,
-        CloudConfigKeys.RPC_REQUEST_TIMEOUT_DEFAULT, Long::parseLong);
+        ConfigKeys.RPC_REQUEST_TIMEOUT, Long.class,
+        ConfigKeys.RPC_REQUEST_TIMEOUT_DEFAULT, Long::parseLong);
     private static final SymbolSpec<Long> CONNECT_TIMEOUT_MS = SymbolSpec.of(
-        CloudConfigKeys.RPC_CONNECT_TIMEOUT, Long.class,
-        CloudConfigKeys.RPC_CONNECT_TIMEOUT_DEFAULT, Long::parseLong);
+        ConfigKeys.RPC_CONNECT_TIMEOUT, Long.class,
+        ConfigKeys.RPC_CONNECT_TIMEOUT_DEFAULT, Long::parseLong);
     private static final SymbolSpec<Boolean> TRACE_ENABLED = SymbolSpec.of(
-        CloudConfigKeys.RPC_TRACE_ENABLED, Boolean.class, true);
+        ConfigKeys.RPC_TRACE_ENABLED, Boolean.class, true);
 
     /** Shutdown drain for in-flight calls, from the shared default. */
     private static final SymbolSpec<Duration> SHUTDOWN_GRACE = SymbolSpec.of(
-        CloudConfigKeys.RPC_SHUTDOWN_GRACE, Duration.class,
-        CloudConfigKeys.RPC_SHUTDOWN_GRACE_DEFAULT);
+        ConfigKeys.RPC_SHUTDOWN_GRACE, Duration.class,
+        ConfigKeys.RPC_SHUTDOWN_GRACE_DEFAULT);
 
     // TLS stores: unset (blank) keys mean plaintext development — the module
     // resolves TransportSecurity.NONE when the key store is blank.
     private static final SymbolSpec<String> TLS_KEY_STORE = SymbolSpec.of(
-        CloudConfigKeys.RPC_TLS_KEY_STORE, String.class,
-        CloudConfigKeys.RPC_TLS_KEY_STORE_DEFAULT, Function.identity());
+        ConfigKeys.RPC_TLS_KEY_STORE, String.class,
+        ConfigKeys.RPC_TLS_KEY_STORE_DEFAULT, Function.identity());
     private static final SymbolSpec<String> TLS_KEY_STORE_PASSWORD = SymbolSpec.of(
-        CloudConfigKeys.RPC_TLS_KEY_STORE_PASSWORD, String.class,
-        CloudConfigKeys.RPC_TLS_KEY_STORE_PASSWORD_DEFAULT, Function.identity());
+        ConfigKeys.RPC_TLS_KEY_STORE_PASSWORD, String.class,
+        ConfigKeys.RPC_TLS_KEY_STORE_PASSWORD_DEFAULT, Function.identity());
     private static final SymbolSpec<String> TLS_TRUST_STORE = SymbolSpec.of(
-        CloudConfigKeys.RPC_TLS_TRUST_STORE, String.class,
-        CloudConfigKeys.RPC_TLS_TRUST_STORE_DEFAULT, Function.identity());
+        ConfigKeys.RPC_TLS_TRUST_STORE, String.class,
+        ConfigKeys.RPC_TLS_TRUST_STORE_DEFAULT, Function.identity());
     private static final SymbolSpec<String> TLS_TRUST_STORE_PASSWORD = SymbolSpec.of(
-        CloudConfigKeys.RPC_TLS_TRUST_STORE_PASSWORD, String.class,
-        CloudConfigKeys.RPC_TLS_TRUST_STORE_PASSWORD_DEFAULT, Function.identity());
+        ConfigKeys.RPC_TLS_TRUST_STORE_PASSWORD, String.class,
+        ConfigKeys.RPC_TLS_TRUST_STORE_PASSWORD_DEFAULT, Function.identity());
 
     @Override
     public void bind(Binder b) {

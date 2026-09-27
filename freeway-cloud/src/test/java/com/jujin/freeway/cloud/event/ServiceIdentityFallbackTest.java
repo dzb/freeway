@@ -1,16 +1,15 @@
 package com.jujin.freeway.cloud.event;
 
 import com.jujin.freeway.cloud.CloudModule;
+import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
-import com.jujin.freeway.cloud.CloudConfigKeys;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.cloud.internal.RegistryStore;
-import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.HttpModule;
 import java.time.Duration;
 import java.util.List;
@@ -30,20 +29,20 @@ class ServiceIdentityFallbackTest {
 
     @BeforeEach
     void randomPort() {
-        System.setProperty(HttpConfigKeys.SERVER_PORT, "0"); // random free port per test
+        System.setProperty(HttpModule.ConfigKeys.SERVER_PORT, "0"); // random free port per test
     }
 
     @AfterEach
     void clearProperties() {
-        System.clearProperty(HttpConfigKeys.SERVER_PORT);
-        System.clearProperty(CloudConfigKeys.REGISTRY_SERVICE_ID);
-        System.clearProperty(CloudConfigKeys.APP_NAME);
-        System.clearProperty(CloudConfigKeys.EVENT_ENABLED);
+        System.clearProperty(HttpModule.ConfigKeys.SERVER_PORT);
+        System.clearProperty(ConfigKeys.REGISTRY_SERVICE_ID);
+        System.clearProperty(ConfigKeys.APP_NAME);
+        System.clearProperty(ConfigKeys.EVENT_ENABLED);
     }
 
     @Test
     void appNameOnlyKeepsRegistrationAndMeshIdentitiesInLockstep() {
-        System.setProperty(CloudConfigKeys.APP_NAME, "myapp");
+        System.setProperty(ConfigKeys.APP_NAME, "myapp");
         try (AppRuntime app = appWithEvents()) {
             assertEquals("myapp", app.get(PeerHub.class).serviceId(),
                 "mesh origin must fall back to freeway.app.name");
@@ -54,8 +53,8 @@ class ServiceIdentityFallbackTest {
 
     @Test
     void registryServiceIdOverridesAppNameForBothIdentities() {
-        System.setProperty(CloudConfigKeys.APP_NAME, "myapp");
-        System.setProperty(CloudConfigKeys.REGISTRY_SERVICE_ID, "custom");
+        System.setProperty(ConfigKeys.APP_NAME, "myapp");
+        System.setProperty(ConfigKeys.REGISTRY_SERVICE_ID, "custom");
         try (AppRuntime app = appWithEvents()) {
             assertEquals("custom", app.get(PeerHub.class).serviceId(),
                 "explicit registry service-id must win for the mesh origin");
@@ -73,7 +72,7 @@ class ServiceIdentityFallbackTest {
 
     /** Events enabled so the lifecycle hook wires the hub with the mesh origin. */
     private static AppRuntime appWithEvents() {
-        System.setProperty(CloudConfigKeys.EVENT_ENABLED, "true");
+        System.setProperty(ConfigKeys.EVENT_ENABLED, "true");
         return FreewayApp.create(new HttpModule()).add(CloudModule.class).add(new CloudEventModule()).start();
     }
 

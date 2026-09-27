@@ -2,6 +2,7 @@ package com.jujin.freeway.db;
 
 import com.jujin.freeway.commons.coercion.CoerceRule;
 import com.jujin.freeway.commons.coercion.Coercer;
+import com.jujin.freeway.ioc.symbol.KnownKeys;
 import com.jujin.freeway.ioc.symbol.SymbolSpec;
 import com.jujin.freeway.db.internal.DatabaseRegistryImpl;
 import com.jujin.freeway.db.internal.DatabaseImpl;
@@ -42,7 +43,7 @@ import java.util.function.Function;
  *   <li>{@link Orm} — bound as a singleton</li>
  *   <li>{@link DatabaseRegistry} — multi-datasource routing</li>
  *   <li>{@link Pool} — built-in; override via extension module with {@code .primary()}</li>
- *   <li>{@link Dialect} — auto-detected from JDBC URL or overridden via {@link DbConfigKeys#DIALECT}</li>
+ *   <li>{@link Dialect} — auto-detected from JDBC URL or overridden via {@link ConfigKeys#DIALECT}</li>
  *   <li>{@link MigrationRunner} — versioned SQL migration at startup</li>
  *   <li>RuntimeHook that runs Schema auto-DDL and migrations before the HTTP server starts</li>
  * </ul>
@@ -58,6 +59,8 @@ public final class DbModule implements ModuleEx {
         binder
             .bind(PoolConfig.class)
             .to(container -> buildConfig(container));
+        // Declared vocabulary for the unknown-key check.
+        binder.contribute(KnownKeys.class).add(KnownKeys.of(ConfigKeys.class, ConfigKeys.PREFIX));
         binder
             .bind(Pool.class)
             .to(container -> {
@@ -128,55 +131,55 @@ public final class DbModule implements ModuleEx {
     }
 
     private static final SymbolSpec<String> URL =
-        SymbolSpec.required(DbConfigKeys.URL, String.class, Function.identity());
+        SymbolSpec.required(ConfigKeys.URL, String.class, Function.identity());
     private static final SymbolSpec<String> USERNAME =
-        SymbolSpec.required(DbConfigKeys.USERNAME, String.class, Function.identity());
+        SymbolSpec.required(ConfigKeys.USERNAME, String.class, Function.identity());
     private static final SymbolSpec<Integer> POOL_MAX_SIZE =
-        SymbolSpec.of(DbConfigKeys.POOL_MAX_SIZE, Integer.class,
+        SymbolSpec.of(ConfigKeys.POOL_MAX_SIZE, Integer.class,
             PoolConfig.DEFAULT_MAX_SIZE, Integer::parseInt);
     private static final SymbolSpec<Integer> POOL_MIN_IDLE =
-        SymbolSpec.of(DbConfigKeys.POOL_MIN_IDLE, Integer.class,
+        SymbolSpec.of(ConfigKeys.POOL_MIN_IDLE, Integer.class,
             PoolConfig.DEFAULT_MIN_IDLE, Integer::parseInt);
     // Duration keys: no per-key parser — the chain's Coercer resolves them
     // ("2s" syntax, user-registered rules) via one-step resolve(spec).
     private static final SymbolSpec<Duration> POOL_CONNECTION_TIMEOUT =
-        SymbolSpec.of(DbConfigKeys.POOL_CONNECTION_TIMEOUT, Duration.class,
+        SymbolSpec.of(ConfigKeys.POOL_CONNECTION_TIMEOUT, Duration.class,
             PoolConfig.DEFAULT_CONNECTION_TIMEOUT);
     private static final SymbolSpec<Duration> POOL_MAX_LIFETIME =
-        SymbolSpec.of(DbConfigKeys.POOL_MAX_LIFETIME, Duration.class,
+        SymbolSpec.of(ConfigKeys.POOL_MAX_LIFETIME, Duration.class,
             PoolConfig.DEFAULT_MAX_LIFETIME);
     private static final SymbolSpec<Duration> POOL_MAX_IDLE_TIME =
-        SymbolSpec.of(DbConfigKeys.POOL_MAX_IDLE_TIME, Duration.class,
+        SymbolSpec.of(ConfigKeys.POOL_MAX_IDLE_TIME, Duration.class,
             PoolConfig.DEFAULT_MAX_IDLE_TIME);
     private static final SymbolSpec<Duration> POOL_CLEAN_INTERVAL =
-        SymbolSpec.of(DbConfigKeys.POOL_CLEAN_INTERVAL, Duration.class,
+        SymbolSpec.of(ConfigKeys.POOL_CLEAN_INTERVAL, Duration.class,
             PoolConfig.DEFAULT_CLEAN_INTERVAL);
     private static final SymbolSpec<Duration> POOL_HEALTH_CHECK_TIMEOUT =
-        SymbolSpec.of(DbConfigKeys.POOL_HEALTH_CHECK_TIMEOUT, Duration.class,
+        SymbolSpec.of(ConfigKeys.POOL_HEALTH_CHECK_TIMEOUT, Duration.class,
             PoolConfig.DEFAULT_HEALTH_CHECK_TIMEOUT);
     private static final SymbolSpec<Duration> QUERY_TIMEOUT =
-        SymbolSpec.of(DbConfigKeys.QUERY_TIMEOUT, Duration.class,
+        SymbolSpec.of(ConfigKeys.QUERY_TIMEOUT, Duration.class,
             PoolConfig.DEFAULT_QUERY_TIMEOUT);
     private static final SymbolSpec<Boolean> MIGRATION_ENABLED =
-        SymbolSpec.of(DbConfigKeys.MIGRATION_ENABLED, Boolean.class, true);
+        SymbolSpec.of(ConfigKeys.MIGRATION_ENABLED, Boolean.class, true);
     private static final SymbolSpec<Boolean> SCHEMA_AUTO =
-        SymbolSpec.of(DbConfigKeys.SCHEMA_AUTO, Boolean.class, true);
+        SymbolSpec.of(ConfigKeys.SCHEMA_AUTO, Boolean.class, true);
     private static final SymbolSpec<List<String>> SCHEMA_GROUPS =
-        SymbolSpec.list(DbConfigKeys.SCHEMA_GROUPS, List.of());
+        SymbolSpec.list(ConfigKeys.SCHEMA_GROUPS, List.of());
 
     private static PoolConfig buildConfig(Container container) {
         SymbolSource s = container.get(SymbolSource.class);
         return new PoolConfig(
             s.resolve(URL),
             s.resolve(USERNAME),
-            s.resolve(DbConfigKeys.PASSWORD, ""),
+            s.resolve(ConfigKeys.PASSWORD, ""),
             s.resolve(POOL_MAX_SIZE),
             s.resolve(POOL_MIN_IDLE),
             s.resolve(POOL_CONNECTION_TIMEOUT),
             s.resolve(POOL_MAX_LIFETIME),
             s.resolve(POOL_MAX_IDLE_TIME),
             s.resolve(POOL_CLEAN_INTERVAL),
-            s.resolve(DbConfigKeys.POOL_HEALTH_CHECK_QUERY, null),
+            s.resolve(ConfigKeys.POOL_HEALTH_CHECK_QUERY, null),
             s.resolve(POOL_HEALTH_CHECK_TIMEOUT),
             s.resolve(QUERY_TIMEOUT)
         );
@@ -195,15 +198,15 @@ public final class DbModule implements ModuleEx {
         // The lock TTL's unset value is null (the runner applies its own
         // default); the list/coercer-backed read stays a raw resolve so an
         // absent key never parses as Duration zero.
-        String lockTtlRaw = s.resolve(DbConfigKeys.MIGRATION_LOCK_TTL, "");
+        String lockTtlRaw = s.resolve(ConfigKeys.MIGRATION_LOCK_TTL, "");
         return new MigrationRunner(
             container.get(Database.class),
             MigrationRunner.Options.defaults()
                 .withEnabled(s.resolve(MIGRATION_ENABLED))
                 .withPath(s.resolve(
-                    DbConfigKeys.MIGRATION_PATH, MigrationRunner.Options.DEFAULT_PATH))
+                    ConfigKeys.MIGRATION_PATH, MigrationRunner.Options.DEFAULT_PATH))
                 .withTable(s.resolve(
-                    DbConfigKeys.MIGRATION_TABLE, MigrationRunner.Options.DEFAULT_TABLE))
+                    ConfigKeys.MIGRATION_TABLE, MigrationRunner.Options.DEFAULT_TABLE))
                 .withLockTtl(
                     lockTtlRaw.isBlank()
                         ? null // Options restores the default lease
@@ -230,7 +233,7 @@ public final class DbModule implements ModuleEx {
             if (se.entityTypes().length == 0) continue;
 
             if (!enabledGroups.isEmpty() && !enabledGroups.contains(se.name())) {
-                LOG.debug("Schema group '{}' skipped (not in {})", se.name(), DbConfigKeys.SCHEMA_GROUPS);
+                LOG.debug("Schema group '{}' skipped (not in {})", se.name(), ConfigKeys.SCHEMA_GROUPS);
                 continue;
             }
 
@@ -267,7 +270,7 @@ public final class DbModule implements ModuleEx {
      */
     static Dialect resolveDialect(Container container) {
         SymbolSource s = container.get(SymbolSource.class);
-        String configured = s.resolve(DbConfigKeys.DIALECT, "");
+        String configured = s.resolve(ConfigKeys.DIALECT, "");
         boolean explicit = !configured.isBlank();
         String dialectId = explicit ? configured : detectDialect(s);
         if (!dialectId.isBlank()) {
@@ -285,7 +288,54 @@ public final class DbModule implements ModuleEx {
     }
 
     static String detectDialect(SymbolSource s) {
-        String url = s.resolve(DbConfigKeys.URL, "");
+        String url = s.resolve(ConfigKeys.URL, "");
         return Dialect.of(url).dialectId();
+    }
+
+
+    /**
+     * Configuration keys for the DB module.
+     * All keys share the {@code freeway.db} namespace.
+     */
+    public static final class ConfigKeys {
+        private ConfigKeys() {}
+
+        public static final String PREFIX = "freeway.db";
+
+        // ── Connection ────────────────────────────────────────────
+
+        public static final String URL      = "freeway.db.url";
+        public static final String USERNAME = "freeway.db.username";
+        public static final String PASSWORD = "freeway.db.password";
+
+        // ── Pool ──────────────────────────────────────────────────
+
+        public static final String POOL_MAX_SIZE            = "freeway.db.pool.max-size";
+        public static final String POOL_MIN_IDLE            = "freeway.db.pool.min-idle";
+        public static final String POOL_CONNECTION_TIMEOUT  = "freeway.db.pool.connection-timeout";
+        public static final String POOL_MAX_LIFETIME        = "freeway.db.pool.max-lifetime";
+        public static final String POOL_MAX_IDLE_TIME       = "freeway.db.pool.max-idle-time";
+        public static final String POOL_CLEAN_INTERVAL      = "freeway.db.pool.clean-interval";
+        public static final String POOL_HEALTH_CHECK_QUERY  = "freeway.db.pool.health-check-query";
+        public static final String POOL_HEALTH_CHECK_TIMEOUT = "freeway.db.pool.health-check-timeout";
+        public static final String QUERY_TIMEOUT            = "freeway.db.query-timeout";
+
+        // ── Migration ─────────────────────────────────────────────
+
+        public static final String MIGRATION_ENABLED = "freeway.db.migration.enabled";
+        public static final String MIGRATION_PATH    = "freeway.db.migration.path";
+        public static final String MIGRATION_TABLE   = "freeway.db.migration.table";
+        /** ISO-8601 duration (e.g. PT1H); empty = runner default (1 hour).
+         *  Zero or negative disables stale-lock takeover. */
+        public static final String MIGRATION_LOCK_TTL = "freeway.db.migration.lock-ttl";
+
+        // ── Schema ────────────────────────────────────────────────
+
+        public static final String SCHEMA_AUTO   = "freeway.db.schema.auto";
+        public static final String SCHEMA_GROUPS = "freeway.db.schema.groups";
+
+        // ── Dialect ───────────────────────────────────────────────
+
+        public static final String DIALECT = "freeway.db.dialect";
     }
 }

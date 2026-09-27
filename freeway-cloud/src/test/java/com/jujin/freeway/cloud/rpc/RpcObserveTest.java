@@ -9,7 +9,6 @@ import com.jujin.freeway.cloud.observe.MetricsDefault;
 import com.jujin.freeway.cloud.internal.RegistryStore;
 import com.jujin.freeway.cloud.discovery.ServiceDiscoveryDefault;
 import com.jujin.freeway.cloud.observe.TracerDefault;
-import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.HttpModule;
 import com.jujin.freeway.http.HttpServer;
 import org.junit.jupiter.api.AfterEach;
@@ -17,6 +16,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
+import com.jujin.freeway.http.HttpModule.ConfigKeys;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -32,12 +32,12 @@ class RpcObserveTest {
 
     @BeforeEach
     void randomPort() {
-        System.setProperty(HttpConfigKeys.SERVER_PORT, "0");
+        System.setProperty(ConfigKeys.SERVER_PORT, "0");
     }
 
     @AfterEach
     void clearProperties() {
-        System.clearProperty(HttpConfigKeys.SERVER_PORT);
+        System.clearProperty(ConfigKeys.SERVER_PORT);
     }
 
     private static CloudHttpClientDefault client(

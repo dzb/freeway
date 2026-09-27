@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -160,6 +161,20 @@ public final class AppConfigDefault implements AppConfig {
     @Override
     public List<String> profiles() {
         return sources.profiles();
+    }
+
+    /**
+     * The declared universe for the unknown-key check: CLI, environment and
+     * the merged file tier (baseline overlaid with overrides — what the chain
+     * actually answers from). A snapshot copy: the file tier swaps atomically
+     * under hot reload, and the check must not observe a half-swapped map.
+     */
+    @Override
+    public Set<String> keys() {
+        Set<String> keys = new HashSet<>(fileTier.keySet());
+        keys.addAll(sources.cli().keySet());
+        keys.addAll(sources.environment().keySet());
+        return keys;
     }
 
     @Override

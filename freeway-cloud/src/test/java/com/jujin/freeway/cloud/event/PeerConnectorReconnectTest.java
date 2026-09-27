@@ -2,8 +2,6 @@ package com.jujin.freeway.cloud.event;
 
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
-import com.jujin.freeway.cloud.CloudConfigKeys;
-import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.HttpModule;
 import com.jujin.freeway.http.HttpServer;
 
@@ -12,6 +10,8 @@ import java.util.List;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
+import com.jujin.freeway.cloud.CloudModule;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -36,15 +36,15 @@ class PeerConnectorReconnectTest {
         if (nodeB != null) {
             nodeB.close();
         }
-        System.clearProperty(HttpConfigKeys.SERVER_PORT);
-        System.clearProperty(CloudConfigKeys.EVENT_ENABLED);
-        System.clearProperty(CloudConfigKeys.EVENT_PEERS);
-        System.clearProperty(CloudConfigKeys.EVENT_TOKEN);
+        System.clearProperty(HttpModule.ConfigKeys.SERVER_PORT);
+        System.clearProperty(ConfigKeys.EVENT_ENABLED);
+        System.clearProperty(ConfigKeys.EVENT_PEERS);
+        System.clearProperty(ConfigKeys.EVENT_TOKEN);
     }
 
     private static AppRuntime startEventsNode(String peers, String subscriptions) {
-        System.setProperty(CloudConfigKeys.EVENT_ENABLED, "true");
-        System.setProperty(CloudConfigKeys.EVENT_PEERS, peers);
+        System.setProperty(ConfigKeys.EVENT_ENABLED, "true");
+        System.setProperty(ConfigKeys.EVENT_PEERS, peers);
         // Declared interest shapes the hello pull-prefixes (no-op handlers —
         // these tests assert connection state, never delivery).
         List<com.jujin.freeway.ioc.ModuleEx> mods =
@@ -74,10 +74,10 @@ class PeerConnectorReconnectTest {
      */
     @Test
     void failedSendDropOnOutboundConnectionIsRedialed() throws Exception {
-        System.setProperty(HttpConfigKeys.SERVER_PORT, "0");
+        System.setProperty(HttpModule.ConfigKeys.SERVER_PORT, "0");
         nodeB = startEventsNode("", "greet.");
         int bPort = port(nodeB);
-        System.setProperty(HttpConfigKeys.SERVER_PORT, "0");
+        System.setProperty(HttpModule.ConfigKeys.SERVER_PORT, "0");
         nodeA = startEventsNode("127.0.0.1:" + bPort, "");
         assertTrue(awaitMesh(nodeA, nodeB, 8000), "mesh must establish before the drop");
 
@@ -103,9 +103,9 @@ class PeerConnectorReconnectTest {
     void duplicateResolutionCloseDoesNotReconnect() throws Exception {
         int aPort = freePort();
         int bPort = freePort();
-        System.setProperty(HttpConfigKeys.SERVER_PORT, String.valueOf(aPort));
+        System.setProperty(HttpModule.ConfigKeys.SERVER_PORT, String.valueOf(aPort));
         nodeA = startEventsNode("127.0.0.1:" + bPort, "");
-        System.setProperty(HttpConfigKeys.SERVER_PORT, String.valueOf(bPort));
+        System.setProperty(HttpModule.ConfigKeys.SERVER_PORT, String.valueOf(bPort));
         nodeB = startEventsNode("127.0.0.1:" + aPort, "");
 
         assertTrue(awaitStable(nodeA, nodeB, 1500, 12_000),
@@ -123,15 +123,15 @@ class PeerConnectorReconnectTest {
      */
     @Test
     void rejectedHandshakeAdvancesBackoffInsteadOfStorming() throws Exception {
-        System.setProperty(HttpConfigKeys.SERVER_PORT, "0");
-        System.setProperty(CloudConfigKeys.EVENT_TOKEN, "right");
+        System.setProperty(HttpModule.ConfigKeys.SERVER_PORT, "0");
+        System.setProperty(ConfigKeys.EVENT_TOKEN, "right");
         nodeB = startEventsNode("", "greet.");
         int bPort = port(nodeB);
 
         // A wired with the WRONG token and no auto-peers; the connector is
         // standalone so the test can read its pacing state.
-        System.setProperty(HttpConfigKeys.SERVER_PORT, "0");
-        System.setProperty(CloudConfigKeys.EVENT_TOKEN, "wrong");
+        System.setProperty(HttpModule.ConfigKeys.SERVER_PORT, "0");
+        System.setProperty(ConfigKeys.EVENT_TOKEN, "wrong");
         nodeA = startEventsNode("", "");
         PeerConnector connector = new PeerConnector(nodeA.get(PeerHub.class),
             PeerConnector.Wiring.defaults().withBackoff(200, 3000));

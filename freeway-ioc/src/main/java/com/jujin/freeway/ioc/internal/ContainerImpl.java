@@ -11,7 +11,7 @@ import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.event.EventBus;
 import com.jujin.freeway.ioc.LoggerSource;
 import com.jujin.freeway.ioc.MissingBindingException;
-import com.jujin.freeway.ioc.ModuleNode;
+import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.Scoping;
 import com.jujin.freeway.ioc.annotation.Builtin;
 import com.jujin.freeway.ioc.annotation.Inject;
@@ -79,7 +79,62 @@ public final class ContainerImpl implements Container {
     /** The contribution side of composition: DSL, stores, deferral, seal. */
     private final ContributionRegistry contributions;
 
-    public ContainerImpl(ModuleNode moduleTree) {
+    /**
+     * Builds a container over the given modules by declaring them to the module tree — the entry
+     * {@link com.jujin.freeway.ioc.Freeway} delegates to, so the tree type itself stays internal.
+     * This is the assembling side of the entry ladder: a declaration list becomes module nodes
+     * here, and {@link ModuleNode} stays structure and invariants.
+     */
+    public static Container of(ModuleEx... modules) {
+        return new ContainerImpl(ModuleNode.app(ModuleNode.DEFAULT_APP_NAME, nodes(modules)));
+    }
+
+    /**
+     * Same, with the composition root named — what the startup log and
+     * composition errors show as the application line. Presentation only: the
+     * name carries no identity (the container's bindings do not depend on it).
+     */
+    public static Container of(String name, ModuleEx... modules) {
+        return new ContainerImpl(ModuleNode.app(name, nodes(modules)));
+    }
+
+    /** Same, for modules named by class (each instantiated when the container loads). */
+    @SafeVarargs
+    public static Container of(Class<? extends ModuleEx>... types) {
+        return new ContainerImpl(ModuleNode.app(ModuleNode.DEFAULT_APP_NAME, nodes(types)));
+    }
+
+    /**
+     * A container with no modules: nothing is bound. Not {@code of()} — a bare
+     * {@code of()} is ambiguous between the two varargs declaration kinds, so this
+     * is the arity-0 spelling of "empty", and {@link com.jujin.freeway.ioc.Freeway#create()}
+     * is its only caller.
+     */
+    public static Container empty() {
+        return new ContainerImpl(ModuleNode.app(ModuleNode.DEFAULT_APP_NAME));
+    }
+
+    /** One node per declared module instance; a null array is the empty declaration list. */
+    private static ModuleNode[] nodes(ModuleEx... modules) {
+        ModuleEx[] declared = modules == null ? new ModuleEx[0] : modules;
+        ModuleNode[] nodes = new ModuleNode[declared.length];
+        for (int i = 0; i < declared.length; i++) {
+            nodes[i] = ModuleNode.of(Objects.requireNonNull(declared[i], "module"));
+        }
+        return nodes;
+    }
+
+    /** One node per declared module class. */
+    private static ModuleNode[] nodes(Class<? extends ModuleEx>... types) {
+        Objects.requireNonNull(types, "module types");
+        ModuleNode[] nodes = new ModuleNode[types.length];
+        for (int i = 0; i < types.length; i++) {
+            nodes[i] = ModuleNode.of(Objects.requireNonNull(types[i], "module type"));
+        }
+        return nodes;
+    }
+
+    ContainerImpl(ModuleNode moduleTree) {
         this.moduleTree = Objects.requireNonNull(moduleTree, "moduleTree");
         this.coercer = new CoercerDefault();
         this.contributions = new ContributionRegistry(this, coercer);
@@ -127,8 +182,8 @@ public final class ContainerImpl implements Container {
         return markerIndex;
     }
 
-    @Override
-    public ModuleNode moduleTree() {
+    /** The composition this container bound — package-visible to the internal structure tests. */
+    ModuleNode moduleTree() {
         return moduleTree;
     }
 

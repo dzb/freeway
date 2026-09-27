@@ -2,8 +2,6 @@ package com.jujin.freeway.cloud.event;
 
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
-import com.jujin.freeway.cloud.CloudConfigKeys;
-import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.HttpModule;
 import com.jujin.freeway.http.HttpServer;
 import com.jujin.freeway.http.websocket.WebSocketEndpoint;
@@ -27,6 +25,8 @@ import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
+import com.jujin.freeway.cloud.CloudModule;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -56,7 +56,7 @@ class PeerHubHandshakeStateTest {
 
     @BeforeEach
     void randomPort() {
-        System.setProperty(HttpConfigKeys.SERVER_PORT, "0");
+        System.setProperty(HttpModule.ConfigKeys.SERVER_PORT, "0");
         delivered.clear();
     }
 
@@ -65,17 +65,17 @@ class PeerHubHandshakeStateTest {
         if (node != null) {
             node.close();
         }
-        System.clearProperty(HttpConfigKeys.SERVER_PORT);
-        System.clearProperty(CloudConfigKeys.EVENT_ENABLED);
-        System.clearProperty(CloudConfigKeys.EVENT_PEERS);
-        System.clearProperty(CloudConfigKeys.EVENT_TOKEN);
+        System.clearProperty(HttpModule.ConfigKeys.SERVER_PORT);
+        System.clearProperty(ConfigKeys.EVENT_ENABLED);
+        System.clearProperty(ConfigKeys.EVENT_PEERS);
+        System.clearProperty(ConfigKeys.EVENT_TOKEN);
     }
 
     /** A real event node; mesh interest is declared as subscriptions, not config. */
     private AppRuntime startEventsNode(String subscriptions, String token) {
-        System.setProperty(CloudConfigKeys.EVENT_ENABLED, "true");
+        System.setProperty(ConfigKeys.EVENT_ENABLED, "true");
         if (token != null) {
-            System.setProperty(CloudConfigKeys.EVENT_TOKEN, token);
+            System.setProperty(ConfigKeys.EVENT_TOKEN, token);
         }
         List<ModuleEx> mods = new ArrayList<>(List.of(new HttpModule(), new CloudEventModule()));
         for (String prefix : subscriptions.split(",")) {
@@ -141,8 +141,8 @@ class PeerHubHandshakeStateTest {
         MisbehavingServer fake = new MisbehavingServer();
         AppRuntime fakeNode = FreewayApp.run(new HttpModule(), new MisbehavingServerModule(fake));
         try {
-            System.setProperty(CloudConfigKeys.EVENT_ENABLED, "true");
-            System.setProperty(CloudConfigKeys.EVENT_PEERS,
+            System.setProperty(ConfigKeys.EVENT_ENABLED, "true");
+            System.setProperty(ConfigKeys.EVENT_PEERS,
                 "127.0.0.1:" + fakeNode.get(HttpServer.class).port());
             node = FreewayApp.run(new HttpModule(), new CloudEventModule());
             PeerHub hub = node.get(PeerHub.class);
@@ -195,7 +195,7 @@ class PeerHubHandshakeStateTest {
             CompletableFuture<Void> opened = new CompletableFuture<>();
             WebSocket socket = HttpClient.newHttpClient().newWebSocketBuilder()
                 .buildAsync(URI.create("ws://127.0.0.1:" + port
-                        + CloudConfigKeys.EVENT_PATH_DEFAULT),
+                        + ConfigKeys.EVENT_PATH_DEFAULT),
                     new WebSocket.Listener() {
                         @Override
                         public void onOpen(WebSocket webSocket) {
@@ -247,7 +247,7 @@ class PeerHubHandshakeStateTest {
         public void bind(Binder binder) {
             binder.contribute(WebSocketRoute.class)
                 .add("fake-event", WebSocketRoute.of(
-                    CloudConfigKeys.EVENT_PATH_DEFAULT, server.endpoint));
+                    ConfigKeys.EVENT_PATH_DEFAULT, server.endpoint));
         }
     }
 }

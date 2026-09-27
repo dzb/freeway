@@ -6,6 +6,7 @@ import java.util.function.Function;
 
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 import com.jujin.freeway.ioc.symbol.SymbolSpec;
+import com.jujin.freeway.http.HttpModule.ConfigKeys;
 
 /**
  * The {@code freeway.http.ssl.*} settings, resolved once: every HTTPS-capable
@@ -40,37 +41,37 @@ public record SslSettings(
 ) {
 
     private static final SymbolSpec<String> ENABLED =
-        SymbolSpec.of(HttpConfigKeys.SSL_ENABLED, String.class, null, Function.identity());
+        SymbolSpec.of(ConfigKeys.SSL_ENABLED, String.class, null, Function.identity());
     private static final SymbolSpec<String> KEY_STORE =
-        SymbolSpec.of(HttpConfigKeys.SSL_KEY_STORE, String.class, null);
+        SymbolSpec.of(ConfigKeys.SSL_KEY_STORE, String.class, null);
     private static final SymbolSpec<String> KEY_STORE_PASSWORD =
-        SymbolSpec.of(HttpConfigKeys.SSL_KEY_STORE_PASSWORD, String.class, null);
+        SymbolSpec.of(ConfigKeys.SSL_KEY_STORE_PASSWORD, String.class, null);
     private static final SymbolSpec<String> KEY_STORE_TYPE =
-        SymbolSpec.of(HttpConfigKeys.SSL_KEY_STORE_TYPE, String.class, "PKCS12");
+        SymbolSpec.of(ConfigKeys.SSL_KEY_STORE_TYPE, String.class, "PKCS12");
     private static final SymbolSpec<Boolean> HTTP2 =
-        SymbolSpec.of(HttpConfigKeys.SSL_HTTP2, Boolean.class, true);
+        SymbolSpec.of(ConfigKeys.SSL_HTTP2, Boolean.class, true);
     private static final SymbolSpec<String> TRUST_STORE =
-        SymbolSpec.of(HttpConfigKeys.SSL_TRUST_STORE, String.class, null);
+        SymbolSpec.of(ConfigKeys.SSL_TRUST_STORE, String.class, null);
     private static final SymbolSpec<String> TRUST_STORE_PASSWORD =
-        SymbolSpec.of(HttpConfigKeys.SSL_TRUST_STORE_PASSWORD, String.class, null);
+        SymbolSpec.of(ConfigKeys.SSL_TRUST_STORE_PASSWORD, String.class, null);
     private static final SymbolSpec<String> TRUST_STORE_TYPE =
-        SymbolSpec.of(HttpConfigKeys.SSL_TRUST_STORE_TYPE, String.class, "PKCS12");
+        SymbolSpec.of(ConfigKeys.SSL_TRUST_STORE_TYPE, String.class, "PKCS12");
     private static final SymbolSpec<Boolean> CLIENT_AUTH =
-        SymbolSpec.of(HttpConfigKeys.SSL_CLIENT_AUTH, Boolean.class, false);
+        SymbolSpec.of(ConfigKeys.SSL_CLIENT_AUTH, Boolean.class, false);
     private static final SymbolSpec<List<String>> PROTOCOLS =
-        SymbolSpec.list(HttpConfigKeys.SSL_PROTOCOLS, null);
+        SymbolSpec.list(ConfigKeys.SSL_PROTOCOLS, null);
     private static final SymbolSpec<List<String>> CIPHERS =
-        SymbolSpec.list(HttpConfigKeys.SSL_CIPHERS, null);
+        SymbolSpec.list(ConfigKeys.SSL_CIPHERS, null);
     private static final SymbolSpec<String> SNI_DIRECTORY =
-        SymbolSpec.of(HttpConfigKeys.SSL_SNI_DIRECTORY, String.class, null);
+        SymbolSpec.of(ConfigKeys.SSL_SNI_DIRECTORY, String.class, null);
     private static final SymbolSpec<Duration> RELOAD_INTERVAL =
-        SymbolSpec.of(HttpConfigKeys.SSL_RELOAD_INTERVAL, Duration.class, Duration.ZERO);
+        SymbolSpec.of(ConfigKeys.SSL_RELOAD_INTERVAL, Duration.class, Duration.ZERO);
 
     /** Resolves the whole TLS section from the configuration chain. */
     public static SslSettings from(SymbolSource symbols) {
         return new SslSettings(
             SymbolSpec.activated(
-                HttpConfigKeys.SSL_ENABLED,
+                ConfigKeys.SSL_ENABLED,
                 symbols.resolve(ENABLED),
                 present(symbols.resolve(KEY_STORE))),
             symbols.resolve(KEY_STORE),

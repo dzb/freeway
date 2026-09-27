@@ -1,6 +1,5 @@
 package com.jujin.freeway.cloud.event;
 
-import com.jujin.freeway.cloud.CloudConfigKeys;
 import com.jujin.freeway.cloud.rpc.TransportSecurity;
 
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
@@ -15,6 +14,8 @@ import java.util.List;
 import java.util.function.Function;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
+import com.jujin.freeway.cloud.CloudModule;
 
 /**
  * CloudEventBus lifecycle hook: wires the hub and starts the peer connector.
@@ -34,24 +35,24 @@ final class CloudEventLifecycleHook implements RuntimeHook {
      *  is distinguishable from an explicit {@code false} — the presence rule
      *  applies only to the unset case. */
     private static final SymbolSpec<String> EVENT_ENABLED_EXPLICIT = SymbolSpec.of(
-        CloudConfigKeys.EVENT_ENABLED, String.class, "", Function.identity());
+        ConfigKeys.EVENT_ENABLED, String.class, "", Function.identity());
 
     private static final SymbolSpec<String> TOKEN = SymbolSpec.of(
-        CloudConfigKeys.EVENT_TOKEN, String.class, "", Function.identity());
+        ConfigKeys.EVENT_TOKEN, String.class, "", Function.identity());
     private static final SymbolSpec<List<String>> PEERS =
-        SymbolSpec.list(CloudConfigKeys.EVENT_PEERS, List.of());
+        SymbolSpec.list(ConfigKeys.EVENT_PEERS, List.of());
     private static final SymbolSpec<Long> CONNECT_TIMEOUT_MS =
-        SymbolSpec.of(CloudConfigKeys.EVENT_CONNECT_TIMEOUT_MS, Long.class,
-            CloudConfigKeys.EVENT_CONNECT_TIMEOUT_MS_DEFAULT, Long::parseLong);
+        SymbolSpec.of(ConfigKeys.EVENT_CONNECT_TIMEOUT_MS, Long.class,
+            ConfigKeys.EVENT_CONNECT_TIMEOUT_MS_DEFAULT, Long::parseLong);
     private static final SymbolSpec<Long> HANDSHAKE_TIMEOUT_MS =
-        SymbolSpec.of(CloudConfigKeys.EVENT_HANDSHAKE_TIMEOUT_MS, Long.class,
-            CloudConfigKeys.EVENT_HANDSHAKE_TIMEOUT_MS_DEFAULT, Long::parseLong);
+        SymbolSpec.of(ConfigKeys.EVENT_HANDSHAKE_TIMEOUT_MS, Long.class,
+            ConfigKeys.EVENT_HANDSHAKE_TIMEOUT_MS_DEFAULT, Long::parseLong);
     private static final SymbolSpec<Long> BACKOFF_BASE_MS =
-        SymbolSpec.of(CloudConfigKeys.EVENT_BACKOFF_BASE_MS, Long.class,
-            CloudConfigKeys.EVENT_BACKOFF_BASE_MS_DEFAULT, Long::parseLong);
+        SymbolSpec.of(ConfigKeys.EVENT_BACKOFF_BASE_MS, Long.class,
+            ConfigKeys.EVENT_BACKOFF_BASE_MS_DEFAULT, Long::parseLong);
     private static final SymbolSpec<Long> BACKOFF_MAX_MS =
-        SymbolSpec.of(CloudConfigKeys.EVENT_BACKOFF_MAX_MS, Long.class,
-            CloudConfigKeys.EVENT_BACKOFF_MAX_MS_DEFAULT, Long::parseLong);
+        SymbolSpec.of(ConfigKeys.EVENT_BACKOFF_MAX_MS, Long.class,
+            ConfigKeys.EVENT_BACKOFF_MAX_MS_DEFAULT, Long::parseLong);
 
     private final PeerHub hub;
     private volatile PeerConnector connector;
@@ -68,7 +69,7 @@ final class CloudEventLifecycleHook implements RuntimeHook {
         if (!meshOn(symbols.resolve(EVENT_ENABLED_EXPLICIT), peers)) {
             LOG.info("CloudEventBus not wired — dial peers with {}=<host:port,...> "
                     + "or set {}=true (discovery-fed mesh)",
-                CloudConfigKeys.EVENT_PEERS, CloudConfigKeys.EVENT_ENABLED);
+                ConfigKeys.EVENT_PEERS, ConfigKeys.EVENT_ENABLED);
             return;
         }
 
@@ -158,7 +159,7 @@ final class CloudEventLifecycleHook implements RuntimeHook {
     }
 
     private static boolean meshOn(String enabledRaw, List<String> peers) {
-        return SymbolSpec.activated(CloudConfigKeys.EVENT_ENABLED, enabledRaw, !peers.isEmpty());
+        return SymbolSpec.activated(ConfigKeys.EVENT_ENABLED, enabledRaw, !peers.isEmpty());
     }
 
     @Override

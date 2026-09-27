@@ -14,8 +14,8 @@ import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.event.EventSubscriber;
 import com.jujin.freeway.ioc.ModuleEx;
-import com.jujin.freeway.ioc.ModuleNode;
 import com.jujin.freeway.ioc.RuntimeHook;
+import com.jujin.freeway.ioc.annotation.SubModule;
 import com.jujin.freeway.ioc.annotation.Symbol;
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
@@ -26,6 +26,10 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.logging.Handler;
+import java.util.logging.Level;
+import java.util.logging.LogRecord;
+import java.util.logging.Logger;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -131,7 +135,7 @@ class FreewayAppTest {
     }
 
     @Test
-    void builderWithShutdownHookDisabled() {
+    void launcherWithShutdownHookDisabled() {
         AppRuntime app = FreewayApp.create()
             .add(new InstancePrimaryModule())
             .shutdownHook(false)
@@ -145,14 +149,61 @@ class FreewayAppTest {
     }
 
     @Test
-    void builderIsSingleUse() {
+    void theStartupLogShowsTheNamedRoot() {
+        // The name is user-visible only through the log line the container renders, so the pin is
+        // the rendered record: the root line carries the launch name.
+        List<String> logged = new ArrayList<>();
+        Handler capture = new Handler() {
+            @Override
+            public void publish(LogRecord record) {
+                if (record.getMessage() != null) {
+                    logged.add(record.getMessage());
+                }
+            }
+
+            @Override
+            public void flush() {
+            }
+
+            @Override
+            public void close() {
+            }
+        };
+        capture.setLevel(Level.ALL);
+        Logger root = Logger.getLogger("");
+        Level previous = root.getLevel();
+        root.setLevel(Level.INFO);
+        root.addHandler(capture);
+        try {
+            AppRuntime app = FreewayApp.create(new TestBootApp())
+                .name("order-service")
+                .shutdownHook(false)
+                .start();
+            app.close();
+        } finally {
+            root.removeHandler(capture);
+            root.setLevel(previous);
+        }
+        assertTrue(logged.stream().anyMatch(message -> message.contains("- order-service")),
+            "the startup log shows the named root, got: " + logged);
+    }
+
+    @Test
+    void blankApplicationNameIsRefusedAtStart() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
+            FreewayApp.create(new TestBootApp()).name("  ").shutdownHook(false).start());
+        assertTrue(ex.getMessage().contains("root name"), "got: " + ex.getMessage());
+    }
+
+    @Test
+    void launcherIsSingleUse() {
         // Regression: a second start() silently registered another shutdown
         // hook and built an independent container — no guard existed.
-        AppBuilder builder = FreewayApp.create().shutdownHook(false);
-        AppRuntime first = builder.start();
+        FreewayApp launcher = FreewayApp.create().shutdownHook(false);
+        AppRuntime first = launcher.start();
         first.close();
         IllegalStateException ex = assertThrows(
-            IllegalStateException.class, builder::start);
+            IllegalStateException.class, launcher::start);
         assertTrue(ex.getMessage().contains("single-use"),
             "got: " + ex.getMessage());
     }
@@ -164,12 +215,12 @@ class FreewayAppTest {
         // two containers and registering two shutdown hooks. The guard must
         // be atomic: exactly one call succeeds, the other throws the same
         // single-use error.
-        AppBuilder builder = FreewayApp.create(new TestBootApp()).shutdownHook(false);
+        FreewayApp launcher = FreewayApp.create(new TestBootApp()).shutdownHook(false);
         ExecutorService pool = Executors.newFixedThreadPool(2);
         try {
             List<Future<AppRuntime>> futures = new ArrayList<>();
             for (int i = 0; i < 2; i++) {
-                futures.add(pool.submit(builder::start));
+                futures.add(pool.submit(launcher::start));
             }
             AppRuntime winner = null;
             int failures = 0;
@@ -225,18 +276,18 @@ class FreewayAppTest {
         assertEquals(AppState.STOPPED, app.state());
     }
 
-    /** A fragment that places the SPI-discoverable module in the tree. */
+    /** A fragment that places the SPI-discoverable module. */
     static final class AutoFragment {
-        static ModuleNode standard() {
-            return ModuleNode.app("auto-fragment", ModuleNode.of(new AutoModule()));
+        static ModuleEx standard() {
+            return new AutoModule();
         }
     }
 
     @Test
-    void discoveredModuleAlreadyDeclaredInTheTreeIsNotAddedTwice() {
-        // AutoModule is also on the SPI classpath. A fragment that places it in
-        // the tree must not collide with discovery: the declared instance wins,
-        // exactly as an explicitly added module beats a discovered one.
+    void discoveredModuleAlreadyDeclaredIsNotAddedTwice() {
+        // AutoModule is also on the SPI classpath. A fragment that places it must not collide with
+        // discovery: the declared instance wins, exactly as an explicitly added module beats a
+        // discovered one.
         AppRuntime app = FreewayApp.create(AutoFragment.standard())
             .args("--app.name=Bundle")
             .shutdownHook(false)
@@ -248,14 +299,36 @@ class FreewayAppTest {
         }
     }
 
+    /** A bundle: placing it places the SPI-discoverable module. */
+    @SubModule(AutoModule.class)
+    static final class AutoBundle implements ModuleEx {
+        @Override
+        public void bind(Binder binder) {
+            // The bundle's own surface; the submodule is declared, not installed.
+        }
+    }
+
     @Test
-    void moduleDeclaredInTheTreeAndAddedExplicitlyStillFails() {
-        // Two authored instances of one class — the tree admits one instance per
-        // module class, so this stays an error even though discovery no longer
-        // causes it.
+    void submoduleOfABundleIsNotAddedTwiceByDiscovery() {
+        // Discovery must see through a bundle: AutoModule is declared by AutoBundle's @SubModule, so
+        // adding it from the SPI classpath would be a second declaration of one class — the author's
+        // bundle wins, exactly as an explicit instance does.
+        AppRuntime app = FreewayApp.create(AutoBundle.class)
+            .shutdownHook(false)
+            .start();
+        try {
+            assertEquals("auto", app.get(AutoMarker.class).value());
+        } finally {
+            app.close();
+        }
+    }
+
+    @Test
+    void moduleDeclaredTwiceStillFails() {
+        // Two authored instances of one class — one module class is declared once, so this stays an
+        // error even though discovery no longer causes it.
         IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
-            FreewayApp.create(ModuleNode.app("bundle",
-                    AutoFragment.standard(), ModuleNode.of(new AutoModule())))
+            FreewayApp.create(AutoFragment.standard(), new AutoModule())
                 .autoDiscovery(false)
                 .shutdownHook(false)
                 .start());
@@ -265,20 +338,6 @@ class FreewayAppTest {
             "got: " + ex.getMessage());
     }
 
-    @Test
-    void aSecondApplicationRootIsRefused() {
-        // A builder holds one application root: unwrapping a second one would
-        // silently nest it inside the first, so the mistake surfaces here.
-        IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
-            FreewayApp.create()
-                .add(ModuleNode.app("first"))
-                .add(ModuleNode.app("second"))
-                .autoDiscovery(false)
-                .shutdownHook(false)
-                .start());
-        assertTrue(ex.getMessage().contains("already set"),
-            "the error names the one-root rule, got: " + ex.getMessage());
-    }
 
     public static class ValueHolder {
         @Symbol("${server.port}")
@@ -414,7 +473,7 @@ class FreewayAppTest {
     }
 
     @Test
-    void builderWithCustomConfig() {
+    void launcherWithCustomConfig() {
         AppRuntime app = FreewayApp.create()
             .add(new InstancePrimaryModule())
             .config(AppConfigDefault.of(

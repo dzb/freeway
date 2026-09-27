@@ -7,17 +7,96 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`AsyncCarrier`——异步派发的上下文跟随**（`ioc.event`，`@FunctionalInterface`）：
+  提交线程的 ambient 上下文在 `publishAsync`/`publishOrdered` 入口捕获、执行线程恢复；
+  cloud 以一行 lambda 绑定 `InvocationContext` 载体（同信任域传全量，线上传 trace 的规则不变），
+  无绑定时恒等、无 trace 提交跑裸（与 mesh 入站同规则）。`EventBus` 构造期解析一次缓存，
+  派发零查找。
+- **`KnownKeys`——已声明配置词表**（`ioc.symbol`，调用方参数化，与 `SymbolSpec` 同层）：
+  一个模块一张键表、一条词表——键表是**嵌在模块类里的 `ConfigKeys`**（`HttpModule.ConfigKeys`、
+  `DbModule.ConfigKeys`、`CloudModule.ConfigKeys`、级联旋钮 `BootModule.ConfigKeys`），**键一律写成
+  完整字面量**（不再 `PREFIX + "…"` 组合：值就在本行可读、可 grep；`PREFIX` 只作词表栅栏），
+  `of(keysClass, prefixes…)` 从该表反射收割并**声明它拥有的全部命名空间**（cloud 表同时含
+  `freeway.cloud` 与 `freeway.app`），`admit(prefixes…)` 纯前缀准入用于名字**部分动态**的命名空间；
+  `suggest(unknown)` 同前缀、编辑距离≤2、最多 3 个（精确命中零建议——规则由测试钉住）。
+  身份串（hook id / WS 路由 / 贡献 id）同样拼 `freeway.*`，但**留在 `ConfigKeys` 之外**——类型边界
+  就是它们不进词表的保证。
+  表与词表必须一致：表内任何 `freeway.*` 公共常量落在声明之外即**绑定期失败**并给出修法
+  （新增键却忘改贡献，从此不会静默少报）；同理，读不到的常量（跨包的包私有常量类）也失败。
+  归属按模块分两类：**infra**（`commons`/`ioc`/`boot`）只提供基础能力，唯一配置是 logging
+  ——它归 `commons.logging.LogKeys`，以 `LogConfig` 公布命名空间与固定键名（不泄常量），由
+  boot 声明；级联自身的激活键是 `BootKeys`（`freeway.profile`/`freeway.config.file`/
+  引用 `EnvKeys.PREFIX_KEY`），属机制不属模块表面。**特性模块**（http/db/cloud）各一张
+  `*ConfigKeys` 表、各一条贡献。`app.name` 是无前缀的 `-D` 键，拼写收进 `LogKeys` 单点。
+   `UnknownKeysHook`（`freeway.boot.unknown-keys`）启动期一次 WARN，两条规则点名无人读取的
+   未知 `freeway.*` 键：与词表相距 ≤2 的给拼写建议；无近邻但落在**已声明模块命名空间**（根
+   `freeway.` 不算声明——boot 的键表坐在根上）下的直接点名“已声明却无人读取”。两者皆不满足
+   则静默——命名空间未贡献词表即无从判断（子集装配），`admit` 准入的动态键族整体豁免
+   （`freeway.log.file.<name>.*`）。只报不拦、热重载不重报；退役 `freeway.web.*` 走原精确
+   通告，不受模糊影响。
+- **反射清单（`docs/freeway-reflection.md`）**——全框架反射点的单页台账：站点、缓存形态、
+  路径与新增规则（ClassValue 默认、失败不缓存、spread 为标准形、预适配需 profiling 授权——
+  JSON 路径实验证明稳态无收益已回退，见 benchmark 附录）。顺带修复真实缺陷：
+  `BeanIntrospector.selectConstructor` 此前每次实例化都重扫 `getDeclaredConstructors`，
+  现按 (type, annotation) 缓存选择结果（`SELECTED`，行为不变：失败照旧逐次抛）。
+- **应用根可以命名了：`FreewayApp.create(...).name("order-service")`（无 boot 时
+  `Freeway.create("order-service", …)`）**——名字只进启动日志与组合错误：日志根行从 `application`
+  变成该名字，重复类错误里的路径首段也随之变成 `order-service → CloudModule → HttpModule`。
+  它是展示层信息，不参与任何绑定、顺序或身份；空白名字在 `start()` 抛
+  `IllegalArgumentException`（校验的唯一归属仍在 ioc 的 `ModuleNode.rootName`），null 在链上即拒。
+  上一轮删掉"命名树"时这条能力连带消失，现在以最小的形状回来：ioc 面只加
+  `Freeway.create(String appName, ModuleEx...)` 一个重载，boot 面只加 `name(String)` 一个链方法。
+  ioc 的命名入口只收**实例**：再加一个命名的 class 形参重载会让"只给一个名字"在这两个 varargs
+  之间产生歧义（试过，javac 报"引用不明确"），所以类声明要么 `new X()`，要么走 boot 链命名。
+
 ### Changed
 
-- **Rule ② carve-out (single-transport redelivery suppression)**: the rule kills cross-transport
-  identity machinery (shared ids, windows keyed on them, bus coupling) — and stays killed.
-  What returns, by explicit exception, is strictly less: an opt-in bounded seen-set inside
-  ext's `KafkaEvents`, keyed on the record's own CE id, default off, poison-first ordering,
-  no bus contact. Rebalance redelivery is routine (every deploy/scale), business-key
-  idempotency doesn't cover keyless signals, and the old `dedup.enabled` switch died with
-  the bridge — this restores exactly the single-transport half, nothing of the cross-transport
-  machinery. See the ext CHANGELOG for the shape (`freeway.kafka.dedup-capacity`,
-  `duplicatesDropped`).
+- **模块组合的公开词汇收敛为"模块 + 入口列表"：树类型 `ModuleNode` 移入 `ioc.internal`（包私有），
+  只做结构与校验，不再出现在公共 API 上**——不否定树的作用，而是把它放回该在的位置：
+  - 删除的树形入口：`Freeway.create(ModuleNode)`、`FreewayApp.run(ModuleNode)`、
+    `FreewayApp.run(String[], ModuleNode)`、`FreewayApp.create(ModuleNode)`、
+    `AppBuilder.add(ModuleNode...)`、`Container.moduleTree()`。公共面对树零暴露；迁移就是把
+    `ModuleNode.app("order-service", ModuleNode.of(new OrderModule()), ModuleNode.of(CloudModule.class))`
+    写成 `new OrderModule(), CloudModule.class`——类声明与实例声明在入口处直接混用，不再包装。
+  - 容器构造收进 `ContainerImpl`：`of(ModuleEx...)` / `of(Class...)` / `empty()`（`ioc.internal`
+    里唯一的公共类型仍是 `ContainerImpl`，`Freeway` 只是它的门面）。`ModuleNode` 保留并承担
+    结构 + 不变量（重复类、`@SubModule` 成环、pre-order）+ 启动日志 `render()`，只是不再由外部组装。
+  - 树上的命名入口（`ModuleNode.app("name", …)`）随公共 API 一起消失，默认名固定为 `application`；
+    要命名应用改走同批 Added 里的 `FreewayApp.name(...)` / `Freeway.create(String, ...)`。内部
+    `app(String)` 与 `app(String, Class...)` 两个重载一并删除——失去公共入口后它们只服务测试。
+  - 行为修复：boot 的 SPI 补齐此前借树的展开结果去重，入口扁平化后必须自己展开 `@SubModule`
+    （`ModuleDiscovery.declaredClasses`，注释指回 `ModuleNode.declaredSubModules`），否则"bundle 声明了
+    SPI 模块 + 自动发现开启"会落到 ioc 的重复类校验上启动失败；新增
+    `FreewayAppTest.submoduleOfABundleIsNotAddedTwiceByDiscovery` 钉住。
+  - 删除测试 `FreewayAppTest.aSecondApplicationRootIsRefused`：不再有"第二个应用根"这个概念。
+- **`AppBuilder` 消融进 `FreewayApp`：boot 的公开词汇从三个类型收敛为两个**——`FreewayApp` 既是入口
+  （`run(...)` / `create(...)`），也是"待启动的应用"本身：`create(...)` 返回它，链上的 `add` /
+  `args` / `config` / `autoDiscovery` / `classLoader` / `shutdownHook` 返回它，`start()` 返回
+  `AppRuntime`。调用点零迁移（`FreewayApp.create(...).autoDiscovery(false).start()` 原样编译），
+  变的只是类型：`AppBuilder` 删除，只有显式声明过该类型的调用方会看到编译错误（迁移为
+  `FreewayApp launcher = ...`）。语义不变：仍是**单次使用**（第二次 `start()` 报错，并发 start 仍只有一个
+  赢家），`autoDiscovery` / `shutdownHook` 仍默认开——这条守卫有回归测试钉住，所以本轮不动它。
+  顺带把 SPI 缺口填充抽成 `boot` 包的包私有 `ModuleDiscovery`（`FreewayApp` 的协作者），
+  `FreewayApp.start()` 只留链与启动编排。
+- **删除 `FreewayApp.run(String[])`——唯一一个"应用完全由 classpath 决定"的入口**：框架的头号设计规则是
+  "No classpath scanning"，SPI 发现的定位始终是"作者声明之后补空缺"，而这个重载把发现当成了组合本身；
+  它也是全部入口重载里唯一零文档、且唯一调用者并不需要该语义的一个（`HttpModuleEngineSelectionTest`
+  用它只是因为更短——它关心的是 SSL reloader，`new HttpModule()` 等价）。迁移一行：
+  `FreewayApp.run(new String[0])` → `FreewayApp.create().start()`（`create()` 的 args 默认就是空数组，
+  行为逐字等价）。旧写法现在会编译报"引用不明确"——单个 `String[]` 同时匹配 `run(String[], ModuleEx...)`
+  与 `run(String[], Class...)` 两个 varargs 形式，报错不会直接点出修法，所以迁移写在这里。只依赖
+  `META-INF/services` 的应用照旧可写 `run(args, DbModule.class, …)` 点名模块；
+  真有 SPI-only 应用出现、且链上表达力不够时再加回来（本项目不承诺兼容，加回成本是一次 commit）。
+- **入口梯子在内部只留一份：`ModuleNode` 的便利工厂收掉，`ContainerImpl` 成为唯一的"声明 → 结构"装配点**
+  ——删除 `ModuleNode.app()` / `app(Class...)` / `app(ModuleEx...)` / `app(String, ModuleEx...)` 与私有
+  `modules(Class[])`，`ModuleNode` 只留规范根工厂 `app(String, ModuleNode...)` 与 `of(ModuleEx)` /
+  `of(Class)`；`ContainerImpl` 用两个私有 `nodes(...)` 把声明列表走成节点。行为不变（校验仍全走
+  `normalize`，命名仍由 `rootName` 单一归属），测试 0 改写。判据说明：这一族是包私有/`ioc.internal` 类型，
+  外部无法消费，"仓内无调用者"在这里才等于死代码；公共 API 的零调用什么也不说明（ext 与应用才是消费者面）。
+  同一轮里 **`ContainerImpl.empty()` 保留**——它看着像 `of()` 的重复，实际是 arity-0 的消歧拼法：裸
+  `of()` 会在 `ModuleEx...` 与 `Class...` 之间歧义（删掉后构建实测报"对 of 的引用不明确"，已恢复并写明原因）。
 
 ## [1.5.5] - 2026-09-24
 
@@ -103,15 +182,15 @@ EventBus 两处形状变化（record 规范构造器/组件类型随内容迁移
 
 | 旧 API / 行为 | 新 API / 行为 |
 |---|---|
-| `new EventBus.EventBusStats(published, delivered, subscriberFailures, deadEvents)` | 规范构造器多一个尾参 `…, deadEvents, streamDrops`；读取方（`stats().delivered()` 等）不受影响。（周期中段曾短暂加入的 `sinkFailures` 随桥同批删除、从未出厂——对外净形状只有 `streamDrops` 一个新尾参） |
+| `new EventBus.EventBusStats(published, delivered, subscriberFailures, deadEvents)` | 规范构造器多一个尾参 `…, deadEvents, streamDrops`；读取方（`stats().delivered()` 等）不受影响。 |
 | `DeadEvent` 记录 `source` 为内部 `EventDispatcher`、组件类型 `Object` | `source` 是发布诊断的 `EventBus` 本身，组件类型收窄为 `EventBus`（record 形状不变，仓内零调用点受影响） |
-| `EventSink` 桥接缝（本地 publish 扇出给已贡献的传输 sink；本未发布周期内曾把三个 `send` 重载收敛成四参正形） | `EventSink` 整体删除：本地总线回归进程内概念，不知道有任何传输（`EventBusInbound`/`publishInbound` 同删，入站不再进本地总线）。扇出税（全量序列化、包名否决名单）与"装模块即改 publish 语义"的漂移一并斩断——"事实去哪儿"回到调用点可见 |
+| `EventSink` 桥接缝（本地 publish 扇出给已贡献的传输 sink） | `EventSink` 整体删除：本地总线回归进程内概念，不知道有任何传输（`EventBusInbound`/`publishInbound` 同删，入站不再进本地总线）。扇出税（全量序列化、包名否决名单）与"装模块即改 publish 语义"的漂移一并斩断——"事实去哪儿"回到调用点可见 |
 | `Binding` 句柄在模块绑定结束后仍可 `id/marker/to/scope/primary/advise`（晚 `id` 曾孤立已实例、晚 `marker` 曾进不了索引，各由一套迁移/同步机器兜底） | 绑定随其模块的 flush 注册即封印，此后六个 DSL 方法一律 `IllegalStateException`（"is sealed — …accepted only while its module is binding"）。`BindingIndex.updateId/contains`、`ContainerImpl.syncMarkers/updateId`、`ServiceRuntime.rekey` 删除；`lateIdChangeMigratesRealizedInstance` / `markerDeclaredAfterFlushStillResolves` 翻转为拒绝断言 |
 | `@IntermediateType`（两步 coercion：先转中间类型再转目标） | 删除：自定义形状改为一条 `CoerceRule<String, T>` 从原始字符串直接解析（`Endpoint` 测试早已是此形，`Timeout` 测试随之改写）。`InjectionResolver.coerceConfiguredValue` 去 `lookup` 参数、`resolveMarkers` 跳过表减一项 |
 | `@ThreadSafe`（标记，唯一作用是"与 `@NotThreadSafe` 并存即错"与按标记解析） | 删除：`@NotThreadSafe` 独立存在即是完整契约（未标注 = 无契约不校验），冲突检查与 `MarkerIndex` 的 `ThreadSafe` 分支删除；`ScopeProxyAdvisorTest` 的冲突测试与按标记解析测试删除，`ThreadSafeGreeterImpl` 更名 `SafeGreeterImpl` 去注解；`@NotThreadSafe` javadoc 去双标注段、`InjectionResolver` 的修复建议改为"去标记/转 THREAD 作用域/换 holder" |
-| `EventBus` 门面直管桥接（sink 注册表、eventId 铸造、去重窗口、扇出循环全在 bus/dispatcher 身上；本周期中段曾抽成包内 `EventBridge`） | "出 JVM"一半整体随桥拆除：`EventBridge`/`EventBridgePolicy` 删除，去重窗口与之同休——它们服务的"一个事件多副本跨传输"问题在分平面模型里不存在（mesh 是 at-most-once 织物，本无重投；kafka 幂等按既有契约归业务键）。`EventBusStats` 去 `sinkFailures` 组件（周期内生灭、从未出厂——对外净变化只有迁移表里的 `streamDrops`，没有外部读者需要改 pattern）；`EventBus.Keyed`、`@Topic`（javadoc 自证"for MQ bridging"的路由注解，违反 cloud-design §7"不往业务类型挂路由注解"）随桥删除——分区键归 Kafka 调用点参数，云生 topic 是门面 publish 的实参 |
+| `EventBus` 门面直管桥接（sink 注册表、eventId 铸造、去重窗口、扇出循环全在 bus/dispatcher 身上） | "出 JVM"一半整体随桥拆除：`EventBridge`/`EventBridgePolicy` 删除，去重窗口与之同休——它们服务的"一个事件多副本跨传输"问题在分平面模型里不存在（mesh 是 at-most-once 织物，本无重投；kafka 幂等按既有契约归业务键）。`EventBus.Keyed`、`@Topic`（javadoc 自证"for MQ bridging"的路由注解，违反 cloud-design §7"不往业务类型挂路由注解"）随桥删除——分区键归 Kafka 调用点参数，云生 topic 是门面 publish 的实参 |
 | 传输以密封贡献安装（`contribute(EventSink.class)`）+ `publishInbound` 单漏斗 | 跨 JVM 广播走显式门面 `CloudEventBus`（见 Added）；入站改投门面的订阅表。**订阅即闸门**：`contribute(CloudEventSubscription.class)` 的同一份声明派生 hello 拉取前缀、入站白名单（未声明 topic 丢弃且不触发反射加载——取代 `allowed-types`/`allowed-topics` 两键的结构性安全）与投递路由；`freeway.cloud.event.subscriptions/allowed-types/allowed-topics/dedup.enabled/dedup.capacity` 五键退役（`token`/`peers`/`enabled` 存活），`warnWhenInboundIsUngated` 收敛为 token 告警。旧桥在途的 CLASS 帧照解析、按 channel 弃投并计数（在途兼容、跨版本路由不互保——fabric 升级要求同版本舰队） |
-| scope 校验的属主靠类型猜（`findOwnerBinding`：精确类型→接口递归→超类链） | realize 路径把属主 `BindingImpl` 穿下来读精确 scope，`create()` 传 null 回退启发式。两处行为修正（无签名变化，编译器不报警）：同类型多绑定无 primary 时 singleton 属主曾整段跳过校验（`uniqueOrNull` 吞歧义→"属主未知"→放行），现在按自己绑定的 scope 判；prototype 属主曾被实现的 singleton 接口"认领"而误拦，现在不拦。`Container.create/create/constructInstance/initialize` 与 resolver 全链加 `owner` 参数；`multiBoundSingletonOwnerDoesNotEscapeScopeValidation` / `multiBoundPrototypeOwnerIsNotJudgedByItsSingletonInterface` 各钉一条（HEAD 下双双失败） |
+| scope 校验的属主靠类型猜（`findOwnerBinding`：精确类型→接口递归→超类链） | realize 路径把属主 `BindingImpl` 穿下来读精确 scope，`create()` 传 null 回退启发式。两处行为修正（无签名变化，编译器不报警）：同类型多绑定无 primary 时 singleton 属主曾整段跳过校验（`uniqueOrNull` 吞歧义→"属主未知"→放行），现在按自己绑定的 scope 判；prototype 属主曾被实现的 singleton 接口"认领"而误拦，现在不拦。`Container.create/create/constructInstance/initialize` 与 resolver 全链加 `owner` 参数；`multiBoundSingletonOwnerDoesNotEscapeScopeValidation` / `multiBoundPrototypeOwnerIsNotJudgedByItsSingletonInterface` 各钉一条 |
 
 ### Added
 
@@ -137,17 +216,12 @@ EventBus 两处形状变化（record 规范构造器/组件类型随内容迁移
   两处测试构造点跟进）；`publishAsync/publishOrdered` 走执行器线程，trace 在提交线程采集不到——
   异步通道的 trace 仍是缺口，单列后续。`EventTraceTest` 四条（盖章/解析/恢复/无痕不碰 ambient/畸形跑裸，
   后三条缺一即漏语义）+ kafka 收发各一条。
-- F3（mesh 入站包 `Defer.within`，与 Kafka 消费者对齐）调查后否决：`Defer.withinScope`
-  把 drain 放在 scope 绑定之外，handler 在 drain 期观察到的是未绑定——为 mesh 加上后，
-  写出的收敛测试（handler 内断言 scope 存在）如预期变红，证实了这点；且三条入站路径
-  在 publish 点之后已无可抛之处，回滚分支事实上不可达。此时加包是零可观测差别的
-  theater，按"测不出的改不动"原则不做；Kafka 侧既有包裹保持不动（绿代码不折腾）。
-  若将来 drain 改到绑定之内，两边同等受益，届时再对齐。
+- mesh 入站不包 `Defer.within`：drain 在 scope 绑定之外执行，包了也观察不到；publish 点之后无可抛之处，回滚分支不可达。
 - F4/F5/F6（织物收尾，无行为变化）：自环判断三处各写一遍收成 `cloud.event.EventOrigin::isOwn`
   （空身份永不算自己，真值表 `EventOriginTest` 三条钉住；kafka 侧同义改写）；`EventSink`
   补"可靠性画像"与"跨传输无序"两段契约——mesh 是易失织物（失败丢连接连带丢事件），Kafka
   是持久骨干（重试/消费组/DLQ），扇出不保证跨传输顺序（`eventId` 辨身份不辨先后，有序只存在
-  于各传输自家机制如 `Keyed` per-key）；`publishOrdered` 的"全局有序"限定为 JVM 内。
+  于各传输自家机制如 Kafka `send` 的 key 参数）；`publishOrdered` 的"全局有序"限定为 JVM 内。
 - `SymbolSpec.orDefault(fallback)`：叠加式读取的默认由**被构建的值**给出，键表因此不必重述默认；
   `SymbolSource.resolve(spec)` 一行一键（`SymbolSpecTest` 钉住"缺省键留原值、空值留原值、存在则
   经链的 `Coercer` 解析"）。
@@ -192,13 +266,11 @@ EventBus 两处形状变化（record 规范构造器/组件类型随内容迁移
 - `EventBusStats.streamDrops` 计数（`EventBus.EventBusStats` record 加一个尾组件，
   见迁移表）与对应 Metrics 计数器 `eventbus.stream_drops`：流溢出丢弃原来只落在
   日志里，运维无法从 `stats()` 看到"哑掉的通道"
-  （`overflowDropsAreCountedNotSwallowedSilently` 钉住）。周期中段曾一并加入的
-  `sinkFailures`/`eventbus.sink_failures` 随总线桥同批删除、从未出厂（见 Removed
-  拆除条目）——发布的净变化只有 `streamDrops` 一个尾组件。
+  （`overflowDropsAreCountedNotSwallowedSilently` 钉住）。
 
 ### Removed
 
-- **总线桥接缝整体拆除**（事件平面分离，方案见 `docs/plan-event-plane-separation.md`）：
+- **总线桥接缝整体拆除**（事件平面分离）：
   `EventSink`、`EventBridge`、`EventBridgePolicy`、`EventBusInbound`、`EventBus.Keyed`、
   `annotation/Topic` 删除；`CloudEventSink` 消失（出站循环住进 `CloudEventBus.publish`）。
   判例是自家 RPC 域：`CallBus` 之删（`358bbf42`，"hiding the one fact that matters —
@@ -403,6 +475,15 @@ EventBus 两处形状变化（record 规范构造器/组件类型随内容迁移
   已删 dedup 方法的孤儿 javadoc 清除（容量取舍与 claim-at-dispatch 语义迁入
   `EventBridgePolicy` 参数文档）；`EventSink` 补"fan-out 访问序 = 贡献拓扑序
  （before/after 生效），但只是本 JVM 循环序"一条契约。
+- **Rule ② carve-out (single-transport redelivery suppression)**: the rule kills cross-transport
+  identity machinery (shared ids, windows keyed on them, bus coupling) — and stays killed.
+  What returns, by explicit exception, is strictly less: an opt-in bounded seen-set inside
+  ext's `KafkaEvents`, keyed on the record's own CE id, default off, poison-first ordering,
+  no bus contact. Rebalance redelivery is routine (every deploy/scale), business-key
+  idempotency doesn't cover keyless signals, and the old `dedup.enabled` switch died with
+  the bridge — this restores exactly the single-transport half, nothing of the cross-transport
+  machinery. See the ext CHANGELOG for the shape (`freeway.kafka.dedup-capacity`,
+  `duplicatesDropped`).
 
 ## [1.5.3] - 2026-09-20
 
@@ -498,7 +579,7 @@ EventBus 两处形状变化（record 规范构造器/组件类型随内容迁移
     `container.get(TaskComponent|ConditionComponent, name)`（删 `FlowContainer` 适配缝）；`!marker` 整条删除；
     `ExecState` 收为引擎私有的 (graph,node) 键空间（删 `vars()`、root 计数器、泛型 `stack()`——均无仓内调用者）；
     solon 式公共死面 `Node.TAG`、`TaskDesc/ConditionDesc.isNotEmpty`、`ConditionDesc.attachment` 一并删除
-    （上一轮曾以"外部调用者"为由恢复它们；本轮按"兼容不是目标"再删，迁移即 `node.type()` 与 `!desc.isEmpty()`）。
+    （迁移即 `node.type()` 与 `!desc.isEmpty()`）。
   - **语义诚实**：pause/resume/`FlowTrace`/`steps`/`reverting`/`interrupt()` 删除（回放-跳过不是耐用执行，
     demo 与仓内零使用）；子图未达 END 改为在调用点报错；`FlowContext.put(null)` 从静默丢弃改为清除语义，
     LOOP 的 remove 变通随之删除；`toJson()` 文档改口为诊断用。
@@ -553,9 +634,7 @@ EventBus 两处形状变化（record 规范构造器/组件类型随内容迁移
     （"不设查询"不需要一个 null 常量，规范构造器传 `null` 即可，注释说明 `isValid` 决定）。校验仍在紧凑
     构造器里，所以每个 wither 都会重新校验。
 - **测试补两条契约**：`PeerConnector.Wiring` 的默认值/归一化/`withBackoff`，以及 `PoolConfig` 的
-  "defaults 说全 + wither 只动一个字段 + 每次都重新校验"。反向检查都做了：把 `defaults()` 里两个
-  `Duration` 互换 → 用例红（`expected: <PT3S> but was: <PT10S>`）；让 `withMinIdle` 顺手改 `maxSize` →
-  用例红（`expected: <20> but was: <5>`）。
+  "defaults 说全 + wither 只动一个字段 + 每次都重新校验"（含反向用例：互换/串改即红）。
 
 - **批次 B（第三批）：两处"位置参数矩阵"收成参数记录（freeway-db / freeway-http）**：
   - `MigrationRunner` 的两个构造器（4 参与 5 参，后者只多一个 `lockTtl`）换成
@@ -629,8 +708,7 @@ EventBus 两处形状变化（record 规范构造器/组件类型随内容迁移
   把 `secure` 写死为 `false`：任何经它建起来的 TLS 服务器，`secure()` 都会回答"不是 TLS"——ext 的 TLS 测试
   正踩在这条上（生产路径走 `HttpModule` 的 6 参，所以线上没受影响）。现在唯一公开装配路径是
   `WebServerBuilder`（按传入的 `SSLContext` 判定 `secure`）。ext 的 6 个适配器测试文件随之改为走 testkit 的
-  `TestServers` + `Pipelines`（原先手搭 `RequestComponents`，与真实装配路径不同，也顺带是 ext 审计 §9.4
-  的待办）；`Pipelines` 扩展出 error handler 一档，避免迁移时丢掉 413 映射与异常捕获这两类断言。
+  `TestServers` + `Pipelines`（原先手搭 `RequestComponents`，与真实装配路径不同）；`Pipelines` 扩展出 error handler 一档，避免迁移时丢掉 413 映射与异常捕获这两类断言。
 
 - **flow：v1 残留清干净、失败信息给出修法、快照语义对齐（freeway-flow）** — 审计 P1/P2：
   - `NodeType` 的"缺/空 type 默认为 ACTIVITY"删除：v2 解析器先经 `requireString` 保证非空，这个默认

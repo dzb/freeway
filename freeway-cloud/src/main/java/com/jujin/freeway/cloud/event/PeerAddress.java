@@ -1,8 +1,9 @@
 package com.jujin.freeway.cloud.event;
 
-import com.jujin.freeway.cloud.CloudConfigKeys;
 
 import java.net.URI;
+import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
+import com.jujin.freeway.cloud.CloudModule;
 
 /**
  * A parsed mesh peer address ({@code host:port}), rendered as
@@ -69,7 +70,7 @@ record PeerAddress(String host, int port) {
     /** {@code scheme://host:port/cloud/event}, bracketing an IPv6 host. */
     URI toUri(String scheme) {
         String hostPart = host.indexOf(':') >= 0 ? "[" + host + "]" : host;
-        return URI.create(scheme + "://" + hostPart + ":" + port + CloudConfigKeys.EVENT_PATH_DEFAULT);
+        return URI.create(scheme + "://" + hostPart + ":" + port + ConfigKeys.EVENT_PATH_DEFAULT);
     }
 
     @Override

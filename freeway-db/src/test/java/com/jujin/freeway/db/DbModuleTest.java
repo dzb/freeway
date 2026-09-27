@@ -21,6 +21,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import com.jujin.freeway.db.DbModule.ConfigKeys;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -41,16 +42,16 @@ class DbModuleTest {
         assertTrue(ex.getMessage().contains("DbModule"));
     }
 
-    private static final String URL_KEY = DbConfigKeys.URL;
-    private static final String USER_KEY = DbConfigKeys.USERNAME;
-    private static final String PASS_KEY = DbConfigKeys.PASSWORD;
-    private static final String MIG_PATH_KEY = DbConfigKeys.MIGRATION_PATH;
-    private static final String MIG_TABLE_KEY = DbConfigKeys.MIGRATION_TABLE;
-    private static final String SCHEMA_GROUPS_KEY = DbConfigKeys.SCHEMA_GROUPS;
-    private static final String POOL_MAX_SIZE_KEY = DbConfigKeys.POOL_MAX_SIZE;
-    private static final String POOL_CONNECTION_TIMEOUT_KEY = DbConfigKeys.POOL_CONNECTION_TIMEOUT;
-    private static final String MIGRATION_ENABLED_KEY = DbConfigKeys.MIGRATION_ENABLED;
-    private static final String DIALECT_KEY = DbConfigKeys.DIALECT;
+    private static final String URL_KEY = ConfigKeys.URL;
+    private static final String USER_KEY = ConfigKeys.USERNAME;
+    private static final String PASS_KEY = ConfigKeys.PASSWORD;
+    private static final String MIG_PATH_KEY = ConfigKeys.MIGRATION_PATH;
+    private static final String MIG_TABLE_KEY = ConfigKeys.MIGRATION_TABLE;
+    private static final String SCHEMA_GROUPS_KEY = ConfigKeys.SCHEMA_GROUPS;
+    private static final String POOL_MAX_SIZE_KEY = ConfigKeys.POOL_MAX_SIZE;
+    private static final String POOL_CONNECTION_TIMEOUT_KEY = ConfigKeys.POOL_CONNECTION_TIMEOUT;
+    private static final String MIGRATION_ENABLED_KEY = ConfigKeys.MIGRATION_ENABLED;
+    private static final String DIALECT_KEY = ConfigKeys.DIALECT;
 
     private String previousUrl;
     private String previousUser;
@@ -155,7 +156,7 @@ class DbModuleTest {
         System.setProperty(URL_KEY, "jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1");
         System.setProperty(USER_KEY, "sa");
         System.setProperty(PASS_KEY, "");
-        System.setProperty("freeway.db.pool.max-size", "bogus");
+        System.setProperty(POOL_MAX_SIZE_KEY, "bogus");
 
         try (Container container = Freeway.create(new DbModule())) {
             assertThrows(IllegalArgumentException.class, () -> container.get(PoolConfig.class));
@@ -168,7 +169,7 @@ class DbModuleTest {
         System.setProperty(URL_KEY, "jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1");
         System.setProperty(USER_KEY, "sa");
         System.setProperty(PASS_KEY, "");
-        System.setProperty("freeway.db.pool.connection-timeout", "bogus");
+        System.setProperty(POOL_CONNECTION_TIMEOUT_KEY, "bogus");
 
         try (Container container = Freeway.create(new DbModule())) {
             assertThrows(IllegalArgumentException.class, () -> container.get(PoolConfig.class));
@@ -181,7 +182,7 @@ class DbModuleTest {
         System.setProperty(URL_KEY, "jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1");
         System.setProperty(USER_KEY, "sa");
         System.setProperty(PASS_KEY, "");
-        System.setProperty("freeway.db.migration.enabled", "maybe");
+        System.setProperty(MIGRATION_ENABLED_KEY, "maybe");
 
         try (Container container = Freeway.create(new DbModule())) {
             assertThrows(IllegalArgumentException.class, () -> container.get(MigrationRunner.class));
@@ -194,7 +195,7 @@ class DbModuleTest {
         System.setProperty(URL_KEY, "jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1");
         System.setProperty(USER_KEY, "sa");
         System.setProperty(PASS_KEY, "");
-        System.setProperty("freeway.db.dialect", "unknown");
+        System.setProperty(DIALECT_KEY, "unknown");
 
         try (Container container = Freeway.create(new DbModule())) {
             IllegalStateException ex = assertThrows(IllegalStateException.class,
@@ -302,8 +303,8 @@ class DbModuleTest {
         System.setProperty(URL_KEY, "jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1");
         System.setProperty(USER_KEY, "sa");
         System.setProperty(PASS_KEY, "");
-        System.setProperty("freeway.db.migration.path", migPath);
-        System.setProperty("freeway.db.migration.table", "_schema_migrations");
+        System.setProperty(MIG_PATH_KEY, migPath);
+        System.setProperty(MIG_TABLE_KEY, "_schema_migrations");
 
         ClassLoader previous = Thread.currentThread().getContextClassLoader();
         try (URLClassLoader loader = new URLClassLoader(
@@ -364,8 +365,8 @@ class DbModuleTest {
         System.setProperty(URL_KEY, "jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1");
         System.setProperty(USER_KEY, "sa");
         System.setProperty(PASS_KEY, "");
-        System.setProperty("freeway.db.migration.path", migPath);
-        System.setProperty("freeway.db.migration.table", "_gap_migrations");
+        System.setProperty(MIG_PATH_KEY, migPath);
+        System.setProperty(MIG_TABLE_KEY, "_gap_migrations");
 
         ClassLoader previous = Thread.currentThread().getContextClassLoader();
         try (URLClassLoader loader = new URLClassLoader(
@@ -412,7 +413,7 @@ class DbModuleTest {
         System.setProperty(URL_KEY, "jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1");
         System.setProperty(USER_KEY, "sa");
         System.setProperty(PASS_KEY, "");
-        System.setProperty("freeway.db.schema.groups", "core");
+        System.setProperty(SCHEMA_GROUPS_KEY, "core");
 
         try (Container container = Freeway.create(
             new DbModule(),

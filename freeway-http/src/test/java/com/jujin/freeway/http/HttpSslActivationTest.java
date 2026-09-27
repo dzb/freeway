@@ -1,5 +1,7 @@
 package com.jujin.freeway.http;
 
+import com.jujin.freeway.http.HttpModule.ConfigKeys;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -44,11 +46,11 @@ class HttpSslActivationTest {
             app.close();
             app = null;
         }
-        System.clearProperty(HttpConfigKeys.SERVER_PORT);
-        System.clearProperty(HttpConfigKeys.SSL_ENABLED);
-        System.clearProperty(HttpConfigKeys.SSL_KEY_STORE);
-        System.clearProperty(HttpConfigKeys.SSL_KEY_STORE_PASSWORD);
-        System.clearProperty(HttpConfigKeys.SSL_KEY_STORE_TYPE);
+        System.clearProperty(ConfigKeys.SERVER_PORT);
+        System.clearProperty(ConfigKeys.SSL_ENABLED);
+        System.clearProperty(ConfigKeys.SSL_KEY_STORE);
+        System.clearProperty(ConfigKeys.SSL_KEY_STORE_PASSWORD);
+        System.clearProperty(ConfigKeys.SSL_KEY_STORE_TYPE);
     }
 
     @Test
@@ -56,9 +58,9 @@ class HttpSslActivationTest {
         Path keystore = tempDir.resolve("server.p12");
         generateKeyStoreTo(keystore);
         int port = freePort();
-        System.setProperty(HttpConfigKeys.SERVER_PORT, String.valueOf(port));
-        System.setProperty(HttpConfigKeys.SSL_KEY_STORE, keystore.toString());
-        System.setProperty(HttpConfigKeys.SSL_KEY_STORE_PASSWORD, "changeit");
+        System.setProperty(ConfigKeys.SERVER_PORT, String.valueOf(port));
+        System.setProperty(ConfigKeys.SSL_KEY_STORE, keystore.toString());
+        System.setProperty(ConfigKeys.SSL_KEY_STORE_PASSWORD, "changeit");
 
         app = FreewayApp.run(new String[0], binder ->
             binder.contribute(Route.class)
@@ -79,10 +81,10 @@ class HttpSslActivationTest {
         Path keystore = tempDir.resolve("server.p12");
         generateKeyStoreTo(keystore);
         int port = freePort();
-        System.setProperty(HttpConfigKeys.SERVER_PORT, String.valueOf(port));
-        System.setProperty(HttpConfigKeys.SSL_KEY_STORE, keystore.toString());
-        System.setProperty(HttpConfigKeys.SSL_KEY_STORE_PASSWORD, "changeit");
-        System.setProperty(HttpConfigKeys.SSL_ENABLED, "false");
+        System.setProperty(ConfigKeys.SERVER_PORT, String.valueOf(port));
+        System.setProperty(ConfigKeys.SSL_KEY_STORE, keystore.toString());
+        System.setProperty(ConfigKeys.SSL_KEY_STORE_PASSWORD, "changeit");
+        System.setProperty(ConfigKeys.SSL_ENABLED, "false");
 
         app = FreewayApp.run(new String[0], binder ->
             binder.contribute(Route.class)
@@ -98,8 +100,8 @@ class HttpSslActivationTest {
 
     @Test
     void explicitTrueWithoutKeystoreFailsNamingTheKey() {
-        System.setProperty(HttpConfigKeys.SERVER_PORT, String.valueOf(freePortQuiet()));
-        System.setProperty(HttpConfigKeys.SSL_ENABLED, "true");
+        System.setProperty(ConfigKeys.SERVER_PORT, String.valueOf(freePortQuiet()));
+        System.setProperty(ConfigKeys.SSL_ENABLED, "true");
 
         IllegalStateException failure = assertThrows(IllegalStateException.class, () ->
             FreewayApp.run(new String[0], binder ->
@@ -111,8 +113,8 @@ class HttpSslActivationTest {
 
     @Test
     void invalidEnabledValueFailsNamingTheKey() {
-        System.setProperty(HttpConfigKeys.SERVER_PORT, String.valueOf(freePortQuiet()));
-        System.setProperty(HttpConfigKeys.SSL_ENABLED, "yolo");
+        System.setProperty(ConfigKeys.SERVER_PORT, String.valueOf(freePortQuiet()));
+        System.setProperty(ConfigKeys.SSL_ENABLED, "yolo");
 
         Exception failure = assertThrows(Exception.class, () ->
             FreewayApp.run(new String[0], binder ->

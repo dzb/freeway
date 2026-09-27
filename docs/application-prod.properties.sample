@@ -163,9 +163,6 @@ freeway.db.migration.enabled=true
 # freeway.cloud.event.enabled=false
 # freeway.cloud.event.peers=
 # freeway.cloud.event.token=
-# freeway.cloud.event.subscriptions=
-# freeway.cloud.event.allowed-types=    # CLASS channel: empty = deny all
-# freeway.cloud.event.allowed-topics=   # TOPIC channel: empty = allow all
 
 
 # ================================

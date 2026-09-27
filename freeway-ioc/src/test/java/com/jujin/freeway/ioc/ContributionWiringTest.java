@@ -248,10 +248,9 @@ class ContributionWiringTest {
         // bound by the module that declares it. Class contributions run only
         // after every module has bound, so this must resolve regardless of
         // declaration order.
-        Container container = Freeway.create(ModuleNode.app("test",
-            ModuleNode.of(outer -> outer.bind(NestedDep.class).to(NestedDepImpl.class)),
-            ModuleNode.of(inner ->
-                inner.contribute(NestedDepConsumer.class).add(NestedDepConsumerImpl.class))));
+        Container container = Freeway.create(
+            outer -> outer.bind(NestedDep.class).to(NestedDepImpl.class),
+            inner -> inner.contribute(NestedDepConsumer.class).add(NestedDepConsumerImpl.class));
         var consumers = container.extension(NestedDepConsumer.class).all();
         assertEquals(1, consumers.size());
         assertTrue(consumers.getFirst() instanceof NestedDepConsumerImpl);

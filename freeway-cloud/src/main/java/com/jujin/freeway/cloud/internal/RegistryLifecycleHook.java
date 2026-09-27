@@ -3,7 +3,6 @@ package com.jujin.freeway.cloud.internal;
 import com.jujin.freeway.cloud.discovery.ServiceDeclaration;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.cloud.discovery.ServiceRegistry;
-import com.jujin.freeway.cloud.CloudConfigKeys;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 import com.jujin.freeway.ioc.symbol.SymbolSpec;
 import com.jujin.freeway.ioc.Container;
@@ -20,6 +19,8 @@ import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
+import com.jujin.freeway.cloud.CloudModule;
 
 /**
  * Registry lifecycle hook: runs AFTER {@code freeway.http.server} so
@@ -41,12 +42,12 @@ public final class RegistryLifecycleHook implements RuntimeHook {
     private static final Duration RENEW_INTERVAL = Duration.ofSeconds(10);
     /** Raw drain token: {@code auto} (the default) defers to the registry. */
     private static final SymbolSpec<String> SHUTDOWN_DRAIN_RAW = SymbolSpec.of(
-        CloudConfigKeys.REGISTRY_SHUTDOWN_DRAIN, String.class,
-        CloudConfigKeys.REGISTRY_SHUTDOWN_DRAIN_AUTO, Function.identity());
+        ConfigKeys.REGISTRY_SHUTDOWN_DRAIN, String.class,
+        ConfigKeys.REGISTRY_SHUTDOWN_DRAIN_AUTO, Function.identity());
     /** Explicit drain window — resolved only when the token is not {@code auto}. */
     private static final SymbolSpec<Duration> SHUTDOWN_DRAIN = SymbolSpec.of(
-        CloudConfigKeys.REGISTRY_SHUTDOWN_DRAIN, Duration.class,
-        CloudConfigKeys.REGISTRY_SHUTDOWN_DRAIN_DEFAULT);
+        ConfigKeys.REGISTRY_SHUTDOWN_DRAIN, Duration.class,
+        ConfigKeys.REGISTRY_SHUTDOWN_DRAIN_DEFAULT);
 
     private final RegistryRenewal renewal;
     private final Duration renewInterval;
@@ -102,17 +103,17 @@ public final class RegistryLifecycleHook implements RuntimeHook {
      */
     static Duration resolveDrain(String raw, ServiceRegistry registry, SymbolSource symbols) {
         if (raw == null || raw.isBlank()
-                || CloudConfigKeys.REGISTRY_SHUTDOWN_DRAIN_AUTO.equalsIgnoreCase(raw.trim())) {
+                || ConfigKeys.REGISTRY_SHUTDOWN_DRAIN_AUTO.equalsIgnoreCase(raw.trim())) {
             Duration answered = registry.drainWindow();
             Duration window = answered == null
-                ? CloudConfigKeys.REGISTRY_SHUTDOWN_DRAIN_DEFAULT : answered;
+                ? ConfigKeys.REGISTRY_SHUTDOWN_DRAIN_DEFAULT : answered;
             LOG.info("registry.shutdown-drain=auto → {} (answered by {})",
                 window, registryName(registry));
             return window;
         }
         Duration explicit = symbols.resolve(SHUTDOWN_DRAIN);
         if (explicit.isNegative()) {
-            throw new IllegalArgumentException(CloudConfigKeys.REGISTRY_SHUTDOWN_DRAIN
+            throw new IllegalArgumentException(ConfigKeys.REGISTRY_SHUTDOWN_DRAIN
                 + " must not be negative: " + raw);
         }
         LOG.info("registry.shutdown-drain={} (explicit)", explicit);

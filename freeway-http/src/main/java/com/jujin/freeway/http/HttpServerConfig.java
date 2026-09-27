@@ -4,6 +4,7 @@ import java.time.Duration;
 
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 import com.jujin.freeway.ioc.symbol.SymbolSpec;
+import com.jujin.freeway.http.HttpModule.ConfigKeys;
 
 /**
  * Server-level configuration — the transport declaration half of a server
@@ -104,9 +105,9 @@ public record HttpServerConfig(
         }
 
         private static final SymbolSpec<Boolean> ENABLED =
-            SymbolSpec.of(HttpConfigKeys.COMPRESSION_ENABLED, Boolean.class, null);
+            SymbolSpec.of(ConfigKeys.COMPRESSION_ENABLED, Boolean.class, null);
         private static final SymbolSpec<Integer> MIN_SIZE =
-            SymbolSpec.of(HttpConfigKeys.COMPRESSION_MIN_SIZE, Integer.class, null);
+            SymbolSpec.of(ConfigKeys.COMPRESSION_MIN_SIZE, Integer.class, null);
 
         /** The gzip policy as {@code freeway.http.compression.*} answers it. */
         public static CompressionConfig from(SymbolSource symbols) {
@@ -148,25 +149,25 @@ public record HttpServerConfig(
     // on the value it belongs to — and an absent or blank key keeps it.
 
     private static final SymbolSpec<String> HOST =
-        SymbolSpec.of(HttpConfigKeys.SERVER_HOST, String.class, null);
+        SymbolSpec.of(ConfigKeys.SERVER_HOST, String.class, null);
     private static final SymbolSpec<Integer> PORT =
-        SymbolSpec.of(HttpConfigKeys.SERVER_PORT, Integer.class, null);
+        SymbolSpec.of(ConfigKeys.SERVER_PORT, Integer.class, null);
     private static final SymbolSpec<Integer> BACKLOG =
-        SymbolSpec.of(HttpConfigKeys.SERVER_BACKLOG, Integer.class, null);
+        SymbolSpec.of(ConfigKeys.SERVER_BACKLOG, Integer.class, null);
     private static final SymbolSpec<Duration> SHUTDOWN_GRACE =
-        SymbolSpec.of(HttpConfigKeys.SERVER_SHUTDOWN_GRACE, Duration.class, null);
+        SymbolSpec.of(ConfigKeys.SERVER_SHUTDOWN_GRACE, Duration.class, null);
     private static final SymbolSpec<Long> MAX_BODY_SIZE =
-        SymbolSpec.of(HttpConfigKeys.MAX_BODY_SIZE, Long.class, null);
+        SymbolSpec.of(ConfigKeys.MAX_BODY_SIZE, Long.class, null);
     private static final SymbolSpec<Duration> READ_TIMEOUT =
-        SymbolSpec.of(HttpConfigKeys.SERVER_READ_TIMEOUT, Duration.class, null);
+        SymbolSpec.of(ConfigKeys.SERVER_READ_TIMEOUT, Duration.class, null);
     private static final SymbolSpec<Integer> MAX_CONNECTIONS =
-        SymbolSpec.of(HttpConfigKeys.SERVER_MAX_CONNECTIONS, Integer.class, null);
+        SymbolSpec.of(ConfigKeys.SERVER_MAX_CONNECTIONS, Integer.class, null);
     private static final SymbolSpec<Duration> WRITE_TIMEOUT =
-        SymbolSpec.of(HttpConfigKeys.SERVER_WRITE_TIMEOUT, Duration.class, null);
+        SymbolSpec.of(ConfigKeys.SERVER_WRITE_TIMEOUT, Duration.class, null);
     private static final SymbolSpec<Integer> RECEIVE_BUFFER =
-        SymbolSpec.of(HttpConfigKeys.SERVER_RECEIVE_BUFFER, Integer.class, null);
+        SymbolSpec.of(ConfigKeys.SERVER_RECEIVE_BUFFER, Integer.class, null);
     private static final SymbolSpec<Integer> SEND_BUFFER =
-        SymbolSpec.of(HttpConfigKeys.SERVER_SEND_BUFFER, Integer.class, null);
+        SymbolSpec.of(ConfigKeys.SERVER_SEND_BUFFER, Integer.class, null);
 
     /**
      * This configuration as {@code freeway.http.server.*} answers it: start from

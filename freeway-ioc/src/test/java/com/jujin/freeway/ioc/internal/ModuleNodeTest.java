@@ -1,7 +1,6 @@
-package com.jujin.freeway.ioc;
+package com.jujin.freeway.ioc.internal;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertIterableEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
@@ -10,12 +9,15 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.jujin.freeway.ioc.Binder;
+import com.jujin.freeway.ioc.Container;
+import com.jujin.freeway.ioc.Freeway;
+import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.annotation.SubModule;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
@@ -146,12 +148,12 @@ class ModuleNodeTest {
         ModuleNode app = ModuleNode.app("orders", ModuleNode.of(named("a", log)));
 
         assertEquals("orders", app.name());
-        assertEquals(2, app.size());
+        assertEquals(1, app.bindOrder().size(), "the root itself binds nothing");
         assertEquals(List.of("orders", "a"), nodeNames(app),
             "the application root is the first line of the tree");
-        try (Container container = Freeway.create(app)) {
+        try (Container container = new ContainerImpl(app)) {
             assertEquals(List.of("a"), log, "the structural root declares no bindings");
-            assertSame(app, container.moduleTree());
+            assertSame(app, ((ContainerImpl) container).moduleTree());
         }
     }
 
@@ -160,9 +162,9 @@ class ModuleNodeTest {
         ModuleNode tree = ModuleNode.app("test", ModuleNode.of(WebBundle.class));
 
         assertEquals(List.of("test", "WebBundle", "Middle"), nodeNames(tree));
-        assertEquals(3, tree.size(), "root + bundle + submodule");
-        try (Container container = Freeway.create(tree)) {
-            assertIterableEquals(List.of("WebBundle", "Middle"), bindNames(container.moduleTree()),
+        assertEquals(2, tree.bindOrder().size(), "the bundle and its submodule bind; the root does not");
+        try (Container container = new ContainerImpl(tree)) {
+            assertIterableEquals(List.of("WebBundle", "Middle"), bindNames(((ContainerImpl) container).moduleTree()),
                 "a bundle binds before the submodules it declares");
             assertNotNull(container.get(Middle.class));
         }
@@ -184,21 +186,17 @@ class ModuleNodeTest {
             ModuleNode.of(WebBundle.class));
 
         assertEquals("test", tree.name());
-        assertEquals(4, tree.size());
-        assertTrue(tree.isApplication());
         assertNull(tree.type(), "the application root declares no module");
         assertEquals(2, tree.children().size());
 
         ModuleNode node = tree.children().get(0);
         assertNotNull(node.type(), "a module node carries its declaration");
-        assertNull(node.instance(), "a class declaration carries no instance");
         assertTrue(node.children().isEmpty());
 
         ModuleNode bundle = tree.children().get(1);
         assertEquals("WebBundle", bundle.name());
         assertEquals(WebBundle.class, bundle.type());
         assertEquals(1, bundle.children().size(), "a bundle carries its submodules");
-        assertFalse(bundle.isApplication());
 
         assertThrows(UnsupportedOperationException.class, () -> tree.children().clear());
         assertThrows(UnsupportedOperationException.class, () -> tree.bindOrder().clear());
@@ -218,32 +216,18 @@ class ModuleNodeTest {
         ModuleNode tree = ModuleNode.of(TopBundle.class);
 
         assertEquals(List.of("TopBundle", "WebBundle", "Middle"), nodeNames(tree));
-        assertEquals(Set.of(TopBundle.class, WebBundle.class, Middle.class), tree.classes());
-    }
-
-    @Test
-    void classesExposeWhatDiscoveryMustNotAddAgain() {
-        ModuleNode tree = ModuleNode.app("test",
-            ModuleNode.of(new Marker()),
-            ModuleNode.of(named("anonymous", new ArrayList<>())),
-            ModuleNode.of(WebBundle.class));
-
-        assertEquals(Set.of(Marker.class, Middle.class, WebBundle.class), tree.classes(),
-            "bundles contribute their submodule classes; anonymous modules are absent");
     }
 
     @Test
     void ofCarriesItsDeclarationAndResolvesIt() {
         ModuleNode classLeaf = ModuleNode.of(Marker.class);
         assertEquals(Marker.class, classLeaf.type());
-        assertNull(classLeaf.instance());
         assertTrue(classLeaf.children().isEmpty());
         assertTrue(classLeaf.resolve() instanceof Marker);
 
         Marker instance = new Marker();
         ModuleNode instanceLeaf = ModuleNode.of(instance);
         assertEquals(Marker.class, instanceLeaf.type());
-        assertSame(instance, instanceLeaf.instance());
         assertSame(instance, instanceLeaf.resolve(),
             "an instance declaration resolves to itself, not a copy");
 
@@ -256,9 +240,7 @@ class ModuleNodeTest {
     void applicationRootDeclaresNothingToResolve() {
         ModuleNode root = ModuleNode.app("app", ModuleNode.of(Marker.class));
 
-        assertTrue(root.isApplication());
-        assertNull(root.type());
-        assertNull(root.instance());
+        assertNull(root.type(), "the root is the node with no declaration");
         assertThrows(IllegalStateException.class, root::resolve);
     }
 
@@ -266,8 +248,8 @@ class ModuleNodeTest {
     void fragmentIsAValueAndMayBePlacedInDifferentTrees() {
         ModuleNode fragment = ModuleNode.of(WebBundle.class);
 
-        try (Container first = Freeway.create(ModuleNode.app("one", fragment));
-             Container second = Freeway.create(ModuleNode.app("two", fragment))) {
+        try (Container first = new ContainerImpl(ModuleNode.app("one", fragment));
+             Container second = new ContainerImpl(ModuleNode.app("two", fragment))) {
             assertNotNull(first.get(Middle.class));
             assertNotNull(second.get(Middle.class),
                 "the same bundle value resolves its submodules per container");
@@ -277,7 +259,7 @@ class ModuleNodeTest {
     @Test
     void blankRootNameIsRefused() {
         IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
-            () -> ModuleNode.app("  "));
+            () -> Freeway.create("  ", new Marker()));
         assertTrue(failure.getMessage().contains("root name"), failure.getMessage());
     }
 
@@ -314,8 +296,8 @@ class ModuleNodeTest {
         ModuleNode tree = ModuleNode.app("test",
             ModuleNode.of(module), ModuleNode.of(module));
 
-        assertEquals(2, tree.size(), "the repeated instance keeps its first placement");
-        try (Container container = Freeway.create(tree)) {
+        assertEquals(1, tree.bindOrder().size(), "the repeated instance keeps its first placement");
+        try (Container container = new ContainerImpl(tree)) {
             assertEquals(List.of("once"), log, "a shared instance binds once");
         }
     }
@@ -325,9 +307,9 @@ class ModuleNodeTest {
         ModuleNode bundle = ModuleNode.of(WebBundle.class);
         ModuleNode tree = ModuleNode.app("test", bundle, bundle);
 
-        assertEquals(3, tree.size(), "the repeated bundle value keeps its first placement");
-        try (Container container = Freeway.create(tree)) {
-            assertIterableEquals(List.of("WebBundle", "Middle"), bindNames(container.moduleTree()));
+        assertEquals(2, tree.bindOrder().size(), "the repeated bundle value keeps its first placement");
+        try (Container container = new ContainerImpl(tree)) {
+            assertIterableEquals(List.of("WebBundle", "Middle"), bindNames(((ContainerImpl) container).moduleTree()));
         }
     }
 
@@ -338,7 +320,7 @@ class ModuleNodeTest {
             ModuleNode.of(named("first", log)),
             ModuleNode.of(named("second", log)));
 
-        try (Container container = Freeway.create(tree)) {
+        try (Container container = new ContainerImpl(tree)) {
             assertEquals(List.of("first", "second"), log,
                 "two anonymous modules are two modules, whatever class they share");
         }
@@ -358,7 +340,6 @@ class ModuleNodeTest {
         try (Container container = Freeway.create(Marker.class, Other.class)) {
             assertNotNull(container.get(Marker.class));
             assertNotNull(container.get(Other.class));
-            assertEquals(Set.of(Marker.class, Other.class), container.moduleTree().classes());
         }
     }
 
@@ -376,7 +357,7 @@ class ModuleNodeTest {
     @Test
     void declaringTheSameClassTwiceIsRefused() {
         IllegalStateException failure = assertThrows(IllegalStateException.class,
-            () -> ModuleNode.app("test", Marker.class, Marker.class));
+            () -> ModuleNode.app("test", ModuleNode.of(Marker.class), ModuleNode.of(Marker.class)));
 
         assertTrue(failure.getMessage().contains("declare the class once"),
             "the message names the fix: " + failure.getMessage());
@@ -387,7 +368,7 @@ class ModuleNodeTest {
         ModuleNode node = ModuleNode.of(NeedsArguments.class);
 
         IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
-            () -> Freeway.create(node));
+            () -> new ContainerImpl(node));
 
         assertTrue(failure.getMessage().contains(NeedsArguments.class.getName()),
             failure.getMessage());
@@ -398,12 +379,12 @@ class ModuleNodeTest {
     @Test
     void classDeclarationsResolveWhenLoadingStarts() {
         CountingModule.constructions.set(0);
-        ModuleNode tree = ModuleNode.app("test", CountingModule.class);
+        ModuleNode tree = ModuleNode.app("test", ModuleNode.of(CountingModule.class));
 
         assertEquals(0, CountingModule.constructions.get(),
             "composition declares, it does not construct");
-        try (Container first = Freeway.create(tree);
-             Container second = Freeway.create(tree)) {
+        try (Container first = new ContainerImpl(tree);
+             Container second = new ContainerImpl(tree)) {
             assertEquals(2, CountingModule.constructions.get(),
                 "each container resolves its own module");
             assertNotSame(first.get(CountingModule.class), second.get(CountingModule.class),
@@ -418,22 +399,32 @@ class ModuleNodeTest {
             ModuleNode.of(new Other()),
             ModuleNode.of(WebBundle.class));
 
-        try (Container container = Freeway.create(app)) {
+        try (Container container = new ContainerImpl(app)) {
             assertNotNull(container.get(Marker.class));
             assertNotNull(container.get(Other.class));
             assertNotNull(container.get(Middle.class));
         }
     }
 
-    // ── the flat entry point stays sugar ────────────────────────
+    // ── entry points and the root name ──────────────────────────
 
     @Test
     void flatEntryListIsTheApplicationNodesChildren() {
         List<String> log = new ArrayList<>();
         try (Container container = Freeway.create(named("a", log), named("b", log))) {
             assertEquals(List.of("a", "b"), log);
-            assertEquals("application", container.moduleTree().name());
-            assertEquals(2, container.moduleTree().bindOrder().size());
+            assertEquals("application", ((ContainerImpl) container).moduleTree().name());
+            assertEquals(2, ((ContainerImpl) container).moduleTree().bindOrder().size());
+        }
+    }
+
+    @Test
+    void namedEntryPointNamesTheCompositionRoot() {
+        // The root name is what the startup log renders as the application line; the named entry
+        // point is the only way a caller can set it, and it reaches the value the container holds.
+        try (Container container = Freeway.create("order-service", new Marker())) {
+            assertEquals("order-service", ((ContainerImpl) container).moduleTree().name());
+            assertNotNull(container.get(Marker.class));
         }
     }
 

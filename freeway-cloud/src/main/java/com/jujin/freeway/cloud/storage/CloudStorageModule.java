@@ -1,6 +1,5 @@
 package com.jujin.freeway.cloud.storage;
 
-import com.jujin.freeway.cloud.CloudConfigKeys;
 import com.jujin.freeway.cloud.CloudHooks;
 import com.jujin.freeway.cloud.annotation.Local;
 import com.jujin.freeway.cloud.internal.BackendTypeGuard;
@@ -16,6 +15,8 @@ import com.jujin.freeway.ioc.symbol.SymbolSource;
 
 import java.nio.file.Path;
 import java.util.function.Function;
+import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
+import com.jujin.freeway.cloud.CloudModule;
 
 /**
  * IoC wiring for the optional object storage subsystem: {@link ObjectStorage}
@@ -28,11 +29,11 @@ import java.util.function.Function;
 @Marker(Builtin.class)
 public final class CloudStorageModule implements ModuleEx {
 
-    // Default comes from the shared CloudConfigKeys source so the documented
+    // Default comes from the shared ConfigKeys source so the documented
     // value cannot drift from the code that applies it.
     private static final SymbolSpec<String> STORAGE_BASE_PATH = SymbolSpec.of(
-        CloudConfigKeys.STORAGE_BASE_PATH, String.class,
-        CloudConfigKeys.STORAGE_BASE_PATH_DEFAULT, Function.identity());
+        ConfigKeys.STORAGE_BASE_PATH, String.class,
+        ConfigKeys.STORAGE_BASE_PATH_DEFAULT, Function.identity());
 
     @Override
     public void bind(Binder b) {
@@ -52,7 +53,7 @@ public final class CloudStorageModule implements ModuleEx {
                 public void start(Container container) {
                     BackendTypeGuard.warnIfExternal(
                         container, ObjectStorage.class,
-                        CloudConfigKeys.STORAGE_TYPE, "storage");
+                        ConfigKeys.STORAGE_TYPE, "storage");
                 }
             });
     }

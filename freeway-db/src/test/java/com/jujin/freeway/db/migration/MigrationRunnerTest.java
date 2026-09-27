@@ -3,7 +3,6 @@ import java.net.URL;
 
 import com.jujin.freeway.db.Database;
 import java.sql.SQLException;
-import com.jujin.freeway.db.DbConfigKeys;
 import com.jujin.freeway.db.PoolConfig;
 import com.jujin.freeway.db.DbModule;
 import com.jujin.freeway.db.SqlException;
@@ -22,6 +21,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import com.jujin.freeway.db.DbModule.ConfigKeys;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -29,9 +29,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MigrationRunnerTest {
-    private static final String URL_KEY = DbConfigKeys.URL;
-    private static final String USER_KEY = DbConfigKeys.USERNAME;
-    private static final String PASS_KEY = DbConfigKeys.PASSWORD;
+    private static final String URL_KEY = ConfigKeys.URL;
+    private static final String USER_KEY = ConfigKeys.USERNAME;
+    private static final String PASS_KEY = ConfigKeys.PASSWORD;
 
     private String previousUrl;
     private String previousUser;

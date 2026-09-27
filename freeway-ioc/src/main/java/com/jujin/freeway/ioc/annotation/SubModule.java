@@ -13,7 +13,7 @@ import java.lang.annotation.Target;
  * <p>A module with this annotation is a bundle — it may still declare its own
  * bindings in {@code bind(Binder)} (the shared surface of the bundle), and its
  * submodules follow it in the composition. The declaration is static metadata,
- * read once while the composition tree is built: the entry point still decides
+ * read once while the composition is assembled: the caller still decides
  * what is placed. A submodule is an ordinary module and can always be placed
  * on its own instead of the bundle — taking a subset is composing the modules
  * you want, so no exclusion API exists.
@@ -24,13 +24,13 @@ import java.lang.annotation.Target;
  *     @Override public void bind(Binder b) { ... }
  * }
  *
- * FreewayApp.run(ModuleNode.app("app", ModuleNode.of(WebBundle.class)));
+ * FreewayApp.run(WebBundle.class);
  * }</pre>
  *
  * <p>Submodules are named by class (annotations cannot carry instances), so a
  * configured submodule is placed as an instance instead. Cycles — a class
- * reaching itself through {@code @SubModule} — are refused while the tree is
- * built.
+ * reaching itself through {@code @SubModule} — are refused while the
+ * composition is assembled.
  */
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)

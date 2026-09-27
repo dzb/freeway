@@ -4,7 +4,6 @@ import com.jujin.freeway.cloud.CloudModule;
 
 import com.jujin.freeway.boot.FreewayApp;
 import com.jujin.freeway.boot.AppRuntime;
-import com.jujin.freeway.cloud.CloudConfigKeys;
 import com.jujin.freeway.cloud.context.Baggage;
 import com.jujin.freeway.cloud.context.InvocationContext;
 import com.jujin.freeway.cloud.discovery.Endpoint;
@@ -13,7 +12,6 @@ import com.jujin.freeway.cloud.discovery.ServiceDiscovery;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.cloud.discovery.ServiceRegistry;
 import com.jujin.freeway.http.HttpModule;
-import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.HttpServer;
 import com.jujin.freeway.http.route.Route;
 import com.jujin.freeway.ioc.Binder;
@@ -26,6 +24,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -40,13 +39,13 @@ class CloudHttpClientTest {
 
     @BeforeEach
     void randomPort() {
-        System.setProperty(HttpConfigKeys.SERVER_PORT, "0"); // random free port per test
+        System.setProperty(HttpModule.ConfigKeys.SERVER_PORT, "0"); // random free port per test
     }
 
     @AfterEach
     void clearProperties() {
-        System.clearProperty(HttpConfigKeys.SERVER_PORT);
-        System.clearProperty(CloudConfigKeys.RPC_REQUEST_TIMEOUT);
+        System.clearProperty(HttpModule.ConfigKeys.SERVER_PORT);
+        System.clearProperty(ConfigKeys.RPC_REQUEST_TIMEOUT);
     }
 
     @Test
@@ -129,7 +128,7 @@ class CloudHttpClientTest {
 
     @Test
     void slowEndpointTimesOut() {
-        System.setProperty(CloudConfigKeys.RPC_REQUEST_TIMEOUT, "200");
+        System.setProperty(ConfigKeys.RPC_REQUEST_TIMEOUT, "200");
         try (AppRuntime app = FreewayApp.create(new SlowModule(), new HttpModule()).add(CloudModule.class).start()) {
             HttpServer server = app.get(HttpServer.class);
             app.get(ServiceRegistry.class).register(
@@ -138,14 +137,14 @@ class CloudHttpClientTest {
                 () -> app.get(CloudHttpClient.class).call("slow", CloudRequest.get("/api/slow")));
             assertTrue(ex.retryable(), "request timeout is retryable");
         } finally {
-            System.clearProperty(CloudConfigKeys.RPC_REQUEST_TIMEOUT);
+            System.clearProperty(ConfigKeys.RPC_REQUEST_TIMEOUT);
         }
     }
 
     @Test
     void retriesWithANewInstanceWhenTheFirstIsDown() {
-        System.setProperty(CloudConfigKeys.RPC_RETRY_MAX_ATTEMPTS, "2");
-        System.setProperty(CloudConfigKeys.RPC_RETRY_BACKOFF_BASE, "10");
+        System.setProperty(ConfigKeys.RPC_RETRY_MAX_ATTEMPTS, "2");
+        System.setProperty(ConfigKeys.RPC_RETRY_BACKOFF_BASE, "10");
         try (AppRuntime app = FreewayApp.create(new EchoModule(), new HttpModule()).add(CloudModule.class).start()) {
             HttpServer server = app.get(HttpServer.class);
             ServiceRegistry registry = app.get(ServiceRegistry.class);
@@ -157,16 +156,16 @@ class CloudHttpClientTest {
                 .call("retry-svc", CloudRequest.get("/api/echo"));
             assertTrue(resp.is2xx(), "a retry must re-choose the live instance");
         } finally {
-            System.clearProperty(CloudConfigKeys.RPC_RETRY_MAX_ATTEMPTS);
-            System.clearProperty(CloudConfigKeys.RPC_RETRY_BACKOFF_BASE);
+            System.clearProperty(ConfigKeys.RPC_RETRY_MAX_ATTEMPTS);
+            System.clearProperty(ConfigKeys.RPC_RETRY_BACKOFF_BASE);
         }
     }
 
     @Test
     void serverErrorsRetriedAndOpenTheCircuit() {
-        System.setProperty(CloudConfigKeys.RPC_RETRY_MAX_ATTEMPTS, "0");
-        System.setProperty(CloudConfigKeys.RPC_CB_FAILURE_THRESHOLD, "2");
-        System.setProperty(CloudConfigKeys.RPC_CB_OPEN_WINDOW, "60");
+        System.setProperty(ConfigKeys.RPC_RETRY_MAX_ATTEMPTS, "0");
+        System.setProperty(ConfigKeys.RPC_CB_FAILURE_THRESHOLD, "2");
+        System.setProperty(ConfigKeys.RPC_CB_OPEN_WINDOW, "60");
         try (AppRuntime app = FreewayApp.create(new FailModule(), new HttpModule()).add(CloudModule.class).start()) {
             HttpServer server = app.get(HttpServer.class);
             app.get(ServiceRegistry.class).register(
@@ -184,16 +183,16 @@ class CloudHttpClientTest {
             assertFalse(opened.retryable(), "circuit open is a local rejection");
             assertTrue(opened.getMessage().contains("Circuit"));
         } finally {
-            System.clearProperty(CloudConfigKeys.RPC_RETRY_MAX_ATTEMPTS);
-            System.clearProperty(CloudConfigKeys.RPC_CB_FAILURE_THRESHOLD);
-            System.clearProperty(CloudConfigKeys.RPC_CB_OPEN_WINDOW);
+            System.clearProperty(ConfigKeys.RPC_RETRY_MAX_ATTEMPTS);
+            System.clearProperty(ConfigKeys.RPC_CB_FAILURE_THRESHOLD);
+            System.clearProperty(ConfigKeys.RPC_CB_OPEN_WINDOW);
         }
     }
 
     @Test
     void serverErrorIsNotReplayedForNonIdempotentRequests() {
-        System.setProperty(CloudConfigKeys.RPC_RETRY_MAX_ATTEMPTS, "2");
-        System.setProperty(CloudConfigKeys.RPC_RETRY_BACKOFF_BASE, "10");
+        System.setProperty(ConfigKeys.RPC_RETRY_MAX_ATTEMPTS, "2");
+        System.setProperty(ConfigKeys.RPC_RETRY_BACKOFF_BASE, "10");
         try (AppRuntime app = FreewayApp.create(new CountingFailModule(), new HttpModule()).add(CloudModule.class).start()) {
             HttpServer server = app.get(HttpServer.class);
             app.get(ServiceRegistry.class).register(
@@ -207,19 +206,19 @@ class CloudHttpClientTest {
             assertEquals(1, CountingFailModule.posts.get(),
                 "an ambiguous outcome must not be replayed for a POST");
         } finally {
-            System.clearProperty(CloudConfigKeys.RPC_RETRY_MAX_ATTEMPTS);
-            System.clearProperty(CloudConfigKeys.RPC_RETRY_BACKOFF_BASE);
+            System.clearProperty(ConfigKeys.RPC_RETRY_MAX_ATTEMPTS);
+            System.clearProperty(ConfigKeys.RPC_RETRY_BACKOFF_BASE);
             CountingFailModule.reset();
         }
     }
 
     @Test
     void markedIdempotentRequestsReplayAmbiguousOutcomes() {
-        System.setProperty(CloudConfigKeys.RPC_RETRY_MAX_ATTEMPTS, "2");
-        System.setProperty(CloudConfigKeys.RPC_RETRY_BACKOFF_BASE, "10");
+        System.setProperty(ConfigKeys.RPC_RETRY_MAX_ATTEMPTS, "2");
+        System.setProperty(ConfigKeys.RPC_RETRY_BACKOFF_BASE, "10");
         // The retries below must not trip the default breaker (threshold 5)
         // mid-test — this test pins retry counts, not breaker accounting.
-        System.setProperty(CloudConfigKeys.RPC_CB_FAILURE_THRESHOLD, "50");
+        System.setProperty(ConfigKeys.RPC_CB_FAILURE_THRESHOLD, "50");
         try (AppRuntime app = FreewayApp.create(new CountingFailModule(), new HttpModule()).add(CloudModule.class).start()) {
             HttpServer server = app.get(HttpServer.class);
             app.get(ServiceRegistry.class).register(
@@ -237,17 +236,17 @@ class CloudHttpClientTest {
             assertEquals(3, CountingFailModule.gets.get(),
                 "GET derives to idempotent and is replayed without a marker");
         } finally {
-            System.clearProperty(CloudConfigKeys.RPC_RETRY_MAX_ATTEMPTS);
-            System.clearProperty(CloudConfigKeys.RPC_RETRY_BACKOFF_BASE);
-            System.clearProperty(CloudConfigKeys.RPC_CB_FAILURE_THRESHOLD);
+            System.clearProperty(ConfigKeys.RPC_RETRY_MAX_ATTEMPTS);
+            System.clearProperty(ConfigKeys.RPC_RETRY_BACKOFF_BASE);
+            System.clearProperty(ConfigKeys.RPC_CB_FAILURE_THRESHOLD);
             CountingFailModule.reset();
         }
     }
 
     @Test
     void rateLimiterRejectsExcessCalls() {
-        System.setProperty(CloudConfigKeys.RPC_RATE_LIMIT_ENABLED, "true");
-        System.setProperty(CloudConfigKeys.RPC_RATE_LIMIT_PER_SECOND, "1");
+        System.setProperty(ConfigKeys.RPC_RATE_LIMIT_ENABLED, "true");
+        System.setProperty(ConfigKeys.RPC_RATE_LIMIT_PER_SECOND, "1");
         try (AppRuntime app = FreewayApp.create(new EchoModule(), new HttpModule()).add(CloudModule.class).start()) {
             HttpServer server = app.get(HttpServer.class);
             app.get(ServiceRegistry.class).register(
@@ -260,8 +259,8 @@ class CloudHttpClientTest {
             assertFalse(ex.retryable(), "rate limited is a local rejection");
             assertTrue(ex.getMessage().contains("Rate limit"));
         } finally {
-            System.clearProperty(CloudConfigKeys.RPC_RATE_LIMIT_ENABLED);
-            System.clearProperty(CloudConfigKeys.RPC_RATE_LIMIT_PER_SECOND);
+            System.clearProperty(ConfigKeys.RPC_RATE_LIMIT_ENABLED);
+            System.clearProperty(ConfigKeys.RPC_RATE_LIMIT_PER_SECOND);
         }
     }
 
@@ -270,9 +269,9 @@ class CloudHttpClientTest {
         // Full breaker lifecycle over the wire: failures open the circuit,
         // the OPEN window elapses, the next call is the half-open probe, and
         // a recovered service closes the circuit again.
-        System.setProperty(CloudConfigKeys.RPC_RETRY_MAX_ATTEMPTS, "0");
-        System.setProperty(CloudConfigKeys.RPC_CB_FAILURE_THRESHOLD, "2");
-        System.setProperty(CloudConfigKeys.RPC_CB_OPEN_WINDOW, "1");
+        System.setProperty(ConfigKeys.RPC_RETRY_MAX_ATTEMPTS, "0");
+        System.setProperty(ConfigKeys.RPC_CB_FAILURE_THRESHOLD, "2");
+        System.setProperty(ConfigKeys.RPC_CB_OPEN_WINDOW, "1");
         try (AppRuntime app = FreewayApp.create(new FlippingModule(), new HttpModule()).add(CloudModule.class).start()) {
             HttpServer server = app.get(HttpServer.class);
             app.get(ServiceRegistry.class).register(
@@ -300,9 +299,9 @@ class CloudHttpClientTest {
             assertTrue(client.call("flip", CloudRequest.get("/api/flip")).is2xx(),
                 "after recovery the circuit stays closed and serves normally");
         } finally {
-            System.clearProperty(CloudConfigKeys.RPC_RETRY_MAX_ATTEMPTS);
-            System.clearProperty(CloudConfigKeys.RPC_CB_FAILURE_THRESHOLD);
-            System.clearProperty(CloudConfigKeys.RPC_CB_OPEN_WINDOW);
+            System.clearProperty(ConfigKeys.RPC_RETRY_MAX_ATTEMPTS);
+            System.clearProperty(ConfigKeys.RPC_CB_FAILURE_THRESHOLD);
+            System.clearProperty(ConfigKeys.RPC_CB_OPEN_WINDOW);
             FlippingModule.fail.set(true);
         }
     }
@@ -344,9 +343,9 @@ class CloudHttpClientTest {
         // standard injection path (CloudResilienceModule binds one breaker):
         // exhausting the failure window on "failing" must leave "healthy"
         // fully servable.
-        System.setProperty(CloudConfigKeys.RPC_RETRY_MAX_ATTEMPTS, "0");
-        System.setProperty(CloudConfigKeys.RPC_CB_FAILURE_THRESHOLD, "2");
-        System.setProperty(CloudConfigKeys.RPC_CB_OPEN_WINDOW, "60");
+        System.setProperty(ConfigKeys.RPC_RETRY_MAX_ATTEMPTS, "0");
+        System.setProperty(ConfigKeys.RPC_CB_FAILURE_THRESHOLD, "2");
+        System.setProperty(ConfigKeys.RPC_CB_OPEN_WINDOW, "60");
         try (AppRuntime app = FreewayApp.create(new TwoRouteModule(), new HttpModule()).add(CloudModule.class).start()) {
             HttpServer server = app.get(HttpServer.class);
             ServiceRegistry registry = app.get(ServiceRegistry.class);
@@ -366,16 +365,16 @@ class CloudHttpClientTest {
             assertTrue(client.call("healthy", CloudRequest.get("/api/echo")).is2xx(),
                 "a healthy service must not be rejected by another service's open circuit");
         } finally {
-            System.clearProperty(CloudConfigKeys.RPC_RETRY_MAX_ATTEMPTS);
-            System.clearProperty(CloudConfigKeys.RPC_CB_FAILURE_THRESHOLD);
-            System.clearProperty(CloudConfigKeys.RPC_CB_OPEN_WINDOW);
+            System.clearProperty(ConfigKeys.RPC_RETRY_MAX_ATTEMPTS);
+            System.clearProperty(ConfigKeys.RPC_CB_FAILURE_THRESHOLD);
+            System.clearProperty(ConfigKeys.RPC_CB_OPEN_WINDOW);
         }
     }
 
     @Test
     void rateLimitIsPerService() {
-        System.setProperty(CloudConfigKeys.RPC_RATE_LIMIT_ENABLED, "true");
-        System.setProperty(CloudConfigKeys.RPC_RATE_LIMIT_PER_SECOND, "1");
+        System.setProperty(ConfigKeys.RPC_RATE_LIMIT_ENABLED, "true");
+        System.setProperty(ConfigKeys.RPC_RATE_LIMIT_PER_SECOND, "1");
         try (AppRuntime app = FreewayApp.create(new TwoRouteModule(), new HttpModule()).add(CloudModule.class).start()) {
             HttpServer server = app.get(HttpServer.class);
             ServiceRegistry registry = app.get(ServiceRegistry.class);
@@ -390,8 +389,8 @@ class CloudHttpClientTest {
             assertTrue(client.call("svc-b", CloudRequest.get("/api/echo")).is2xx(),
                 "svc-b has its own limiter shard and is not throttled by svc-a");
         } finally {
-            System.clearProperty(CloudConfigKeys.RPC_RATE_LIMIT_ENABLED);
-            System.clearProperty(CloudConfigKeys.RPC_RATE_LIMIT_PER_SECOND);
+            System.clearProperty(ConfigKeys.RPC_RATE_LIMIT_ENABLED);
+            System.clearProperty(ConfigKeys.RPC_RATE_LIMIT_PER_SECOND);
         }
     }
 

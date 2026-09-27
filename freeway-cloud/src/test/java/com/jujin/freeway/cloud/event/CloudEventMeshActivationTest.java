@@ -1,13 +1,14 @@
 package com.jujin.freeway.cloud.event;
 
+import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
+import com.jujin.freeway.cloud.CloudModule;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
-import com.jujin.freeway.cloud.CloudConfigKeys;
-import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.HttpModule;
 import com.jujin.freeway.ioc.ModuleEx;
 import java.util.concurrent.CountDownLatch;
@@ -42,16 +43,16 @@ class CloudEventMeshActivationTest {
 
     @BeforeEach
     void randomPorts() {
-        System.setProperty(HttpConfigKeys.SERVER_PORT, "0");
+        System.setProperty(HttpModule.ConfigKeys.SERVER_PORT, "0");
     }
 
     @AfterEach
     void cleanup() {
         if (nodeA != null) nodeA.close();
         if (nodeB != null) nodeB.close();
-        System.clearProperty(HttpConfigKeys.SERVER_PORT);
-        System.clearProperty(CloudConfigKeys.EVENT_PEERS);
-        System.clearProperty(CloudConfigKeys.EVENT_ENABLED);
+        System.clearProperty(HttpModule.ConfigKeys.SERVER_PORT);
+        System.clearProperty(ConfigKeys.EVENT_PEERS);
+        System.clearProperty(ConfigKeys.EVENT_ENABLED);
     }
 
     /** Declares mesh interest for "greet." and reports each payload to the latch. */
@@ -71,13 +72,13 @@ class CloudEventMeshActivationTest {
         // interest declared as a subscription contribution.
         var receivedByB = new CountDownLatch(1);
         var payloadAtB = new AtomicReference<String>();
-        System.setProperty(CloudConfigKeys.EVENT_ENABLED, "true");
+        System.setProperty(ConfigKeys.EVENT_ENABLED, "true");
         nodeB = FreewayApp.run(new String[0], new HttpModule(), new CloudEventModule(),
             greetListener(receivedByB, payloadAtB));
 
         // Dialing side: peers alone — no event.enabled anywhere.
-        System.clearProperty(CloudConfigKeys.EVENT_ENABLED);
-        System.setProperty(CloudConfigKeys.EVENT_PEERS,
+        System.clearProperty(ConfigKeys.EVENT_ENABLED);
+        System.setProperty(ConfigKeys.EVENT_PEERS,
             "127.0.0.1:" + nodeB.get(com.jujin.freeway.http.HttpServer.class).port());
         nodeA = FreewayApp.run(new String[0], new HttpModule(), new CloudEventModule());
 
@@ -93,13 +94,13 @@ class CloudEventMeshActivationTest {
     void explicitFalseSuppressesConfiguredPeers() throws Exception {
         var receivedByB = new CountDownLatch(1);
         var sink = new AtomicReference<String>();
-        System.setProperty(CloudConfigKeys.EVENT_ENABLED, "true");
+        System.setProperty(ConfigKeys.EVENT_ENABLED, "true");
         nodeB = FreewayApp.run(new String[0], new HttpModule(), new CloudEventModule(),
             greetListener(receivedByB, sink));
 
         // Kill switch wins over presence: peers configured, enabled=false.
-        System.setProperty(CloudConfigKeys.EVENT_ENABLED, "false");
-        System.setProperty(CloudConfigKeys.EVENT_PEERS,
+        System.setProperty(ConfigKeys.EVENT_ENABLED, "false");
+        System.setProperty(ConfigKeys.EVENT_PEERS,
             "127.0.0.1:" + nodeB.get(com.jujin.freeway.http.HttpServer.class).port());
         nodeA = FreewayApp.run(new String[0], new HttpModule(), new CloudEventModule());
 
@@ -114,12 +115,12 @@ class CloudEventMeshActivationTest {
 
     @Test
     void unsetWithNoPeersStaysInert() throws Exception {
-        System.setProperty(CloudConfigKeys.EVENT_ENABLED, "true");
+        System.setProperty(ConfigKeys.EVENT_ENABLED, "true");
         nodeB = FreewayApp.run(new String[0], new HttpModule(), new CloudEventModule());
 
         // Dialer with zero configuration: installing the module is not a
         // side effect — no mesh, no dials.
-        System.clearProperty(CloudConfigKeys.EVENT_ENABLED);
+        System.clearProperty(ConfigKeys.EVENT_ENABLED);
         nodeA = FreewayApp.run(new String[0], new HttpModule(), new CloudEventModule());
 
         Thread.sleep(900);
@@ -129,7 +130,7 @@ class CloudEventMeshActivationTest {
 
     @Test
     void invalidEnabledValueFailsStartupNamingTheKey() {
-        System.setProperty(CloudConfigKeys.EVENT_ENABLED, "yolo");
+        System.setProperty(ConfigKeys.EVENT_ENABLED, "yolo");
         IllegalStateException failure = assertThrows(IllegalStateException.class, () ->
             FreewayApp.run(new String[0], new HttpModule(), new CloudEventModule()));
         assertTrue(rootMessage(failure).contains("event.enabled"),

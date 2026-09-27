@@ -1,10 +1,12 @@
 package com.jujin.freeway.cloud.internal;
 
+import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
+import com.jujin.freeway.cloud.CloudModule;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.jujin.freeway.cloud.CloudConfigKeys;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.cloud.discovery.ServiceRegistry;
 import com.jujin.freeway.commons.coercion.CoercerDefault;
@@ -93,7 +95,7 @@ class RegistryDrainTest {
 
     @Test
     void registryWithNoOpinionFallsBackToZero() {
-        assertEquals(CloudConfigKeys.REGISTRY_SHUTDOWN_DRAIN_DEFAULT,
+        assertEquals(ConfigKeys.REGISTRY_SHUTDOWN_DRAIN_DEFAULT,
             RegistryLifecycleHook.resolveDrain("auto", registry(null), symbols(Map.of())));
     }
 
@@ -101,14 +103,14 @@ class RegistryDrainTest {
     void explicitDurationWinsOverTheRegistry() {
         assertEquals(Duration.ofSeconds(2),
             RegistryLifecycleHook.resolveDrain("2s", registry(Duration.ofSeconds(30)),
-                symbols(Map.of(CloudConfigKeys.REGISTRY_SHUTDOWN_DRAIN, "2s"))));
+                symbols(Map.of(ConfigKeys.REGISTRY_SHUTDOWN_DRAIN, "2s"))));
     }
 
     @Test
     void negativeExplicitDurationFailsNamingTheKey() {
         IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
             () -> RegistryLifecycleHook.resolveDrain("-1s", registry(Duration.ZERO),
-                symbols(Map.of(CloudConfigKeys.REGISTRY_SHUTDOWN_DRAIN, "-1s"))));
+                symbols(Map.of(ConfigKeys.REGISTRY_SHUTDOWN_DRAIN, "-1s"))));
         assertTrue(failure.getMessage().contains("registry.shutdown-drain"),
             "the failure must name the key: " + failure.getMessage());
     }

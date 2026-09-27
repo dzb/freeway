@@ -28,9 +28,9 @@ good taste** still have a place.
 | **`freeway‑boot`** | Application launcher, unified config cascade (hot reload), profiles, runtime lifecycle |
 | **`freeway‑http`** | HTTP layer: routing, filters, static, multipart, WebSocket |
 | **`freeway‑db`** | JDBC data access: ORM, pooling, transactions, migrations |
-| **`freeway‑flow`** | Graph workflow engine — 7 node types, v2 DAG format, `!marker` task resolution |
-| **`freeway‑cloud`** | Cloud-native foundation: service discovery, RPC (JDK HttpClient), observability, resilience, health, secrets, object storage |
-| **`freeway‑mq‑kafka`** | Kafka EventBus bridge — available in [freeway-ext](https://github.com/dzb/freeway-ext) |
+| **`freeway‑flow`** | Graph workflow engine — 7 node types, v3 DAG format, `@name` task vocabulary |
+| **`freeway‑cloud`** | Cloud-native foundation: service discovery, RPC (JDK HttpClient), event fabric (`CloudEventBus`), observability, resilience, health, secrets, object storage |
+| **`freeway‑mq‑kafka`** | Kafka durable event stream plane (`KafkaEvents`) — available in [freeway-ext](https://github.com/dzb/freeway-ext) |
 
 Core modules have **zero external dependencies.** Third-party adapters live in
 **[freeway-ext](https://github.com/dzb/freeway-ext)**. Pick only what you need.
@@ -230,7 +230,7 @@ The IoC module provides the framework core:
 Boot turns a composed container into an application runtime:
 
 - `FreewayApp.run(args, ModuleEx...)` - accepts command-line args and module instances. Loads config, discovers SPI modules, starts the full application lifecycle. Use `FreewayApp.create(...)` for fine-grained control over autoDiscovery, shutdown hook, and more.
-- Module dedup - installing two **distinct** instances of the same module class fails fast with an actionable error: in `Freeway.create(...)` (e.g. an explicit install plus SPI auto-discovery) and in `FreewayApp`/`AppBuilder` (e.g. two explicitly configured instances). The same instance added twice is tolerated; in `AppBuilder` an explicit instance wins over an SPI-discovered one.
+- Module dedup - installing two **distinct** instances of the same module class fails fast with an actionable error: in `Freeway.create(...)` (e.g. an explicit install plus SPI auto-discovery) and in `FreewayApp` (e.g. two explicitly configured instances). The same instance added twice is tolerated; an explicit declaration wins over an SPI-discovered one.
 - `AppRuntime` - owns config, profiles, runtime state, and runtime hooks.
 - Shutdown hook - closes the runtime on JVM shutdown.
 - Startup timing - logs elapsed startup time.
@@ -345,7 +345,7 @@ Third-party integrations are available in the **[freeway-ext](https://github.com
 | **`freeway‑http‑undertow`** | Undertow web server adapter (HTTP + WebSocket) |
 | **`freeway‑http‑jetty`** | Jetty 12 web server adapter (HTTP/1.1, HTTP/2, WebSocket, TLS) |
 | **`freeway‑db‑hikari`** | HikariCP connection pool adapter |
-| **`freeway‑mq‑kafka`** | Kafka EventBus bridge for distributed pub/sub |
+| **`freeway‑mq‑kafka`** | Kafka durable event stream plane (`KafkaEvents`) for distributed pub/sub |
 
 Extensions are released to Maven Central alongside the core at the same version. Add the ones you need, pinned to your core version:
 

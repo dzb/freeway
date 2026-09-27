@@ -15,6 +15,7 @@ import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Freeway;
 import com.jujin.freeway.ioc.ModuleEx;
+import com.jujin.freeway.http.HttpModule.ConfigKeys;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -39,14 +40,14 @@ class HttpModuleEngineSelectionTest {
             app = null;
         }
         awaitNoReloadThread(3000);
-        System.clearProperty(HttpConfigKeys.SERVER_HOST);
-        System.clearProperty(HttpConfigKeys.SERVER_PORT);
-        System.clearProperty(HttpConfigKeys.SSL_ENABLED);
-        System.clearProperty(HttpConfigKeys.SSL_KEY_STORE);
-        System.clearProperty(HttpConfigKeys.SSL_KEY_STORE_PASSWORD);
-        System.clearProperty(HttpConfigKeys.SSL_KEY_STORE_TYPE);
-        System.clearProperty(HttpConfigKeys.SSL_HTTP2);
-        System.clearProperty(HttpConfigKeys.SSL_RELOAD_INTERVAL);
+        System.clearProperty(ConfigKeys.SERVER_HOST);
+        System.clearProperty(ConfigKeys.SERVER_PORT);
+        System.clearProperty(ConfigKeys.SSL_ENABLED);
+        System.clearProperty(ConfigKeys.SSL_KEY_STORE);
+        System.clearProperty(ConfigKeys.SSL_KEY_STORE_PASSWORD);
+        System.clearProperty(ConfigKeys.SSL_KEY_STORE_TYPE);
+        System.clearProperty(ConfigKeys.SSL_HTTP2);
+        System.clearProperty(ConfigKeys.SSL_RELOAD_INTERVAL);
     }
 
     @Test
@@ -72,16 +73,18 @@ class HttpModuleEngineSelectionTest {
         Path keystore = tempDir.resolve("server.p12");
         generateKeyStoreTo(keystore);
 
-        System.setProperty(HttpConfigKeys.SERVER_HOST, "127.0.0.1");
-        System.setProperty(HttpConfigKeys.SERVER_PORT, String.valueOf(freePort()));
-        System.setProperty(HttpConfigKeys.SSL_ENABLED, "true");
-        System.setProperty(HttpConfigKeys.SSL_KEY_STORE, keystore.toString());
-        System.setProperty(HttpConfigKeys.SSL_KEY_STORE_PASSWORD, "changeit");
-        System.setProperty(HttpConfigKeys.SSL_KEY_STORE_TYPE, "PKCS12");
-        System.setProperty(HttpConfigKeys.SSL_HTTP2, "false");
-        System.setProperty(HttpConfigKeys.SSL_RELOAD_INTERVAL, "200ms");
+        System.setProperty(ConfigKeys.SERVER_HOST, "127.0.0.1");
+        System.setProperty(ConfigKeys.SERVER_PORT, String.valueOf(freePort()));
+        System.setProperty(ConfigKeys.SSL_ENABLED, "true");
+        System.setProperty(ConfigKeys.SSL_KEY_STORE, keystore.toString());
+        System.setProperty(ConfigKeys.SSL_KEY_STORE_PASSWORD, "changeit");
+        System.setProperty(ConfigKeys.SSL_KEY_STORE_TYPE, "PKCS12");
+        System.setProperty(ConfigKeys.SSL_HTTP2, "false");
+        System.setProperty(ConfigKeys.SSL_RELOAD_INTERVAL, "200ms");
 
-        app = FreewayApp.run(new String[0]); // HttpModule is ServiceLoader-discovered
+        // No module is declared: HttpModule is ServiceLoader-discovered, and the empty chain is the
+        // form that says "this launch declares nothing".
+        app = FreewayApp.create().start();
 
         assertTrue(awaitReloadThread(3000),
             "the built-in engine serving HTTPS must run the keystore reloader");
@@ -94,14 +97,14 @@ class HttpModuleEngineSelectionTest {
         // nothing ever reads it (no built-in engine is realized). A regression
         // to the unconditional assembly would fail startup right here.
         Path missing = tempDir.resolve("does-not-exist.p12");
-        System.setProperty(HttpConfigKeys.SERVER_HOST, "127.0.0.1");
-        System.setProperty(HttpConfigKeys.SERVER_PORT, String.valueOf(freePort()));
-        System.setProperty(HttpConfigKeys.SSL_ENABLED, "true");
-        System.setProperty(HttpConfigKeys.SSL_KEY_STORE, missing.toString());
-        System.setProperty(HttpConfigKeys.SSL_KEY_STORE_PASSWORD, "changeit");
-        System.setProperty(HttpConfigKeys.SSL_KEY_STORE_TYPE, "PKCS12");
-        System.setProperty(HttpConfigKeys.SSL_HTTP2, "false");
-        System.setProperty(HttpConfigKeys.SSL_RELOAD_INTERVAL, "200ms");
+        System.setProperty(ConfigKeys.SERVER_HOST, "127.0.0.1");
+        System.setProperty(ConfigKeys.SERVER_PORT, String.valueOf(freePort()));
+        System.setProperty(ConfigKeys.SSL_ENABLED, "true");
+        System.setProperty(ConfigKeys.SSL_KEY_STORE, missing.toString());
+        System.setProperty(ConfigKeys.SSL_KEY_STORE_PASSWORD, "changeit");
+        System.setProperty(ConfigKeys.SSL_KEY_STORE_TYPE, "PKCS12");
+        System.setProperty(ConfigKeys.SSL_HTTP2, "false");
+        System.setProperty(ConfigKeys.SSL_RELOAD_INTERVAL, "200ms");
 
         app = FreewayApp.run(new FakeEngineModule());
 

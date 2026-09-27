@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import com.jujin.freeway.boot.internal.BootModule.ConfigKeys;
 
 /**
  * The standard config cascade. Loads configuration from
@@ -46,13 +47,13 @@ public final class ConfigLoaderImpl {
     private static final Pattern PROFILE_NAME_PATTERN = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]*");
 
     /** The profile-activation key — see {@link #loadLayers}. */
-    private static final String PROFILE_KEY = "freeway.profile";
+    private static final String PROFILE_KEY = ConfigKeys.PROFILE;
 
-    /** The env-prefix bootstrap key — spelled once, in {@link EnvKeys}. */
-    private static final String ENV_PREFIX_KEY = EnvKeys.PREFIX_KEY;
+    /** The env-prefix bootstrap key. */
+    private static final String ENV_PREFIX_KEY = ConfigKeys.ENV_PREFIX;
 
     /** The extra-config-file bootstrap key ({@code -D} or {@code FREEWAY_CONFIG_FILE}). */
-    private static final String CONFIG_FILE_KEY = "freeway.config.file";
+    private static final String CONFIG_FILE_KEY = ConfigKeys.CONFIG_FILE;
 
     /**
      * Keys that configure the cascade itself and therefore cannot come from

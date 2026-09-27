@@ -1,8 +1,6 @@
 {
 	"freeway": {
 		"profile": "",
-		"config": { "file": "" },
-		"env": { "prefix": "FREEWAY_" },
 		"log": {
 			"level": "INFO",
 			"format": "auto",
@@ -110,11 +108,7 @@
 			"event": {
 				"enabled": false,
 				"peers": "",
-				"subscriptions": "",
-				"allowed-types": "",
-				"allowed-topics": "",
 				"token": "",
-				"dedup": { "enabled": false, "capacity": 4096 },
 				"connect-timeout-ms": 3000,
 				"handshake-timeout-ms": 10000,
 				"backoff-base-ms": 1000,

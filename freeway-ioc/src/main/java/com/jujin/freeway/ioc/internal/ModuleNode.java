@@ -1,5 +1,6 @@
-package com.jujin.freeway.ioc;
+package com.jujin.freeway.ioc.internal;
 
+import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.annotation.SubModule;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -18,6 +19,14 @@ import java.util.stream.Collectors;
  * The module tree the application is composed of — an immutable, validated
  * value that the container binds and holds.
  *
+ * <p><b>Internal structure, not an entry point.</b> The public vocabulary is
+ * modules plus the entry points that take them ({@code Freeway.create},
+ * {@code FreewayApp.create}, {@code FreewayApp.run}); this type is what those calls
+ * build, own and validate, and the shape behind the startup log. It is
+ * package-private for that reason — nothing outside {@code ioc.internal} and
+ * the boot layer assembles a tree, and the one public type here is
+ * {@code ContainerImpl}.
+ *
  * <p><b>Composition is data, and this is its type.</b> A node is either the
  * application root ({@link #app}, a name that binds nothing) or a module node
  * ({@link #of}: a class to resolve at load time, or a configured instance).
@@ -34,7 +43,8 @@ import java.util.stream.Collectors;
  * with a fresh module each time.
  *
  * <pre>{@code
- * ModuleNode app = ModuleNode.app("order-service",
+ * // FreewayApp.run(new OrderModule(), CloudModule.class) builds this:
+ * ModuleNode app = ModuleNode.app("application",
  *     ModuleNode.of(new OrderModule()),
  *     ModuleNode.of(CloudModule.class));   // a bundle: CloudModule + @SubModule
  * }</pre>
@@ -60,12 +70,19 @@ import java.util.stream.Collectors;
  * <p><b>Binding order</b> is the tree's pre-order over module nodes: the
  * application root binds nothing, a module binds before the modules below it,
  * and siblings bind in declaration order. It is deterministic but not a
- * contract — sequencing belongs to {@link RuntimeHook} anchors and contribution
+ * contract — sequencing belongs to {@link com.jujin.freeway.ioc.RuntimeHook}
+ * anchors and contribution
  * {@code order()}, not to where a module sits in the tree.
  */
-public final class ModuleNode {
+final class ModuleNode {
 
-    private static final String DEFAULT_APP_NAME = "application";
+    /**
+     * The name the entry points use when the caller does not name the
+     * application. Package-visible so the assembling side
+     * ({@code ContainerImpl}) can build a default-named root without
+     * restating the default.
+     */
+    static final String DEFAULT_APP_NAME = "application";
 
     /** The instance declaration, or {@code null} for a class declaration/root. */
     private final ModuleEx module;
@@ -76,9 +93,6 @@ public final class ModuleNode {
     private final List<ModuleNode> children;
     /** Every module node, pre-order — literally the order the container binds them. */
     private final List<ModuleNode> bindOrder;
-    /** The module classes the tree declares, for SPI discovery dedup. */
-    private final Set<Class<?>> classes;
-    private final int size;
 
     private ModuleNode(
         ModuleEx module,
@@ -92,78 +106,28 @@ public final class ModuleNode {
         this.children = List.copyOf(children);
 
         List<ModuleNode> order = new ArrayList<>();
-        Set<Class<?>> declared = new LinkedHashSet<>();
         if (rootName == null) {
             order.add(this);
-            if (module != null) {
-                if (!isNameless(module.getClass())) {
-                    declared.add(module.getClass());
-                }
-            } else {
-                declared.add(moduleType);
-            }
         }
-        int count = 1;
         for (ModuleNode child : this.children) {
             order.addAll(child.bindOrder);
-            declared.addAll(child.classes);
-            count += child.size;
         }
         this.bindOrder = List.copyOf(order);
-        this.classes = Set.copyOf(declared);
-        this.size = count;
     }
 
     // ── factories ───────────────────────────────────────────────
 
     /**
      * The application root: a named structural node whose children are the
-     * modules the application is made of. It declares no bindings of its own,
-     * so it only names the tree in logs and diagnostics. The entry point reuses
-     * the one it is given instead of nesting a second root around it.
+     * modules the application is made of. It declares no bindings of its own, so
+     * it only names the tree in logs and diagnostics. The entry points build it
+     * with the default name unless the caller names the application
+     * ({@code Freeway.create(appName, …)}) — this is the only root factory; the
+     * declaration lists they assemble are walked into nodes by the entry side
+     * ({@code ContainerImpl}), which keeps this type to structure and invariants.
      */
-    public static ModuleNode app(String name, ModuleNode... children) {
+    static ModuleNode app(String name, ModuleNode... children) {
         return normalize(new ModuleNode(null, null, rootName(name), List.of(children)));
-    }
-
-    /** The default-named application root with no children yet. */
-    public static ModuleNode app() {
-        return app(DEFAULT_APP_NAME, new ModuleNode[0]);
-    }
-
-    /**
-     * An application root with no children yet. Also the one-arg form's
-     * disambiguator: without it, {@code app("name")} would match the
-     * {@link ModuleNode} and {@link Class} varargs overloads equally.
-     */
-    public static ModuleNode app(String name) {
-        return app(name, new ModuleNode[0]);
-    }
-
-    /** The application root whose children are modules named by class. */
-    @SafeVarargs
-    public static ModuleNode app(String name, Class<? extends ModuleEx>... types) {
-        return app(name, modules(types));
-    }
-
-    /** The default-named application root over modules named by class. */
-    @SafeVarargs
-    public static ModuleNode app(Class<? extends ModuleEx>... types) {
-        return app(DEFAULT_APP_NAME, modules(types));
-    }
-
-    /**
-     * The application root with the default name, one child per module —
-     * the shape {@code Freeway.create(a, b)} and {@code FreewayApp.run(a, b)}
-     * build for a flat entry list.
-     */
-    public static ModuleNode app(ModuleEx... modules) {
-        Objects.requireNonNull(modules, "modules");
-        ModuleNode[] nodes = new ModuleNode[modules.length];
-        for (int i = 0; i < modules.length; i++) {
-            nodes[i] = of(modules[i]);
-        }
-        return app(DEFAULT_APP_NAME, nodes);
     }
 
     /**
@@ -173,7 +137,7 @@ public final class ModuleNode {
      * ordinary module and can always be placed on its own instead — taking a
      * subset is composing the modules you want.
      */
-    public static ModuleNode of(ModuleEx module) {
+    static ModuleNode of(ModuleEx module) {
         Objects.requireNonNull(module, "module");
         return expand(module, null, new LinkedHashSet<>());
     }
@@ -187,7 +151,7 @@ public final class ModuleNode {
      * the container exists). Submodules declared with {@link SubModule} are
      * placed with the module.
      */
-    public static ModuleNode of(Class<? extends ModuleEx> type) {
+    static ModuleNode of(Class<? extends ModuleEx> type) {
         Objects.requireNonNull(type, "module type");
         return expand(null, type, new LinkedHashSet<>());
     }
@@ -198,7 +162,7 @@ public final class ModuleNode {
      * The name this node is shown under: the application name for the root,
      * the class's simple name or {@link ModuleEx#name()} for a module node.
      */
-    public String name() {
+    String name() {
         if (rootName != null) {
             return rootName;
         }
@@ -209,16 +173,11 @@ public final class ModuleNode {
      * The module type of a module node — the declared class, or the instance's
      * class. {@code null} for the application root.
      */
-    public Class<? extends ModuleEx> type() {
+    Class<? extends ModuleEx> type() {
         if (module != null) {
             return module.getClass();
         }
         return moduleType;
-    }
-
-    /** The configured instance of an instance declaration; {@code null} otherwise. */
-    public ModuleEx instance() {
-        return module;
     }
 
     /**
@@ -228,7 +187,7 @@ public final class ModuleNode {
      *
      * @throws IllegalStateException on the application root, which binds nothing
      */
-    public ModuleEx resolve() {
+    ModuleEx resolve() {
         if (module != null) {
             return module;
         }
@@ -243,8 +202,8 @@ public final class ModuleNode {
         } catch (NoSuchMethodException e) {
             throw new IllegalArgumentException(
                 "Module " + moduleType.getName() + " has no no-arg constructor. A module whose"
-                    + " constructor takes arguments is declared as an instance: ModuleNode"
-                    + ".of(new " + moduleType.getSimpleName() + "(…))", e);
+                    + " constructor takes arguments is declared as an instance: new "
+                    + moduleType.getSimpleName() + "(…)", e);
         } catch (ReflectiveOperationException e) {
             Throwable cause = e.getCause() == null ? e : e.getCause();
             throw new IllegalStateException(
@@ -252,18 +211,13 @@ public final class ModuleNode {
         }
     }
 
-    /** This node's children, in order; a plain module has none. */
-    public List<ModuleNode> children() {
-        return children;
-    }
-
     /**
-     * Whether this node is the application ({@link #app}) root. The entry point
-     * reuses one if the caller passed it, instead of nesting a second root
-     * around it.
+     * This node's children, in order; a plain module has none. The structural
+     * view of nesting: {@link #render()} shows it to the log, and the internal
+     * structure tests walk it to pin bundle expansion.
      */
-    public boolean isApplication() {
-        return rootName != null;
+    List<ModuleNode> children() {
+        return children;
     }
 
     /**
@@ -271,22 +225,8 @@ public final class ModuleNode {
      * container binds them in, each resolved ({@link #resolve()}) before it
      * binds. The application root is absent: it binds nothing.
      */
-    public List<ModuleNode> bindOrder() {
+    List<ModuleNode> bindOrder() {
         return bindOrder;
-    }
-
-    /**
-     * The module classes this tree declares — what SPI discovery must not add
-     * a second time. Nameless (anonymous/lambda) modules are absent: they have
-     * no class identity to compare.
-     */
-    public Set<Class<?>> classes() {
-        return classes;
-    }
-
-    /** How many nodes the tree holds, the application root included. */
-    public int size() {
-        return size;
     }
 
     /**
@@ -294,7 +234,7 @@ public final class ModuleNode {
      * rendered from the same value the container bound, so the lines describe
      * exactly what was loaded.
      */
-    public String render() {
+    String render() {
         record Frame(ModuleNode node, int depth) {}
         StringBuilder out = new StringBuilder();
         Deque<Frame> pending = new ArrayDeque<>();
@@ -328,15 +268,6 @@ public final class ModuleNode {
             throw new IllegalArgumentException("A root name must not be blank");
         }
         return value;
-    }
-
-    private static ModuleNode[] modules(Class<? extends ModuleEx>[] types) {
-        Objects.requireNonNull(types, "module types");
-        ModuleNode[] nodes = new ModuleNode[types.length];
-        for (int i = 0; i < types.length; i++) {
-            nodes[i] = of(Objects.requireNonNull(types[i], "module type"));
-        }
-        return nodes;
     }
 
     /**

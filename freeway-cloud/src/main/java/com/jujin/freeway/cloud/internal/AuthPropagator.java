@@ -1,6 +1,5 @@
 package com.jujin.freeway.cloud.internal;
 
-import com.jujin.freeway.cloud.CloudConfigKeys;
 import com.jujin.freeway.cloud.context.InvocationContext;
 import com.jujin.freeway.cloud.context.PrincipalContext;
 import com.jujin.freeway.cloud.context.Propagator;
@@ -9,6 +8,8 @@ import com.jujin.freeway.ioc.symbol.SymbolSource;
 
 import java.util.List;
 import java.util.Map;
+import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
+import com.jujin.freeway.cloud.CloudModule;
 
 /**
  * Verified-identity propagation: injects the current
@@ -30,7 +31,7 @@ public final class AuthPropagator implements Propagator {
 
     /** Off by default: see the trust boundary above. */
     private static final SymbolSpec<Boolean> EXTRACT_ENABLED = SymbolSpec.of(
-        CloudConfigKeys.AUTH_EXTRACT_ENABLED, Boolean.class, false);
+        ConfigKeys.AUTH_EXTRACT_ENABLED, Boolean.class, false);
 
     private final boolean extractEnabled;
 

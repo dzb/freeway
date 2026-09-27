@@ -19,17 +19,17 @@
         <dependency>
             <groupId>com.jujin8.freeway</groupId>
             <artifactId>freeway-boot</artifactId>
-            <version>1.5.5</version>
+            <version>1.5.6-SNAPSHOT</version>
         </dependency>
         <dependency>
             <groupId>com.jujin8.freeway</groupId>
             <artifactId>freeway-http</artifactId>
-            <version>1.5.5</version>
+            <version>1.5.6-SNAPSHOT</version>
         </dependency>
         <dependency>
             <groupId>com.jujin8.freeway</groupId>
             <artifactId>freeway-cloud</artifactId>
-            <version>1.5.5</version>
+            <version>1.5.6-SNAPSHOT</version>
         </dependency>
     </dependencies>
 

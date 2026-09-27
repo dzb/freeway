@@ -75,28 +75,29 @@ freeway-cloud  (com.jujin.freeway.cloud)
 里，`CloudModule.bind()` 是 bundle 的共享面（当前为空），容器在 bind 之前就拿到
 整棵树。
 
-- **bundle 是声明，子模块仍是普通模块**：`@SubModule` 是构建树时读取的静态
+- **bundle 是声明，子模块仍是普通模块**：`@SubModule` 是组装组合时读取的静态
   元数据（见 `docs/freeway-module.md`），不是框架回调模块要子模块。应用可以放
   整包，也可以逐个放子模块取子集——没有排除 API，兜底就是"单独加载每一个
   module"：
   ```java
-  FreewayApp.run(ModuleNode.app("order-service",
-      OrderModule.class,
-      CloudModule.class));                // 整包
-  FreewayApp.run(ModuleNode.app("order-service",
-      CloudRpcModule.class));             // 只要一个，按自己的方式配
+  FreewayApp.run(
+      new OrderModule(),
+      CloudModule.class);                // 整包
+  FreewayApp.run(
+      new OrderModule(),
+      new CloudRpcModule());             // 只要一个，按自己的方式配
   ```
 - `CloudEventModule` 是**可选 add-on，不在 bundle 内**：它会打开自己的监听与出站
   拨号，需要 WebSocket 事件网格时显式安装。
-- **装配校验在构建树时完成**：同一实例重复到达折叠（共享节点值是正常用法），
+- **装配校验在组装组合时完成**：同一实例重复放两次折叠（共享实例是正常用法），
   同 class 的第二个声明直接 `IllegalStateException` 并把两条路径都点出来；
-  `@SubModule` 成环同样在构建树时报错。
+  `@SubModule` 成环同样在组装组合时报错。
 
 ### 3.2 包结构
 
 ```
 com.jujin.freeway.cloud
-├── CloudConfigKeys / CloudModule / CloudHooks
+├── CloudModule（含嵌套 ConfigKeys）/ CloudHooks
 ├── annotation/   @Local 后端标记
 ├── context/      InvocationContext, TraceContext, PrincipalContext, Baggage,
 │                 Propagator, CloudContextModule
@@ -129,7 +130,7 @@ com.jujin.freeway.cloud
 
 ### 3.3 后端标记与装配协议
 
-- 组合单元是 `ModuleNode`（ioc），云侧提供 bundle 类 `CloudModule`（`@SubModule` 声明标准模块）。
+- 组合单元是入口处放置的模块列表，云侧提供 bundle 类 `CloudModule`（`@SubModule` 声明标准模块）。
 - 本地默认实现统一经 `.marker(Local.class)` 绑定，装配面可以
   `@Inject @Local ServiceDiscovery` 明确点名"内置的那个"。`@Local` 只允许
   用在**参数与字段**上——没有任何代码从类上读它，标在实现类上会编译通过
@@ -469,7 +470,7 @@ rateLimiter.tryAcquire()
 - 超时**不受**韧性治理，永远生效（`rpc.connect-timeout` /
   `rpc.request-timeout`）。
 - 未装 `CloudResilienceModule` 时 client 退化到内置默认（3 次重试 / 100ms
-  起退避 / 阈值 5 / 无限限流），默认值与配置层同源于 `CloudConfigKeys` 的
+  起退避 / 阈值 5 / 无限限流），默认值与配置层同源于 `CloudModule.ConfigKeys` 的
   `*_DEFAULT` 常量——一个数只有一个来源。
 - `@Retry` / `@CircuitBreak` / `@RateLimit` 注解 + `Advisor` 织入**未交付**
   （§8.2）。
@@ -580,7 +581,7 @@ API**，遵循 `Database`/`Pool` 模式，并发交给虚拟线程。
   运行期真正需要热更新的值走 boot 的配置级联；密钥文件是唯一的例外
   （§5.7）。
 - **形态一：行为键**——普通值（超时、阈值、地址、白名单、token）。有默认值，
-  默认值以 `CloudConfigKeys` 的 `*_DEFAULT` 常量为唯一来源，模块配置层与
+  默认值以 `CloudModule.ConfigKeys` 的 `*_DEFAULT` 常量为唯一来源，模块配置层与
   库级 fallback 共享。**布尔键一律走容器 `Coercer`**（接受 `true/false`、
   `yes/no`、`on/off`、`1/0`），无法识别的值启动失败并点名键与值——静默变
   `false` 会让 `auth.extract.enabled` 这类开关被悄悄关掉。
@@ -598,6 +599,13 @@ API**，遵循 `Database`/`Pool` 模式，并发交给虚拟线程。
 - `freeway.cloud.rpc.resilience = auto | off` 是唯一的**聚合键**：`off` 是
   逃生口，启动期校验非法值即失败。
 - `freeway.cloud.secret.file` / `secret.keys` 只认 `-D`（§5.7）。
+- **决策面：要部署决定的只有五个键**——`freeway.cloud.event.peers` 与
+  `freeway.cloud.event.token`（多节点 mesh 两个都要；只配 peers 即是开关）、
+  `freeway.cloud.rpc.tls.key-store` 与其口令（mTLS，存在性驱动）、
+  `freeway.cloud.secret.file` / `secret.keys`（只认 `-D`，见上）。其余键一律以推荐值
+  出厂。所以这个面的心智负担不是键的数量，而是**决策的数量：五个**；高级层
+  （超时/阈值/退避）已被各自的聚合键压缩过一遍（`rpc.resilience` /
+  `event.enabled`），再加第二个聚合开关就是同一件事的第二种说法。
 
 ## 7. 明确不做
 

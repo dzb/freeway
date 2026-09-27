@@ -51,10 +51,8 @@ class ConfigDocsConsistencyTest {
         return null;
     }
 
-    /** {@code freeway.*} literals, including the ones built as {@code PREFIX + "…"}. */
+    /** Every {@code freeway.*} key is spelled as a literal, so the scan is exactly that. */
     private static final Pattern KEY_LITERAL = Pattern.compile("\"(freeway\\.[a-z0-9]+(?:\\.[a-z0-9_-]+)*)\"");
-    private static final Pattern PREFIX_CONSTANT = Pattern.compile("(\\w*PREFIX\\w*)\\s*=\\s*\"([^\"]*)\"");
-    private static final Pattern PREFIX_CONCAT = Pattern.compile("(\\w*PREFIX\\w*)\\s*\\+\\s*\"([^\"]+)\"");
 
     /** Documented rows whose key is a family, not a literal. */
     private static final List<String> FAMILIES = List.of(
@@ -152,29 +150,10 @@ class ConfigDocsConsistencyTest {
                         while (literal.find()) {
                             keys.add(literal.group(1));
                         }
-                        collectConcatenatedKeys(source, keys);
                     }
                 }
             }
         }
         return keys;
     }
-
-    private static void collectConcatenatedKeys(String source, Set<String> keys) {
-        Matcher constants = PREFIX_CONSTANT.matcher(source);
-        Set<String> prefixes = new LinkedHashSet<>();
-        while (constants.find()) {
-            prefixes.add(constants.group(1) + '=' + constants.group(2));
-        }
-        Matcher concat = PREFIX_CONCAT.matcher(source);
-        while (concat.find()) {
-            for (String constant : prefixes) {
-                int equals = constant.indexOf('=');
-                if (constant.substring(0, equals).equals(concat.group(1))) {
-                    keys.add(constant.substring(equals + 1) + concat.group(2));
-                }
-            }
-        }
-    }
-
 }

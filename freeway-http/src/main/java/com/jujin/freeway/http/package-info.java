@@ -36,7 +36,7 @@
  *       {@link MediaTypes}, {@link Compression}, {@link ErrorResponses} (the
  *       shared 404/500 writer that keeps dispatcher, sessions and
  *       static-file fallback from drifting), {@link ValidationException} and
- *       this module's config keys {@link HttpConfigKeys}.</li>
+ *       this module's config keys {@link HttpModule.ConfigKeys}.</li>
  * </ul>
  *
  * <p>The feature packages beside this one ({@code route}, {@code filter},

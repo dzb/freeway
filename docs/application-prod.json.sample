@@ -59,11 +59,7 @@
 			"event": {
 				"enabled": false,
 				"peers": "",
-				"subscriptions": "",
-				"allowed-types": "",
-				"allowed-topics": "",
-				"token": "",
-				"dedup": { "enabled": false, "capacity": 4096 }
+				"token": ""
 			}
 		}
 	}

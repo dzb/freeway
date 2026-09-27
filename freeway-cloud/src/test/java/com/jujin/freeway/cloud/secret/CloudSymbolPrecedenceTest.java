@@ -7,8 +7,6 @@ import com.jujin.freeway.boot.internal.AppConfigDefault;
 import com.jujin.freeway.boot.internal.ConfigSources;
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
-import com.jujin.freeway.cloud.CloudConfigKeys;
-import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 
 import java.nio.file.Files;
@@ -19,6 +17,8 @@ import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
+import com.jujin.freeway.http.HttpModule;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -35,12 +35,12 @@ class CloudSymbolPrecedenceTest {
 
     @BeforeEach
     void randomPort() {
-        System.setProperty(HttpConfigKeys.SERVER_PORT, "0"); // random free port per test
+        System.setProperty(HttpModule.ConfigKeys.SERVER_PORT, "0"); // random free port per test
     }
 
     @AfterEach
     void clearProperties() {
-        System.clearProperty(HttpConfigKeys.SERVER_PORT);
+        System.clearProperty(HttpModule.ConfigKeys.SERVER_PORT);
     }
 
     @Test
@@ -51,7 +51,7 @@ class CloudSymbolPrecedenceTest {
         Path secretFile = Files.writeString(dir.resolve("secrets.properties"),
             KEY + "=from-secret\n");
         System.setProperty("freeway.config.file", configFile.toString());
-        System.setProperty(CloudConfigKeys.SECRET_FILE, secretFile.toString());
+        System.setProperty(ConfigKeys.SECRET_FILE, secretFile.toString());
         try (AppRuntime app = FreewayApp.create().add(CloudModule.class).start()) {
             SymbolSource symbols = app.get(SymbolSource.class);
             assertEquals("from-secret", symbols.resolve(KEY),
@@ -60,7 +60,7 @@ class CloudSymbolPrecedenceTest {
                 "non-secret keys fall through to the framework file tier");
         } finally {
             System.clearProperty("freeway.config.file");
-            System.clearProperty(CloudConfigKeys.SECRET_FILE);
+            System.clearProperty(ConfigKeys.SECRET_FILE);
             Files.deleteIfExists(configFile);
             Files.deleteIfExists(secretFile);
             Files.deleteIfExists(dir);
@@ -72,13 +72,13 @@ class CloudSymbolPrecedenceTest {
         Path dir = Files.createTempDirectory("freeway-precedence");
         Path secretFile = Files.writeString(dir.resolve("secrets.properties"),
             KEY + "=from-secret\n");
-        System.setProperty(CloudConfigKeys.SECRET_FILE, secretFile.toString());
+        System.setProperty(ConfigKeys.SECRET_FILE, secretFile.toString());
         try {
             assertResolvesInApp("from-cli", Map.of(KEY, "from-cli"), Map.of(KEY, "from-env"));
             assertResolvesInApp("from-env", Map.of(), Map.of(KEY, "from-env"));
             assertResolvesInApp("from-secret", Map.of(), Map.of());
         } finally {
-            System.clearProperty(CloudConfigKeys.SECRET_FILE);
+            System.clearProperty(ConfigKeys.SECRET_FILE);
             Files.deleteIfExists(secretFile);
             Files.deleteIfExists(dir);
         }
@@ -92,7 +92,7 @@ class CloudSymbolPrecedenceTest {
         // HTTP port has to ride the file tier instead of a system property.
         AppConfig config = new AppConfigDefault(
             new ConfigSources(
-                cli, env, Map.of(KEY, "from-file", HttpConfigKeys.SERVER_PORT, "0"),
+                cli, env, Map.of(KEY, "from-file", HttpModule.ConfigKeys.SERVER_PORT, "0"),
                 List.of()),
             List.of());
         try (AppRuntime app = FreewayApp.create(CloudModule.class)

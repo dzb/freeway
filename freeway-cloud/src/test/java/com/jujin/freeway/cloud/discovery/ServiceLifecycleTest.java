@@ -4,10 +4,8 @@ import com.jujin.freeway.cloud.CloudModule;
 
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
-import com.jujin.freeway.cloud.CloudConfigKeys;
 import com.jujin.freeway.cloud.internal.RegistryStore;
 import com.jujin.freeway.http.HttpModule;
-import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.HttpServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -15,6 +13,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 import java.util.List;
+import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -29,21 +28,21 @@ class ServiceLifecycleTest {
 
     @BeforeEach
     void randomPort() {
-        System.setProperty(HttpConfigKeys.SERVER_PORT, "0"); // random free port per test
+        System.setProperty(HttpModule.ConfigKeys.SERVER_PORT, "0"); // random free port per test
     }
 
     @AfterEach
     void clearProperties() {
-        System.clearProperty(HttpConfigKeys.SERVER_PORT);
-        System.clearProperty(CloudConfigKeys.REGISTRY_SERVICE_ID);
-        System.clearProperty(CloudConfigKeys.REGISTRY_SERVICE_HOST);
-        System.clearProperty(CloudConfigKeys.REGISTRY_SERVICE_PORT);
-        System.clearProperty(CloudConfigKeys.REGISTRY_SERVICE_INSTANCE_ID);
+        System.clearProperty(HttpModule.ConfigKeys.SERVER_PORT);
+        System.clearProperty(ConfigKeys.REGISTRY_SERVICE_ID);
+        System.clearProperty(ConfigKeys.REGISTRY_SERVICE_HOST);
+        System.clearProperty(ConfigKeys.REGISTRY_SERVICE_PORT);
+        System.clearProperty(ConfigKeys.REGISTRY_SERVICE_INSTANCE_ID);
     }
 
     @Test
     void autoRegistersHttpEndpointAndDeregistersOnStop() {
-        System.setProperty(CloudConfigKeys.REGISTRY_SERVICE_ID, "lifecycle-svc");
+        System.setProperty(ConfigKeys.REGISTRY_SERVICE_ID, "lifecycle-svc");
         RegistryStore store;
         try (AppRuntime app = FreewayApp.create(new HttpModule()).add(CloudModule.class).start()) {
             store = app.get(RegistryStore.class);
@@ -57,8 +56,8 @@ class ServiceLifecycleTest {
 
     @Test
     void serviceHostOverrideWinsOverBoundAddress() {
-        System.setProperty(CloudConfigKeys.REGISTRY_SERVICE_ID, "host-svc");
-        System.setProperty(CloudConfigKeys.REGISTRY_SERVICE_HOST, "myhost.example");
+        System.setProperty(ConfigKeys.REGISTRY_SERVICE_ID, "host-svc");
+        System.setProperty(ConfigKeys.REGISTRY_SERVICE_HOST, "myhost.example");
         try (AppRuntime app = FreewayApp.create(new HttpModule()).add(CloudModule.class).start()) {
             RegistryStore store = app.get(RegistryStore.class);
             List<ServiceInstance> instances = store.liveReady("host-svc", Duration.ofMinutes(1));

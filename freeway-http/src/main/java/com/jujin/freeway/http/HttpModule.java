@@ -5,7 +5,6 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.Consumer;
 
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLParameters;
@@ -42,6 +41,7 @@ import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.RuntimeHook;
 import com.jujin.freeway.ioc.annotation.Builtin;
 import com.jujin.freeway.ioc.annotation.Marker;
+import com.jujin.freeway.ioc.symbol.KnownKeys;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 import com.jujin.freeway.ioc.symbol.SymbolSpec;
 
@@ -54,15 +54,15 @@ public final class HttpModule implements ModuleEx {
     // Read here rather than through a value type: the access log is a filter
     // the module contributes, not a field of anything — no value type owns it.
     private static final SymbolSpec<Boolean> ACCESS_LOG_ENABLED =
-        SymbolSpec.of(HttpConfigKeys.ACCESS_LOG_ENABLED, Boolean.class, false);
+        SymbolSpec.of(ConfigKeys.ACCESS_LOG_ENABLED, Boolean.class, false);
     // The built-in engine's own knobs: also read here (the module owns the
     // keys), pushed into the engine's Wiring below — HttpServerConfig does not
     // carry fields a third-party engine cannot apply.
     private static final SymbolSpec<Integer> H2_RESET_BURST_LIMIT =
-        SymbolSpec.of(HttpConfigKeys.H2_RESET_BURST_LIMIT, Integer.class,
+        SymbolSpec.of(ConfigKeys.H2_RESET_BURST_LIMIT, Integer.class,
             FreewayHttpEngine.DEFAULT_H2_RESET_BURST_LIMIT);
     private static final SymbolSpec<Duration> H2_RESET_WINDOW =
-        SymbolSpec.of(HttpConfigKeys.H2_RESET_WINDOW, Duration.class,
+        SymbolSpec.of(ConfigKeys.H2_RESET_WINDOW, Duration.class,
             FreewayHttpEngine.DEFAULT_H2_RESET_WINDOW);
 
     @Override
@@ -98,6 +98,8 @@ public final class HttpModule implements ModuleEx {
         });
         binder.bind(JsonCodec.class).to(JsonCodecDefault.class);
 
+        // Declared vocabulary for the unknown-key check.
+        binder.contribute(KnownKeys.class).add(KnownKeys.of(ConfigKeys.class, ConfigKeys.PREFIX));
         // Config — each face resolved by the type that owns its keys and its
         // defaults (HttpServerConfig.from, CorsFilter.from, HealthFilter.from,
         // SslSettings.from): the module reads no defaults of its own, so a key
@@ -275,7 +277,7 @@ public final class HttpModule implements ModuleEx {
 
     /**
      * Loudness for configuration that stopped taking effect: v1.2.1 read
-     * these keys under {@value HttpConfigKeys#RETIRED_PREFIX}, v1.2.2 renamed
+     * these keys under {@value ConfigKeys#RETIRED_PREFIX}, v1.2.2 renamed
      * the prefix to {@code freeway.http.*} and the fallback was later removed
      * — an app still configured with the old prefix runs silently on
      * defaults. The dead shape is probed precisely: the retired twin present
@@ -295,7 +297,7 @@ public final class HttpModule implements ModuleEx {
      */
     static List<String> retiredPrefixNotices(SymbolSource symbols) {
         var dead = new ArrayList<String>();
-        for (Field field : HttpConfigKeys.class.getFields()) {
+        for (Field field : ConfigKeys.class.getFields()) {
             if (field.getType() != String.class) continue;
             String key;
             try {
@@ -303,9 +305,9 @@ public final class HttpModule implements ModuleEx {
             } catch (ReflectiveOperationException e) {
                 continue;
             }
-            if (key == null || !key.startsWith(HttpConfigKeys.PREFIX)) continue;
-            String retired = HttpConfigKeys.RETIRED_PREFIX
-                + key.substring(HttpConfigKeys.PREFIX.length());
+            if (key == null || !key.startsWith(ConfigKeys.PREFIX)) continue;
+            String retired = ConfigKeys.RETIRED_PREFIX
+                + key.substring(ConfigKeys.PREFIX.length());
             if (present(symbols, retired) && !present(symbols, key)) {
                 dead.add(retired + " → " + key);
             }
@@ -333,9 +335,156 @@ public final class HttpModule implements ModuleEx {
         if (!dead.isEmpty()) {
             LOG.warn("config key(s) under the retired '{}' prefix are no longer read "
                 + "(the prefix became '{}' in v1.2.2): {} — rename each key as shown",
-                HttpConfigKeys.RETIRED_PREFIX, HttpConfigKeys.PREFIX,
+                ConfigKeys.RETIRED_PREFIX, ConfigKeys.PREFIX,
                 String.join(", ", dead));
         }
     }
 
+
+    /**
+     * Configuration keys for the HTTP module.
+     * All keys share the {@code freeway.http} namespace.
+     *
+     * <p><b>The surface has three tiers, and only the first asks for a decision.</b>
+     * The grouping below is that classification, not a topic list:
+     * <ol>
+     *   <li><b>Decision keys</b> — where to listen and how to secure it:
+     *       {@link #SERVER_HOST}, {@link #SERVER_PORT}, {@link #SSL_KEY_STORE} with
+     *       its password (HTTPS is presence-driven), and
+     *       {@link #CORS_ALLOWED_ORIGINS} (the permissive {@code *} default is for
+     *       development; a deployment should name its origins). Five keys, and a
+     *       service with no TLS and no browser clients needs two of them.</li>
+     *   <li><b>Default-optimal switches</b> — one flag per feature (compression,
+     *       access log, CORS, health). The default is the recommended posture; the
+     *       key exists so a deployment can turn the feature off, not because it
+     *       needs a decision. {@link #SSL_ENABLED} is the one tri-state here: unset
+     *       defers to keystore presence, and {@code false} is a kill switch.</li>
+     *   <li><b>Advanced (rare)</b> — operational tuning whose default is the
+     *       value the framework recommends: socket backlog/buffers/timeouts, the
+     *       HTTP/2 reset guard, the compression threshold, the body-size ceiling,
+     *       the remaining CORS response details, and the TLS protocol/cipher/SNI/
+     *       trust-store selection. Some of these default to the platform/JDK value
+     *       ({@code 0}, empty); others default to a tuned number. Either way, set
+     *       one only when you know why.</li>
+     * </ol>
+     *
+     * <p>There is deliberately no aggregate switch on top of the advanced tier:
+     * every cluster already has its flag ({@code compression.enabled},
+     * {@code health.enabled}, a {@code 0}/empty "off" in the tuning keys), and a
+     * second way to say the same thing is the duplication this catalog avoids.
+     */
+    public static final class ConfigKeys {
+        private ConfigKeys() {}
+
+        public static final String PREFIX = "freeway.http";
+        /** The v1.2.1 prefix, retired in v1.2.2 when every key moved to
+         * {@code freeway.http.*} (the legacy fallback was removed in e37ba527).
+         * Nothing reads keys under it — held solely for the startup notice that
+         * names the rename (see {@code HttpModule.retiredPrefixNotices}). */
+        static final String RETIRED_PREFIX = "freeway.web";
+
+        // ── Decision keys ─────────────────────────────────────────
+
+        /** Bind address (default {@code 127.0.0.1}; a container binds {@code 0.0.0.0}). */
+        public static final String SERVER_HOST           = "freeway.http.server.host";
+        /** Listen port (default 8080; {@code 0} = system-assigned). */
+        public static final String SERVER_PORT           = "freeway.http.server.port";
+        /** Path to the keystore file (PKCS12 or JKS). Presence alone activates
+         *  HTTPS (unless {@code ssl.enabled=false} suppresses it). */
+        public static final String SSL_KEY_STORE           = "freeway.http.ssl.key-store";
+        /** Password for the keystore file. */
+        public static final String SSL_KEY_STORE_PASSWORD  = "freeway.http.ssl.key-store-password";
+        /** Allowed origins. The default {@code *} is a development posture —
+         *  name the real origins in a deployment (see the CORS block below). */
+        public static final String CORS_ALLOWED_ORIGINS   = "freeway.http.cors.allowed-origins";
+
+        // ── Default-optimal switches ──────────────────────────────
+
+        /** Max request body size in bytes (default 10MB). A framework policy, not
+         *  a platform default: a service accepting uploads must decide this, or a
+         *  large upload is rejected with 413. */
+        public static final String MAX_BODY_SIZE = "freeway.http.max-body-size";
+
+
+        /** Master switch — presence-driven: an explicit value wins ({@code true}
+         *  on, {@code false} = kill switch suppressing a configured keystore);
+         *  unset falls to keystore presence — a configured keystore is an HTTPS
+         *  server, nothing set is plaintext. */
+        public static final String SSL_ENABLED             = "freeway.http.ssl.enabled";
+        /** gzip response compression for compressible content (default true). */
+        public static final String COMPRESSION_ENABLED   = "freeway.http.compression.enabled";
+        /** Text access log to stdout (default false). */
+        public static final String ACCESS_LOG_ENABLED    = "freeway.http.access-log.enabled";
+        /** CORS filter on (default true); {@code false} serves no CORS headers. */
+        public static final String CORS_ENABLED           = "freeway.http.cors.enabled";
+        /** Built-in {@code GET /healthz} endpoint on (default true). */
+        public static final String HEALTH_ENABLED = "freeway.http.health.enabled";
+
+        // ── Advanced: server tuning (default = platform default) ──
+
+        /** Accept queue size (default 0 = OS default). */
+        public static final String SERVER_BACKLOG        = "freeway.http.server.backlog";
+        /** Grace period for in-flight requests on shutdown (default 2s). */
+        public static final String SERVER_SHUTDOWN_GRACE = "freeway.http.server.shutdown-grace";
+        /** Socket read idle timeout (default 30s; 0 disables). */
+        public static final String SERVER_READ_TIMEOUT   = "freeway.http.server.read-timeout";
+        /** Per-socket-write timeout (default 30s; 0 disables). */
+        public static final String SERVER_WRITE_TIMEOUT  = "freeway.http.server.write-timeout";
+        /** Maximum concurrent connections (default 0 = unlimited). */
+        public static final String SERVER_MAX_CONNECTIONS = "freeway.http.server.max-connections";
+        /** Desired SO_RCVBUF for accepted sockets (default 0 = OS default). */
+        public static final String SERVER_RECEIVE_BUFFER = "freeway.http.server.receive-buffer-size";
+        /** Desired SO_SNDBUF for accepted sockets (default 0 = OS default). */
+        public static final String SERVER_SEND_BUFFER    = "freeway.http.server.send-buffer-size";
+        /** Inbound RST_STREAM burst guard: cancels arriving before the server
+         *  responded, beyond this count within the reset window, trip the
+         *  connection with GOAWAY(ENHANCE_YOUR_CALM) (0 disables the guard).
+         *  Engine-private: {@code HttpModule} reads it into the built-in engine's
+         *  {@code Wiring}; a third-party engine reports a non-default at startup. */
+        public static final String H2_RESET_BURST_LIMIT = "freeway.http.h2.reset-burst-limit";
+        /** Sliding window for the reset burst guard (default 10s). A no-op while
+         *  {@link #H2_RESET_BURST_LIMIT} is 0 — the guard returns before reading it. */
+        public static final String H2_RESET_WINDOW      = "freeway.http.h2.reset-window";
+        // ── Advanced: per-feature detail ──────────────────────────
+
+        /** Minimum response body size in bytes before gzip applies (default 256). */
+        public static final String COMPRESSION_MIN_SIZE  = "freeway.http.compression.min-size";
+        /** Health endpoint path (default {@code /healthz}). */
+        public static final String HEALTH_PATH    = "freeway.http.health.path";
+        /** Comma-separated allowed methods (default GET, POST, PUT, DELETE, PATCH, OPTIONS). */
+        public static final String CORS_ALLOWED_METHODS   = "freeway.http.cors.allowed-methods";
+        /** Comma-separated allowed request headers (default Content-Type, Authorization). */
+        public static final String CORS_ALLOWED_HEADERS   = "freeway.http.cors.allowed-headers";
+        /** Comma-separated response headers exposed to the browser (default empty). */
+        public static final String CORS_EXPOSED_HEADERS   = "freeway.http.cors.exposed-headers";
+        /** Preflight cache lifetime in seconds (default 3600). */
+        public static final String CORS_MAX_AGE           = "freeway.http.cors.max-age";
+        /** Allow credentials on cross-origin requests (default false). */
+        public static final String CORS_ALLOW_CREDENTIALS = "freeway.http.cors.allow-credentials";
+
+        // ── Advanced: TLS selection (default = JDK default) ───────
+
+        /** Keystore type: PKCS12 (default) or JKS. */
+        public static final String SSL_KEY_STORE_TYPE      = "freeway.http.ssl.key-store-type";
+        /** Enable HTTP/2 over TLS via ALPN negotiation (default true). */
+        public static final String SSL_HTTP2               = "freeway.http.ssl.http2";
+        /** Optional truststore path for validating peer certificates. */
+        public static final String SSL_TRUST_STORE         = "freeway.http.ssl.trust-store";
+        /** Password for the truststore file. */
+        public static final String SSL_TRUST_STORE_PASSWORD = "freeway.http.ssl.trust-store-password";
+        /** Truststore type: PKCS12 (default) or JKS. */
+        public static final String SSL_TRUST_STORE_TYPE    = "freeway.http.ssl.trust-store-type";
+        /** Require client certificates (mTLS). Default false. */
+        public static final String SSL_CLIENT_AUTH         = "freeway.http.ssl.client-auth";
+        /** Comma-separated TLS protocol versions; empty = JDK default. */
+        public static final String SSL_PROTOCOLS           = "freeway.http.ssl.protocols";
+        /** Comma-separated TLS cipher suite names; empty = JDK default. */
+        public static final String SSL_CIPHERS             = "freeway.http.ssl.ciphers";
+        /** Optional directory of per-hostname keystores for SNI certificate
+         *  selection; each file is named {@code <host>.p12} (or .jks), and
+         *  {@code default.p12} overrides the key-store as the fallback. */
+        public static final String SSL_SNI_DIRECTORY       = "freeway.http.ssl.sni-directory";
+        /** Certificate reload polling interval (0 disables hot reload). */
+        public static final String SSL_RELOAD_INTERVAL     = "freeway.http.ssl.reload-interval";
+    }
 }

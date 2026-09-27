@@ -69,8 +69,8 @@ transitively) plus JUnit at test scope. Anything else belongs in an ext adapter.
     cascade disappears silently (`SymbolSourceReplacementTest` pins the
     pattern).
 - **Factory verbs**: `of` builds a *value* from the parts you hand it — the
-  records do this (`Endpoint.of`, `ServiceInstance.of`, `SymbolSpec.of`,
-  `ModuleNode.of`), mirroring `List.of`. `create` is the framework *entry
+  records do this (`Endpoint.of`, `ServiceInstance.of`, `SymbolSpec.of`),
+  mirroring `List.of`. `create` is the framework *entry
   point* that hands you something to configure or run (`Freeway.create`,
   `FreewayApp.create`, `FlowEngine.create`, `Graph.create`), and `.builder()`
   is fluent assembly of a configured object — licensed *only* when the builder
@@ -118,7 +118,29 @@ transitively) plus JUnit at test scope. Anything else belongs in an ext adapter.
   splitting them would spread one idea across files and make every reader pay for the
   index. Split when a part has its own reason to change, its own tests, or a consumer
   that wants it without the rest — judge by cohesion and ROI, never by line count.
-- Keep concepts few: Module, Service, Extension, Scope, Runtime.
+- Keep concepts few: Module, Service, Extension, Scope, Runtime. Composition is
+  the ordered modules handed to an entry point (`Freeway.create`,
+  `FreewayApp.run`/`create`); the validated structure behind it (`ModuleNode`)
+  is internal to `ioc.internal`, and boot's launcher is `FreewayApp` itself — a
+  separate tree type or builder type would be a sixth concept with no question
+  of its own.
+- **Composition over inheritance, with four named exceptions.** Extension happens
+  through binding substitution, contribution, `.primary()` and proxy decoration —
+  never by subclassing a framework type. A new `extends` must name its exception:
+  language-mandated (exceptions, JDK callbacks), true is-a (final, closed set),
+  closed protocol hierarchies (invisible outside their package), or implementation
+  shared with third-party adapters. Reusing `internal` logic across modules means
+  promoting the smallest possible interface — copying it requires a comment
+  pointing back at the source.
+- **Exports are quarantine, not architecture.** Modularity lives in package
+  responsibilities and dependency layering (verified, not declared) — JPMS
+  `exports`/`opens` add no design, only enforcement, and this project explicitly
+  promises no compatibility, so there is no stranger-facing promise to enforce.
+  If a module's internals ever get messy enough to want a fence, that want is
+  recorded as cleanup debt, not modernization. The JPMS posture today is *none*:
+  no `module-info`, no `Automatic-Module-Name`, no `jdeps` gate — those two are
+  the hooks to add if a JPMS-only downstream ever appears, not something the
+  build already does.
 - **Optional inputs**: one or two of them use a documented overload ladder, each
   step stating what it adds (`RemoteCaller.invoke`); three or more use a
   parameter record with `defaults()` and per-field withers
@@ -157,6 +179,21 @@ transitively) plus JUnit at test scope. Anything else belongs in an ext adapter.
   keys' declarations, token tables and presence criteria. A mechanism with
   application data in it moves down only when it carries no key names; data
   about specific keys moves up to their owner.
+- **Keys live in a `ConfigKeys` nested in the module that reads them, spelled as
+  full literals**: `HttpModule.ConfigKeys`, `DbModule.ConfigKeys`,
+  `CloudModule.ConfigKeys` (both namespaces it spells) and — for the cascade's own
+  activation keys — `BootModule.ConfigKeys`. A key is never composed from
+  `PREFIX + "…"`, so the table answers "what is the exact key?" on its own line;
+  `PREFIX` survives only as the namespace the vocabulary is fenced to, and the
+  module contributes `KnownKeys.of(ConfigKeys.class, ConfigKeys.PREFIX, …)` naming
+  every namespace it spells — a table key outside them fails at bind instead of
+  leaving a namespace the unknown-key check never reports on. Identity strings that
+  merely look like keys (runtime-hook ids, route paths, contribution ids) stay out
+  of `ConfigKeys`: that type boundary is what keeps them out of the vocabulary.
+  `commons` is the one exception — it is not a module, so its logging table stays a
+  top-level package-private `LogKeys` published as `LogConfig` for boot to declare,
+  and `EnvKeys` stays the env-mapping mechanism. Infra owns no *feature*
+  configuration: among the infra modules only logging is application config.
 - **One chain, one tier definition**: a configuration tier *is* a
   `SymbolProvider` (JVM system properties is `SymbolProvider.systemProperties()`
   at `TIER_SYS_PROPS`), and a source *is* the chain over them
@@ -202,6 +239,8 @@ comment.
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — module boundaries, injection
   annotations, config cascade mechanics, lifecycle notes.
+- [docs/freeway-reflection.md](docs/freeway-reflection.md) — every reflective
+  site, its cache shape, and the rules for adding one.
 - [docs/DEVELOPER-GUIDE.md](docs/DEVELOPER-GUIDE.md) — comprehensive usage
   guide for all modules.
 - [docs/freeway-config.md](docs/freeway-config.md) — every config key, by module.

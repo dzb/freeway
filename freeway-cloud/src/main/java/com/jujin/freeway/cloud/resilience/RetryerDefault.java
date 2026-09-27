@@ -1,7 +1,8 @@
 package com.jujin.freeway.cloud.resilience;
 
-import com.jujin.freeway.cloud.CloudConfigKeys;
 import java.util.concurrent.ThreadLocalRandom;
+import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
+import com.jujin.freeway.cloud.CloudModule;
 
 /**
  * Exponential-backoff {@link Retryer}: {@code maxRetries} attempts beyond the
@@ -30,13 +31,13 @@ public final class RetryerDefault implements Retryer {
     }
 
     /** The library default retry policy. The values come from the shared
-     *  {@code freeway.cloud.rpc.retry.*} defaults ({@link CloudConfigKeys}),
+     *  {@code freeway.cloud.rpc.retry.*} defaults ({@link ConfigKeys}),
      *  the same source the config layer falls back to. */
     public static RetryerDefault withDefaults() {
         return new RetryerDefault(
-            CloudConfigKeys.RPC_RETRY_MAX_ATTEMPTS_DEFAULT,
-            CloudConfigKeys.RPC_RETRY_BACKOFF_BASE_DEFAULT,
-            CloudConfigKeys.RPC_RETRY_BACKOFF_MAX_DEFAULT);
+            ConfigKeys.RPC_RETRY_MAX_ATTEMPTS_DEFAULT,
+            ConfigKeys.RPC_RETRY_BACKOFF_BASE_DEFAULT,
+            ConfigKeys.RPC_RETRY_BACKOFF_MAX_DEFAULT);
     }
 
     @Override

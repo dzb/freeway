@@ -1,6 +1,5 @@
 package com.jujin.freeway.cloud.resilience;
 
-import com.jujin.freeway.cloud.CloudConfigKeys;
 import com.jujin.freeway.cloud.CloudHooks;
 import com.jujin.freeway.cloud.annotation.Local;
 import com.jujin.freeway.ioc.Binder;
@@ -15,6 +14,8 @@ import com.jujin.freeway.ioc.symbol.SymbolSpec;
 
 import java.time.Duration;
 import java.util.function.Function;
+import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
+import com.jujin.freeway.cloud.CloudModule;
 
 /**
  * IoC wiring for resilience: {@link Retryer} / {@link CircuitBreaker} /
@@ -33,7 +34,7 @@ public final class CloudResilienceModule implements ModuleEx {
 
     // Key, type and default declared once per key; the symbol chain resolves
     // the raw value and the spec post-processes it. Defaults come from the
-    // shared CloudConfigKeys sources so the config layer and the library
+    // shared ConfigKeys sources so the config layer and the library
     // fallback (CloudHttpClientDefault) cannot drift apart.
     /**
      * Aggregate mode: auto = fine-grained keys govern; off = kill switch that
@@ -41,33 +42,33 @@ public final class CloudResilienceModule implements ModuleEx {
      * the fine-grained rpc.* resilience keys.
      */
     private static final SymbolSpec<String> RESILIENCE_MODE = SymbolSpec.of(
-        CloudConfigKeys.RPC_RESILIENCE, String.class,
-        CloudConfigKeys.RPC_RESILIENCE_AUTO, Function.identity());
+        ConfigKeys.RPC_RESILIENCE, String.class,
+        ConfigKeys.RPC_RESILIENCE_AUTO, Function.identity());
     private static final SymbolSpec<Integer> RETRY_MAX_ATTEMPTS = SymbolSpec.of(
-        CloudConfigKeys.RPC_RETRY_MAX_ATTEMPTS, Integer.class,
-        CloudConfigKeys.RPC_RETRY_MAX_ATTEMPTS_DEFAULT, Integer::parseInt);
+        ConfigKeys.RPC_RETRY_MAX_ATTEMPTS, Integer.class,
+        ConfigKeys.RPC_RETRY_MAX_ATTEMPTS_DEFAULT, Integer::parseInt);
     private static final SymbolSpec<Long> RETRY_BACKOFF_BASE = SymbolSpec.of(
-        CloudConfigKeys.RPC_RETRY_BACKOFF_BASE, Long.class,
-        CloudConfigKeys.RPC_RETRY_BACKOFF_BASE_DEFAULT, Long::parseLong);
+        ConfigKeys.RPC_RETRY_BACKOFF_BASE, Long.class,
+        ConfigKeys.RPC_RETRY_BACKOFF_BASE_DEFAULT, Long::parseLong);
     private static final SymbolSpec<Long> RETRY_BACKOFF_MAX = SymbolSpec.of(
-        CloudConfigKeys.RPC_RETRY_BACKOFF_MAX, Long.class,
-        CloudConfigKeys.RPC_RETRY_BACKOFF_MAX_DEFAULT, Long::parseLong);
+        ConfigKeys.RPC_RETRY_BACKOFF_MAX, Long.class,
+        ConfigKeys.RPC_RETRY_BACKOFF_MAX_DEFAULT, Long::parseLong);
     private static final SymbolSpec<Boolean> CB_ENABLED = SymbolSpec.of(
-        CloudConfigKeys.RPC_CB_ENABLED, Boolean.class, true);
+        ConfigKeys.RPC_CB_ENABLED, Boolean.class, true);
     private static final SymbolSpec<Integer> CB_FAILURE_THRESHOLD = SymbolSpec.of(
-        CloudConfigKeys.RPC_CB_FAILURE_THRESHOLD, Integer.class,
-        CloudConfigKeys.RPC_CB_FAILURE_THRESHOLD_DEFAULT, Integer::parseInt);
+        ConfigKeys.RPC_CB_FAILURE_THRESHOLD, Integer.class,
+        ConfigKeys.RPC_CB_FAILURE_THRESHOLD_DEFAULT, Integer::parseInt);
     private static final SymbolSpec<Long> CB_FAILURE_WINDOW = SymbolSpec.of(
-        CloudConfigKeys.RPC_CB_FAILURE_WINDOW, Long.class,
-        CloudConfigKeys.RPC_CB_FAILURE_WINDOW_DEFAULT, Long::parseLong);
+        ConfigKeys.RPC_CB_FAILURE_WINDOW, Long.class,
+        ConfigKeys.RPC_CB_FAILURE_WINDOW_DEFAULT, Long::parseLong);
     private static final SymbolSpec<Long> CB_OPEN_WINDOW = SymbolSpec.of(
-        CloudConfigKeys.RPC_CB_OPEN_WINDOW, Long.class,
-        CloudConfigKeys.RPC_CB_OPEN_WINDOW_DEFAULT, Long::parseLong);
+        ConfigKeys.RPC_CB_OPEN_WINDOW, Long.class,
+        ConfigKeys.RPC_CB_OPEN_WINDOW_DEFAULT, Long::parseLong);
     private static final SymbolSpec<Boolean> RATE_LIMIT_ENABLED = SymbolSpec.of(
-        CloudConfigKeys.RPC_RATE_LIMIT_ENABLED, Boolean.class, false);
+        ConfigKeys.RPC_RATE_LIMIT_ENABLED, Boolean.class, false);
     private static final SymbolSpec<Double> RATE_LIMIT_PER_SECOND = SymbolSpec.of(
-        CloudConfigKeys.RPC_RATE_LIMIT_PER_SECOND, Double.class,
-        CloudConfigKeys.RPC_RATE_LIMIT_PER_SECOND_DEFAULT, Double::parseDouble);
+        ConfigKeys.RPC_RATE_LIMIT_PER_SECOND, Double.class,
+        ConfigKeys.RPC_RATE_LIMIT_PER_SECOND_DEFAULT, Double::parseDouble);
 
     @Override
     public void bind(Binder b) {
@@ -128,13 +129,13 @@ public final class CloudResilienceModule implements ModuleEx {
     /** The aggregate mode, validated eagerly: an unknown value fails startup
      *  with the key name instead of degrading silently. */
     private static Mode mode(SymbolSource symbols) {
-        return SymbolSpec.mode(CloudConfigKeys.RPC_RESILIENCE,
+        return SymbolSpec.mode(ConfigKeys.RPC_RESILIENCE,
             symbols.resolve(RESILIENCE_MODE), BY_TOKEN, Mode.AUTO);
     }
 
     private static final java.util.Map<String, Mode> BY_TOKEN = java.util.Map.of(
-        CloudConfigKeys.RPC_RESILIENCE_AUTO, Mode.AUTO,
-        CloudConfigKeys.RPC_RESILIENCE_OFF, Mode.OFF);
+        ConfigKeys.RPC_RESILIENCE_AUTO, Mode.AUTO,
+        ConfigKeys.RPC_RESILIENCE_OFF, Mode.OFF);
 
     private enum Mode { AUTO, OFF }
 }

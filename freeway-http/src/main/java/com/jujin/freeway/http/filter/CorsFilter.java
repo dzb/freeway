@@ -6,12 +6,13 @@ import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.HttpStatus;
 import com.jujin.freeway.http.route.RouteHandler;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 import com.jujin.freeway.ioc.symbol.SymbolSpec;
+import com.jujin.freeway.http.HttpModule.ConfigKeys;
+import com.jujin.freeway.http.HttpModule;
 
 public final class CorsFilter implements HttpFilter {
     private static final Logger LOG = LoggerFactory.getLogger(CorsFilter.class);
@@ -30,19 +31,19 @@ public final class CorsFilter implements HttpFilter {
     // The CORS keys: name and type only. `from` pins each one's default to the
     // field it overlays, so this table never restates what defaults() states.
     private static final SymbolSpec<Boolean> ENABLED =
-        SymbolSpec.of(HttpConfigKeys.CORS_ENABLED, Boolean.class, null);
+        SymbolSpec.of(ConfigKeys.CORS_ENABLED, Boolean.class, null);
     private static final SymbolSpec<List<String>> ALLOWED_ORIGINS =
-        SymbolSpec.list(HttpConfigKeys.CORS_ALLOWED_ORIGINS, null);
+        SymbolSpec.list(ConfigKeys.CORS_ALLOWED_ORIGINS, null);
     private static final SymbolSpec<List<String>> ALLOWED_METHODS =
-        SymbolSpec.list(HttpConfigKeys.CORS_ALLOWED_METHODS, null);
+        SymbolSpec.list(ConfigKeys.CORS_ALLOWED_METHODS, null);
     private static final SymbolSpec<List<String>> ALLOWED_HEADERS =
-        SymbolSpec.list(HttpConfigKeys.CORS_ALLOWED_HEADERS, null);
+        SymbolSpec.list(ConfigKeys.CORS_ALLOWED_HEADERS, null);
     private static final SymbolSpec<List<String>> EXPOSED_HEADERS =
-        SymbolSpec.list(HttpConfigKeys.CORS_EXPOSED_HEADERS, null);
+        SymbolSpec.list(ConfigKeys.CORS_EXPOSED_HEADERS, null);
     private static final SymbolSpec<String> MAX_AGE =
-        SymbolSpec.of(HttpConfigKeys.CORS_MAX_AGE, String.class, null);
+        SymbolSpec.of(ConfigKeys.CORS_MAX_AGE, String.class, null);
     private static final SymbolSpec<Boolean> ALLOW_CREDENTIALS =
-        SymbolSpec.of(HttpConfigKeys.CORS_ALLOW_CREDENTIALS, Boolean.class, null);
+        SymbolSpec.of(ConfigKeys.CORS_ALLOW_CREDENTIALS, Boolean.class, null);
 
     /**
      * The policy as {@code freeway.http.cors.*} answers it: {@link #defaults()}
