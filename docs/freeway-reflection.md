@@ -37,6 +37,8 @@ reachability metadata is ever needed.
 | `ioc.symbol.KnownKeys.of` | `getFields()` over a module's nested `ConfigKeys` table, namespace-fenced (a key outside the declared prefixes fails the bind) | none needed (once per module bind) | startup |
 | `commons.logging.LogKeys.knownKeys` | `getDeclaredFields()` over its own package-private table (the fixed `freeway.log.*` names; fragments and `app.name` filtered out) | none needed (once per boot) | startup |
 | `http.HttpModule` | `getFields()` over `HttpModule.ConfigKeys` (retired-prefix notice) | once per startup | startup |
+| `ioc.internal.ModuleNode` | `getDeclaredConstructor()` module instantiation (class declarations) | none (cold, once per declared class per load) | composition assembly |
+| `boot.FreewayApp` | same no-arg instantiation for `add(Class...)` (mirrors `ModuleNode.resolve`) | none (cold) | composition assembly |
 | `db.internal.RowMapperResolver` | row mapper per type (BeanPlan-backed) | `ConcurrentHashMap` **per container instance** — deliberate: mapper creation reads resolver-owned coercer/ORM state, not just the class | queries |
 | `cloud.rpc.RpcTarget` | declared-type `getMethods()` → dispatch table; call via MH handle | built once per export at startup | RPC dispatch |
 | `cloud.rpc.RemoteProxyFactory` | JDK `Proxy` over the exported API interface | per call site, once | client |

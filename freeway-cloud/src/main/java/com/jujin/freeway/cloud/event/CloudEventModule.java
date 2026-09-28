@@ -8,7 +8,6 @@ import com.jujin.freeway.ioc.annotation.Builtin;
 import com.jujin.freeway.ioc.annotation.Marker;
 import com.jujin.freeway.http.websocket.WebSocketRoute;
 import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
-import com.jujin.freeway.cloud.CloudModule;
 
 /**
  * Assembles the {@link CloudEventBus} — the cloud-native broadcast plane:

@@ -77,6 +77,10 @@ final class ModuleDiscovery {
     }
 
     private static void collectBundles(Class<? extends ModuleEx> type, Set<Class<?>> known) {
+        if (type.isAnonymousClass() || type.isSynthetic()) {
+            return; // nameless declarations never equal an SPI provider class — the same exclusion
+                    // the tree applies (ioc.internal ModuleNode), so the mirror stays exact
+        }
         if (!known.add(type)) {
             return;
         }

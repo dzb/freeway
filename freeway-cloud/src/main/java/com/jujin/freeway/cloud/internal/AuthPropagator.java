@@ -9,7 +9,6 @@ import com.jujin.freeway.ioc.symbol.SymbolSource;
 import java.util.List;
 import java.util.Map;
 import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
-import com.jujin.freeway.cloud.CloudModule;
 
 /**
  * Verified-identity propagation: injects the current

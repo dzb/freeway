@@ -92,6 +92,27 @@ class EventBusAsyncTraceTest {
     }
 
     @Test
+    void allBlankContextDispatchesBare() throws Exception {
+        try (Container container = containerWithContext()) {
+            EventBus bus = container.get(EventBus.class);
+            var seen = new AtomicReference<Optional<InvocationContext>>();
+            var latch = new CountDownLatch(1);
+            bus.subscribe(String.class, e -> {
+                seen.set(InvocationContext.current());
+                latch.countDown();
+            });
+            // Present but carrying nothing: binding it on the executor would invent a context
+            // the submitter never had — the carrier must dispatch bare instead.
+            InvocationContext.runWith(InvocationContext.of(null, null, null),
+                () -> bus.publishAsync("hello"));
+            assertTrue(latch.await(2, TimeUnit.SECONDS), "blank-context async must deliver");
+            Optional<InvocationContext> ctx = seen.get();
+            assertTrue(ctx != null && ctx.isEmpty(),
+                "an all-unset context must not propagate — the handler observes no InvocationContext");
+        }
+    }
+
+    @Test
     void asyncPublishCarriesSubmitterPrincipalAndBaggage() throws Exception {
         try (Container container = containerWithContext()) {
             EventBus bus = container.get(EventBus.class);

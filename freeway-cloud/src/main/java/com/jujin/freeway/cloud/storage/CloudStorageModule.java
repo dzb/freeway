@@ -16,7 +16,6 @@ import com.jujin.freeway.ioc.symbol.SymbolSource;
 import java.nio.file.Path;
 import java.util.function.Function;
 import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
-import com.jujin.freeway.cloud.CloudModule;
 
 /**
  * IoC wiring for the optional object storage subsystem: {@link ObjectStorage}

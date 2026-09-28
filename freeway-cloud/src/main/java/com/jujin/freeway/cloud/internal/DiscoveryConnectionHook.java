@@ -5,7 +5,6 @@ import com.jujin.freeway.cloud.discovery.ServiceRegistry;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.RuntimeHook;
 import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
-import com.jujin.freeway.cloud.CloudModule;
 
 /**
  * Registry-client connection hook: runs BEFORE {@code freeway.http.server}.

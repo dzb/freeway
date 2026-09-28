@@ -43,8 +43,14 @@ public final class BootModule implements ModuleEx {
         // binder of its own. The fixed keys give typo fixes; the per-file keys
         // (freeway.log.file.<name>.*) are dynamic and cannot be listed — their prefix is
         // admitted below, exempting the family from the unknown-key namespace rule.
+        Set<String> logKeys = LogConfig.knownKeys();
+        if (logKeys.isEmpty()) {
+            throw new IllegalStateException(
+                "LogConfig.knownKeys() is empty — the logging vocabulary must list its fixed keys,"
+                    + " not silently switch the check off for " + LogConfig.PREFIX);
+        }
         binder.contribute(KnownKeys.class).add(
-            new KnownKeys(Set.of(LogConfig.PREFIX), LogConfig.knownKeys()));
+            new KnownKeys(Set.of(LogConfig.PREFIX), logKeys));
         binder.contribute(KnownKeys.class).add(KnownKeys.admit(LogConfig.FILE_PREFIX));
         binder.contribute(RuntimeHook.class).add(UnknownKeysHook.HOOK_ID, new UnknownKeysHook());
     }

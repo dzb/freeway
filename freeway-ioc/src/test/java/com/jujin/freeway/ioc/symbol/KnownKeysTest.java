@@ -28,6 +28,12 @@ class KnownKeysTest {
         public static final String OTHER = "freeway.other.key";
     }
 
+    /** A table with no listable keys: contributing it would switch the check off in silence. */
+    public static final class EmptyKeys {
+        public static final String NOT_A_KEY = "unrelated";
+        public static final int NUMBER = 1;
+    }
+
     @Test
     void reflectionHarvestsTheNamespacesStrings() {
         KnownKeys vocab = KnownKeys.of(FakeKeys.class, "freeway.fake");
@@ -110,5 +116,14 @@ class KnownKeysTest {
     @Test
     void prefixOnlyAdmissionNeverSuggests() {
         assertTrue(KnownKeys.admit("freeway.log").suggest("freeway.log.leve").isEmpty());
+    }
+
+    @Test
+    void anEmptyHarvestIsRefused() {
+        // of() with nothing listable must fail, not hand back an empty vocabulary: the empty
+        // shape belongs to admit(...) alone, whose prefix-only meaning the check understands.
+        IllegalStateException error = assertThrows(IllegalStateException.class,
+            () -> KnownKeys.of(EmptyKeys.class, "freeway.fake"));
+        assertTrue(error.getMessage().contains("admit"), error.getMessage());
     }
 }

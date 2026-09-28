@@ -305,7 +305,8 @@ public final class HttpModule implements ModuleEx {
             } catch (ReflectiveOperationException e) {
                 continue;
             }
-            if (key == null || !key.startsWith(ConfigKeys.PREFIX)) continue;
+            if (key == null || key.equals(ConfigKeys.PREFIX)
+                || !key.startsWith(ConfigKeys.PREFIX)) continue;
             String retired = ConfigKeys.RETIRED_PREFIX
                 + key.substring(ConfigKeys.PREFIX.length());
             if (present(symbols, retired) && !present(symbols, key)) {

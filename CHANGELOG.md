@@ -51,6 +51,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ioc 的命名入口只收**实例**：再加一个命名的 class 形参重载会让"只给一个名字"在这两个 varargs
   之间产生歧义（试过，javac 报"引用不明确"），所以类声明要么 `new X()`，要么走 boot 链命名。
 
+### Fixed
+
+- `BeanIntrospector.selectConstructor` 并发首算各返各的包装器：现返回 map 胜者（包装器不可变且按构造器内联，选择语义不变，并发下 `assertSame` 亦成立）。
+- `UnknownKeysHook` 跨词表建议去重：两词表列出同一拼写曾点名两次，现拼接去重后取前 3（各词表内仍按距离近优先、同距离按字母序）。
+- `KnownKeys.of` 空收割即绑定期失败（指引 `admit()`），`BootModule` 的 logging 词表为空同样启动失败——空词表不再静默关闭检测。
+- 全空 `InvocationContext` 不再跨执行器传播：三子上下文全 null 的 present 上下文按无上下文跑裸（与 mesh 入站同规则）。
+- `ModuleDiscovery` 跳过匿名/synthetic 模块类（与 `ModuleNode` 的 nameless 排除一致）；`HttpModule` 退役探测跳过 `PREFIX` 本体；`LogKeys` 键过滤与 `KnownKeys` 同一 dot-boundary 栅栏；19 处未用 outer-module import 清理（`ConfigKeys` 嵌套 import 保留）。
+
 ### Changed
 
 - **模块组合的公开词汇收敛为"模块 + 入口列表"：树类型 `ModuleNode` 移入 `ioc.internal`（包私有），

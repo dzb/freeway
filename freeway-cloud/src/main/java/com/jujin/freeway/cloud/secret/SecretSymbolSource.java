@@ -9,7 +9,6 @@ import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
-import com.jujin.freeway.cloud.CloudModule;
 
 /**
  * Dynamic {@link SymbolProvider} backed by {@link SecretStore}: makes secrets

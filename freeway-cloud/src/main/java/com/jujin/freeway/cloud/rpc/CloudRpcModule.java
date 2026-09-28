@@ -26,7 +26,6 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.function.Function;
 import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
-import com.jujin.freeway.cloud.CloudModule;
 
 /**
  * IoC wiring for remote invocation: {@link CloudHttpClient} →

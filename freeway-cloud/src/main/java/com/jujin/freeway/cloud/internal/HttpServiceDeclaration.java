@@ -14,7 +14,6 @@ import org.slf4j.LoggerFactory;
 import java.util.Map;
 import java.util.function.Function;
 import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
-import com.jujin.freeway.cloud.CloudModule;
 
 /**
  * Built-in {@link ServiceDeclaration} for the HTTP endpoint: registers the

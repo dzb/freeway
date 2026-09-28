@@ -17,7 +17,6 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.concurrent.CopyOnWriteArrayList;
 import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
-import com.jujin.freeway.cloud.CloudModule;
 
 /**
  * The hub: registry of live peer connections + the server-side WS endpoint

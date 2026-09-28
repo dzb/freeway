@@ -27,7 +27,7 @@ public final class CloudContextModule implements ModuleEx {
         // dispatches bare (the mesh inbound rule).
         b.bind(AsyncCarrier.class).to(c -> work -> {
             var captured = InvocationContext.current();
-            if (captured.isEmpty()) {
+            if (captured.isEmpty() || isBlank(captured.get())) {
                 return work;
             }
             InvocationContext ctx = captured.get();
@@ -41,5 +41,10 @@ public final class CloudContextModule implements ModuleEx {
         // the merge keeps the baggage parsed here (null wins only when absent).
         b.contribute(Propagator.class).add("freeway.cloud.propagation.baggage", new BaggagePropagator());
         b.contribute(HttpFilter.class).add(PropagationFilter.class);
+    }
+
+    /** A present context with every sub-context unset carries nothing — binding it would invent one. */
+    private static boolean isBlank(InvocationContext ctx) {
+        return ctx.trace() == null && ctx.principal() == null && ctx.baggage() == null;
     }
 }

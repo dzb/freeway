@@ -8,6 +8,7 @@ import com.jujin.freeway.ioc.symbol.KnownKeys;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -87,15 +88,14 @@ final class UnknownKeysHook implements RuntimeHook {
             if (!key.startsWith(KnownKeys.ROOT_PREFIX) || known.contains(key)) {
                 continue;
             }
-            List<String> suggestions = new ArrayList<>();
+            // Per-vocabulary suggestions arrive nearest-first; de-duplicated here so two vocabularies
+            // listing one spelling do not name it twice, capped at 3.
+            Set<String> suggestions = new LinkedHashSet<>();
             for (KnownKeys vocab : vocabularies) {
                 suggestions.addAll(vocab.suggest(key));
                 if (suggestions.size() >= 3) {
                     break;
                 }
-            }
-            if (suggestions.size() > 3) {
-                suggestions = suggestions.subList(0, 3);
             }
             if (!suggestions.isEmpty()) {
                 notices.add("Unknown config key '" + key + "' — did you mean "

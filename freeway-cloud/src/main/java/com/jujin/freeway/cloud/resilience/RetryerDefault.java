@@ -2,7 +2,6 @@ package com.jujin.freeway.cloud.resilience;
 
 import java.util.concurrent.ThreadLocalRandom;
 import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
-import com.jujin.freeway.cloud.CloudModule;
 
 /**
  * Exponential-backoff {@link Retryer}: {@code maxRetries} attempts beyond the

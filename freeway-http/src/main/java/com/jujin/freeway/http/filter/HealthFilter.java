@@ -10,7 +10,7 @@ import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.route.PathPattern;
 import com.jujin.freeway.http.route.RouteHandler;
 import com.jujin.freeway.http.HttpModule.ConfigKeys;
-import com.jujin.freeway.http.HttpModule;
+
 
 /**
  * Filter that intercepts the health endpoint before routing.

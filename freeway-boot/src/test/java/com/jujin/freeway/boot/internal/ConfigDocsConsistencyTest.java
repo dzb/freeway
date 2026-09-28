@@ -25,7 +25,7 @@ import org.junit.jupiter.api.Test;
  * {@code freeway.log.file.max-size}) is silently ignored at startup, and a
  * documented key no module reads is worse: the deployment believes it changed
  * something. The keys are found the way the framework finds them — string
- * literals plus the {@code PREFIX + "suffix"} constants — so this test reads
+ * literals — keys are spelled in full, never composed — so this test reads
  * sources rather than a second hand-maintained list.
  *
  * <p>Runs only inside the repository (the docs and sibling modules are

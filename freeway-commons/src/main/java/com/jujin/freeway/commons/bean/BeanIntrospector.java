@@ -136,8 +136,10 @@ public final class BeanIntrospector {
             return cached;
         }
         BeanConstructor selected = computeSelection(type, preferredAnnotation);
-        perType.putIfAbsent(marker, selected);
-        return selected;
+        // Concurrent first computes must observe one winner: the wrapper is immutable and interned
+        // per Constructor, so returning the map's winner only strengthens the identity tests pin.
+        BeanConstructor existing = perType.putIfAbsent(marker, selected);
+        return existing != null ? existing : selected;
     }
 
     private static BeanConstructor computeSelection(

@@ -13,7 +13,6 @@ import com.jujin.freeway.ioc.symbol.SymbolProvider;
 
 import java.nio.file.Path;
 import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
-import com.jujin.freeway.cloud.CloudModule;
 
 /**
  * IoC wiring for the secret subsystem: {@link SecretStore} →

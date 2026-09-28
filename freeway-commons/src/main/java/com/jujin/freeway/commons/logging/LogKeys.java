@@ -100,7 +100,7 @@ final class LogKeys {
             }
             try {
                 String value = (String) field.get(null);
-                if (value != null && value.startsWith(PREFIX) && !value.endsWith(".")) {
+                if (value != null && under(value, PREFIX) && !value.endsWith(".")) {
                     keys.add(value);
                 }
             } catch (IllegalAccessException e) {
@@ -110,6 +110,17 @@ final class LogKeys {
             }
         }
         return Set.copyOf(keys);
+    }
+
+    /**
+     * Whether a key belongs to a namespace: equal to the prefix, or below it on a dot boundary —
+     * the same fence {@code KnownKeys} applies (commons cannot depend on ioc, so the three lines
+     * live here too). {@link #PREFIX} ends with a dot, which already makes {@code startsWith}
+     * exact; the boundary form keeps the idiom single if that ever changes.
+     */
+    private static boolean under(String key, String prefix) {
+        return key.equals(prefix)
+            || key.startsWith(prefix.endsWith(".") ? prefix : prefix + ".");
     }
 
     private LogKeys() {}

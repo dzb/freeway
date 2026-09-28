@@ -15,7 +15,6 @@ import com.jujin.freeway.ioc.symbol.SymbolSpec;
 import java.time.Duration;
 import java.util.function.Function;
 import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
-import com.jujin.freeway.cloud.CloudModule;
 
 /**
  * IoC wiring for resilience: {@link Retryer} / {@link CircuitBreaker} /

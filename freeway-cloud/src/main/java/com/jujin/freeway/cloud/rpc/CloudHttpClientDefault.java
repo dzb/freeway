@@ -36,7 +36,6 @@ import java.util.concurrent.Executors;
 
 import javax.net.ssl.SSLContext;
 import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
-import com.jujin.freeway.cloud.CloudModule;
 
 /**
  * Default {@link CloudHttpClient} — a JDK {@link HttpClient}-backed

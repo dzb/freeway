@@ -113,6 +113,13 @@ public record KnownKeys(Set<String> prefixes, Set<String> keys) {
                     + " (KnownKeys.of(" + keysClass.getSimpleName() + ".class, \"<prefix>\"))"
                     + " or move the constant out of the key table");
         }
+        if (keys.isEmpty()) {
+            throw new IllegalStateException(
+                keysClass.getName() + " yields no keys under " + declared
+                    + " — an empty vocabulary silently switches the check off for that namespace."
+                    + " Use KnownKeys.admit(...) for a family that can never be listed,"
+                    + " or remove the contribution");
+        }
         return new KnownKeys(declared, keys);
     }
 
