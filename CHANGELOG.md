@@ -58,7 +58,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `KnownKeys.of` 空收割即绑定期失败（指引 `admit()`），`BootModule` 的 logging 词表为空同样启动失败——空词表不再静默关闭检测。
 - 全空 `InvocationContext` 不再跨执行器传播：三子上下文全 null 的 present 上下文按无上下文跑裸（与 mesh 入站同规则）。同批把这条规则收进 `InvocationContext` 本体（`carriesNothing()`，`runWith`/`replaceAmbient` 与入站 `PropagationFilter` 一律按"没带东西"处理），并修掉它暴露的真实缺陷：`TracerDefault` 在没有 ambient 时用 `Baggage.empty()` 顶替 null——那正是"请求没带 baggage 头、handler 却读到空 baggage"的来源（此前被"入站过滤器绑定了一个空白上下文"掩盖，`BaggagePropagationTest` 的既有契约因此才成立）。
 - `ModuleDiscovery` 跳过匿名/synthetic 模块类（与 `ModuleNode` 的 nameless 排除一致）；`HttpModule` 退役探测改用与 `KnownKeys`/`LogKeys` 相同的 dot 边界（`PREFIX + "."`），命名空间本体与兄弟命名空间都不再算孪生；19 处未用 outer-module import 清理（`ConfigKeys` 嵌套 import 保留）。
-- 排序引用分必需与条件：`Ordering` 新增 `beforeIfPresent/afterIfPresent`——缺席的可选伴侣是配置而非错误（`validateOrdering` 与 `all()` 双双放行），必需引用维持原语义（hook 路径 fail-fast、通用路径 WARN）。`DbModule` 迁移 hook 与云侧 discovery/RPC hook 切到条件形：纯 DB 应用、无 HTTP 的 discovery 不再死于缺席的 `freeway.http.server` 锚点；`RpcExportHook` 零导出时直接返回（纯 client 不再需要 `JsonCodec`）。`CloudEventModule` 保持必需（该平面事实需要 Http，缺席报错点名缺失模块更准）。
+- 排序引用分必需与条件：`Ordering` 新增 `beforeIfPresent/afterIfPresent`——缺席的可选伴侣是配置而非错误（`validateOrdering` 与 `all()` 双双放行），必需引用维持原语义（hook 路径 fail-fast、通用路径 WARN）。`DbModule` 迁移 hook 与云侧 discovery/RPC hook 切到条件形：纯 DB 应用、无 HTTP 的 discovery 不再死于缺席的 `freeway.http.server` 锚点；`RpcExportHook` 零导出时直接返回（启动期不再要求 `JsonCodec`——注意 `RemoteCaller` 首次解析时仍需要它，该绑定来自 `HttpModule`；只用 `CloudHttpClient` 的纯 client 才真的不需要）。`CloudEventModule` 保持必需（该平面事实需要 Http，缺席报错点名缺失模块更准）。
 - 线程作用域清理跟着条目走：`ScopedCache.get(key, factory, onExit)` 新重载，scope 退出跑条目清理（首注册胜出、异常记 WARN 不中断）；容器删 JVM-global 旁表与类加载期钩子，关容器后退出的 scope 照常跑生命周期。原 `onClose` 机制保留给 ext/应用。
 
 ### Migration
@@ -67,7 +67,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | 旧 API / 行为 | 新 API / 行为 |
 |---|---|
-| `freeway.db.schema.auto=true/false` | `freeway.db.schema.mode=auto/off`；生产再加一档 `validate`（迁移后比对实体与库，漂移即启动失败）。旧键删除，配置即 WARN 指新键（true→auto/false→off 的映射写进行）；键表保留常量供词表静默 |
+| `freeway.db.schema.auto=true/false` | `freeway.db.schema.mode=auto/off`；生产再加一档 `validate`（迁移后比对实体与库，漂移即启动失败）。旧键删除且**值不生效**：**只设旧键时启动失败**，报错点名新键与 true→auto/false→off——旧键是生产唯一能表达"不要自动 DDL"的开关，静默落到默认 `auto` 等于把生产切到启动收敛；两者都设时新键生效、旧键值被忽略并 WARN；键表保留常量供词表静默 |
 | Schema 与 migration 启动期都跑（Schema 先） | `auto` 原序不变；`validate` 改为 migration 先、比对后——比对必须发生在迁移带库追平之后 |
 | `Schema.ensure` 内联检查+应用 | 检查半抽成 `inspect`：`ensure` 执行、`validate` 上报（`Schema.validate(db, …)` 返回漂移行）；日志/计数/主键保护错与原来逐字一致 |
 

@@ -411,7 +411,7 @@ CLI 参数（`--freeway.config.file=...`）同样无效——启动时会打 WAR
 
 | 键 | 档 | 类型 | 默认值 | 必填 | 说明 |
 |----|------|------|--------|------|------|
-| `freeway.db.schema.mode` | 姿态 | String | `auto` | 否 | Schema DDL 姿态：`auto` 启动收敛（开发零摩擦）；`validate` 跑完迁移后比对实体与库、不一致启动失败（生产）；`off` 跳过。退役 `freeway.db.schema.auto`（true→auto/false→off），配置即 WARN 指新键 |
+| `freeway.db.schema.mode` | 姿态 | String | `auto` | 否 | Schema DDL 姿态：`auto` 启动收敛（开发零摩擦）；`validate` 跑完迁移后比对实体与库、不一致启动失败（生产）；`off` 跳过。退役 `freeway.db.schema.auto` 且值**不生效**：只设旧键时**启动失败**并指明新键与 true→auto/false→off（否则原本生产 `false` 的部署会静默落到默认 `auto`）；两者都设时新键生效、旧键值被忽略并 WARN |
 | `freeway.db.schema.groups` | 调优 | String | *(空)* | 否 | 逗号分隔的 Schema 组过滤。空 = 所有组 |
 
 #### 迁移
