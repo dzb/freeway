@@ -53,11 +53,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- `BeanIntrospector.selectConstructor` 并发首算各返各的包装器：现返回 map 胜者（包装器不可变且按构造器内联，选择语义不变，并发下 `assertSame` 亦成立）。
+- `BeanIntrospector.selectConstructor` 并发首算各返各的包装器：现返回 map 胜者（包装器不可变；身份唯一由 `selectConstructor` 保证——`BeanConstructor.of(...)` 每次新分配，只有 MethodHandle 是缓存的；选择语义不变，并发下 `assertSame` 亦成立）。
 - `UnknownKeysHook` 跨词表建议去重：两词表列出同一拼写曾点名两次，现拼接去重后取前 3（各词表内仍按距离近优先、同距离按字母序）。
 - `KnownKeys.of` 空收割即绑定期失败（指引 `admit()`），`BootModule` 的 logging 词表为空同样启动失败——空词表不再静默关闭检测。
-- 全空 `InvocationContext` 不再跨执行器传播：三子上下文全 null 的 present 上下文按无上下文跑裸（与 mesh 入站同规则）。
-- `ModuleDiscovery` 跳过匿名/synthetic 模块类（与 `ModuleNode` 的 nameless 排除一致）；`HttpModule` 退役探测跳过 `PREFIX` 本体；`LogKeys` 键过滤与 `KnownKeys` 同一 dot-boundary 栅栏；19 处未用 outer-module import 清理（`ConfigKeys` 嵌套 import 保留）。
+- 全空 `InvocationContext` 不再跨执行器传播：三子上下文全 null 的 present 上下文按无上下文跑裸（与 mesh 入站同规则）。同批把这条规则收进 `InvocationContext` 本体（`carriesNothing()`，`runWith`/`replaceAmbient` 与入站 `PropagationFilter` 一律按"没带东西"处理），并修掉它暴露的真实缺陷：`TracerDefault` 在没有 ambient 时用 `Baggage.empty()` 顶替 null——那正是"请求没带 baggage 头、handler 却读到空 baggage"的来源（此前被"入站过滤器绑定了一个空白上下文"掩盖，`BaggagePropagationTest` 的既有契约因此才成立）。
+- `ModuleDiscovery` 跳过匿名/synthetic 模块类（与 `ModuleNode` 的 nameless 排除一致）；`HttpModule` 退役探测改用与 `KnownKeys`/`LogKeys` 相同的 dot 边界（`PREFIX + "."`），命名空间本体与兄弟命名空间都不再算孪生；19 处未用 outer-module import 清理（`ConfigKeys` 嵌套 import 保留）。
 - 排序引用分必需与条件：`Ordering` 新增 `beforeIfPresent/afterIfPresent`——缺席的可选伴侣是配置而非错误（`validateOrdering` 与 `all()` 双双放行），必需引用维持原语义（hook 路径 fail-fast、通用路径 WARN）。`DbModule` 迁移 hook 与云侧 discovery/RPC hook 切到条件形：纯 DB 应用、无 HTTP 的 discovery 不再死于缺席的 `freeway.http.server` 锚点；`RpcExportHook` 零导出时直接返回（纯 client 不再需要 `JsonCodec`）。`CloudEventModule` 保持必需（该平面事实需要 Http，缺席报错点名缺失模块更准）。
 - 线程作用域清理跟着条目走：`ScopedCache.get(key, factory, onExit)` 新重载，scope 退出跑条目清理（首注册胜出、异常记 WARN 不中断）；容器删 JVM-global 旁表与类加载期钩子，关容器后退出的 scope 照常跑生命周期。原 `onClose` 机制保留给 ext/应用。
 

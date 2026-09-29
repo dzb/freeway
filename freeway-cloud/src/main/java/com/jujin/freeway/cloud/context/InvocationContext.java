@@ -57,11 +57,12 @@ public final class InvocationContext {
      * Replaces this thread's ambient fallback and returns the previous one
      * ({@code null} when none was set). Callers must restore the returned
      * value when their scope ends — save/restore stays correct even for
-     * out-of-order closes. Pass {@code null} to clear.
+     * out-of-order closes. Pass {@code null} — or a context that carries
+     * nothing — to clear.
      */
     public static InvocationContext replaceAmbient(InvocationContext ctx) {
         InvocationContext previous = AMBIENT.get();
-        if (ctx == null) {
+        if (ctx == null || ctx.carriesNothing()) {
             AMBIENT.remove();
         } else {
             AMBIENT.set(ctx);
@@ -69,14 +70,36 @@ public final class InvocationContext {
         return previous;
     }
 
-    /** Runs {@code work} with this context bound for the current thread (and its virtual-thread children). */
+    /**
+     * Runs {@code work} with this context bound for the current thread (and its virtual-thread
+     * children). A context that carries nothing is treated as absent: the work runs bare rather than
+     * under an empty binding, so "nothing to propagate" has one meaning on every path.
+     */
     public static <T, X extends Throwable> T runWith(InvocationContext ctx, ScopedValue.CallableOp<? extends T, X> work) throws X {
+        if (ctx.carriesNothing()) {
+            return work.call();
+        }
         return ScopedValue.where(CURRENT, ctx).call(work);
     }
 
-    /** Runs {@code work} with this context bound for the current thread. */
+    /** Runs {@code work} with this context bound for the current thread; a blank context runs bare. */
     public static void runWith(InvocationContext ctx, Runnable work) {
+        if (ctx.carriesNothing()) {
+            work.run();
+            return;
+        }
         ScopedValue.where(CURRENT, ctx).run(work);
+    }
+
+    /**
+     * Whether this context carries nothing: every sub-context is unset. Such a context is
+     * indistinguishable from no context — {@link #runWith} and {@link #replaceAmbient} treat it as
+     * absent rather than binding an empty one, and cloud's async carrier dispatches bare for it. The
+     * rule lives here so that adding a sub-context cannot leave a caller deciding "empty" from a
+     * stale field list.
+     */
+    public boolean carriesNothing() {
+        return trace == null && principal == null && baggage == null;
     }
 
     public TraceContext trace() {
