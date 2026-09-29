@@ -308,6 +308,54 @@ class ScopedCacheTest {
         // should not throw NPE
     }
 
+    // ==================== entry cleanup ====================
+
+    @Test
+    void entryCleanupRunsOnceOnScopeExit() {
+        AtomicInteger cleaned = new AtomicInteger();
+        Object[] seen = new Object[1];
+        ScopedCache.within(() -> {
+            String value = ScopedCache.get("k", () -> "v", v -> {
+                cleaned.incrementAndGet();
+                seen[0] = v;
+            });
+            assertEquals("v", value);
+            assertEquals(0, cleaned.get());
+            return null;
+        });
+
+        assertEquals(1, cleaned.get());
+        assertEquals("v", seen[0]);
+    }
+
+    @Test
+    void entryCleanupSkippedOutsideScope() {
+        AtomicInteger cleaned = new AtomicInteger();
+        Object value = ScopedCache.get("k", () -> "v", v -> cleaned.incrementAndGet());
+
+        assertEquals("v", value);
+        assertEquals(0, cleaned.get(),
+            "outside a scope the caller owns lifecycle: the cleanup never runs");
+    }
+
+    @Test
+    void sharedValueRunsFirstCleanupOnce() {
+        // First registration wins: one instance under two keys runs only the
+        // first key's cleanup — the entry-level mirror of the remove()-once
+        // membership claim the container side replaces.
+        AtomicInteger first = new AtomicInteger();
+        AtomicInteger second = new AtomicInteger();
+        Object shared = new Object();
+        ScopedCache.within(() -> {
+            ScopedCache.get("a", () -> shared, v -> first.incrementAndGet());
+            ScopedCache.get("b", () -> shared, v -> second.incrementAndGet());
+            return null;
+        });
+
+        assertEquals(1, first.get());
+        assertEquals(0, second.get());
+    }
+
     // ====================== Defer nesting contract ======================
 
     @Test

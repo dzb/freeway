@@ -139,13 +139,16 @@ public final class Extension<T> {
     }
 
     /**
-     * Fails fast when any {@code before/after} ordering reference points to
-     * an unknown contribution id. The generic {@link #all()} ordering stays
-     * lenient — unknown references are WARNed and ignored — because a
-     * missing sibling is harmless for most extension points. Strict
-     * consumers (e.g. runtime-hook ordering in the boot layer) call this
-     * before resolving so a typo like {@code after("freeway.http.serve")}
-     * fails startup instead of silently running hooks in the wrong order.
+     * Fails fast when any required {@code before/after} ordering reference
+     * points to an unknown contribution id. Conditional references
+     * ({@code beforeIfPresent/afterIfPresent}) are never validated: an absent
+     * optional companion is a configuration, not an error. The generic
+     * {@link #all()} ordering stays lenient for required references too —
+     * unknown ones are WARNed and ignored — because a missing sibling is
+     * harmless for most extension points. Strict consumers (e.g. runtime-hook
+     * ordering in the boot layer) call this before resolving so a typo like
+     * {@code after("freeway.http.serve")} fails startup instead of silently
+     * running hooks in the wrong order.
      *
      * @throws IllegalStateException naming the missing id, the ordering
      *         method, and the contribution that declared the reference
@@ -209,7 +212,8 @@ public final class Extension<T> {
         if (
             entries
                 .stream()
-                .allMatch(e -> e.afterIds.isEmpty() && e.beforeIds.isEmpty())
+                .allMatch(e -> e.afterIds.isEmpty() && e.beforeIds.isEmpty()
+                    && e.afterIfPresentIds.isEmpty() && e.beforeIfPresentIds.isEmpty())
         ) {
             List<T> values = new ArrayList<>(entries.size());
             for (Entry e : entries) values.add(e.value);
@@ -246,6 +250,23 @@ public final class Extension<T> {
                 Entry target = byId.get(id);
                 if (target == null) {
                     warnMissing(id, "before()", entry);
+                    continue;
+                }
+                addEdge(entry, target, outgoing, indegree);
+            }
+            // Conditional references are vacuous when absent — no warning:
+            // absence is an expected configuration, and warning on every
+            // startup would punish every legitimate subset composition.
+            for (String id : entry.afterIfPresentIds) {
+                Entry dep = byId.get(id);
+                if (dep == null) {
+                    continue;
+                }
+                addEdge(dep, entry, outgoing, indegree);
+            }
+            for (String id : entry.beforeIfPresentIds) {
+                Entry target = byId.get(id);
+                if (target == null) {
                     continue;
                 }
                 addEdge(entry, target, outgoing, indegree);
@@ -375,6 +396,8 @@ public final class Extension<T> {
         final T value;
         final List<String> beforeIds = new ArrayList<>();
         final List<String> afterIds = new ArrayList<>();
+        final List<String> beforeIfPresentIds = new ArrayList<>();
+        final List<String> afterIfPresentIds = new ArrayList<>();
 
         Entry(String id, T value) {
             this.id = id;
@@ -396,6 +419,26 @@ public final class Extension<T> {
             requireMutable("after()");
             for (String s : ids) {
                 afterIds.add(Objects.requireNonNull(s, "id").trim());
+            }
+            invalidateOrder();
+            return this;
+        }
+
+        @Override
+        public Ordering beforeIfPresent(String... ids) {
+            requireMutable("beforeIfPresent()");
+            for (String s : ids) {
+                beforeIfPresentIds.add(Objects.requireNonNull(s, "id").trim());
+            }
+            invalidateOrder();
+            return this;
+        }
+
+        @Override
+        public Ordering afterIfPresent(String... ids) {
+            requireMutable("afterIfPresent()");
+            for (String s : ids) {
+                afterIfPresentIds.add(Objects.requireNonNull(s, "id").trim());
             }
             invalidateOrder();
             return this;

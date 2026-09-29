@@ -6,8 +6,8 @@ import com.jujin.freeway.db.schema.Id;
 import com.jujin.freeway.db.schema.Table;
 
 /**
- * The entity: a record with schema annotations; {@code schema.auto} (on by
- * default) creates the table before HTTP starts. Mapped to {@code t_user}
+ * The entity: a record with schema annotations; {@code schema.mode} ({@code auto}
+ * by default) creates the table before HTTP starts. Mapped to {@code t_user}
  * because {@code user} is a reserved word.
  */
 @Table("t_user")

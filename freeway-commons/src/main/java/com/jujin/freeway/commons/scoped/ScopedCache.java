@@ -154,6 +154,27 @@ public final class ScopedCache {
         return factory.get();
     }
 
+    /**
+     * Inside a scope, returns the cached value for {@code key}, creating it
+     * via {@code factory} on first access and running {@code onExit} with it
+     * once when the scope exits. Outside a scope — including other threads —
+     * creates and returns without caching and without cleanup registration;
+     * the caller owns the value and its lifecycle, and {@code onExit} never
+     * runs. A cached key ignores later registrations (factory and cleanup
+     * alike): first creation wins.
+     */
+    @SuppressWarnings("unchecked")
+    public static <V> V get(Object key, Supplier<V> factory, Consumer<V> onExit) {
+        Objects.requireNonNull(key, "key");
+        Objects.requireNonNull(factory, "factory");
+        if (CURRENT.isBound()) {
+            Session session = CURRENT.get();
+            return (V) session.getOrCreate(key, (Supplier<Object>) factory,
+                onExit == null ? null : v -> onExit.accept((V) v));
+        }
+        return factory.get();
+    }
+
     // ==================== cleanup ====================
 
     /**
@@ -194,6 +215,8 @@ public final class ScopedCache {
      */
     public static final class Session {
         private final Map<Object, Object> cache = new LinkedHashMap<>();
+        /** Per-entry exit cleanup, keyed like {@link #cache} — first registration wins. */
+        private final Map<Object, Consumer<Object>> cleanups = new LinkedHashMap<>();
         private volatile boolean closed;
         /**
          * Guards cache/closed. A dedicated object — Session handles escape
@@ -205,6 +228,10 @@ public final class ScopedCache {
         Session() {}
 
         Object getOrCreate(Object key, Supplier<Object> factory) {
+            return getOrCreate(key, factory, null);
+        }
+
+        Object getOrCreate(Object key, Supplier<Object> factory, Consumer<Object> onExit) {
             synchronized (lock) {
                 if (closed) {
                     throw new IllegalStateException("Session is closed");
@@ -214,6 +241,9 @@ public final class ScopedCache {
                 }
                 Object created = factory.get();
                 cache.put(key, created);
+                if (onExit != null) {
+                    cleanups.putIfAbsent(key, onExit);
+                }
                 return created;
             }
         }
@@ -224,17 +254,29 @@ public final class ScopedCache {
                     return;
                 }
                 closed = true;
-                if (ON_CLOSE.isEmpty()) {
-                    cache.clear();
+                List<Map.Entry<Object, Object>> snapshot = cache.entrySet().stream()
+                        .filter(e -> e.getValue() != null).toList();
+                Map<Object, Consumer<Object>> pending = new LinkedHashMap<>(cleanups);
+                cache.clear();
+                cleanups.clear();
+                if (snapshot.isEmpty()) {
                     return;
                 }
-                List<Object> values = cache.values().stream()
-                        .filter(v -> v != null).toList();
-                cache.clear();
                 Set<Object> seen = Collections.newSetFromMap(new IdentityHashMap<>());
-                for (Object value : values) {
+                for (Map.Entry<Object, Object> entry : snapshot) {
+                    Object value = entry.getValue();
                     if (!seen.add(value)) {
                         continue;
+                    }
+                    // Entry cleanup first: it replaces the container's old global-hook claim,
+                    // which ran before any later-registered handler by registration order.
+                    Consumer<Object> cleanup = pending.get(entry.getKey());
+                    if (cleanup != null) {
+                        try {
+                            cleanup.accept(value);
+                        } catch (Throwable ex) {
+                            LOG.warn("ScopedCache cleanup failed", ex);
+                        }
                     }
                     for (Consumer<Object> handler : ON_CLOSE) {
                         try {

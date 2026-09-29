@@ -35,6 +35,7 @@ import java.util.Locale;
  *   <li>Table exists, column missing → {@code ALTER TABLE ADD COLUMN}</li>
  *   <li>Table exists, index missing → {@code CREATE INDEX IF NOT EXISTS} or an explicit existence check</li>
  *   <li>Never drops existing columns/indexes or alters existing column types</li>
+ *   <li>Validate only reports the same gaps without applying anything (see {@link #validate})</li>
  * </ul>
  *
  * <h3>Supported annotations</h3>
@@ -127,8 +128,123 @@ public final class Schema {
         requireTransactionalDdlSafe(db, dialect, "ensure");
 
         SchemaGenerator gen = new SchemaGenerator(dialect);
-        int executed = 0;
+        List<Unit> units = new ArrayList<>(entityTypes.length);
+        for (Class<?> type : entityTypes) {
+            units.add(new Unit(gen.define(type), type.getSimpleName()));
+        }
 
+        int executed = 0;
+        for (Drift drift : inspect(db, dialect, gen, units, false)) {
+            switch (drift.kind()) {
+                case TABLE -> {
+                    LOG.info("Creating table: {}", drift.table());
+                    db.execute(drift.sql());
+                    executed++;
+                }
+                case COLUMN -> {
+                    if (drift.sql() == null) {
+                        throw new SqlException(
+                            "Cannot add column '" +
+                                drift.detail() +
+                                "' to existing table " +
+                                drift.table() +
+                                " — adding key/identity columns to an existing table " +
+                                "requires a table rebuild; only nullable plain columns " +
+                                "can be added via ALTER"
+                        );
+                    }
+                    LOG.info("Adding column: {}.{}", drift.table(), drift.detail());
+                    db.execute(drift.sql());
+                    executed++;
+                }
+                case INDEX -> {
+                    LOG.info("Ensuring index on {}", drift.table());
+                    db.execute(drift.sql());
+                }
+            }
+        }
+
+        if (executed > 0) {
+            LOG.info("AutoMigrate applied {} change(s)", executed);
+        }
+        return executed;
+    }
+
+    /**
+     * Compares the declared entities against the live database without applying
+     * anything: every missing table, column or index is returned as a drift
+     * line naming the entity that declares it. Empty means the entities and
+     * the database agree.
+     *
+     * <p>Read-only — safe on dialects without transactional DDL and inside a
+     * transaction. Existence only: column types are not compared, so a drifted
+     * type still needs a human-written migration.
+     *
+     * @param db          database connection
+     * @param entityTypes entity classes annotated with @Table, @Id, etc.
+     * @return drift descriptions, empty when nothing is missing
+     */
+    public static List<String> validate(Database db, Class<?>... entityTypes) {
+        Objects.requireNonNull(db, "db");
+        if (entityTypes == null || entityTypes.length == 0) {
+            return List.of();
+        }
+        Dialect dialect = db.dialect();
+        SchemaGenerator gen = new SchemaGenerator(dialect);
+        List<Unit> units = new ArrayList<>(entityTypes.length);
+        for (Class<?> type : entityTypes) {
+            units.add(new Unit(gen.define(type), type.getSimpleName()));
+        }
+        List<String> drift = new ArrayList<>();
+        for (Drift drifted : inspect(db, dialect, gen, units, true)) {
+            drift.add(describe(drifted));
+        }
+        return drift;
+    }
+
+    private static String describe(Drift drift) {
+        return switch (drift.kind()) {
+            case TABLE ->
+                "table '" + drift.table() + "' is missing (entity " + drift.source() + " declares it)";
+            case COLUMN ->
+                "table '" + drift.table() + "' is missing column '" + drift.detail()
+                    + "' (entity " + drift.source() + " declares it)";
+            case INDEX ->
+                "table '" + drift.table() + "' is missing index '" + drift.detail()
+                    + "' (entity " + drift.source() + " declares it)";
+        };
+    }
+
+    private enum DriftKind {
+        TABLE, COLUMN, INDEX
+    }
+
+    /**
+     * One gap between the declared entities and the live database, plus the
+     * DDL that would close it — null when no automatic DDL exists (a
+     * key/identity column on an existing table needs a rebuild, not an
+     * ALTER).
+     */
+    private record Drift(DriftKind kind, String table, String detail, String source, String sql) {
+    }
+
+    /** A table definition with the entity that declares it, for drift messages. */
+    private record Unit(TableDef table, String source) {
+    }
+
+    /**
+     * The gap between the declared entities and the live database, computed
+     * without applying anything: {@link #ensure} executes it, {@link #validate}
+     * reports it.
+     *
+     * @param verifyIndexes whether index existence is always introspected.
+     *        {@code ensure} passes false to keep its standing behavior (dialects
+     *        with {@code IF NOT EXISTS} rely on idempotent DDL instead);
+     *        {@code validate} passes true because it has no DDL to lean on.
+     */
+    private static List<Drift> inspect(
+        Database db, Dialect dialect, SchemaGenerator gen, List<Unit> units, boolean verifyIndexes
+    ) {
         // Introspection failures must not be read as "the database is empty":
         // that would generate CREATE TABLE / CREATE INDEX against an unknown
         // current state (e.g. pg_indexes is absent on H2 in PostgreSQL mode).
@@ -141,27 +257,22 @@ public final class Schema {
                 "Schema introspection failed to list existing tables (dialect '{}')"
                     + " — skipping schema auto-DDL: {}",
                 dialect.dialectId(), e.getMessage());
-            return 0;
+            return List.of();
         }
         if (LOG.isDebugEnabled()) {
             LOG.debug("Existing tables in schema: {}", existingTables);
         }
 
-        List<TableDef> tableDefs = new ArrayList<>(entityTypes.length);
-        for (Class<?> type : entityTypes) {
-            tableDefs.add(gen.define(type));
-        }
-
-        for (TableDef table : tableDefs) {
+        List<Drift> drifts = new ArrayList<>();
+        for (Unit unit : units) {
+            TableDef table = unit.table();
             String tableName = table.name();
             String normalizedTableName = tableName.toLowerCase(Locale.ROOT);
 
             if (!existingTables.contains(normalizedTableName)) {
-                String ddl = gen.generateTable(table);
-                LOG.info("Creating table: {}", tableName);
-                db.execute(ddl);
+                drifts.add(new Drift(DriftKind.TABLE, tableName,
+                    "table is missing", unit.source(), gen.generateTable(table)));
                 existingTables.add(normalizedTableName);
-                executed++;
                 continue;
             }
 
@@ -181,7 +292,10 @@ public final class Schema {
             }
 
             for (ColumnDef col : table.columns()) {
-                if (!existingCols.contains(col.name().toLowerCase(Locale.ROOT))) {
+                if (existingCols.contains(col.name().toLowerCase(Locale.ROOT))) {
+                    continue;
+                }
+                if (col.primaryKey() || col.generated()) {
                     // ALTER TABLE ADD COLUMN cannot carry a primary key or an
                     // identity/generated clause on MySQL (error 1075) or
                     // SQLite (constraints silently stripped). PostgreSQL/H2
@@ -189,38 +303,30 @@ public final class Schema {
                     // uniform: a schema evolution that adds a key column
                     // deserves an explicit rebuild, not dialect-dependent
                     // behavior.
-                    if (col.primaryKey() || col.generated()) {
-                        throw new SqlException(
-                            "Cannot add column '" +
-                                col.name() +
-                                "' to existing table " +
-                                tableName +
-                                " — adding key/identity columns to an existing table " +
-                                "requires a table rebuild; only nullable plain columns " +
-                                "can be added via ALTER"
-                        );
-                    }
-                    // SQLite cannot add NOT NULL without a DEFAULT — strip the
-                    // constraint there per the dialect's declaration.
-                    String alter = "ALTER TABLE " +
-                        dialect.quoteName(tableName) +
-                        " " +
-                        col.toAlterSql(
-                            dialect,
-                            dialect.alterAddColumnNotNull(),
-                            true
-                        );
-                    LOG.info("Adding column: {}.{}", tableName, col.name());
-                    db.execute(alter);
-                    executed++;
+                    drifts.add(new Drift(DriftKind.COLUMN, tableName,
+                        col.name(), unit.source(), null));
+                    continue;
                 }
+                // SQLite cannot add NOT NULL without a DEFAULT — strip the
+                // constraint there per the dialect's declaration.
+                String alter = "ALTER TABLE " +
+                    dialect.quoteName(tableName) +
+                    " " +
+                    col.toAlterSql(
+                        dialect,
+                        dialect.alterAddColumnNotNull(),
+                        true
+                    );
+                drifts.add(new Drift(DriftKind.COLUMN, tableName,
+                    col.name(), unit.source(), alter));
             }
         }
 
         // Indexes: dialects that do not support IF NOT EXISTS must skip existing indexes.
-        for (TableDef table : tableDefs) {
+        for (Unit unit : units) {
+            TableDef table = unit.table();
             Set<String> existingIndexes;
-            if (dialect.supportsIndexIfNotExists()) {
+            if (!verifyIndexes && dialect.supportsIndexIfNotExists()) {
                 existingIndexes = Set.of();
             } else {
                 try {
@@ -242,15 +348,11 @@ public final class Schema {
                     existingIndexes.contains(index.name().toLowerCase(Locale.ROOT))) {
                     continue;
                 }
-                LOG.info("Ensuring index on {}", table.name());
-                db.execute(index.toSql(dialect, table.name()));
+                drifts.add(new Drift(DriftKind.INDEX, table.name(),
+                    index.name(), unit.source(), index.toSql(dialect, table.name())));
             }
         }
-
-        if (executed > 0) {
-            LOG.info("AutoMigrate applied {} change(s)", executed);
-        }
-        return executed;
+        return drifts;
     }
 
     /**

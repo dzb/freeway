@@ -7,6 +7,7 @@ import com.jujin.freeway.ioc.MissingBindingException;
 import com.jujin.freeway.ioc.RuntimeHook;
 import java.io.IOException;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,10 +38,14 @@ final class RpcExportHook implements RuntimeHook {
 
     @Override
     public void start(Container container) {
+        List<RpcExport> exports = container.extension(RpcExport.class).all();
+        if (exports.isEmpty()) {
+            return; // pure client: no server-side exports to assemble, and no JsonCodec is needed
+        }
         JsonCodec json = container.get(JsonCodec.class);
 
         Map<String, RpcTarget> declared = new LinkedHashMap<>();
-        for (RpcExport export : container.extension(RpcExport.class).all()) {
+        for (RpcExport export : exports) {
             RpcTarget duplicate = declared.putIfAbsent(export.mapping(),
                 RpcTarget.of(export, handler(container, export)));
             if (duplicate != null) {

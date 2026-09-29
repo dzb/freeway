@@ -229,9 +229,10 @@
 #  Database / Schema (auto-DDL from @Table entities)
 # ================================
 
-# Enable auto-DDL at startup.
-# Scenario: true for local dev (zero-friction iteration); NEVER true in production.
-# freeway.db.schema.auto=true
+# Schema DDL posture: auto (converge at startup, dev), validate (compare after
+# migrations, fail on drift, prod), off (skip). validate runs AFTER the
+# migration files so the entities are compared against the migrated database.
+# freeway.db.schema.mode=auto
 
 # Comma-separated group filter — only run named SchemaEntity groups.
 # Empty = all groups.

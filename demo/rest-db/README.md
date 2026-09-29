@@ -11,8 +11,8 @@ when composing a new app.
   `UserModule` (the app), `HttpModule`, `DbModule`. Nothing else can take
   part.
 - **Annotation-driven schema** — the `User` record carries `@Table`/`@Id`/
-  `@Column`; a `SchemaEntity` contribution plus `freeway.db.schema.auto`
-  (on by default) creates the table before the HTTP server starts.
+  `@Column`; a `SchemaEntity` contribution plus `freeway.db.schema.mode`
+  (`auto` by default) creates the table before the HTTP server starts.
 - **Routes as contributions** — three `Route` contributions, handler classes
   resolved from the container at startup (misconfigured handlers fail
   startup, not the first request).

@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
@@ -46,13 +47,20 @@ final class ContributionRegistry {
     private final List<Runnable> deferredConfig = new ArrayList<>();
     /** Class/factory contributions of every other entry type. */
     private final List<Runnable> deferredEntries = new ArrayList<>();
+    /** Entry types drained before all others — the config chain's inputs. */
+    private final Set<Class<?>> earlyTypes;
 
     /** Set by {@link #seal()}; gates both mutations and future stores. */
     private volatile boolean composed;
 
-    ContributionRegistry(ContainerImpl container, CoercerDefault coercer) {
+    ContributionRegistry(ContainerImpl container, CoercerDefault coercer, Set<Class<?>> earlyTypes) {
         this.container = Objects.requireNonNull(container, "container");
         this.coercer = Objects.requireNonNull(coercer, "coercer");
+        // The entry types whose deferred creations drain before all others — the config chain's
+        // inputs, named by the assembler that owns both sides (the container builds the chain
+        // from these same extension points). A closed set by construction: a new chain input is
+        // a new chain, edited here at the call site, not a row in this registry.
+        this.earlyTypes = Set.copyOf(Objects.requireNonNull(earlyTypes, "earlyTypes"));
     }
 
     /** The store for {@code entryType}, created on first touch — sealed on
@@ -117,23 +125,11 @@ final class ContributionRegistry {
     }
 
     private void defer(Class<?> entryType, Runnable create) {
-        if (isConfigLayer(entryType)) {
+        if (earlyTypes.contains(entryType)) {
             deferredConfig.add(create);
         } else {
             deferredEntries.add(create);
         }
-    }
-
-    /**
-     * True for entry types the config chain reads: their class contributions
-     * must materialize before any other deferred consumer constructs (those
-     * resolve {@code @Symbol} and coerce while they build).
-     * Hard-coded to the two types that have this property — honest for a set
-     * of two, no descriptor table to keep in sync.
-     */
-    private static boolean isConfigLayer(Class<?> entryType) {
-        return entryType == SymbolProvider.class
-            || entryType == CoerceRule.class;
     }
 
     /**
@@ -184,11 +180,15 @@ final class ContributionRegistry {
     private final class DeferredOrdering implements Ordering {
         private final List<String> beforeIds = new ArrayList<>();
         private final List<String> afterIds = new ArrayList<>();
+        private final List<String> beforeIfPresentIds = new ArrayList<>();
+        private final List<String> afterIfPresentIds = new ArrayList<>();
         private boolean applied;
 
         void apply(Ordering target) {
             if (!beforeIds.isEmpty()) target.before(beforeIds.toArray(new String[0]));
             if (!afterIds.isEmpty()) target.after(afterIds.toArray(new String[0]));
+            if (!beforeIfPresentIds.isEmpty()) target.beforeIfPresent(beforeIfPresentIds.toArray(new String[0]));
+            if (!afterIfPresentIds.isEmpty()) target.afterIfPresent(afterIfPresentIds.toArray(new String[0]));
             applied = true;
         }
 
@@ -203,6 +203,20 @@ final class ContributionRegistry {
         public Ordering after(String... ids) {
             requireComposing("after()");
             for (var id : ids) afterIds.add(Objects.requireNonNull(id, "id").trim());
+            return this;
+        }
+
+        @Override
+        public Ordering beforeIfPresent(String... ids) {
+            requireComposing("beforeIfPresent()");
+            for (var id : ids) beforeIfPresentIds.add(Objects.requireNonNull(id, "id").trim());
+            return this;
+        }
+
+        @Override
+        public Ordering afterIfPresent(String... ids) {
+            requireComposing("afterIfPresent()");
+            for (var id : ids) afterIfPresentIds.add(Objects.requireNonNull(id, "id").trim());
             return this;
         }
 

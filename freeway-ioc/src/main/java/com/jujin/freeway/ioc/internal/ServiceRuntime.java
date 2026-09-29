@@ -7,6 +7,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Manages service lifetime for one container: the proxy and target caches,
@@ -14,6 +16,7 @@ import java.util.function.Supplier;
  * by this container's {@link #realizeLock}.
  */
 final class ServiceRuntime {
+    private static final Logger LOG = LoggerFactory.getLogger(ServiceRuntime.class);
     /**
      * Serializes first-time realization of this container's singleton targets.
      * A single lock (not per-key stripes) prevents cross-stripe deadlock when
@@ -127,10 +130,18 @@ final class ServiceRuntime {
         // or two containers binding the same type and id would share one value
         // inside a scope.
         ScopeKey scoped = new ScopeKey(this, key);
-        return withCycleGuard(key, () -> binding.type().cast(ScopedCache.get(scoped, () -> {
-            Object created = binding.directInstance();
-            ContainerImpl.manageScopeValue(created);
-            return created;
+        // Lifecycle travels with the cache entry: scope exit runs it even when
+        // the container closed first, and no process-wide side set is needed.
+        return withCycleGuard(key, () -> binding.type().cast(ScopedCache.get(scoped,
+            binding::directInstance, v -> {
+            Lifecycle.invokePreDestroy(v);
+            if (v instanceof AutoCloseable c) {
+                try {
+                    c.close();
+                } catch (Exception e) {
+                    LOG.warn("Failed to close resource: {}", v.getClass().getName(), e);
+                }
+            }
         })));
     }
 

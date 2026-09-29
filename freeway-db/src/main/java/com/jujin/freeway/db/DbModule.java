@@ -15,6 +15,7 @@ import com.jujin.freeway.db.dialect.MySqlDialect;
 import com.jujin.freeway.db.dialect.PostgresDialect;
 import com.jujin.freeway.db.schema.Schema;
 import com.jujin.freeway.db.schema.SchemaEntity;
+import com.jujin.freeway.db.schema.SchemaMode;
 import com.jujin.freeway.db.dialect.SqliteDialect;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
@@ -45,7 +46,7 @@ import java.util.function.Function;
  *   <li>{@link Pool} — built-in; override via extension module with {@code .primary()}</li>
  *   <li>{@link Dialect} — auto-detected from JDBC URL or overridden via {@link ConfigKeys#DIALECT}</li>
  *   <li>{@link MigrationRunner} — versioned SQL migration at startup</li>
- *   <li>RuntimeHook that runs Schema auto-DDL and migrations before the HTTP server starts</li>
+ *   <li>RuntimeHook that runs Schema auto-DDL/validate and migrations before the HTTP server starts</li>
  * </ul>
  */
 @Marker(Builtin.class)
@@ -117,17 +118,27 @@ public final class DbModule implements ModuleEx {
             binder.contribute(CoerceRule.class).add(rule);
         }
 
-        // lifecycle: Schema (auto-DDL) → Migration (SQL evolution)
+        // lifecycle: Schema auto-DDL → Migration (SQL evolution) → Schema validate.
+        // Validate runs after the migrations (never before): the migrations
+        // bring the database current, then the entities are compared against it.
         binder
             .contribute(RuntimeHook.class)
             .add("freeway.db.migration", new RuntimeHook() {
                 @Override
                 public void start(Container container) {
-                    runSchema(container);
+                    SchemaMode mode = schemaMode(container.get(SymbolSource.class));
+                    if (mode == SchemaMode.AUTO) {
+                        runSchema(container);
+                    }
                     runMigration(container);
+                    if (mode == SchemaMode.VALIDATE) {
+                        validateSchema(container);
+                    }
                 }
             })
-            .before("freeway.http.server");
+            // Conditional: a migration runs before serving when a server exists, and a
+            // database-only application has no server to precede — absence is vacuous.
+            .beforeIfPresent("freeway.http.server");
     }
 
     private static final SymbolSpec<String> URL =
@@ -162,8 +173,8 @@ public final class DbModule implements ModuleEx {
             PoolConfig.DEFAULT_QUERY_TIMEOUT);
     private static final SymbolSpec<Boolean> MIGRATION_ENABLED =
         SymbolSpec.of(ConfigKeys.MIGRATION_ENABLED, Boolean.class, true);
-    private static final SymbolSpec<Boolean> SCHEMA_AUTO =
-        SymbolSpec.of(ConfigKeys.SCHEMA_AUTO, Boolean.class, true);
+    private static final SymbolSpec<SchemaMode> SCHEMA_MODE =
+        SymbolSpec.of(ConfigKeys.SCHEMA_MODE, SchemaMode.class, SchemaMode.AUTO, SchemaMode::of);
     private static final SymbolSpec<List<String>> SCHEMA_GROUPS =
         SymbolSpec.list(ConfigKeys.SCHEMA_GROUPS, List.of());
 
@@ -217,9 +228,6 @@ public final class DbModule implements ModuleEx {
 
     private static void runSchema(Container container) {
         SymbolSource s = container.get(SymbolSource.class);
-        if (!s.resolve(SCHEMA_AUTO)) {
-            return;
-        }
         var entities = container.extension(SchemaEntity.class).all();
         if (entities.isEmpty()) {
             return;
@@ -232,10 +240,7 @@ public final class DbModule implements ModuleEx {
         for (SchemaEntity se : entities) {
             if (se.entityTypes().length == 0) continue;
 
-            if (!enabledGroups.isEmpty() && !enabledGroups.contains(se.name())) {
-                LOG.debug("Schema group '{}' skipped (not in {})", se.name(), ConfigKeys.SCHEMA_GROUPS);
-                continue;
-            }
+            if (!groupAdmitted(se, enabledGroups)) continue;
 
             // The schema dialect always comes from the database.
             int ops = Schema.ensure(db, se.entityTypes());
@@ -247,6 +252,67 @@ public final class DbModule implements ModuleEx {
         if (total > 0) {
             LOG.info("Schema auto-migration applied {} total change(s)", total);
         }
+    }
+
+    /**
+     * Compares the declared entities against the migrated database without
+     * applying anything: every drift fails startup with the missing object
+     * named. Package-visible so a test can assert it without booting.
+     */
+    static void validateSchema(Container container) {
+        SymbolSource s = container.get(SymbolSource.class);
+        var entities = container.extension(SchemaEntity.class).all();
+        if (entities.isEmpty()) {
+            return;
+        }
+
+        Set<String> enabledGroups = Set.copyOf(s.resolve(SCHEMA_GROUPS));
+
+        Database db = container.get(Database.class);
+        List<String> drift = new ArrayList<>();
+        for (SchemaEntity se : entities) {
+            if (se.entityTypes().length == 0) continue;
+            if (!groupAdmitted(se, enabledGroups)) continue;
+            drift.addAll(Schema.validate(db, se.entityTypes()));
+        }
+        if (!drift.isEmpty()) {
+            throw new SqlException(
+                "Schema validation failed (freeway.db.schema.mode=validate): "
+                    + drift.size() + " drift(s) between the entities and the database:\n - "
+                    + String.join("\n - ", drift)
+                    + "\nWrite a migration under db/migration/ (e.g. V12__add_users_email.sql)"
+                    + " and restart");
+        }
+    }
+
+    /** True when the group passes the SCHEMA_GROUPS filter (empty filter admits all). */
+    private static boolean groupAdmitted(SchemaEntity se, Set<String> enabledGroups) {
+        if (enabledGroups.isEmpty() || enabledGroups.contains(se.name())) {
+            return true;
+        }
+        LOG.debug("Schema group '{}' skipped (not in {})", se.name(), ConfigKeys.SCHEMA_GROUPS);
+        return false;
+    }
+
+    /**
+     * The schema posture: reports the retired boolean key first (it is still
+     * harvested so the unknown-key check stays silent; this notice owns the
+     * migration message), then resolves the mode. Package-visible so a test
+     * can assert the wiring without booting.
+     */
+    @SuppressWarnings("deprecation")
+    static void reportRetiredSchemaAuto(SymbolSource symbols) {
+        if (symbols.resolve(ConfigKeys.SCHEMA_AUTO, (String) null) != null) {
+            LOG.warn("config key '{}' is retired: schema DDL is now '{}' (auto|validate|off)"
+                + " — true maps to auto, false maps to off; the old key is no longer read",
+                ConfigKeys.SCHEMA_AUTO, ConfigKeys.SCHEMA_MODE);
+        }
+    }
+
+    /** Resolves the schema posture, reporting the retired key first. */
+    static SchemaMode schemaMode(SymbolSource symbols) {
+        reportRetiredSchemaAuto(symbols);
+        return symbols.resolve(SCHEMA_MODE);
     }
 
     private static void runMigration(Container container) {
@@ -331,6 +397,20 @@ public final class DbModule implements ModuleEx {
 
         // ── Schema ────────────────────────────────────────────────
 
+        /**
+         * Schema DDL posture: {@code auto} converges the database toward the
+         * entities at startup (development), {@code validate} compares the
+         * entities against the migrated database after the migrations run and
+         * fails startup on drift (production), {@code off} skips the layer.
+         */
+        public static final String SCHEMA_MODE   = "freeway.db.schema.mode";
+        /**
+         * Retired: use {@link #SCHEMA_MODE} (true maps to auto, false maps to
+         * off). Kept harvested so the unknown-key check stays silent — the
+         * startup notice in {@code reportRetiredSchemaAuto} owns the migration
+         * message.
+         */
+        @Deprecated
         public static final String SCHEMA_AUTO   = "freeway.db.schema.auto";
         public static final String SCHEMA_GROUPS = "freeway.db.schema.groups";
 

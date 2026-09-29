@@ -449,6 +449,12 @@ binder.contribute(Route.class).add(Route.get("/hello", ctx -> ctx.send(200, "hi"
 binder.contribute(RuntimeHook.class)
     .add("myHook", hook).after("freeway.http.server");
 
+// conditional ordering: orders against the id only when some module
+// contributes it — for ordering against an optional companion
+// (a hook that must precede the server, in an app that may have no server)
+binder.contribute(RuntimeHook.class)
+    .add("db.migration", hook).beforeIfPresent("freeway.http.server");
+
 binder.contribute(EventSubscriber.class)
     .add(EventSubscriber.of(OrderCreated.class, e -> notify(e)))
     .after("audit");
@@ -1587,13 +1593,13 @@ public class AppModule implements ModuleEx {
 }
 ```
 
-`DbModule` contributes a `RuntimeHook` (`"freeway.db.migration"`, before `"freeway.http.server"`). On startup it calls `Schema.ensure()` for contributed entities, then runs SQL migrations. The ordering is automatic — tables exist before migration SQL attempts to insert or alter them.
+`DbModule` contributes a `RuntimeHook` (`"freeway.db.migration"`, before `"freeway.http.server"` when a server exists). On startup it calls `Schema.ensure()` for contributed entities in `auto` mode, then runs SQL migrations, then (in `validate` mode) compares the entities against the migrated database and fails startup on drift. The ordering is automatic — tables exist before migration SQL attempts to insert or alter them, and validation always runs after the migrations.
 
 Config:
 
 | Key | Default | Purpose |
 |-----|---------|---------|
-| `freeway.db.schema.auto` | `true` | Enable annotation-driven auto-DDL |
+| `freeway.db.schema.mode` | `auto` | `auto` = annotation-driven DDL at startup; `validate` = compare after migrations, fail on drift; `off` = skip |
 | `freeway.db.schema.groups` | (all) | Comma-separated group names to run; empty = all |
 
 #### Migration — Versioned SQL Files
@@ -1658,13 +1664,15 @@ Schema and Migration serve different roles across environments:
 ```
 Development                           Production
 ──────────                            ──────────
-freeway.db.schema.auto=true           freeway.db.schema.auto=false
+freeway.db.schema.mode=auto           freeway.db.schema.mode=validate
                                       freeway.db.migration.enabled=true
 
 ① Add @Column("phone") to User
    → restart → column auto-added     ② Write V004__add_phone.sql
                                          from Schema.define() output
-                                     ③ Deploy → Migration applies V004
+                                     ③ Deploy → Migration applies V004,
+                                        then validate compares entities
+                                        (drift fails startup)
 ```
 
 **Schema** shines in development — zero-friction iteration. Add a field, restart, the column appears. **Migration** shines in production — every schema change is versioned, auditable, reviewed, and can include data transformations and index tuning that annotations can't express.

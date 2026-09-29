@@ -883,14 +883,14 @@ public class AppModule implements ModuleEx {
 
 | 配置键 | 默认值 | 说明 |
 |--------|--------|------|
-| `freeway.db.schema.auto` | `true` | 是否启用注解自动建表 |
+| `freeway.db.schema.mode` | `auto` | 注解 DDL 姿态：`auto` 启动收敛、`validate` 迁移后比对（漂移即启动失败）、`off` 跳过 |
 | `freeway.db.schema.groups` | (all) | 逗号分隔的要运行的组名，空=全部 |
 
 #### Migration — 版本化 SQL 文件
 
 ```java
 // 独立使用
-MigrationRunner runner = new MigrationRunner(db, true, "db/migration", "_migrations");
+MigrationRunner runner = new MigrationRunner(db, MigrationRunner.Options.defaults());
 int ran = runner.run();  // 返回新执行的迁移数，已执行的跳过
 ```
 
@@ -918,11 +918,12 @@ db/migration/
 ```
 开发环境                              生产环境
 ───────                              ──────
-freeway.db.schema.auto=true          freeway.db.schema.auto=false
+freeway.db.schema.mode=auto          freeway.db.schema.mode=validate
 
 ① 实体类加 @Column("phone")          ② 写 V004__add_phone.sql
    → 重启 → 列自动添加                    从 Schema.define() 输出推导
-                                   ③ 部署 → Migration 执行 V004
+                                   ③ 部署 → Migration 执行 V004，
+                                      再比对实体（漂移即启动失败）
 ```
 
 **Schema 适合开发迭代**（零摩擦），**Migration 适合生产上线**（可审计、可精确控制）。同一套实体类和 SQL 文件，切换只需一个配置键。

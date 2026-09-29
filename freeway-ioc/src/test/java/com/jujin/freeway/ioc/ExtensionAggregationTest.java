@@ -221,6 +221,58 @@ class ExtensionAggregationTest {
     }
 
     @Test
+    void conditionalOrderingIsVacuousWhenAbsent() {
+        // An absent optional companion is a configuration, not an error:
+        // neither the strict check nor the lenient path may complain.
+        Extension<AppFeature> ext = new Extension<>(AppFeature.class);
+        ext.add("first", new AppFeature("first")).afterIfPresent("missing");
+        ext.validateOrdering();
+        assertEquals(List.of("first"), ext.all().stream().map(AppFeature::name).toList());
+    }
+
+    @Test
+    void conditionalOrderingAppliesWhenPresent() {
+        Container container = Freeway.create(
+            binder -> binder.contribute(AppFeature.class)
+                .add("web", new AppFeature("web"))
+                .afterIfPresent("db"),
+            binder -> binder.contribute(AppFeature.class)
+                .add("db", new AppFeature("db"))
+        );
+
+        ListFeatureCatalog config = container.create(ListFeatureCatalog.class);
+
+        assertEquals(List.of("db", "web"), config.featureNames());
+    }
+
+    @Test
+    void deferredConditionalOrderingReplaysOnDrain() {
+        // The factory/class adds return a buffering handle: IfPresent
+        // constraints must survive into the real entry created at drain.
+        Container container = Freeway.create(
+            binder -> binder.contribute(AppFeature.class)
+                .add("web", c -> new AppFeature("web"))
+                .afterIfPresent("db"),
+            binder -> binder.contribute(AppFeature.class)
+                .add("db", new AppFeature("db"))
+        );
+
+        ListFeatureCatalog config = container.create(ListFeatureCatalog.class);
+
+        assertEquals(List.of("db", "web"), config.featureNames());
+    }
+
+    @Test
+    void requiredOrderingStillFailsValidationWhenAbsent() {
+        Extension<AppFeature> ext = new Extension<>(AppFeature.class);
+        ext.add("first", new AppFeature("first")).after("missing");
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+            ext::validateOrdering);
+        assertTrue(ex.getMessage().contains("missing"), ex.getMessage());
+    }
+
+    @Test
     void extensionOrderingRejectsCycles() {
         Container container = Freeway.create(
             binder -> binder.contribute(AppFeature.class)

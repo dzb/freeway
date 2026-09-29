@@ -90,9 +90,9 @@ freeway.db.query-timeout=30s
 # ================================
 #  Database / Schema & Migration
 # ================================
-# Auto-DDL from @Table entities — zero-friction iteration.
+# Schema posture auto — annotation DDL converges at startup, zero-friction iteration.
 # No migration files needed for local dev; schema evolves with code.
-freeway.db.schema.auto=true
+freeway.db.schema.mode=auto
 freeway.db.migration.enabled=true
 
 

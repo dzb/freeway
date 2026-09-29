@@ -115,9 +115,11 @@ freeway.db.query-timeout=15s
 # ================================
 #  Database / Schema & Migration
 # ================================
-# Auto-DDL OFF — all schema changes via reviewed migration files.
+# Schema posture validate — entities are compared against the migrated database
+# after the migration files run; drift fails startup. All schema changes via
+# reviewed migration files.
 # Scenario: production schema changes go through code review and migration files.
-freeway.db.schema.auto=false
+freeway.db.schema.mode=validate
 
 # Migration runner ON — applies versioned SQL from db/migration/.
 freeway.db.migration.enabled=true

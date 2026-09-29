@@ -16,13 +16,13 @@ import java.util.List;
 import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Registry lifecycle: built-in HTTP declaration auto-registers after the
  * server starts and unregisters on shutdown; host override for 0.0.0.0 / Pod
- * IP; startup fails fast when the HTTP module is missing.
+ * IP; without the HTTP module the HTTP declaration resolves to null and is
+ * skipped instead of failing startup.
  */
 class ServiceLifecycleTest {
 
@@ -76,14 +76,17 @@ class ServiceLifecycleTest {
     }
 
     @Test
-    void registryHookWithoutHttpServerFailsStartupClearly() {
+    void registryHookWithoutHttpServerSkipsHttpDeclaration() {
         // HttpModule is normally SPI-discovered (freeway-http registers
         // META-INF/services). With auto-discovery off and no explicit HTTP
-        // module, the registry hook's after("freeway.http.server") ordering
-        // reference is missing — startup must fail (validateOrdering), not
-        // silently skip.
-        assertThrows(IllegalStateException.class,
-            () -> FreewayApp.create(CloudModule.class).autoDiscovery(false).start());
+        // module, the registry hook's conditional ordering reference is
+        // vacuous — startup succeeds and the HTTP declaration resolves to
+        // null (nothing to register) instead of failing.
+        try (AppRuntime app = FreewayApp.create(CloudModule.class).autoDiscovery(false).start()) {
+            RegistryStore store = app.get(RegistryStore.class);
+            assertTrue(store.liveReady("lifecycle-svc", Duration.ofMinutes(1)).isEmpty(),
+                "without an HTTP server there is no endpoint to register");
+        }
     }
 
     /** A module contributing its own endpoint declaration. */

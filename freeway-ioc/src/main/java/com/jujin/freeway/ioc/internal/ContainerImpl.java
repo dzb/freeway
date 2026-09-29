@@ -2,6 +2,7 @@ package com.jujin.freeway.ioc.internal;
 
 import com.jujin.freeway.commons.bean.BeanConstructor;
 import com.jujin.freeway.commons.bean.BeanIntrospector;
+import com.jujin.freeway.commons.coercion.CoerceRule;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.commons.metrics.Metrics;
@@ -23,8 +24,6 @@ import org.slf4j.LoggerFactory;
 
 import java.lang.annotation.Annotation;
 import java.util.Arrays;
-import java.util.Collections;
-import java.util.IdentityHashMap;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
@@ -34,38 +33,6 @@ import java.util.function.Supplier;
 public final class ContainerImpl implements Container {
 
     private static final Logger LOG = LoggerFactory.getLogger(ContainerImpl.class);
-
-    /**
-     * Thread-scope values realized by a container — the ones whose lifecycle
-     * runs when their scope exits. The {@link ScopedCache} close hook acts only
-     * on these; values cached by standalone {@code ScopedCache} users are left
-     * untouched. Values stay registered until their scope exits (even if the
-     * container closes first), so the hook always cleans them up.
-     */
-    private static final Set<Object> MANAGED_SCOPE_VALUES =
-        Collections.synchronizedSet(
-            Collections.newSetFromMap(new IdentityHashMap<>()));
-
-    static {
-        ScopedCache.onClose(v -> {
-            if (!MANAGED_SCOPE_VALUES.remove(v)) {
-                return;
-            }
-            Lifecycle.invokePreDestroy(v);
-            if (v instanceof AutoCloseable c) {
-                try {
-                    c.close();
-                } catch (Exception e) {
-                    LOG.warn("Failed to close resource: {}", v.getClass().getName(), e);
-                }
-            }
-        });
-    }
-
-    /** Marks {@code value} as container-managed, so scope exit runs its lifecycle. */
-    static void manageScopeValue(Object value) {
-        MANAGED_SCOPE_VALUES.add(value);
-    }
 
     private volatile boolean closed;
     private final BindingIndex bindingIndex = new BindingIndex();
@@ -137,7 +104,8 @@ public final class ContainerImpl implements Container {
     ContainerImpl(ModuleNode moduleTree) {
         this.moduleTree = Objects.requireNonNull(moduleTree, "moduleTree");
         this.coercer = new CoercerDefault();
-        this.contributions = new ContributionRegistry(this, coercer);
+        this.contributions = new ContributionRegistry(
+            this, coercer, Set.of(SymbolProvider.class, CoerceRule.class));
         this.injectResolver = new InjectionResolver(this);
         this.serviceRuntime = new ServiceRuntime(this);
         this.shutdown = new Shutdown(serviceRuntime.targets());
@@ -288,10 +256,6 @@ public final class ContainerImpl implements Container {
             markerIndex.clear();
             coercer.clearRules();
             contributions.clear();
-            // Thread-scope values are deliberately NOT unregistered here: their
-            // lifecycle is bound to the scope, not the container. The global
-            // ScopedCache close hook still runs PreDestroy/close when those
-            // scopes exit — unregistering on close would leak them.
             if (failure != null) {
                 LOG.error("Container close failed", failure);
                 throw failure;

@@ -17,7 +17,7 @@ public final class UserModule implements ModuleEx {
         // (fail-fast), so their dependency must be bound.
         binder.bind(UserService.class).to(UserService.class);
 
-        // schema.auto (default on) creates t_user before HTTP starts;
+        // schema.mode=auto (default) creates t_user before HTTP starts;
         // a db/migration/ SQL file is the alternative — one per table.
         binder.contribute(SchemaEntity.class)
             .add(SchemaEntity.of("core", User.class));

@@ -64,7 +64,10 @@ public final class CloudEventModule implements ModuleEx {
         binder.contribute(RuntimeHook.class)
             .add(CloudHooks.EVENT, new CloudEventLifecycleHook(hub))
             // After the server: the mesh origin is the node identity, which
-            // needs the port this node actually serves on. A peer that dials
+            // needs the port this node actually serves on. Required, not
+            // conditional — this plane cannot serve without the HTTP module,
+            // so a missing server must fail here naming the absent module
+            // rather than later as an unbound JsonCodec. A peer that dials
             // during the short window before wiring is closed with 1013 and
             // reconnects on its backoff — the mesh treats that as normal.
             .after(CloudHooks.HTTP_SERVER);

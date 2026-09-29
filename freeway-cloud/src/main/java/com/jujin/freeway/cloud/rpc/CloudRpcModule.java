@@ -139,7 +139,8 @@ public final class CloudRpcModule implements ModuleEx {
             .add("freeway.cloud.rpc", RpcEndpoint.exportsRoute(exportHook));
         b.contribute(RuntimeHook.class)
             .add(CloudHooks.RPC, exportHook)
-            .before(CloudHooks.HTTP_SERVER);
+            // Conditional: a pure RPC client has no server to precede.
+            .beforeIfPresent(CloudHooks.HTTP_SERVER);
     }
 
     private static <T> T optional(Container container, Class<T> type) {

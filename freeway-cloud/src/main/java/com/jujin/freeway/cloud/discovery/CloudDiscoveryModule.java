@@ -22,12 +22,13 @@ import com.jujin.freeway.ioc.annotation.Marker;
  * (in-process registry store, {@code @Local} marker) and
  * {@link LoadBalancer} (round-robin default).
  *
- * <p>Lifecycle: {@link CloudHooks#DISCOVERY} (before the HTTP server —
- * registry client connection, no-op for the local backend) and
- * {@link CloudHooks#REGISTRY} (after the HTTP server — collects
- * {@link ServiceDeclaration} contributions and registers; stops first on
- * shutdown). The registry hook orders against {@link CloudHooks#HTTP_SERVER},
- * so the HTTP module must be installed.
+ * <p>Lifecycle: {@link CloudHooks#DISCOVERY} (before the HTTP server when one
+ * exists — registry client connection, no-op for the local backend) and
+ * {@link CloudHooks#REGISTRY} (after the HTTP server when one exists —
+ * collects {@link ServiceDeclaration} contributions and registers; stops
+ * first on shutdown). Both orderings are conditional: without the HTTP
+ * module the constraints are vacuous and the HTTP declaration resolves to
+ * null and is skipped.
  */
 @Marker(Builtin.class)
 public final class CloudDiscoveryModule implements ModuleEx {
@@ -68,9 +69,9 @@ public final class CloudDiscoveryModule implements ModuleEx {
         b.contribute(CloudHealthContributor.class).add(RegistryHealthContributor.class);
         b.contribute(RuntimeHook.class)
             .add(CloudHooks.DISCOVERY, new DiscoveryConnectionHook())
-            .before(CloudHooks.HTTP_SERVER);
+            .beforeIfPresent(CloudHooks.HTTP_SERVER);
         b.contribute(RuntimeHook.class)
             .add(CloudHooks.REGISTRY, new RegistryLifecycleHook(renewal))
-            .after(CloudHooks.HTTP_SERVER);
+            .afterIfPresent(CloudHooks.HTTP_SERVER);
     }
 }

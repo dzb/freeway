@@ -58,6 +58,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `KnownKeys.of` 空收割即绑定期失败（指引 `admit()`），`BootModule` 的 logging 词表为空同样启动失败——空词表不再静默关闭检测。
 - 全空 `InvocationContext` 不再跨执行器传播：三子上下文全 null 的 present 上下文按无上下文跑裸（与 mesh 入站同规则）。
 - `ModuleDiscovery` 跳过匿名/synthetic 模块类（与 `ModuleNode` 的 nameless 排除一致）；`HttpModule` 退役探测跳过 `PREFIX` 本体；`LogKeys` 键过滤与 `KnownKeys` 同一 dot-boundary 栅栏；19 处未用 outer-module import 清理（`ConfigKeys` 嵌套 import 保留）。
+- 排序引用分必需与条件：`Ordering` 新增 `beforeIfPresent/afterIfPresent`——缺席的可选伴侣是配置而非错误（`validateOrdering` 与 `all()` 双双放行），必需引用维持原语义（hook 路径 fail-fast、通用路径 WARN）。`DbModule` 迁移 hook 与云侧 discovery/RPC hook 切到条件形：纯 DB 应用、无 HTTP 的 discovery 不再死于缺席的 `freeway.http.server` 锚点；`RpcExportHook` 零导出时直接返回（纯 client 不再需要 `JsonCodec`）。`CloudEventModule` 保持必需（该平面事实需要 Http，缺席报错点名缺失模块更准）。
+- 线程作用域清理跟着条目走：`ScopedCache.get(key, factory, onExit)` 新重载，scope 退出跑条目清理（首注册胜出、异常记 WARN 不中断）；容器删 JVM-global 旁表与类加载期钩子，关容器后退出的 scope 照常跑生命周期。原 `onClose` 机制保留给 ext/应用。
+
+### Migration
+
+方向正过来：Schema 归开发、migration 归生产，`freeway.db.schema.mode` 三档替代布尔键。
+
+| 旧 API / 行为 | 新 API / 行为 |
+|---|---|
+| `freeway.db.schema.auto=true/false` | `freeway.db.schema.mode=auto/off`；生产再加一档 `validate`（迁移后比对实体与库，漂移即启动失败）。旧键删除，配置即 WARN 指新键（true→auto/false→off 的映射写进行）；键表保留常量供词表静默 |
+| Schema 与 migration 启动期都跑（Schema 先） | `auto` 原序不变；`validate` 改为 migration 先、比对后——比对必须发生在迁移带库追平之后 |
+| `Schema.ensure` 内联检查+应用 | 检查半抽成 `inspect`：`ensure` 执行、`validate` 上报（`Schema.validate(db, …)` 返回漂移行）；日志/计数/主键保护错与原来逐字一致 |
 
 ### Changed
 

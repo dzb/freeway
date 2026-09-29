@@ -3,15 +3,24 @@ import java.net.URL;
 import java.sql.Timestamp;
 
 import com.jujin.freeway.db.schema.Id;
+import com.jujin.freeway.db.schema.Generated;
 import com.jujin.freeway.db.schema.Schema;
 import com.jujin.freeway.db.schema.SchemaEntity;
+import com.jujin.freeway.db.schema.SchemaMode;
 import com.jujin.freeway.db.schema.Table;
 import com.jujin.freeway.db.migration.MigrationRunner;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Freeway;
+import com.jujin.freeway.commons.coercion.CoercerDefault;
+import com.jujin.freeway.ioc.symbol.SymbolProvider;
+import com.jujin.freeway.ioc.symbol.SymbolSource;
 import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.logging.Handler;
+import java.util.logging.LogRecord;
+import java.util.logging.Logger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -51,6 +60,7 @@ class DbModuleTest {
     private static final String POOL_MAX_SIZE_KEY = ConfigKeys.POOL_MAX_SIZE;
     private static final String POOL_CONNECTION_TIMEOUT_KEY = ConfigKeys.POOL_CONNECTION_TIMEOUT;
     private static final String MIGRATION_ENABLED_KEY = ConfigKeys.MIGRATION_ENABLED;
+    private static final String SCHEMA_MODE_KEY = ConfigKeys.SCHEMA_MODE;
     private static final String DIALECT_KEY = ConfigKeys.DIALECT;
 
     private String previousUrl;
@@ -62,6 +72,7 @@ class DbModuleTest {
     private String previousPoolMaxSize;
     private String previousPoolConnectionTimeout;
     private String previousMigrationEnabled;
+    private String previousSchemaMode;
     private String previousDialect;
 
     @BeforeEach
@@ -75,6 +86,7 @@ class DbModuleTest {
         previousPoolMaxSize = System.getProperty(POOL_MAX_SIZE_KEY);
         previousPoolConnectionTimeout = System.getProperty(POOL_CONNECTION_TIMEOUT_KEY);
         previousMigrationEnabled = System.getProperty(MIGRATION_ENABLED_KEY);
+        previousSchemaMode = System.getProperty(SCHEMA_MODE_KEY);
         previousDialect = System.getProperty(DIALECT_KEY);
     }
 
@@ -89,6 +101,7 @@ class DbModuleTest {
         restore(POOL_MAX_SIZE_KEY, previousPoolMaxSize);
         restore(POOL_CONNECTION_TIMEOUT_KEY, previousPoolConnectionTimeout);
         restore(MIGRATION_ENABLED_KEY, previousMigrationEnabled);
+        restore(SCHEMA_MODE_KEY, previousSchemaMode);
         restore(DIALECT_KEY, previousDialect);
     }
 
@@ -187,6 +200,104 @@ class DbModuleTest {
         try (Container container = Freeway.create(new DbModule())) {
             assertThrows(IllegalArgumentException.class, () -> container.get(MigrationRunner.class));
         }
+    }
+
+    @Table("wdoc_orders")
+    public record WiringOrder(
+        @Id @Generated Long id,
+        String note
+    ) {}
+
+    @Test
+    void schemaModeDefaultsToAutoReadsValidateAndOffAndRejectsGarbage() {
+        assertEquals(SchemaMode.AUTO, DbModule.schemaMode(testSource()));
+
+        System.setProperty(SCHEMA_MODE_KEY, "validate");
+        assertEquals(SchemaMode.VALIDATE, DbModule.schemaMode(testSource()));
+
+        System.setProperty(SCHEMA_MODE_KEY, "off");
+        assertEquals(SchemaMode.OFF, DbModule.schemaMode(testSource()));
+
+        System.setProperty(SCHEMA_MODE_KEY, "sometimes");
+        assertThrows(IllegalArgumentException.class, () -> DbModule.schemaMode(testSource()));
+    }
+
+    @Test
+    @SuppressWarnings("deprecation")
+    void retiredSchemaAutoWarnsWithMapping() {
+        var records = new ArrayList<LogRecord>();
+        Logger jul = Logger.getLogger("com.jujin.freeway.db.DbModule");
+        Handler handler = new Handler() {
+            @Override
+            public void publish(LogRecord record) {
+                records.add(record);
+            }
+
+            @Override
+            public void flush() {
+            }
+
+            @Override
+            public void close() {
+            }
+        };
+        jul.addHandler(handler);
+        String previousAuto = System.getProperty(ConfigKeys.SCHEMA_AUTO);
+        try {
+            System.setProperty(ConfigKeys.SCHEMA_AUTO, "false");
+            DbModule.reportRetiredSchemaAuto(testSource());
+
+            assertTrue(records.stream().anyMatch(r ->
+                    r.getLevel() == java.util.logging.Level.WARNING
+                        && r.getMessage() != null
+                        && r.getMessage().contains("freeway.db.schema.mode")),
+                "the retired key must point at its replacement");
+
+            records.clear();
+            System.clearProperty(ConfigKeys.SCHEMA_AUTO);
+            DbModule.reportRetiredSchemaAuto(testSource());
+
+            assertTrue(records.isEmpty(), "an unset retired key stays silent");
+        } finally {
+            jul.removeHandler(handler);
+            restore(ConfigKeys.SCHEMA_AUTO, previousAuto);
+        }
+    }
+
+    @Test
+    void validateSchemaFailsNamingMissingTable() {
+        String dbName = "freeway_validate_hook_" + UUID.randomUUID().toString().replace('-', '_');
+        System.setProperty(URL_KEY, "jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1");
+        System.setProperty(USER_KEY, "sa");
+        System.setProperty(PASS_KEY, "");
+
+        try (Container container = Freeway.create(new DbModule(),
+            binder -> binder.contribute(SchemaEntity.class)
+                .add(SchemaEntity.of("core", WiringOrder.class)))) {
+            SqlException ex = assertThrows(SqlException.class,
+                () -> DbModule.validateSchema(container));
+            assertTrue(ex.getMessage().contains("wdoc_orders"), ex.getMessage());
+            assertTrue(ex.getMessage().contains("db/migration/"), ex.getMessage());
+        }
+    }
+
+    @Test
+    void validateSchemaPassesAfterEnsure() {
+        String dbName = "freeway_validate_clean_" + UUID.randomUUID().toString().replace('-', '_');
+        System.setProperty(URL_KEY, "jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1");
+        System.setProperty(USER_KEY, "sa");
+        System.setProperty(PASS_KEY, "");
+
+        try (Container container = Freeway.create(new DbModule(),
+            binder -> binder.contribute(SchemaEntity.class)
+                .add(SchemaEntity.of("core", WiringOrder.class)))) {
+            Schema.ensure(container.get(Database.class), WiringOrder.class);
+            DbModule.validateSchema(container);
+        }
+    }
+
+    private static SymbolSource testSource() {
+        return SymbolSource.of(new CoercerDefault(), SymbolProvider.systemProperties());
     }
 
     @Test

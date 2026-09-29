@@ -471,6 +471,28 @@ class ScopeProxyAdvisorTest {
     }
 
     @Test
+    void scopeExitAfterContainerCloseStillRunsLifecycle() {
+        // The entry cleanup travels with the cache entry, not the container:
+        // closing the container first must not cancel a live scope's lifecycle.
+        ScopedCounter.created.set(0);
+        ScopedCounter.destroyed.set(0);
+
+        Container container = Freeway.create(binder ->
+            binder.bind(ScopedCounter.class).to(ScopedCounter.class).scope(Scope.THREAD)
+        );
+
+        ScopedCache.within(() -> {
+            container.get(ScopedCounter.class);
+            assertEquals(1, ScopedCounter.created.get());
+            container.close();
+            assertEquals(0, ScopedCounter.destroyed.get());
+        });
+
+        assertEquals(1, ScopedCounter.destroyed.get(),
+            "scope exit runs the thread value's lifecycle even when the container closed first");
+    }
+
+    @Test
     void withinRefusesAfterContainerClose() {
         Container container = Freeway.create(binder ->
             binder.bind(ScopedCounter.class).to(ScopedCounter.class).scope(Scope.THREAD)
