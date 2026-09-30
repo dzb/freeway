@@ -33,6 +33,7 @@ reachability metadata is ever needed.
 | `commons.logging.LogBootstrap` | `Class.forName(name, false, loader)` provider probe | none (cold, once per boot) | startup |
 | `ioc.internal.ContainerImpl` | constructor injection via `selectConstructor` + parameter resolution | `SELECTED` (type × annotation) | `Container.create`, prototypes, class-routed handlers |
 | `ioc.internal.Lifecycle` | `@PostConstruct`/`@PreDestroy` discovery | `ClassValue` plan per concrete class | realize / destroy |
+| `ioc.internal.InjectionResolver` | `getDeclaredMethods()` + `getParameterAnnotations()` to reject an injection annotation on a method parameter, which compiles but has no injection point behind it | `METHOD_PARAMETER_INJECTIONS` `ClassValue` per concrete class (empty list = nothing to reject) | every realize and `create` — the reject runs on the value class, once per class, before the property loop |
 | `ioc.internal.ServiceProxy` | JDK `Proxy` over the service interface + per-proxy handle map | proxy built once per binding; map bounded by interface method count (deliberate micro-cache: shared-map lookup removed from advised calls) | advised service calls |
 | `ioc.symbol.KnownKeys.of` | `getFields()` over a module's nested `ConfigKeys` table, namespace-fenced (a key outside the declared prefixes fails the bind) | none needed (once per module bind) | startup |
 | `commons.logging.LogKeys.knownKeys` | `getDeclaredFields()` over its own package-private table (the fixed `freeway.log.*` names; fragments and `app.name` filtered out) | none needed (once per boot) | startup |

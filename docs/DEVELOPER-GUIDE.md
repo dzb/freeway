@@ -156,7 +156,7 @@ For the full module patterns, see [freeway-module.md](freeway-module.md).
 
 | Type | Purpose |
 |------|---------|
-| `Container` | Service lookup: `get(Class)`, `get(Class, String)`, `get(Class, Annotation...)`, `extension(Class)`, `create(Class)`, `close()` |
+| `Container` | Service lookup: `get(Class)`, `get(Class, String)`, `get(Class, Annotation...)`, `extension(Class)`, `create(Class)`, `close()`. `create` is `new` **plus dependency resolution** — constructor and `@Inject` fields are satisfied, but it is caller-owned, so it runs no `@PostConstruct` (see [Scopes](#scopes)) |
 | `ModuleEx` | Module entry-point type: `bind(Binder)`. Named to avoid `java.lang.Module` conflict |
 | `Binder` | Binding and contribution DSL |
 | `Binding` | Service binding configuration: target, id, primary, scope, advisor |
@@ -327,7 +327,7 @@ assembly by adding `.primary()` or a qualifier, rather than making consumers dep
 |-------|----------|
 | `SINGLETON` | Default. One instance per container. Destroyed on `close()`. |
 | `PROTOTYPE` | New instance every resolution. Not retained by the container. |
-| `THREAD` | One instance per `Scoping.within()` boundary. Auto-destroyed on exit. |
+| `THREAD` | One instance per **thread**, built as the scope opens and destroyed as it closes. `ScopedValue` does not propagate, so a child thread sees none of it. |
 
 ```java
 binder.bind(RequestState.class).to(RequestState.class).scope(Scope.THREAD);
@@ -354,15 +354,107 @@ binder.bind(ScopedCounter.class).to(ScopedCounter.class).scope(Scope.THREAD);
 binder.bind(ScopedSingleton.class).to(ScopedSingleton.class); // fails
 ```
 
+#### Where a `Scope.THREAD` service can be used
+
+The scope is **thread**-level, not request-level: an instance is built as
+`Scoping.within(...)` opens and destroyed as it closes, and `ScopedValue` does
+not propagate, so a child thread inherits nothing. Whatever the unit of work
+is, that unit is what you wrap.
+
+The framework opens no thread scope on its own, so **the caller opens it**:
+
+```java
+Scoping scoping = container.get(Scoping.class);
+scoping.within(() -> {
+    RequestState state = container.get(RequestState.class);  // one per within()
+    handle(state);
+});
+// @PreDestroy + AutoCloseable ran for everything resolved inside
+```
+
+Two consequences worth knowing before you reach for it:
+
+- **A class-based route handler cannot take one.** `HttpModule` builds
+  handlers at startup, on a thread with no open scope, so a
+  thread-scoped constructor argument fails at boot with
+  `No open scope for type X — wrap the call in container.get(Scoping.class).within(() -> ...)`.
+  That refusal is the design working: resolving outside a scope throws rather
+  than quietly handing back a process-wide singleton, which is the one
+  behaviour that would make a thread-scoped service a lie.
+- **Reaching a thread-scoped service from a singleton** goes through an
+  interface the singleton can hold a proxy for — see the compatibility rule
+  above. The proxy resolves the instance when a method is actually called, so
+  it resolves inside whatever scope is open at that moment.
+
+### Service Lifecycle
+
+`@PostConstruct` and `@PreDestroy` belong to **managed** services, and they are
+paired: a service the container realizes through a binding gets both.
+
+| How the instance is produced | `@PostConstruct` | `@PreDestroy` |
+|---|---|---|
+| `binder.bind(X.class).to(X.class)` (SINGLETON) | yes | yes, on `close()` |
+| `Scope.THREAD` | yes | on scope exit — one instance per `within()` block |
+| `Scope.PROTOTYPE` | yes | never retained, so never |
+| `contribute(X.class)` | yes | **no** — a contribution is not a binding, so nothing tracks it for shutdown |
+| `container.create(X.class)` | **no** | no |
+
+**Cleanup: `AutoCloseable` first, `@PreDestroy` only for what it cannot express.**
+
+A service that owns something — a pool, a client, a file, a thread — should
+`implements AutoCloseable`. The container finds it by type, so nothing can be
+forgotten, and `try-with-resources` reads the same way:
+
+```java
+public final class OrderClient implements AutoCloseable {
+    @Override public void close() { /* release */ }
+}
+```
+
+`@PreDestroy` is the other path, **not an addition to it** — the two are
+mutually exclusive, and the container runs whichever it finds first:
+
+| | runs | why there |
+|---|---|---|
+| `@PreDestroy` | first | explicit lifecycle callback; may still want to publish |
+| `EventBus` | deferred past both | a `@PreDestroy` may still publish on it |
+| `AutoCloseable.close()` | last | compiler-enforced, so the least surprising shape goes last |
+
+A class carrying both is closed **once**, not twice — the drain deduplicates by
+identity. So mark the method with only one, and pick by what it needs:
+`AutoCloseable` unless the cleanup must still reach the `EventBus`.
+
+`@PostConstruct` is not part of this choice. It has no substitute: AOP
+intercepts *method calls*, and this fires before anyone has an object to call a
+method on.
+
+`Container.create` is deliberately the odd one out. It is `new` plus dependency
+resolution — the constructor arguments and `@Inject` fields are satisfied from
+the container, which is what makes it worth preferring over a bare `new` — but
+the instance is **yours**: it is not registered, not cached, and not returned
+by later `get()` calls. A `@PostConstruct` there would have no `@PreDestroy` to
+pair with, since nothing walks the result at shutdown, so a bean that opened a
+connection or registered a callback in it would never release either. If a type
+needs lifecycle, bind it.
+
 ### Injection
 
 Supported annotations in `com.jujin.freeway.ioc.annotation`:
 
 | Annotation | Purpose |
 |------------|---------|
-| `@Inject` | Field, constructor, or parameter injection |
+| `@Inject` | Constructor parameter or field injection — **not** a method parameter |
 | `@Symbol("key")` | Strict config lookup — missing key fails |
 | `@Symbol("${key:default}")` | Config expression with optional default |
+
+**The two injection points are the whole surface.** The container resolves a
+type's *constructor parameters* and its *fields*, and reads nothing else — so
+`call(@Inject Greeter greeter)` compiles (`PARAMETER` is in the target, and the
+constructor parameters that do work need it) and then does nothing, leaving the
+parameter as whatever the caller passed. Nothing could make it work: the
+framework does no bytecode weaving, so it cannot intercept a call to a concrete
+class, and an advisor cannot substitute arguments either. Such an annotation is
+rejected at startup, naming the method and the way out.
 
 ```java
 public class UserService {
@@ -2283,7 +2375,7 @@ summary.
 - **`Defer` and `ScopedCache`** are the two scope-bound primitives in Commons. `Defer` buffers actions until the enclosing unit of work commits; `ScopedCache` memoizes values for the lifetime of a scope and closes them on exit. IoC's thread scope is built on `ScopedCache`.
 - **Decision rule:** if the work should happen only after success, use `Defer`; if a value should be created once per scope and reused until cleanup, use `ScopedCache`.
 - **`Defer` triggers:** DB transaction commit, HTTP request completion, batch/job success boundaries, ordered post-commit side effects such as invalidate → rebuild → notify.
-- **`ScopedCache` triggers:** request-scoped lookup tables, per-scope connections or handles, repeated resolution of thread-scoped services, values that need one cleanup action when the scope exits.
+- **`ScopedCache` triggers:** per-scope lookup tables, connections or handles held for the length of one `within()` block, repeated resolution of `Scope.THREAD` services, values that need one cleanup action when the scope exits.
 - Thread-scoped services use **`Scoping.within()`** to enter an execution boundary; the scope auto-closes when the work lambda completes. Backed by JDK 25 `ScopedValue` — no `ThreadLocal` overhead on virtual threads.
 - **`RuntimeHook`** provides start/stop extension points for modules. Ordered via `add(id, value).before()` / `.after()`. HTTP startup uses hook id `"freeway.http.server"` — no longer a side effect of resolving `HttpServer`.
 - **`LoggerSource`** is the built-in logger service. Commons registers a JUL-backed SLF4J provider unconditionally via `META-INF/services`; at startup `LogBootstrap.ensureProvider()` probes the classpath for external SLF4J providers (Logback, Log4j, slf4j-simple) and pins the `slf4j.provider` system property so the external provider wins — the JUL provider is the fallback only when no external provider is present (or the user sets `-Dslf4j.provider` explicitly).

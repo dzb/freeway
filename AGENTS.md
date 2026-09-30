@@ -109,6 +109,30 @@ transitively) plus JUnit at test scope. Anything else belongs in an ext adapter.
 - No classpath scanning. No bytecode weaving.
 - Constructor injection for framework internals; field injection acceptable for
   app code and config values.
+- **Who may hold the `Container`.** It is the framework's central abstraction, so
+  handing one to a collaborator is an intrusion: that collaborator can reach everything,
+  and the boundary the handoff was meant to mark is gone. **The test is whether the
+  container exists yet at the moment the code is written** — a provider closure, a
+  contribution, and a `RuntimeHook` are all written *while the container is still being
+  composed*, when there is nothing to inject from, so each receives the `Container` as a
+  parameter. Everything written after that point resolves by injection instead, and a
+  class inside a module takes its dependencies through `@Inject` / `@Symbol` constructor
+  injection. A `RuntimeHook` is the framework's designed point of business intervention
+  and is no exception to this: the anonymous class in
+  `binder.contribute(RuntimeHook.class).add(id, new RuntimeHook() {...})` is
+  constructed at `bind` time, so by the time its `start` runs the instance is long since
+  fixed and there is nothing left to inject into it — the container it is handed is the
+  only handle that can still reach anything. **Pass a capability, not the container**:
+  `ResolvableHandler.resolve` takes a `Supplier<RouteHandler>`, so the `route` package
+  never names the type — the container does not cross the boundary, only the ability to
+  make a handler does. The grep test: `route/` and `websocket/` name `Container` in
+  javadoc only, and every `container.*` call in `freeway-http` sits in `HttpModule` —
+  one file, because one file is where composition happens. A consequence worth stating,
+  because it looks like a limitation: a class-based route handler is built during
+  composition, so it **cannot** take a `Scope.THREAD` dependency. That is the scope
+  meaning what it says — a thread-level lifetime, opened and closed by
+  `Scoping.within(...)`, and the framework opens none of its own — so a
+  composition-time instance has no thread to belong to.
 - Keep core modules free of external dependencies.
 - Prefer small explicit APIs over future-proof abstractions.
 - **File size is not a reason to split.** A long file is a prompt to ask whether its
@@ -224,10 +248,12 @@ comment.
   repeated named parameters.
 - **Adapters**: a third-party engine's contract tests must pin the
   contract-typed edges no type enforces — `maxBodySize` accounting through the
-  shared `AbstractHttpContext.readBody` (413), gzip negotiation through the
-  shared `Compression`, `ExchangeHandler.websocket` consulted for every
-  upgrade candidate, and every `HttpServerConfig` field honored or reported
-  at startup.
+  shared `AbstractHttpContext.readBody` (413), which now delegates to the one
+  limiter (`http.internal.LimitedInputStream`) the built-in engine runs, so
+  adapter and built-in 413 behaviour are the same code rather than two loops
+  that happen to agree; gzip negotiation through the shared `Compression`,
+  `ExchangeHandler.websocket` consulted for every upgrade candidate, and every
+  `HttpServerConfig` field honored or reported at startup.
 
 ## Commit Rules
 

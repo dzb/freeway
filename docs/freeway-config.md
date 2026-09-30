@@ -411,14 +411,14 @@ CLI 参数（`--freeway.config.file=...`）同样无效——启动时会打 WAR
 
 | 键 | 档 | 类型 | 默认值 | 必填 | 说明 |
 |----|------|------|--------|------|------|
-| `freeway.db.schema.mode` | 姿态 | String | `auto` | 否 | Schema DDL 姿态：`auto` 启动收敛（开发零摩擦）；`validate` 跑完迁移后比对实体与库、不一致启动失败（生产）；`off` 跳过。退役 `freeway.db.schema.auto`（true→auto/false→off），配置即 WARN 指新键 |
+| `freeway.db.schema.mode` | 姿态 | String | `auto` | 否 | Schema DDL 姿态：`auto` 启动收敛（开发零摩擦）；`validate` 跑完迁移后比对实体与库、不一致启动失败（生产）；`off` 跳过。退役 `freeway.db.schema.auto`（true→auto/false→off），配置即 WARN 指新键。**在 MySQL/MariaDB 上可用**：本路径只禁止在**用户事务内**运行 DDL（那里 DDL 会隐式提交），启动期自动迁移不受此限——与 `freeway.db.migration.*` 的方言限制**不同**，见下条 |
 | `freeway.db.schema.groups` | 调优 | String | *(空)* | 否 | 逗号分隔的 Schema 组过滤。空 = 所有组 |
 
 #### 迁移
 
 | 键 | 档 | 类型 | 默认值 | 必填 | 说明 |
 |----|------|------|--------|------|------|
-| `freeway.db.migration.enabled` | 姿态 | Boolean | `true` | 否 | 启用 SQL 迁移执行。**生产必须为 `true`** |
+| `freeway.db.migration.enabled` | 姿态 | Boolean | `true` | 否 | 启用 SQL 迁移执行。**生产必须为 `true`**。⚠️ **方言依赖**：在不支持事务 DDL 的方言（MySQL/MariaDB）上，**含 DDL 的迁移文件会在启动期直接抛 `SqlException`**——DDL 会隐式提交而校验行丢失，下次启动重跑该 DDL 便会失败。MySQL 上请把 DDL 拆成独立的、幂等的迁移（`IF NOT EXISTS`），或改用 `freeway.db.schema.mode=auto` 让实体驱动 DDL（该路径不受此限制）。**注意这与 `freeway.db.schema.*` 的限制不同**：Schema 只在**用户事务内**运行 DDL 时才拒绝，在 MySQL 上正常运行 |
 | `freeway.db.migration.path` | 调优 | String | `db/migration/` | 否 | 迁移 SQL 文件所在类路径目录 |
 | `freeway.db.migration.table` | 调优 | String | `_migrations` | 否 | 迁移跟踪表名 |
 | `freeway.db.migration.lock-ttl` | 调优 | Duration | *(运行器默认 1h)* | 否 | 锁行存活时长（ISO-8601，如 `PT1H`）。空则使用运行器默认。`0` 或负值禁用过期锁抢占。多实例部署建议设置 |
