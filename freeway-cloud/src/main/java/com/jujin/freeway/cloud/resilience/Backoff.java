@@ -17,9 +17,12 @@ import java.util.concurrent.ThreadLocalRandom;
  * at all, while the dial loop dials a fresh peer immediately and only backs
  * off after a failure. That difference is real, so it stays at the call site:
  * {@link #millis} is the curve, and what "attempt 0" means belongs to whoever
- * is asking. The configuration is separate too, for the same reason — the
- * right pacing for an outbound call and for a peer dial are different
- * decisions ({@code freeway.cloud.rpc.retry.backoff-*} versus
+ * is asking — but the wait itself is not theirs to re-derive, which is why
+ * {@link #jitter} samples any ceiling: it is how {@code Retryer}'s first wait
+ * (a ceiling of {@code base} that the attempt index cannot express) is jittered
+ * exactly like every later one. The configuration is separate too, for the same
+ * reason — the right pacing for an outbound call and for a peer dial are
+ * different decisions ({@code freeway.cloud.rpc.retry.backoff-*} versus
  * {@code freeway.cloud.event.backoff-*}).
  *
  * <p>A pure function of its parameters, called directly rather than bound: the
