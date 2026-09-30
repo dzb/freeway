@@ -102,7 +102,18 @@ final class ContributionRegistry {
                 // interface) to some compilers.
                 String id = Strings.camelToSnake(implClass.getSimpleName())
                     + "@" + implClass.getPackageName();
-                Function<Container, ? extends V> factory = c -> c.create(implClass);
+                // create() is `new` plus injection, and deliberately does not
+                // post-construct — a contribution is not a binding, so nothing
+                // would pair a @PreDestroy with it. But this overload's contract
+                // (Contribution.add) promises @PostConstruct, so it is invoked
+                // here explicitly. The gap is intentional and one-sided: a
+                // contribution can start something but is not tracked to stop
+                // it, exactly as documented on Container.create.
+                Function<Container, ? extends V> factory = c -> {
+                    V instance = c.create(implClass);
+                    container.postConstruct(instance);
+                    return instance;
+                };
                 return add(id, factory);
             }
 

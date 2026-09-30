@@ -24,6 +24,8 @@ import org.slf4j.LoggerFactory;
 
 import java.lang.annotation.Annotation;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
@@ -45,6 +47,35 @@ public final class ContainerImpl implements Container {
     private final ModuleNode moduleTree;
     /** The contribution side of composition: DSL, stores, deferral, seal. */
     private final ContributionRegistry contributions;
+
+    /**
+     * Instances post-constructed during the realize operation currently running
+     * on this thread, by identity — non-null only between a realize's entry and
+     * exit.
+     *
+     * <p>Scoped to the realize call, not to the container, and that scope is the
+     * point. "Already initialized" is not derivable from the instance, and the
+     * one place the question legitimately arises is realization: a provider is
+     * handed the container and {@code create(Class)} is a documented way to get
+     * an injected instance, so {@code to(c -> c.create(Impl.class))} returns
+     * something already initialized, and the binding then materializes it. Two
+     * correct steps in a row, and {@code @PostConstruct} twice between them.
+     * </p>
+     *
+     * <p>Deliberately NOT a container-lifetime set. {@link #create(Class)} is
+     * the caller-owned path — the caller owns the lifecycle, so the container
+     * must not retain those instances, and a strong per-instance set would pin
+     * every object the application ever built through it. Clearing on realize
+     * exit holds each reference for one realization and no longer.
+     * </p>
+     *
+     * <p>A stack, not a single slot: a provider may itself resolve services
+     * (a nested realize), and the outer one still needs its own record when it
+     * resumes. Identity, not equality — two equal beans are two beans, and
+     * calling {@code equals} on an uninitialized one is a hazard.
+     * </p>
+     */
+    private final ThreadLocal<Set<Object>> realizing = new ThreadLocal<>();
 
     /**
      * Builds a container over the given modules by declaring them to the module tree — the entry
@@ -183,17 +214,33 @@ public final class ContainerImpl implements Container {
     public <T> T create(Class<T> type) {
         // Caller-owned instance: no binding, no scope, no lifecycle — the
         // owner parameter stays null and scope validation falls back to the
-        // type heuristic (see InjectionResolver).
-        return create(type, null);
+        // type heuristic (see InjectionResolver). This is `new` plus dependency
+        // resolution: constructor args and @Inject fields are satisfied, and
+        // nothing else. @PostConstruct belongs to the managed half of the
+        // lifecycle, which this path is not part of — see the javadoc on
+        // Container.create.
+        requireOpen();
+        try {
+            T value = constructInstance(type, null);
+            injectResolver.injectFields(value, null);
+            return value;
+        } catch (Exception ex) {
+            throw new RuntimeException("Unable to instantiate " + type.getName(), ex);
+        }
     }
 
     /**
-     * Constructor injection + field injection + @PostConstruct, without
-     * registering or caching the instance.
+     * Construct-and-initialize, for the realize path — the owner-scoped
+     * counterpart to the caller-owned {@link #create(Class)}, which stops at
+     * injection.
      *
-     * @param owner the binding being realized on the realize path; {@code null}
-     *              for caller-owned instances, whose scope the container cannot
-     *              know
+     * <p>Used when the binding itself has no provider, so it must be
+     * self-sufficient. The instance it returns is a managed one: it lands in
+     * the service caches and {@link Shutdown} will pair its
+     * {@code @PreDestroy} at {@code close()}.
+     * </p>
+     *
+     * @param owner the binding being realized on the realize path
      */
     <T> T create(Class<T> type, BindingImpl<?> owner) {
         requireOpen();
@@ -203,6 +250,30 @@ public final class ContainerImpl implements Container {
             return value;
         } catch (Exception ex) {
             throw new RuntimeException("Unable to instantiate " + type.getName(), ex);
+        }
+    }
+
+    /**
+     * Post-constructs an already-injected instance without registering it.
+     *
+     * <p>For contributions. {@code Contribution.add(Class)} promises to invoke
+     * {@code @PostConstruct} (see its javadoc), and unlike {@link
+     * #create(Class)} the contribution must ask for it: a contribution is not a
+     * binding, it never enters the service caches, and therefore {@link
+     * Shutdown} does not walk it. That one-sidedness is the contribution
+     * contract as written — it can start something, and nothing stops it —
+     * and it is exactly why the caller-owned {@code create} does not
+     * post-construct on its own: there, the same gap would be a silent leak
+     * with no contract behind it.
+     * </p>
+     *
+     * <p>Runs inside the caller's realize scope when there is one, so a
+     * contribution met twice in one realization still fires once.
+     * </p>
+     */
+    void postConstruct(Object instance) {
+        if (claimPostConstruct(instance)) {
+            Lifecycle.invokePostConstruct(instance);
         }
     }
 
@@ -360,9 +431,77 @@ public final class ContainerImpl implements Container {
         return type.cast(constructor.newInstance(args));
     }
 
-    /** Field injection, then {@code @PostConstruct}. */
+    /**
+     * Field injection, then {@code @PostConstruct} — the latter at most once
+     * per instance per realization.
+     *
+     * <p>The one-shot rule is what keeps {@code @PostConstruct} paired with a
+     * {@code @PreDestroy}. Only a realized binding gets both: the binding's
+     * instance is in the service caches, so {@link Shutdown} walks it at
+     * {@code close()}. An instance the caller built through {@link
+     * #create(Class)} is in no cache and therefore gets no {@code @PreDestroy}
+     * — which is exactly why that path does not post-construct at all, and
+     * why the guarantee is scoped to a realization rather than to the
+     * container.
+     * </p>
+     *
+     * <p>Field injection stays unconditional: it is assignment, so re-running
+     * it is harmless, and skipping it would be a real behaviour change for a
+     * caller that re-initializes on purpose. Only {@code @PostConstruct} is
+     * guarded, because only it is a one-shot side effect (opening a
+     * connection, registering a callback, starting a thread).
+     * </p>
+     */
     void initialize(Object instance, BindingImpl<?> owner) {
         injectResolver.injectFields(instance, owner);
-        Lifecycle.invokePostConstruct(instance);
+        if (claimPostConstruct(instance)) {
+            Lifecycle.invokePostConstruct(instance);
+        }
+    }
+
+    /**
+     * Records the instance as post-constructed in the current realize scope
+     * and reports whether this call is the one that gets to run the callback.
+     *
+     * <p>Two callers share this: {@link #initialize} on the realize path, and
+     * {@link #postConstruct} for contributions. Both may legitimately meet the
+     * same instance — a contribution built from a provider that itself
+     * contributed, say — and the second one must not fire the callback again.
+     * </p>
+     *
+     * <p>Outside a realize there is nothing to deduplicate against, so the
+     * answer is always yes.
+     * </p>
+     *
+     * <p>Thread-local by design. Two threads realizing different bindings must
+     * not see each other's records, and no lock is held here: a nested realize
+     * on the same thread pushes its own scope, and a different thread never
+     * shares this.
+     * </p>
+     */
+    private boolean claimPostConstruct(Object instance) {
+        Set<Object> scope = realizing.get();
+        return scope == null || scope.add(instance);
+    }
+
+    /**
+     * Opens a realize scope, returning the previous one for
+     * {@link #exitRealize} — or {@code null} at the outermost level. The
+     * returned value is the caller's to restore, which is what makes nesting
+     * work: a provider that resolves services re-enters here.
+     */
+    Set<Object> enterRealize() {
+        Set<Object> previous = realizing.get();
+        realizing.set(Collections.newSetFromMap(new IdentityHashMap<>()));
+        return previous;
+    }
+
+    /** Closes the scope opened by {@link #enterRealize}, restoring its parent. */
+    void exitRealize(Set<Object> previous) {
+        if (previous == null) {
+            realizing.remove();
+        } else {
+            realizing.set(previous);
+        }
     }
 }

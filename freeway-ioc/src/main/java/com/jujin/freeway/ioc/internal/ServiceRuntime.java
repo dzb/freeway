@@ -61,6 +61,13 @@ final class ServiceRuntime {
 
     <T> T get(BindingImpl<T> binding) {
         if (binding.scope() == Scope.PROTOTYPE) {
+            // No cache to pollute, but a PROTOTYPE instance built after the
+            // container sealed would be fully constructed and never receive
+            // @PreDestroy — a resource opened in its constructor with nothing
+            // to close it. Same closed check as the realize path.
+            if (container.isClosed()) {
+                throw new IllegalStateException("Container is closed");
+            }
             return binding.isAdvised() ? proxy(binding) : binding.directInstance();
         }
         if (!binding.isProxiable()) {
@@ -69,13 +76,28 @@ final class ServiceRuntime {
             return realize(binding);
         }
         ServiceKey key = new ServiceKey(binding.type(), binding.id());
+        // A cache hit needs no lock: the entry was published by a mint that
+        // ran under realizeLock, so seeing it means the container was open at
+        // that point. A miss mints, and the mint must hold the lock — that is
+        // what makes "still open?" and "publish into proxyCache" one step, so
+        // a close() landing between them cannot clear the cache and leave this
+        // thread repopulating a sealed one.
         Object cached = proxyCache.get(key);
         if (cached != null) {
             return binding.type().cast(cached);
         }
-        Object proxy = proxy(binding);
-        Object previous = proxyCache.putIfAbsent(key, proxy);
-        return binding.type().cast(previous != null ? previous : proxy);
+        synchronized (realizeLock) {
+            if (container.isClosed()) {
+                throw new IllegalStateException("Container is closed");
+            }
+            Object existing = proxyCache.get(key);
+            if (existing != null) {
+                return binding.type().cast(existing);
+            }
+            Object proxy = proxy(binding);
+            proxyCache.put(key, proxy);
+            return binding.type().cast(proxy);
+        }
     }
 
     private <T> T realize(BindingImpl<T> binding) {
@@ -112,9 +134,11 @@ final class ServiceRuntime {
     }
 
     private <T> T realizeThreadScoped(BindingImpl<T> binding) {
-        // Same contract as the singleton path: a proxy obtained before close()
-        // must not silently instantiate a fresh value after the container is
-        // sealed.
+        // Kept even though get() now checks on the way in: a THREAD-scope proxy
+        // outlives the get() that produced it, and its target is realized on
+        // the first METHOD CALL, not at get() time. A holder invoking that
+        // proxy after close() never passes through get() again, so this is the
+        // only place that can refuse it.
         if (container.isClosed()) {
             throw new IllegalStateException("Container is closed");
         }

@@ -91,10 +91,39 @@ final class BindingImpl<T> implements Binding<T> {
         return List.copyOf(advices);
     }
 
+    /**
+     * The realize path's one lifecycle step: whatever shape the instance took
+     * (default construction, {@code to(Class)}, or a provider lambda), it is
+     * field-injected and {@code @PostConstruct}-ed here.
+     *
+     * <p>"Here" does not mean "only here". A provider is handed the container,
+     * and {@code c.create(X)} is a documented way to get an injected instance,
+     * so an instance arriving from a provider may already be initialized —
+     * and it will be, because {@code create} is complete in itself and the
+     * contribution path depends on that. Running {@code @PostConstruct}
+     * twice on {@code to(c -> c.create(Impl.class))} would then be silent, so
+     * single-shot is enforced one level down, per instance, in
+     * {@link ContainerImpl#initialize} — which is the only place that can
+     * know whether this particular instance has been through it.
+     * </p>
+     */
     T directInstance() {
-        if (provider == null) {
-            return instantiateDefault();
+        // The realize scope bounds the one-shot rule to a single realization.
+        // Whatever builds the instance — this binding's own construction via
+        // instantiateDefault, or a provider lambda — the binding's materialize
+        // step is what post-constructs it, and it happens once between here and
+        // the exit. The instance is a managed one: it lands in the service
+        // caches, so Shutdown pairs its @PreDestroy at close().
+        Set<Object> previous = container.enterRealize();
+        try {
+            T created = provider == null ? instantiateDefault() : provided();
+            return materialize(created, this);
+        } finally {
+            container.exitRealize(previous);
         }
+    }
+
+    private T provided() {
         T created = provider.apply(container);
         if (created == null) {
             throw new IllegalStateException(
@@ -104,7 +133,7 @@ final class BindingImpl<T> implements Binding<T> {
                     + " an anonymous NullPointerException far from here)"
             );
         }
-        return materialize(created, this);
+        return created;
     }
 
     /** Marks the binding registered and immutable — see {@link #sealed}. */

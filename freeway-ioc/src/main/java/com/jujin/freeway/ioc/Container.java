@@ -109,10 +109,25 @@ public interface Container extends AutoCloseable {
     <T> Extension<T> extension(Class<T> entryType);
 
     /**
-     * Creates a fully-injected instance of the given type without registering it
-     * in the container. The instance receives constructor injection, field
-     * injection, and {@code @PostConstruct} — but is not cached, not managed,
-     * and will not be returned by future {@code get()} calls.
+     * Creates an instance of the given type without registering it in the
+     * container. The instance receives constructor injection and field
+     * injection — it is {@code new} plus dependency resolution — but is not
+     * cached, not managed, and will not be returned by future {@code get()}
+     * calls.
+     *
+     * <p><b>No {@code @PostConstruct}.</b> Lifecycle callbacks are the managed
+     * half of the container's contract, and this is the unmanaged half: a
+     * {@code @PostConstruct} here would have no {@code @PreDestroy} to pair
+     * with, since nothing tracks the instance for shutdown. Whatever it opened
+     * — a connection, a registration, a thread — would never be released. Bind
+     * the type instead if it needs lifecycle; that is what {@link #get} is for.
+     * </p>
+     *
+     * <p>Note that {@code @Inject} and {@code @Symbol} still work here, and
+     * are the reason to prefer this over a bare {@code new}: they resolve
+     * against the container's bindings, so the instance is wired the same way
+     * a managed one would be.
+     * </p>
      *
      * @param type the implementation class to create
      * @param <T>  the instance type

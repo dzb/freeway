@@ -16,6 +16,7 @@ import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -133,6 +134,39 @@ class ExtensionAggregationTest {
         ListFeatureCatalog config = container.create(ListFeatureCatalog.class);
 
         assertEquals(List.of("core", "web"), config.featureNames());
+    }
+
+    /**
+     * {@code Contribution.add(Class)} promises to invoke {@code @PostConstruct}
+     * (see its javadoc), and that promise is now carried explicitly rather than
+     * inherited from {@code Container.create} — which is {@code new} plus
+     * injection and deliberately stops short of lifecycle, because a
+     * contribution is not a binding and nothing would pair a {@code @PreDestroy}
+     * with it.
+     */
+    @Test
+    void classContributionIsPostConstructed() {
+        InitializedFeature.COUNTER.set(0);
+
+        Container container = Freeway.create(
+            binder -> binder.contribute(InitializedFeature.class)
+                .add(InitializedFeature.class));
+
+        List<InitializedFeature> features = container.extension(InitializedFeature.class).all();
+        assertEquals(1, features.size());
+        assertEquals(1, InitializedFeature.COUNTER.get(),
+            "contribute(X.class) must invoke @PostConstruct exactly once — the "
+                + "documented contract of that overload");
+    }
+
+    /** A contributed feature that records its own construction-time callback. */
+    public static final class InitializedFeature {
+        static final AtomicInteger COUNTER = new AtomicInteger();
+
+        @PostConstruct
+        void init() {
+            COUNTER.incrementAndGet();
+        }
     }
 
     @Test

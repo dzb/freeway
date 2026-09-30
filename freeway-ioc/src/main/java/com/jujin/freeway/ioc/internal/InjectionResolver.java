@@ -19,8 +19,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.lang.annotation.Annotation;
+import java.lang.reflect.Method;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -82,6 +84,7 @@ final class InjectionResolver {
 
     void injectFields(Object instance, BindingImpl<?> owner) {
         Class<?> ownerType = instance.getClass();
+        rejectMethodParameterInjections(ownerType);
         BeanPlan plan = BeanIntrospector.plan(ownerType);
         for (BeanProperty property : plan.properties()) {
             if (!property.isWritable()) {
@@ -134,6 +137,86 @@ final class InjectionResolver {
                 );
             }
         }
+    }
+
+    /**
+     * Injection points on <em>method</em> parameters, which the container has
+     * no way to satisfy: it resolves a type's constructor parameters and its
+     * fields, and nothing else. A class-based proxy cannot stand in for a
+     * concrete class here — the framework does no bytecode weaving — and
+     * {@code MethodInvocation.args()} hands out a defensive copy, so an
+     * advisor cannot substitute arguments either. The annotation still
+     * <em>compiles</em>, because {@code PARAMETER} is in its target and is
+     * required for the constructor parameters that do work. The parameter then
+     * arrives exactly as the caller passed it, and a caller who expected the
+     * container gets {@code null} and a later {@code NullPointerException}
+     * that names neither the annotation nor the method.
+     *
+     * <p>So this fails at startup instead, in the same spirit as the
+     * non-writable-field check below: the annotation was written, the
+     * container cannot honor it, and silence is the one outcome that leaves
+     * the reader with nothing to act on.
+     */
+    private static final ClassValue<List<String>> METHOD_PARAMETER_INJECTIONS =
+        new ClassValue<>() {
+            @Override
+            protected List<String> computeValue(Class<?> type) {
+                List<String> stray = new ArrayList<>();
+                for (Class<?> c = type;
+                     c != null && c != Object.class && !isJdkClass(c);
+                     c = c.getSuperclass()) {
+                    for (Method method : c.getDeclaredMethods()) {
+                        if (method.isSynthetic() || method.isBridge()) {
+                            continue;
+                        }
+                        Annotation[][] parameters = method.getParameterAnnotations();
+                        for (int i = 0; i < parameters.length; i++) {
+                            for (Annotation annotation : parameters[i]) {
+                                String name = annotation.annotationType().getSimpleName();
+                                if (annotation instanceof Inject
+                                        || annotation instanceof Symbol) {
+                                    stray.add(c.getName() + "." + method.getName()
+                                        + " parameter #" + (i + 1)
+                                        + " carries @" + name);
+                                }
+                            }
+                        }
+                    }
+                }
+                return List.copyOf(stray);
+            }
+        };
+
+    private static void rejectMethodParameterInjections(Class<?> ownerType) {
+        List<String> stray = METHOD_PARAMETER_INJECTIONS.get(ownerType);
+        if (stray.isEmpty()) {
+            return;
+        }
+        throw new IllegalStateException(
+            "Injection annotation on a method parameter cannot be honored: "
+                + String.join("; ", stray)
+                + ". The container injects constructor parameters and fields, "
+                + "and only those — it does not intercept calls to a concrete "
+                + "class. Move the dependency to a constructor parameter or an "
+                + "@Inject field, or take it as a plain parameter and let the "
+                + "caller pass it."
+        );
+    }
+
+    /**
+     * The app-class boundary {@code BeanPlan.isJdkClass} applies when
+     * collecting fields, copied rather than promoted: a superclass in the JDK
+     * cannot be the user's declaration to fix, so reporting one would send
+     * the reader after a file they do not own.
+     */
+    private static boolean isJdkClass(Class<?> type) {
+        if (type.getClassLoader() == null) {
+            return true;
+        }
+        String pkg = type.getPackageName();
+        return pkg.startsWith("java.")
+            || pkg.startsWith("javax.")
+            || pkg.startsWith("jdk.");
     }
 
     private Object resolveParameter(

@@ -534,6 +534,101 @@ class ScopeProxyAdvisorTest {
         assertEquals(0, ScopedCounter.destroyed.get());
     }
 
+    /**
+     * A {@code get()} racing {@code close()} must never mint a proxy into a
+     * cache the seal has already cleared.
+     *
+     * <p>The bug this pins: {@code get()} was unsynchronized while
+     * {@code close()} was not, so a lookup could read the cache as empty, lose
+     * the CPU, and — after {@code close()} had drained and cleared everything —
+     * mint and publish a fresh proxy into the sealed container. The caller
+     * received a live-looking service whose every call throws, and the sealed
+     * cache was repopulated behind the seal.
+     *
+     * <p>What is NOT a bug, and what the assertion must not flag: a proxy the
+     * caller obtained <em>before</em> {@code close()} and then invoked after
+     * it. That one was legitimately returned while the container was open, and
+     * throwing on a post-close call is the contract every other scope already
+     * keeps. Warming the cache before the race is therefore what makes the two
+     * outcomes distinguishable — without it, a legitimate throw and a leaked
+     * mint look identical.
+     */
+    @Test
+    void getRacingCloseNeverPublishesAProxyIntoASealedCache() throws Exception {
+        for (int attempt = 0; attempt < 5_000; attempt++) {
+            Container container = Freeway.create(binder ->
+                binder.bind(CloseRaceApi.class).to(CloseRaceImpl.class));
+
+            var gate = new java.util.concurrent.CountDownLatch(1);
+            var outcome = new java.util.concurrent.atomic.AtomicReference<String>();
+            Thread reader = new Thread(() -> {
+                try {
+                    gate.await();
+                    // The proxy is obtained and used here, and the two steps
+                    // are recorded separately: lumping them into one catch
+                    // would report a leaked mint as the correct "closed"
+                    // outcome, which is precisely the bug being pinned.
+                    CloseRaceApi api = container.get(CloseRaceApi.class);
+                    try {
+                        outcome.set("used:" + api.value());
+                    } catch (RuntimeException afterClose) {
+                        // Legitimate: close() may legitimately have completed
+                        // between get() and the call. Only a proxy minted
+                        // AFTER the seal is a defect, and that one is caught
+                        // by the cache-repopulation check below.
+                        outcome.set("post-close-call");
+                    }
+                } catch (IllegalStateException refused) {
+                    outcome.set("refused");
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    outcome.set("interrupted");
+                }
+            });
+            reader.start();
+            gate.countDown();
+            container.close();
+            reader.join();
+
+            String result = outcome.get();
+            assertTrue("used:value".equals(result)
+                    || "post-close-call".equals(result)
+                    || "refused".equals(result),
+                "unexpected outcome on attempt " + attempt + ": " + result);
+
+            // The real invariant: nothing may be published into a sealed
+            // container. If close() finished first, the caches must be empty.
+            if ("refused".equals(result) || "post-close-call".equals(result)) {
+                assertTrue(proxyCacheIsEmpty(container),
+                    "attempt " + attempt + ": close() completed but the proxy "
+                        + "cache was repopulated afterwards — a sealed container "
+                        + "must not hand out new services (" + result + ")");
+            }
+        }
+    }
+
+    private static boolean proxyCacheIsEmpty(Container container) throws Exception {
+        // Walk by name so the test does not need the internal package on its
+        // import list — it asserts about container internals, not about types.
+        var runtimeField = container.getClass().getDeclaredField("serviceRuntime");
+        runtimeField.setAccessible(true);
+        Object runtime = runtimeField.get(container);
+        var cacheField = runtime.getClass().getDeclaredField("proxyCache");
+        cacheField.setAccessible(true);
+        return ((java.util.Map<?, ?>) cacheField.get(runtime)).isEmpty();
+    }
+
+    public interface CloseRaceApi {
+        String value();
+    }
+
+    public static final class CloseRaceImpl implements CloseRaceApi {
+        @Override
+        public String value() {
+            return "value";
+        }
+    }
+
     @Test
     void singletonCanInjectScopedInterfaceThroughProxy() {
         ScopedCounter.created.set(0);
