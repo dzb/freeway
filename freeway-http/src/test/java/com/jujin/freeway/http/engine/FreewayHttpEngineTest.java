@@ -1,5 +1,15 @@
 package com.jujin.freeway.http.engine;
 
+import static com.jujin.freeway.http.engine.TestRawHttp.readHttpResponse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
+
 import com.jujin.freeway.http.TestServerConfig;
 
 import java.io.BufferedReader;
@@ -67,14 +77,6 @@ import com.jujin.freeway.ioc.annotation.Inject;
 import com.jujin.freeway.http.HttpModule.ConfigKeys;
 import com.jujin.freeway.http.HttpModule;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.fail;
 
 
 class FreewayHttpEngineTest {
@@ -286,33 +288,6 @@ class FreewayHttpEngineTest {
             server.stop();
         }
     }
-
-    private static String readHttpResponse(Socket sock) throws IOException {
-        var in = sock.getInputStream();
-        var head = new ByteArrayOutputStream();
-        int state = 0;
-        while (state < 4) {
-            int b = in.read();
-            if (b < 0) {
-                break;
-            }
-            head.write(b);
-            if ((state == 0 || state == 2) && b == '\r') state++;
-            else if ((state == 1 || state == 3) && b == '\n') state++;
-            else state = 0;
-        }
-        String headers = head.toString(StandardCharsets.ISO_8859_1);
-        int contentLength = 0;
-        for (String line : headers.split("\r\n")) {
-            if (line.toLowerCase(Locale.ROOT)
-                    .startsWith("content-length:")) {
-                contentLength = Integer.parseInt(line.substring(15).trim());
-            }
-        }
-        byte[] body = in.readNBytes(contentLength);
-        return headers + new String(body, StandardCharsets.UTF_8);
-    }
-
     @Test
     void servesRoutes() throws Exception {
         int port = freePort();

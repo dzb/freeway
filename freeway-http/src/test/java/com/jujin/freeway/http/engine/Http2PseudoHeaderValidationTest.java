@@ -1,5 +1,12 @@
 package com.jujin.freeway.http.engine;
 
+import static com.jujin.freeway.http.engine.TestRawHttp.readFully;
+import static com.jujin.freeway.http.engine.TestRawHttp.readFullyOrEof;
+import static com.jujin.freeway.http.engine.TestRawHttp.waitForStatus200;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
+
 import com.jujin.freeway.http.TestServerConfig;
 
 import java.io.ByteArrayOutputStream;
@@ -18,9 +25,6 @@ import com.jujin.freeway.http.HttpPipeline;
 import com.jujin.freeway.http.TestHttp;
 import com.jujin.freeway.http.route.Route;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * HTTP/2 pseudo-header validation (RFC 7540 §8.1.2.3 / §8.3.1): {@code
@@ -235,30 +239,6 @@ class Http2PseudoHeaderValidationTest {
         for (byte[] p : parts) out.writeBytes(p);
         return out.toByteArray();
     }
-
-    private static boolean waitForStatus200(InputStream in, int streamId,
-            long timeoutMs) throws IOException {
-        long deadline = System.currentTimeMillis() + timeoutMs;
-        while (System.currentTimeMillis() < deadline) {
-            byte[] frameHeader = new byte[9];
-            if (!readFullyOrEof(in, frameHeader)) return false;
-            int len = ((frameHeader[0] & 0xff) << 16)
-                | ((frameHeader[1] & 0xff) << 8) | (frameHeader[2] & 0xff);
-            int type = frameHeader[3] & 0xff;
-            int frameStreamId = ((frameHeader[5] & 0x7f) << 24)
-                | ((frameHeader[6] & 0xff) << 16)
-                | ((frameHeader[7] & 0xff) << 8) | (frameHeader[8] & 0xff);
-            byte[] payload = new byte[len];
-            readFully(in, payload);
-            if (type == 0x7) return false; // GOAWAY — connection killed
-            if (type == 0x1 && frameStreamId == streamId && len >= 1
-                    && payload[0] == (byte) 0x88) { // indexed :status 200
-                return true;
-            }
-        }
-        return false;
-    }
-
     /** True when any response HEADERS frame arrives on the stream before a
      *  GOAWAY/EOF — used where the router's status is not the point (the
      *  pseudo-headers must simply be accepted). */
@@ -282,26 +262,4 @@ class Http2PseudoHeaderValidationTest {
             }
         }
         return false;
-    }
-
-    private static void readFully(InputStream in, byte[] buffer)
-            throws IOException {
-        int offset = 0;
-        while (offset < buffer.length) {
-            int n = in.read(buffer, offset, buffer.length - offset);
-            if (n < 0) throw new IOException("EOF while reading " + buffer.length + " bytes");
-            offset += n;
-        }
-    }
-
-    private static boolean readFullyOrEof(InputStream in, byte[] buffer)
-            throws IOException {
-        int offset = 0;
-        while (offset < buffer.length) {
-            int n = in.read(buffer, offset, buffer.length - offset);
-            if (n < 0) return false;
-            offset += n;
-        }
-        return true;
-    }
-}
+    }}
