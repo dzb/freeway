@@ -8,6 +8,8 @@ import java.util.Arrays;
 final class HeadersFrame extends BaseFrame {
     private int padLength;
     private long dependentStreamId;
+    /** The PRIORITY dependency's E bit (RFC 9113 §6.10): an exclusive dependency. */
+    private boolean exclusive;
     private byte weight;
     private byte[] headerBlock;
 
@@ -36,7 +38,9 @@ final class HeadersFrame extends BaseFrame {
             if (end - pos < 5)
                 throw new Http2Exception(Http2ErrorCode.FRAME_SIZE_ERROR,
                     "HEADERS PRIORITY field is truncated");
-            frame.dependentStreamId = BinUtils.readInt(payload, pos, 4) & 0x7FFFFFFFL;
+            int rawDependency = BinUtils.readInt(payload, pos, 4);
+            frame.exclusive = (rawDependency & 0x80000000) != 0;
+            frame.dependentStreamId = rawDependency & 0x7FFFFFFFL;
             if (frame.dependentStreamId == header.streamId()) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
             frame.weight = payload[pos + 4];
             pos += 5;
@@ -57,6 +61,9 @@ final class HeadersFrame extends BaseFrame {
      * <p>Writes the pad-length byte, the PRIORITY field and the padding, all
      * of which {@link #parse} consumes and this previously dropped — a future
      * caller would have emitted a HEADERS frame that no peer could decode.
+     * The PRIORITY dependency's E bit travels with it for the same reason: the
+     * previous implementation wrote the 31-bit id alone, so an exclusive
+     * dependency silently became non-exclusive on the wire.
      * The frame length is recomputed because a decoded frame carries the
      * length it arrived with, padding and priority bytes included.
      */
@@ -72,7 +79,8 @@ final class HeadersFrame extends BaseFrame {
             outputStream.write(padLength);
         }
         if (prioritised) {
-            BinUtils.writeInt(outputStream, (int) dependentStreamId, 4);
+            BinUtils.writeInt(outputStream,
+                (int) dependentStreamId | (exclusive ? 0x80000000 : 0), 4);
             outputStream.write(weight);
         }
         outputStream.write(headerBlock);

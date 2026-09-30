@@ -41,12 +41,26 @@ public final class Backoff {
      * bounds, which is what makes it testable.
      */
     public static long millis(int attempt, long baseMillis, long maxMillis) {
-        long base = ceilingMillis(attempt, baseMillis, maxMillis);
-        if (base <= 0) {
+        return jitter(ceilingMillis(attempt, baseMillis, maxMillis));
+    }
+
+    /**
+     * A jittered sample from {@code ceilingMillis}: half the ceiling is the
+     * floor, so spacing still grows while callers that failed together no
+     * longer retry together.
+     *
+     * <p>Exposed for a wait whose ceiling the attempt index cannot express:
+     * {@code Retryer} waits {@code base} before its <em>first</em> retry
+     * (where the dial loop dials immediately), and that first wait needs the
+     * same jitter as every later one — a fleet restarted together comes back
+     * at once on exactly that retry.
+     */
+    public static long jitter(long ceilingMillis) {
+        if (ceilingMillis <= 0) {
             return 0;
         }
-        long floor = base / 2;
-        return floor + ThreadLocalRandom.current().nextLong(base - floor + 1);
+        long floor = ceilingMillis / 2;
+        return floor + ThreadLocalRandom.current().nextLong(ceilingMillis - floor + 1);
     }
 
     /**

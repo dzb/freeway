@@ -110,7 +110,7 @@ When exceeded, a `BodyTooLargeException` is thrown and handled by the built-in `
 
 **Decision:** `Container.inject(Object)` was removed. `Container.create(Class<T>)` added as the public API.
 
-**Why:** `inject()` was a "half measure" encouraging `new X() + container.inject(x)` — an anti-pattern where the caller manages part of the lifecycle and the container manages the rest. `create()` provides a clean contract: constructor injection + field injection + `@PostConstruct`, caller owns the lifecycle, no caching, no container management. The name `create()` was chosen over `instantiate()` as more idiomatic.
+**Why:** `inject()` was a "half measure" encouraging `new X() + container.inject(x)` — an anti-pattern where the caller manages part of the lifecycle and the container manages the rest. `create()` provides a clean contract: constructor injection + field injection, **no lifecycle callbacks** — `@PostConstruct` belongs to the managed path (this entry originally listed it; corrected in 1.5.6, see the note under *ResolvableHandler* below) — caller owns the lifecycle, no caching, no container management. The name `create()` was chosen over `instantiate()` as more idiomatic.
 
 Final Container API: `get(Class)`, `get(Class, String)`, `extension(Class)`, `create(Class)`, `close()`.
 
@@ -239,7 +239,7 @@ RouteHandler resolve(Supplier<RouteHandler> factory) {
         synchronized (this) {
             h = resolved;
             if (h == null) {
-                resolved = h = container.get(handlerType);
+                resolved = h = factory.get();
             }
         }
     }
@@ -247,7 +247,7 @@ RouteHandler resolve(Supplier<RouteHandler> factory) {
 }
 ```
 
-**Why:** DCL provides thread-safe lazy initialization with minimal overhead on the fast path (a single volatile read). The `synchronized` block is package-private and only called during module wiring, not on the request path. The `handle()` method throws if `resolved` is null — this is a programming error guard (must call `resolve()` before handling) rather than a fallback.
+**Why:** DCL provides thread-safe lazy initialization with minimal overhead on the fast path (a single volatile read). `resolve()` is public but only called during module wiring (by `HttpModule`), not on the request path. The `handle()` method throws if `resolved` is null — this is a programming error guard (must call `resolve()` before handling) rather than a fallback.
 
 **See also:** `ResolvableHandler.java`
 
@@ -365,11 +365,11 @@ list to copy and the accumulation bug class this worked around is structurally g
 
 **Why:** A graph that stops mid-way is a workflow defect; silently returning success hid it from callers and tests. The mechanism:
 
-- `ExecState` keeps a concurrent `Set<DeadEnd>` keyed per `(graphId, nodeId)`. An EXCLUSIVE node records a dead end when it matches no condition and has no default link (still logged as a warning). Joins record a *provisional* dead end each time they are entered but cannot activate; when the final branch arrives, the join clears only its own entry (`deadEndClear`) so a dead end recorded by a sibling branch is not lost.
+- `ExecState` keeps a concurrent `Set<DeadEnd>` keyed per `(graphId, nodeId)`. An EXCLUSIVE node records a dead end when it matches no condition and has no default link (still logged as a warning). Joins record a *provisional* dead end each time they are entered but cannot activate; the final branch clears it. In 1.5.6 that increment → decide → mark/clear transition was collapsed into one step under the join node's own monitor (`ExecState.join`, with `joinReset` for a LOOP re-arm): the count and the marker used to live in two structures, so a branch preempted between them could re-mark a join that had already activated and report a dead end for a graph that ran to completion.
 - The completion check in `eval()` throws `FlowException("Graph '...' did not complete: dead end at node '...'")`, naming the stuck node and graph. **Exemption:** a run ended via `stop()` is not a dead end (stopping is intentional); an interceptor veto that never proceeds simply records nothing. v1/v2-era `interrupt()` and resume-replay exemptions retired with those mechanisms.
 - Sub-graph evals share the parent's `ExecState` (passed through `FlowEvaluation.runGraph()`), so a dead end recorded inside a sub-graph propagates to the caller's completion check. No reset is needed at eval start — a fresh `ExecState` is created per top-level evaluation.
 
-**See also:** `ExecState.java:DeadEnd`, `FlowEngineDefault.java:eval()` / `exclusiveOut()` / `joinArrived()` (`freeway-flow`)
+**See also:** `ExecState.java:DeadEnd` / `ExecState.join` / `ExecState.joinReset`, `FlowEngineDefault.java:eval()` / `exclusiveOut()` / `joinArrived()` (`freeway-flow`)
 
 ---
 

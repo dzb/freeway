@@ -87,6 +87,9 @@ class LifecycleCallbackTest {
         container.close();
 
         assertEquals("preDestroy,close", bean.order());
+        assertEquals(2, bean.events.size(),
+            "a class carrying both runs both — the two phases deduplicate separately,"
+                + " not against each other");
     }
 
     @Test

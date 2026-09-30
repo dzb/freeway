@@ -262,4 +262,5 @@ class Http2PseudoHeaderValidationTest {
             }
         }
         return false;
-    }}
+    }
+}

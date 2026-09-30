@@ -10,7 +10,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * An injection annotation on a <em>method</em> parameter cannot be honored,
- * and must say so at startup rather than being silently dropped.
+ * and must say so when the declaring class is injected rather than being
+ * silently dropped.
  *
  * <p>It compiles, because {@code PARAMETER} is in {@code @Inject}'s target and
  * has to be — the constructor parameters that do work need it. Nothing in the
@@ -24,7 +25,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>The narrow alternative (dropping {@code PARAMETER} from the target) is
  * not available: it would forbid annotating constructor parameters, which is
- * the one place the annotation works. Hence the startup check.
+ * the one place the annotation works. Hence the injection-time check, which
+ * covers the declaring class, its superclasses and every interface it
+ * implements.
  */
 class MethodParameterInjectionTest {
 
@@ -40,7 +43,7 @@ class MethodParameterInjectionTest {
     }
 
     /**
-     * The startup check runs inside field injection, so it reaches the caller
+     * The check runs inside field injection, so it reaches the caller
      * wrapped by the realize path's {@code "Unable to initialize …"} frame —
      * the same shape every other startup configuration error in the framework
      * has. The actionable text is the root cause.
@@ -54,7 +57,7 @@ class MethodParameterInjectionTest {
     }
 
     @Test
-    void injectOnAMethodParameterFailsAtStartupNamingTheMethod() {
+    void injectOnAMethodParameterFailsWhenInjectedNamingTheMethod() {
         RuntimeException thrown = assertThrows(RuntimeException.class,
             () -> Freeway.create(binder -> {
                 binder.bind(Greeter.class).to(GreeterImpl.class);
@@ -97,6 +100,24 @@ class MethodParameterInjectionTest {
     }
 
     @Test
+    void aStrayAnnotationOnAnInterfaceMethodIsAlsoRejected() {
+        // An API interface is the likeliest place to write this, and a method's
+        // annotations are not inherited by its implementation — so a walk of the
+        // class chain alone would never see it, and the promise would be false
+        // exactly where it matters most. The implementation is injected
+        // directly: binding the interface would hand back a proxy and defer
+        // this to the first call, which is a different (also covered) path.
+        String message = rootCauseMessage(assertThrows(RuntimeException.class,
+            () -> Freeway.create(binder ->
+                binder.bind(ApiImpl.class).to(ApiImpl.class)
+            ).get(ApiImpl.class)));
+
+        assertTrue(message.contains("AnnotatedApi.fetch"),
+            "must name the interface declaring the annotated parameter: " + message);
+        assertTrue(message.contains("@Inject"), message);
+    }
+
+    @Test
     void thePlacesThatDoWorkAreUnaffected() {
         // The check must not fire on the two shapes it is silent about:
         // a constructor parameter and an @Inject field, in one class.
@@ -124,6 +145,17 @@ class MethodParameterInjectionTest {
 
     static class Caller {
         String call(@Inject Greeter greeter) {
+            return greeter == null ? "<null>" : greeter.greet();
+        }
+    }
+
+    interface AnnotatedApi {
+        String fetch(@Inject Greeter greeter);
+    }
+
+    static class ApiImpl implements AnnotatedApi {
+        @Override
+        public String fetch(Greeter greeter) {
             return greeter == null ? "<null>" : greeter.greet();
         }
     }

@@ -288,16 +288,6 @@ public final class PeerHub implements WebSocketEndpoint {
             }
         }
 
-        /** Reports a failure and closes the session, best-effort. */
-        private void fail(String message, Throwable cause) {
-            LOG.error(message, cause);
-            try {
-                session.close(1011, "frame handling failed");
-            } catch (Exception ignored) {
-                // best effort — the session is already unusable
-            }
-        }
-
         private void handshake(com.jujin.freeway.commons.json.JsonObject frame) throws java.io.IOException {
             HelloAdmission admission = validateHello(frame, token);
             if (!admission.accepted()) {

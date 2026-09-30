@@ -489,9 +489,8 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
      * <p>Reached through {@link AutoCloseable}, not {@code @PreDestroy}:
      * implementing the JDK interface is what guarantees the container sees it,
      * whereas the annotation is opt-in and easy to forget. {@code @PreDestroy}
-     * is the other path, not an addition — the two are mutually exclusive, and
-     * it exists for cleanup that must still be able to publish on the
-     * {@code EventBus}, which outlives this phase.
+     * is the other path, not a replacement — a class carrying both runs both,
+     * {@code @PreDestroy} first, with the {@code EventBus} deferred past both.
      */
     @Override
     public synchronized void close() {

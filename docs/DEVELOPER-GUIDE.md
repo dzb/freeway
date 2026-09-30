@@ -411,8 +411,8 @@ public final class OrderClient implements AutoCloseable {
 }
 ```
 
-`@PreDestroy` is the other path, **not an addition to it** — the two are
-mutually exclusive, and the container runs whichever it finds first:
+`@PreDestroy` is the other path, **not a replacement for it** — a class may carry
+both, and then both callbacks run, in this order:
 
 | | runs | why there |
 |---|---|---|
@@ -420,9 +420,11 @@ mutually exclusive, and the container runs whichever it finds first:
 | `EventBus` | deferred past both | a `@PreDestroy` may still publish on it |
 | `AutoCloseable.close()` | last | compiler-enforced, so the least surprising shape goes last |
 
-A class carrying both is closed **once**, not twice — the drain deduplicates by
-identity. So mark the method with only one, and pick by what it needs:
-`AutoCloseable` unless the cleanup must still reach the `EventBus`.
+Each phase deduplicates by identity, so no callback runs twice — but the phases
+do not deduplicate *against each other*: a class carrying both runs
+`@PreDestroy` and then `close()`. Mark the method with only one, and pick by
+what it needs: `AutoCloseable` unless the cleanup must still reach the
+`EventBus`. Carrying both means both run, so each must be able to stand alone.
 
 `@PostConstruct` is not part of this choice. It has no substitute: AOP
 intercepts *method calls*, and this fires before anyone has an object to call a
@@ -453,8 +455,10 @@ type's *constructor parameters* and its *fields*, and reads nothing else — so
 constructor parameters that do work need it) and then does nothing, leaving the
 parameter as whatever the caller passed. Nothing could make it work: the
 framework does no bytecode weaving, so it cannot intercept a call to a concrete
-class, and an advisor cannot substitute arguments either. Such an annotation is
-rejected at startup, naming the method and the way out.
+class, and an advisor cannot substitute arguments either. Such an annotation
+makes the container refuse to inject the declaring class — it scans the type,
+its superclasses and every interface it implements when it first realizes that
+class, and names the method, the parameter and the way out.
 
 ```java
 public class UserService {

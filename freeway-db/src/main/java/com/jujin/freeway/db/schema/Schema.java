@@ -121,7 +121,9 @@ public final class Schema {
      * @param db          database connection
      * @param dialect     SQL dialect for DDL generation
      * @param entityTypes entity classes annotated with @Table, @Id, etc.
-     * @return number of DDL statements executed
+     * @return number of <b>schema changes</b> applied — tables created and
+     *         columns added; indexes are executed but not counted (see
+     *         {@link #ensure(Database, Class[])})
      * @throws SqlException if execution fails, or when called inside a
      *                      transaction on a database without transactional DDL
      */

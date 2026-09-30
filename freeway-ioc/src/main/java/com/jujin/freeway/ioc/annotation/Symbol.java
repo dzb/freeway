@@ -16,7 +16,9 @@ import java.lang.annotation.Target;
  *
  * <p><b>Not a method parameter.</b> The container reads this annotation on
  * constructor parameters and fields only. On a method parameter it compiles,
- * resolves nothing, and is rejected at startup — see
+ * resolves nothing, and makes the container refuse to inject the declaring
+ * class (at its first realization, scanning the type, its superclasses and
+ * every interface it implements) — see
  * {@link com.jujin.freeway.ioc.annotation.Inject} for why the target cannot be
  * narrowed instead.
  */

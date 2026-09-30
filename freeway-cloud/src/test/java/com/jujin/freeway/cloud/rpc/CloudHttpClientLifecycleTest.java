@@ -25,11 +25,10 @@ import com.jujin.freeway.ioc.Freeway;
  * untouched: closing the container closes the client, and a later call is
  * refused rather than attempted against a released pool.
  *
- * <p>Without this the removal would have been invisible. The framework
- * deduplicates the two cleanup paths by identity ({@code Shutdown.drainPhase}),
- * so an object carrying both reaches only one of them — which makes "still
- * works" and "silently stopped being closed" look identical to every other
- * test in the module.
+ * <p>Without this the removal would have been invisible. A class carrying both
+ * callbacks reaches both of them ({@code Shutdown} keeps one identity set per
+ * phase), so "still works" and "silently stopped being closed" look identical
+ * to every other test in the module — this test is what tells them apart.
  */
 class CloudHttpClientLifecycleTest {
 

@@ -378,7 +378,7 @@ pad-length、PRIORITY 与 padding 却全部丢弃。这些方法在服务器实�
 | R4 | 拓扑排序 | `Extension.order()+findCycle`（ioc，约 150 行） / `DeferScope.sort()`（commons，约 60 行） | ❌ **结论推翻**：算法层就不同，不是"算法相同、策略不同"。ioc 用 `PriorityQueue(positions::get)` 按注册位置破平局（**稳定**拓扑序），commons 用 `ArrayDeque` FIFO。破平局规则正是拓扑排序的产出本身 | ~~中~~ 撤回 |
 | R5 | WS 分片重组 | `cloud/event/TextMessageAssembler` / `http/engine/ws/WebSocketReadLoop:33-103` | ❌ **结论部分推翻**：不是同一机制的两份实现。两侧分处连线两端——JDK 客户端已把分片边界交给 `onText(data, last)`，服务端要自己解帧、验掩码、按**字节**计数；cloud 侧按**字符**计数。常量不是共享副本。只修注释（见下） | ~~中~~ 仅注释 |
 | R6 | SQL 条件方法 | `Sql.Group` 逐字复制 `Sql` 自己的 6 个方法 + 1 个私有 | ⚠️ **实测修正**：`Sql` 不可变（复制列表返新实例）、`Group` 可变（原地追加），6 个公有方法**不是**复制。真的重复只有 `addGroupedCondition` 的 7 行 | ✅ 已修（仅该 7 行） |
-| R7 | 惰性持有 | `LazyHandler:36-50` / `LazyEndpoint:41-55` | 同构双检锁。**判定为不值得抽**（见下），仅在审计留档以免重复提出 | 低 → 不改 |
+| R7 | 惰性持有 | `ResolvableHandler` / `ResolvableEndpoint`（1.5.6 由 `LazyHandler` / `LazyEndpoint` 更名） | 同构双检锁。**判定为不值得抽**（见下），仅在审计留档以免重复提出 | 低 → 不改 |
 | R8 | 前缀展开 | `RouteGroup.expand()` / `WebSocketGroup.expand()`，且 `HttpModule:92-96` 与 `WebSocketIndex:37-43` **各展开一次** | 同一组 WS 路由启动时展开两遍。**属实，但无害且不可"修"**：两条路径的索引顺序本来就不同（HTTP 显式在前、WS 组展开在前），改成"传展开后的列表"会变更该顺序。改为把"为何无害"成文（见下） | 低 → 仅注释 |
 | R9 | 图规范化 | `GraphSpec.create():185` 与 `Graph` 构造器 `:29-30` 各调一次 `normalize()` | `new Graph(GraphSpec)` 只有 `create()` 一个调用方，`Graph.java:26-28` 的注释在防守一个不会发生的分叉 | ✅ 已修 |
 | R10 | 健康端点 | `CloudHealthModule:32` 硬编码 `{"status":"ok"}` / `HealthCheck.ALWAYS_OK:18` | ⚠️ **实测发现比初稿更重**：不是"绕过 codec"，是 **`Content-Type` 实测为 `text/plain; charset=utf-8`**——`HttpResponse.send(int,String)` 的默认类型，而 `/health/ready` 与 `/healthz` 都是 `application/json`。同一模块的三个探针端点，两个说 JSON、一个说纯文本 | ✅ 已修 |
@@ -459,15 +459,17 @@ side, whose engine hands over a completed message"。所以两个 16MB 不是同
 `PeerConnector` 包私有）直接断言 dial 腿，**回退后立刻失败**。教训：
 **测共享机制不等于测调用方**，尤其当"调用方已接入"本身就是待验证的事实。
 
-**R4 说明**：两份失败策略不同是**有意的**（一个大声失败、一个降级继续），因此
-"合并"指共享 Kahn 算法 + `Cycle` 判定，策略留在各自调用方。不取"删一份"的做法。
+**R4 说明（已撤回）**：这一段原先主张"两份失败策略不同是**有意的**……'合并'指共享
+Kahn 算法 + `Cycle` 判定，策略留在各自调用方"。**前提不成立**：两者的排队结构与破平局
+规则都不同（ioc 按注册位置破平局，commons 是 FIFO），且 commons 侧是直接抛、没有降级
+分支。见本节 R4 的实测更正：**不动代码**。
 
 ## 5. S4 — 完备性缺口（接线，不删能力）
 
 | # | 缺口 | 依据 | 结论 |
 |---|---|---|---|
 | C1 | `HttpModule` 不为 HTTP 请求开作用域 | `grep Scope\|scoped\|Defer freeway-http/.../HttpModule.java` **零命中** | ⚠️ **已实施并回滚——见下。前提不成立** |
-| C2 | `CloudEventBus` 无有序/异步发布 | `grep async\|Ordered` 在 `CloudEventBus.java` 零命中，而 `EventBus` 有 `publishAsync`/`publishOrdered` | 跨 JVM 顺序比进程内更值得保证（进程内 dispatch 已是一次方法调用）。把顺序机制**搬到真正需要它的平面**，而非从本地总线删除 | 中 |
+| C2 | `CloudEventBus` 无有序/异步发布 | `grep async\|Ordered` 在 `CloudEventBus.java` 零命中，而 `EventBus` 有 `publishAsync`/`publishOrdered` | 跨 JVM 顺序比进程内更值得保证（进程内 dispatch 已是一次方法调用）。把顺序机制**搬到真正需要它的平面**，而非从本地总线删除 | 中 → ⚠️ **已撤回**（前提不成立，见 §6.1） |
 
 ### C1 已回滚：请求作用域在 HTTP 路径上没有对应的作用域单元
 
@@ -620,7 +622,7 @@ PRIORITY 字段。**未使用的代码写错了**，是未来调用者会继承�
 | 保留项 | 依据 |
 |---|---|
 | `advisor` AOP 整包 | 场景成立（§6）。可优化 `AdvisedHandler` 快路径，不删 |
-| `Scope.THREAD` + `Scoping` + `ScopedCache` | 请求级单例是基座标配；`ServiceRuntime.java:121` 的 fail-loud 是正确设计。补接线（C1），不删 |
+| `Scope.THREAD` + `Scoping` + `ScopedCache` | 请求级单例是基座标配；`ServiceRuntime.java:121` 的 fail-loud 是正确设计。原计划"补接线（C1）"**已回滚——前提不成立（见 §5）**；保留不删 |
 | `cloud/storage/` 整包 | 对象存储是真实云需求，接口作为 SPI 有价值。**本轮曾误判为"接口说谎"，已撤回（见 §6 表）**——三处非对称实现全部由作者显式记录了理由（能力门控），是"产物包含理由"的正面样本 |
 | `PlantUml*` 定制层 | 自定义渲染是合理需求。~~**须修**~~ → **批次 2 已修**：`Graph.java` 两处 `catch (Exception ignored)` 已改为 fail-loud，回归测试 `PlantUmlDisplayFailureTest` |
 | `EventStreams`/`publishAsync`/`publishOrdered`/`EventStats`/`DeadEvent`/`Stoppable` | 见 §6。补一个锚点测试即可 |
@@ -650,9 +652,9 @@ PRIORITY 字段。**未使用的代码写错了**，是未来调用者会继承�
 ### 批次 3 — 机制归一（真冗余，先高后低）
 10. R2 mesh hello 状态机抽 `MeshFrameDecoder`（两份 onText 只提供 send/reply 行为）
 11. R3 共享退避实现，**给 mesh 补上 jitter**（`RetryerDefault` 已有，先搬后加）
-12. R5 WS 重组 / 16MB 常量
+12. ~~R5 WS 重组 / 16MB 常量~~ → **撤回**：两侧不在同一连线上，只改注释（已完成，见 §4 R5）
 13. R6 `Sql.Group` 抽共享静态 helper；顺带塌 8 个 `requireXxx` 为一个 helper
-14. R4 Kahn 算法共享（策略各留）
+14. ~~R4 Kahn 算法共享（策略各留）~~ → **撤回**：算法与破平局规则都不同（见 §4 R4）
 15. R7+R8+`PathJoiner` 低优先合并
 16. R9 图规范化去重
 17. R10 `/health/live` 走 `CloudHealthContributor`

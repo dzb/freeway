@@ -4,13 +4,15 @@ package com.jujin.freeway.boot;
  * Lifecycle states of an {@link AppRuntime}.
  *
  * <p>{@code CREATED → STARTING → RUNNING → STOPPING → STOPPED} is the happy
- * path; {@code FAILED} is terminal and means startup threw (the runtime is
- * closed at that point, so a retry needs a new launcher).
+ * path; {@code FAILED} means startup threw, which is terminal for
+ * {@code start()} (a retry needs a new launcher) but not for {@code close()}:
+ * releasing a failed runtime is still required, and moves the state to
+ * {@code STOPPED}.
  */
 public enum AppState {
     /** Built but not started. */
     CREATED,
-    /** Hooks are running; a concurrent {@code close()} unwinds instead of racing. */
+    /** Hooks are running. A {@code close()} on the starting thread unwinds it; from another thread it waits for {@code start()}, which holds the runtime monitor. */
     STARTING,
     /** Serving; {@code start()} is a no-op and {@code isRunning()} is true. */
     RUNNING,

@@ -1,7 +1,6 @@
 package com.jujin.freeway.ioc.internal;
 
 import java.lang.reflect.Field;
-import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -187,9 +186,12 @@ class SingleInitializationTest {
      *
      * <p>Checked by reflection rather than {@code System.gc()}: a GC hint is
      * not a contract, and a test that fails on a busy machine is worse than no
-     * test. What must be true is that no container-held collection mentions
-     * the instance — which is a fact about the container's fields, not about
-     * when the collector runs.
+     * test. What must be true is that the collection the container materializes
+     * into does not mention the instance — which is a fact about that cache,
+     * not about when the collector runs. It is reached two levels down, by
+     * name, because {@code targetCache} hangs off {@code ServiceRuntime}: a
+     * scan of {@code ContainerImpl}'s own fields finds no collection at all and
+     * asserts nothing.
      */
     @Test
     void callerOwnedInstancesAreNotRetainedByTheContainer() throws Exception {
@@ -197,20 +199,27 @@ class SingleInitializationTest {
         ContainerImpl container = (ContainerImpl) Freeway.create(binder -> { });
         StandaloneBean bean = container.create(StandaloneBean.class);
         assertNotNull(bean);
+
+        Object runtime = field(container, "serviceRuntime");
+        assertFalse(containsIdentity((Map<?, ?>) field(runtime, "targetCache"), bean),
+            "the service cache retains a caller-owned instance — what create() "
+                + "hands out is not the container's to manage");
+        assertFalse(containsIdentity((Map<?, ?>) field(runtime, "proxyCache"), bean),
+            "nor does it hand out a proxy for one");
+
         container.close();
 
-        for (Field field : ContainerImpl.class.getDeclaredFields()) {
-            if (Modifier.isStatic(field.getModifiers())) {
-                continue;
-            }
-            field.setAccessible(true);
-            if (field.get(container) instanceof Map<?, ?> map) {
-                assertFalse(containsIdentity(map, bean),
-                    "container field '" + field.getName() + "' retains a "
-                        + "caller-owned instance — the container does not manage "
-                        + "what Container.create hands out");
-            }
-        }
+        assertEquals(0, StandaloneBean.POST_CONSTRUCT.get(),
+            "create() does not post-construct, and close() must not run lifecycle "
+                + "for an instance the container never managed");
+    }
+
+    /** Reads a declared field by name, so the assertion is about the container's
+     *  own shape rather than about the internal types it is made of. */
+    private static Object field(Object owner, String name) throws Exception {
+        Field field = owner.getClass().getDeclaredField(name);
+        field.setAccessible(true);
+        return field.get(owner);
     }
 
     private static boolean containsIdentity(Map<?, ?> map, Object needle) {

@@ -11,7 +11,6 @@ import static org.junit.jupiter.api.Assertions.fail;
 import com.jujin.freeway.http.TestServerConfig;
 
 import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -23,7 +22,6 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -267,7 +265,9 @@ class Http2ProtocolTest {
             | ((payload[offset + 1] & 0xff) << 16)
             | ((payload[offset + 2] & 0xff) << 8)
             | (payload[offset + 3] & 0xff);
-    }    @Test
+    }
+
+    @Test
     void h2ShutdownClosesStreamWaitingForRequestBody() throws Exception {
         int port = freePort();
         var server = HttpServer.create(TestHttp.engine(),

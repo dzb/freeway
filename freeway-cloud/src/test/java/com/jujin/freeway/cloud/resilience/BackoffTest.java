@@ -87,10 +87,19 @@ class BackoffTest {
     void theRpcRetryerStillWaitsTheBaseOnItsFirstRetry() {
         // The opposite decision from the dial loop, and deliberately not
         // unified: an RPC that has already failed once backs off before trying
-        // again, where a never-tried peer does not.
+        // again, where a never-tried peer does not. The value is jittered all
+        // the same — a constant here would be the synchronized wave on the one
+        // retry every client of a restarted service makes together.
         RetryerDefault retryer = new RetryerDefault(3, BASE, MAX);
-        assertEquals(BASE, retryer.backoffMillis(0),
-            "an RPC's first retry waits the base delay");
+        Set<Long> firstRetries = new HashSet<>();
+        for (int i = 0; i < 200; i++) {
+            long delay = retryer.backoffMillis(0);
+            assertTrue(delay >= BASE / 2 && delay <= BASE,
+                "an RPC's first retry waits within [base/2, base], got " + delay);
+            firstRetries.add(delay);
+        }
+        assertTrue(firstRetries.size() > 1,
+            "an RPC's first retry is jittered, not a constant: " + firstRetries);
     }
 
     @Test

@@ -47,10 +47,12 @@ public final class RetryerDefault implements Retryer {
     public long backoffMillis(int attempt) {
         // A retry always waits at least the base: unlike the mesh dial loop,
         // which dials a fresh peer immediately, an RPC that has already failed
-        // once backs off before trying again. The jittered curve is shared —
-        // see Backoff.
+        // once backs off before trying again. That first wait is jittered like
+        // every later one — it is exactly when a fleet that failed together
+        // comes back, so a deterministic base would rebuild the synchronized
+        // wave the jittered curve exists to break.
         if (attempt <= 0) {
-            return baseMillis;
+            return Backoff.jitter(Math.min(baseMillis, maxMillis));
         }
         return Backoff.millis(attempt, baseMillis, maxMillis);
     }

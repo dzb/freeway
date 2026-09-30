@@ -7,7 +7,7 @@ import java.io.InputStream;
 import java.util.function.LongSupplier;
 
 /**
- * The one body-size limiter in the framework: a stream that stops at
+ * The one body-size limiter for engine-owned bodies: a stream that stops at
  * {@code limit} and throws {@link BodyTooLargeException} past it.
  *
  * <p>Single implementation on purpose. {@code AbstractHttpContext#readBody}
@@ -18,6 +18,15 @@ import java.util.function.LongSupplier;
  * on every case {@code BodyLimitParityTest} explores, so this was a latent
  * divergence rather than a live bug; what changed is that the guarantee is now
  * structural instead of accidental.
+ *
+ * <p>The scope is the bodies the engine hands over. A multipart part has its
+ * own ceiling ({@code MultipartForm}'s per-part limit, which fails with an
+ * {@code IOException} rather than a 413), and an adapter that enforces a
+ * native limit before this stream sees the body — Undertow's
+ * {@code MAX_ENTITY_SIZE}, fixed at server start — still refuses past that
+ * limit, reporting the size it was configured with. Narrowing
+ * {@code maxBodySize} per request therefore works on every path; raising it
+ * only works where nothing upstream has already capped the read.
  *
  * <p>Lives in {@code http.internal} rather than {@code engine} because the
  * shared party is the root package's {@code AbstractHttpContext}, and Java

@@ -42,8 +42,13 @@ public interface HttpContext extends ExchangeMeta, HttpRequest, HttpResponse {
      *
      * <p>Engines initialize this from {@link HttpServerConfig#maxBodySize()}
      * when they create the exchange (the honor tiers on
-     * {@link HttpEngine#start}); a filter may narrow it further for one
-     * request.
+     * {@link HttpEngine#start}); a filter may change it for one request.
+     * Narrowing works on every engine. Raising it works where the body is read
+     * by the framework's own limiter
+     * ({@code http.internal.LimitedInputStream}, which reads this value per
+     * read) — an adapter that enforces its own native ceiling before that
+     * (Undertow's {@code MAX_ENTITY_SIZE}, fixed at server start) still
+     * refuses past it.
      *
      * @return this context for chaining
      */

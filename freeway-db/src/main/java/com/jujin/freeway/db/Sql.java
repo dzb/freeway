@@ -369,6 +369,17 @@ public final class Sql {
      * such as {@code "`my col`"} and deferred real misuse to placeholder
      * counting. The column name is quoted/validated as a name; expressions
      * belong in {@link #setExpression(String, Object)}.</p>
+     *
+     * <p>A {@link Sql} value is SQL rather than data: it renders as a
+     * <b>parenthesized scalar subquery</b> in this column's slot, and its
+     * parameters ride along at that position. So
+     * {@code setColumn("tenant_id", Sql.select("id").from("tenants"))} renders
+     * {@code VALUES ((SELECT id FROM tenants))} — the form every dialect
+     * accepts, and the only shape of a nested query that fits one column. This
+     * is where it differs from {@link #setExpression(String, Object)}: there
+     * the caller writes the fragment and therefore owns the parentheses
+     * ({@code setExpression("tenant_id = (?)", sub)}), while here there is no
+     * fragment to write them in.</p>
      */
     public Sql setColumn(String column, Object value) {
         requireUpdateOrInsert("setColumn");
@@ -383,12 +394,12 @@ public final class Sql {
         List<String> newTargets = new ArrayList<>(dmlTargets);
         newTargets.add(column);
         List<Object> newValues = new ArrayList<>(dmlValues);
-        // A Sql value is SQL, not data: splice its text in and carry its
-        // placeholders over, exactly as appendValue does inside a fragment.
-        // Without this the object would be bound as a parameter and the
-        // statement would silently mean something else. setExpression has no
-        // equivalent step because UPDATE stores the whole "col = ?" fragment
-        // as text, so a subquery arrives already spliced.
+        // A Sql value is SQL, not data: splice it in as a parenthesized scalar
+        // subquery and carry its placeholders over. Without this the object
+        // would be bound as a parameter and the statement would silently mean
+        // something else. The parentheses are added at render time
+        // (renderInsertValues) because, unlike setExpression, this API has no
+        // fragment in which the caller could write them.
         if (value instanceof Sql nested) {
             newValues.add(new InlineValue(nested.sql(), nested.args()));
         } else {
@@ -403,7 +414,11 @@ public final class Sql {
      * ({@code Sql.update("users").setExpression("name = ?", name)}).
      *
      * <p>UPDATE-only; placeholders are normalized like everywhere else
-     * ({@code ?}, {@code :name} and {@code $1} all become {@code ?}).</p>
+     * ({@code ?}, {@code :name} and {@code $1} all become {@code ?}). A
+     * {@link Sql} value is spliced in where the placeholder is, so write the
+     * parentheses yourself when the value is a subquery —
+     * {@code setExpression("tenant_id = (?)", sub)} — because this API renders
+     * text and cannot add them for you.</p>
      */
     public Sql setExpression(String expr, Object value) {
         requireUpdateOrInsert("setExpression");
@@ -894,7 +909,9 @@ public final class Sql {
      * commas. A {@code Sql} value cannot ride in as an object — it would be
      * bound as a parameter and the statement would mean something else. So the
      * rendered text becomes the entry, and the nested query's own placeholders
-     * ride along inside that same text.
+     * ride along inside that same text. {@link #renderInsertValues} wraps that
+     * text in parentheses, which is what makes it a scalar subquery rather than
+     * a bare {@code SELECT} sitting in a VALUES row.
      * </p>
      *
      * <p>The nested parameters must not be added to {@code dmlValues} as
@@ -918,7 +935,10 @@ public final class Sql {
                 out.append(", ");
             }
             Object value = dmlValues.get(i);
-            out.append(value instanceof InlineValue inline ? inline.text() : "?");
+            // The parentheses are what make this a scalar subquery: a bare
+            // `VALUES (SELECT ...)` is not an expression in PostgreSQL, MySQL
+            // or SQLite, while `VALUES ((SELECT ...))` is.
+            out.append(value instanceof InlineValue inline ? "(" + inline.text() + ")" : "?");
         }
         return out.toString();
     }

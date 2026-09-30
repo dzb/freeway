@@ -589,10 +589,15 @@ class FlowEngineTest {
         FlowEvaluation evaluation = new FlowEvaluation(
             graph, engine, engine.driver(graph), FlowContext.of());
 
-        evaluation.execState().countSet(graph, "loop", 3);
+        // Touch the join state through its own entry point: the count is not
+        // settable from outside any more, precisely because a lone write is the
+        // operation the join transition must own.
+        evaluation.execState().joinReset(graph, "loop");
 
         FlowEvaluation copy = evaluation.copy(graph);
-        assertSame(evaluation.execState(), copy.execState());
+        assertSame(evaluation.execState(), copy.execState(),
+            "a copy shares the run's state — a branch arriving after the copy "
+                + "must be counted by the same join");
     }
 
     // ── 停止 ──────────────────────────────────────────────────────

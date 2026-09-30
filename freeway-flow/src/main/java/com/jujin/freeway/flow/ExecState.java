@@ -106,10 +106,6 @@ public final class ExecState {
         }
     }
 
-    void countSet(Graph graph, String nodeId, int value) {
-        counter(graph.id() + "/" + nodeId).set(value);
-    }
-
     private AtomicInteger counter(String fullKey) {
         return counts.computeIfAbsent(fullKey, k -> new AtomicInteger(0));
     }

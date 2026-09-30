@@ -8,7 +8,11 @@ package com.jujin.freeway.boot;
  * framework entry point may call it defensively. {@link #close()} is
  * idempotent and at-most-once: after the first call every later call is a
  * no-op. A failure during startup leaves the runtime
- * {@link AppState#FAILED} and closed.</p>
+ * {@link AppState#FAILED} and the container still open: the failure is reported
+ * by the thrown exception, and releasing the container is the separate,
+ * idempotent {@link #close()} step (which then leaves {@link AppState#STOPPED}).
+ * {@code FreewayApp.start()} performs that close while unwinding; a runtime you
+ * constructed yourself is yours to close.</p>
  *
  * <p><b>Closing during {@link AppState#STARTING}.</b> A {@code close()} on the
  * thread that is running {@code start()} unwinds the startup: the hook sees

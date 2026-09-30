@@ -24,6 +24,7 @@ import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -162,9 +163,7 @@ final class InjectionResolver {
             @Override
             protected List<String> computeValue(Class<?> type) {
                 List<String> stray = new ArrayList<>();
-                for (Class<?> c = type;
-                     c != null && c != Object.class && !isJdkClass(c);
-                     c = c.getSuperclass()) {
+                for (Class<?> c : scannedTypes(type)) {
                     for (Method method : c.getDeclaredMethods()) {
                         if (method.isSynthetic() || method.isBridge()) {
                             continue;
@@ -187,6 +186,37 @@ final class InjectionResolver {
             }
         };
 
+    /**
+     * The types whose declared methods are scanned: the class chain up to (but
+     * excluding) {@code Object} and the JDK, plus every implemented interface,
+     * transitively.
+     *
+     * <p>Interfaces are in the set because that is where the annotation is most
+     * tempting — on an API method's parameter — and a method's annotations are
+     * not inherited by its implementation, so a class-chain-only walk never
+     * sees them and the promise that no such annotation goes unnoticed would be
+     * false for the likeliest place to write one. Insertion order, so the
+     * reported list is stable.
+     */
+    private static Set<Class<?>> scannedTypes(Class<?> type) {
+        Set<Class<?>> types = new LinkedHashSet<>();
+        for (Class<?> c = type;
+             c != null && c != Object.class && !isJdkClass(c);
+             c = c.getSuperclass()) {
+            types.add(c);
+            collectInterfaces(c, types);
+        }
+        return types;
+    }
+
+    private static void collectInterfaces(Class<?> type, Set<Class<?>> types) {
+        for (Class<?> itf : type.getInterfaces()) {
+            if (!isJdkClass(itf) && types.add(itf)) {
+                collectInterfaces(itf, types);
+            }
+        }
+    }
+
     private static void rejectMethodParameterInjections(Class<?> ownerType) {
         List<String> stray = METHOD_PARAMETER_INJECTIONS.get(ownerType);
         if (stray.isEmpty()) {
@@ -205,9 +235,13 @@ final class InjectionResolver {
 
     /**
      * The app-class boundary {@code BeanPlan.isJdkClass} applies when
-     * collecting fields, copied rather than promoted: a superclass in the JDK
-     * cannot be the user's declaration to fix, so reporting one would send
-     * the reader after a file they do not own.
+     * collecting fields, copied rather than promoted: the predicate is three
+     * lines and the two modules share no utility package, so promoting it would
+     * add a public type to gain nothing. Keep the two in sync.
+     *
+     * <p>The boundary itself is not cosmetic — a superclass in the JDK cannot
+     * be the user's declaration to fix, so reporting one would send the reader
+     * after a file they do not own.
      */
     private static boolean isJdkClass(Class<?> type) {
         if (type.getClassLoader() == null) {

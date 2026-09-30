@@ -376,10 +376,11 @@ class SqlTest {
     // ====================== INSERT ======================
 
     /**
-     * A {@code Sql} value is SQL, not data. Splicing it in is what makes
-     * {@code INSERT … SELECT} expressible through the INSERT-only
-     * {@code setColumn} — before this, the {@code Sql} object was bound as a
-     * JDBC parameter and the statement silently meant something else.
+     * A {@code Sql} value is SQL, not data. Splicing it in — parenthesized, so
+     * it is a scalar subquery — is what makes a nested query expressible
+     * through the INSERT-only {@code setColumn}: before this, the {@code Sql}
+     * object was bound as a JDBC parameter and the statement silently meant
+     * something else, and an unparenthesized splice would only parse on H2.
      */
     @Test
     void setColumnInlinesANestedQuery() {
@@ -389,7 +390,7 @@ class SqlTest {
             .setColumn("name", "john");
 
         assertEquals(
-            "INSERT INTO users (tenant_id, name) VALUES (SELECT id FROM tenants WHERE active = ?, ?)",
+            "INSERT INTO users (tenant_id, name) VALUES ((SELECT id FROM tenants WHERE active = ?), ?)",
             q.sql());
         assertArrayEquals(new Object[]{true, "john"}, q.args(),
             "the subquery's own placeholder comes first — binding order follows "
@@ -407,8 +408,8 @@ class SqlTest {
 
         assertEquals(
             "INSERT INTO memberships (tenant_id, owner_id, role) VALUES ("
-                + "SELECT id FROM tenants WHERE active = ?, "
-                + "SELECT id FROM users WHERE name = ?, ?)",
+                + "(SELECT id FROM tenants WHERE active = ?), "
+                + "(SELECT id FROM users WHERE name = ?), ?)",
             q.sql());
         assertArrayEquals(new Object[]{true, "root", "admin"}, q.args(),
             "each inlined query contributes its own parameters at its own "
@@ -421,7 +422,7 @@ class SqlTest {
         Sql q = Sql.insert("users").setColumn("tenant_id", sub);
 
         assertEquals(
-            "INSERT INTO users (tenant_id) VALUES (SELECT id FROM tenants)", q.sql());
+            "INSERT INTO users (tenant_id) VALUES ((SELECT id FROM tenants))", q.sql());
         assertArrayEquals(new Object[0], q.args(),
             "the inline wrapper is not itself a bind value");
     }
@@ -430,11 +431,13 @@ class SqlTest {
     void updatePathInlinesTheSameWay() {
         Sql sub = Sql.select("name").from("admins").where("id = ?", 7);
         Sql q = Sql.update("users")
-            .setExpression("name = ?", sub)
+            // A fragment value is spliced where the placeholder is, so the
+            // caller writes the parentheses that make it a scalar subquery.
+            .setExpression("name = (?)", sub)
             .where("id = ?", 3);
 
         assertEquals(
-            "UPDATE users SET name = SELECT name FROM admins WHERE id = ? WHERE id = ?",
+            "UPDATE users SET name = (SELECT name FROM admins WHERE id = ?) WHERE id = ?",
             q.sql());
         assertArrayEquals(new Object[]{7, 3}, q.args());
     }

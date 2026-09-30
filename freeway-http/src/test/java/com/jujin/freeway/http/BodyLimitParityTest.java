@@ -58,15 +58,16 @@ class BodyLimitParityTest {
     }
 
     /**
-     * Reads through a stream that hands out small chunks, because that is
-     * where the old helper's arithmetic actually broke.
+     * Reads through a stream that hands out small chunks, because that is the
+     * shape a socket produces and the one a naive limiter gets wrong.
      *
-     * <p>Its check ran as {@code total > limit - read} <em>before</em> writing:
-     * with a body one byte longer than the limit arriving in several chunks, it
-     * compared a total that had not yet reached the limit against a remaining
-     * count that had already gone to zero, and rejected. A single-shot
-     * {@code readAllBytes} hides the bug entirely, so the parity check has to
-     * drive the stream the way a handler would.
+     * <p>{@code readAllBytes} on an in-memory stream hands over the whole body
+     * in one call, which hides any per-read arithmetic error; the parity check
+     * therefore drives the stream the way a handler would. (The old helper's
+     * check was {@code total > limit - read}, which is {@code total + read >
+     * limit} — "over the limit rejects" — so it did <em>not</em> have the bug
+     * an earlier draft of this comment claimed; chunking is here to keep the
+     * equivalence honest, not to reproduce one.)
      */
     private static byte[] viaEngineChunked(long limit, String body, int chunk) throws IOException {
         return new LimitedInputStream(

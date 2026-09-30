@@ -62,7 +62,8 @@ class CloudEventBusTest extends CloudMeshTest {
         return app.get(com.jujin.freeway.http.HttpServer.class).port();
     }
 
-    /** Waits until both nodes see the mesh connection established. */    private static void awaitUntil(java.util.function.BooleanSupplier condition)
+    /** Waits until the condition holds, up to five seconds. */
+    private static void awaitUntil(java.util.function.BooleanSupplier condition)
         throws InterruptedException {
         long deadline = System.currentTimeMillis() + 5000;
         while (System.currentTimeMillis() < deadline) {

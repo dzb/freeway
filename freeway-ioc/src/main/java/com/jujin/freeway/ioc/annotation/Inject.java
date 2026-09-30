@@ -19,8 +19,10 @@ import java.lang.annotation.Target;
  * type's constructor parameters and its fields and nothing else — there is no
  * bytecode weaving to intercept a call to a concrete class, and an advisor
  * cannot substitute arguments either. An annotation on a method parameter
- * therefore compiles and does nothing, so the container rejects it at startup
- * rather than let the parameter arrive as {@code null}.
+ * therefore compiles and does nothing, so the container refuses to inject such
+ * a class: at the first realization of the declaring type it scans that type,
+ * its superclasses and every interface it implements, and fails naming the
+ * method, the parameter and the way out.
  */
 @Retention(RetentionPolicy.RUNTIME)
 @Target({ElementType.CONSTRUCTOR, ElementType.FIELD, ElementType.PARAMETER})

@@ -47,17 +47,28 @@ class PlantUmlDisplayFailureTest {
     @Test
     void aThrowingDisplayFunctionOnALinkIsAlsoReported() {
         // The same function runs over link labels; swallowing there was the
-        // same defect on a different path.
+        // same defect on a different path. It throws only for links, so the
+        // node path cannot report it first — a function that throws on
+        // everything reports during node declaration and would keep this test
+        // green even if the link path still swallowed.
         Graph withCondition = Graph.create("display_failure_link", spec -> {
             spec.addStart("s").linkAdd("a");
             spec.addActivity("a").task("@task1")
                 .linkAdd("e", ld -> ld.when("x > 5"));
             spec.addEnd("e");
         });
-        assertThrows(IllegalStateException.class,
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
             () -> withCondition.toPlantUml(ctx -> {
-                throw new IllegalStateException("link boom");
+                if (ctx.isLink()) {
+                    throw new IllegalStateException("link boom");
+                }
+                return PlantUmlDisplayResult.ofDefault();
             }));
+
+        assertTrue(ex.getMessage().contains("link "),
+            "the report must name the link it failed on: " + ex.getMessage());
+        assertEquals(IllegalStateException.class, ex.getCause().getClass(),
+            "the user's own exception must be preserved as the cause");
     }
 
     @Test

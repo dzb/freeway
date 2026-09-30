@@ -265,10 +265,12 @@ public class Graph {
      * rendering. A typo or a null dereference inside the function then produced
      * a perfectly well-formed diagram with the customization silently missing —
      * the one outcome the caller could neither see nor debug, and the reason
-     * the hook was untested in the first place. Everywhere else in the
-     * framework a user callback that throws is reported; a diagram generator
-     * is no exception, and a diagram is a debugging aid, so silently
-     * rendering the wrong one costs exactly when it is needed.
+     * the hook was untested in the first place. A user-supplied <em>rendering</em>
+     * callback that throws is reported elsewhere too (the WebSocket read loop's
+     * best-effort teardown of a listener callback is the separate, deliberate
+     * exception); a diagram generator is no exception, and a diagram is a
+     * debugging aid, so silently rendering the wrong one costs exactly when it
+     * is needed.
      */
     private static PlantUmlDisplayResult applyDisplayFunc(
             Function<PlantUmlDisplayContext, PlantUmlDisplayResult> func,

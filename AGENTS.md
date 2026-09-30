@@ -125,9 +125,11 @@ transitively) plus JUnit at test scope. Anything else belongs in an ext adapter.
   only handle that can still reach anything. **Pass a capability, not the container**:
   `ResolvableHandler.resolve` takes a `Supplier<RouteHandler>`, so the `route` package
   never names the type — the container does not cross the boundary, only the ability to
-  make a handler does. The grep test: `route/` and `websocket/` name `Container` in
-  javadoc only, and every `container.*` call in `freeway-http` sits in `HttpModule` —
-  one file, because one file is where composition happens. A consequence worth stating,
+  make a handler does. The grep test, over framework code: in
+  `freeway-http/src/main/java`, `route/` and `websocket/` name `Container` in
+  javadoc only, and every `container.*` call sits in `HttpModule` —
+  one file, because one file is where composition happens. (Tests are assembly
+  points and do hold containers; the rule is about the code that ships.) A consequence worth stating,
   because it looks like a limitation: a class-based route handler is built during
   composition, so it **cannot** take a `Scope.THREAD` dependency. That is the scope
   meaning what it says — a thread-level lifetime, opened and closed by
