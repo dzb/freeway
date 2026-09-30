@@ -7,6 +7,8 @@ import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.annotation.Builtin;
 import com.jujin.freeway.ioc.annotation.Marker;
 
+import java.util.Map;
+
 /**
  * Cloud-native probes (K8s semantics):
  * <ul>
@@ -27,9 +29,15 @@ public final class CloudHealthModule implements ModuleEx {
 
     @Override
     public void bind(Binder b) {
+        // sendJson, not send with a body literal: it is what types the answer
+        // application/json (send defaults to text/plain) and what routes the
+        // body through the bound JsonCodec, so a substituted codec is honored
+        // here as everywhere else. /health/ready and the http-side /healthz
+        // already answer this way — a probe that disagreed with its neighbours
+        // on content type was a downgrade, not a choice.
         b.contribute(Route.class)
             .add("freeway.cloud.health.live",
-                Route.get("/health/live", ctx -> ctx.send(200, "{\"status\":\"ok\"}")));
+                Route.get("/health/live", ctx -> ctx.sendJson(200, Map.of("status", "ok"))));
         b.contribute(Route.class)
             .add("freeway.cloud.health.ready", Route.get("/health/ready", ReadyHandler.class));
     }

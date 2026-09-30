@@ -81,6 +81,25 @@ class HealthEndpointsTest {
         }
     }
 
+    @Test
+    void bothProbesAnswerAsJson() throws Exception {
+        // Two probe endpoints from one module must not disagree on how their
+        // body is typed. `send(String)` defaults Content-Type to text/plain
+        // while `sendJson` defaults it to application/json, so a hand-written
+        // body literal is a silent downgrade — and K8s aside, any client that
+        // parses a probe as JSON gets a different contract from the readiness
+        // probe sitting next to it.
+        try (AppRuntime app = FreewayApp.create(new HttpModule()).add(CloudModule.class).start()) {
+            for (String probe : List.of("/health/live", "/health/ready", "/healthz")) {
+                HttpResponse<String> response = get(app, probe);
+                String contentType = response.headers().firstValue("content-type").orElse("<none>");
+                assertTrue(contentType.startsWith("application/json"),
+                    probe + " must answer as JSON; got " + contentType
+                        + " with body " + response.body());
+            }
+        }
+    }
+
     private static HttpResponse<String> get(AppRuntime app, String path) throws Exception {
         int port = app.get(com.jujin.freeway.http.HttpServer.class).port();
         HttpClient client = HttpClient.newHttpClient();
