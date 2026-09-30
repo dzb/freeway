@@ -1,6 +1,5 @@
 package com.jujin.freeway.cloud.resilience;
 
-import java.util.concurrent.ThreadLocalRandom;
 import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
 
 /**
@@ -46,23 +45,13 @@ public final class RetryerDefault implements Retryer {
 
     @Override
     public long backoffMillis(int attempt) {
-        long base = baseBackoffMillis(attempt);
-        // Jitter on top of the exponential curve: clients that failed at the
-        // same instant must not retry at the same instant either, or a
-        // recovering service is met by one synchronized wave. Half the base is
-        // kept as a floor so the spacing still grows.
-        long floor = base / 2;
-        return floor + ThreadLocalRandom.current().nextLong(base - floor + 1);
-    }
-
-    private long baseBackoffMillis(int attempt) {
+        // A retry always waits at least the base: unlike the mesh dial loop,
+        // which dials a fresh peer immediately, an RPC that has already failed
+        // once backs off before trying again. The jittered curve is shared —
+        // see Backoff.
         if (attempt <= 0) {
             return baseMillis;
         }
-        if (attempt >= 62) {
-            return maxMillis; // shift would overflow — already at the cap
-        }
-        long shift = baseMillis << attempt;
-        return shift < 0 ? maxMillis : Math.min(shift, maxMillis);
+        return Backoff.millis(attempt, baseMillis, maxMillis);
     }
 }

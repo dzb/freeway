@@ -16,6 +16,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
+import com.jujin.freeway.cloud.resilience.Backoff;
 
 /**
  * Outbound dialer for the event mesh: connects to configured peers
@@ -53,9 +54,12 @@ final class PeerConnector implements AutoCloseable {
      *  {@link Wiring#defaults()} behaves exactly like an unconfigured app. */
     private static final Duration CONNECT_TIMEOUT =
         Duration.ofMillis(ConfigKeys.EVENT_CONNECT_TIMEOUT_MS_DEFAULT);
-    /** Mirrors the server side's inbound message limit
-     *  ({@code WebSocket.MAX_MESSAGE_SIZE}): fragment reassembly must not turn
-     *  a peer that never sets FIN into unbounded memory. */
+    /** Fragment reassembly must not turn a peer that never sets FIN into
+     *  unbounded memory. Counted in <em>characters</em>, because the JDK's
+     *  client listener hands over already-decoded {@code CharSequence}
+     *  fragments — the same 16 MB the server read loop allows, but measured in
+     *  a different unit from its {@code messageBytes}, so the two limits are
+     *  peers by intent rather than one shared constant. */
     private static final int MAX_INBOUND_MESSAGE = 16 * 1024 * 1024;
 
     private final HttpClient http;
@@ -248,12 +252,30 @@ final class PeerConnector implements AutoCloseable {
         }
     }
 
-    /** Exponential backoff capped at {@code backoffMaxMs} for the given attempt count. */
+    /**
+     * Exponential backoff with jitter for the given attempt count, capped at
+     * {@code backoffMaxMs}. Attempt 0 dials immediately — a peer that has
+     * never been tried needs no wait.
+     *
+     * <p>Shared with the RPC retry policy via {@link Backoff}. This leg used
+     * to have no jitter at all, which is the one place it bites hardest: after
+     * a rolling restart every node loses its peers at the same instant, and
+     * un-jittered backoff has all of them re-dial in lockstep, forever.
+     */
     private long backoffSleepMs(int attempts) {
-        if (attempts <= 0) {
-            return 0;
-        }
-        return Math.min(backoffBaseMs * (1L << Math.min(attempts, 5)), backoffMaxMs);
+        return Backoff.millis(attempts, backoffBaseMs, backoffMaxMs);
+    }
+
+    /**
+     * Package-visible so the test can prove the dial leg actually jitters.
+     *
+     * <p>Without an accessor the only observable is the sleep itself, and a
+     * test that waits on real time to check a distribution is both slow and
+     * unreliable. The curve is the same object the RPC policy uses, so this
+     * probes it rather than reimplementing it.
+     */
+    long backoffSleepMsForTest(int attempts) {
+        return backoffSleepMs(attempts);
     }
 
     /** Package-visible for the reconnect-pacing test: the failed-attempt
@@ -392,35 +414,38 @@ final class PeerConnector implements AutoCloseable {
                 return null;
             }
             try {
-                var frame = com.jujin.freeway.commons.json.JsonUtils.parseObject(text);
-                if (frame.containsKey("proto")) {
-                    if (handshaken) {
-                        // Mirror the server leg: hello is one-shot per
-                        // session — a second one re-negotiates nothing.
+                // Which frame this is, and whether the session may see it, is
+                // decided once in MeshFrame — see the note there on why the
+                // two legs must not each keep a copy of that rule.
+                switch (MeshFrame.classify(text, handshaken)) {
+                    case MeshFrame.Hello hello -> acceptHandshake(hello.payload());
+                    case MeshFrame.DuplicateHello ignored -> {
+                        // Hello is one-shot per session; a second one
+                        // re-negotiates nothing.
                         LOG.warn("Peer {} sent a second hello — aborting", peer);
                         abort();
                         return null;
                     }
-                    acceptHandshake(frame);
-                } else if (frame.containsKey("specversion")) {
-                    if (!handshaken) {
-                        // Server-leg mirror: the CE pipeline (hub.receive) is
-                        // only for admitted peers. Before the ack the peer
-                        // never ran our admission — treat the frame as a
-                        // protocol violation, not as an event.
+                    case MeshFrame.Event event ->
+                        hub.receive(CloudEventEnvelope.parse(event.text()));
+                    case MeshFrame.EventBeforeHello ignored -> {
+                        // The CE pipeline is only for admitted peers. Before
+                        // the ack the peer never ran our admission — a
+                        // protocol violation, not an event.
                         LOG.warn("CE frame from peer {} before the handshake "
                             + "completed — aborting", peer);
                         abort();
                         return null;
                     }
-                    hub.receive(CloudEventEnvelope.parse(text));
-                } else {
-                    // Mirror the server leg: an unrecognized frame means the
-                    // peer is not speaking the mesh protocol. Ignoring it
-                    // would let a malformed session stay alive indefinitely.
-                    LOG.warn("Unrecognized frame from peer {} — aborting", peer);
-                    abort();
-                    return null;
+                    case MeshFrame.Unrecognized ignored -> {
+                        // The peer is not speaking the mesh protocol. Ignoring
+                        // it would let a malformed session live indefinitely.
+                        LOG.warn("Unrecognized frame from peer {} — aborting", peer);
+                        abort();
+                        return null;
+                    }
+                    case MeshFrame.Malformed bad ->
+                        throw new IllegalStateException(bad.reason());
                 }
             } catch (RuntimeException e) {
                 LOG.error("Frame handling failed for peer {}", peer, e);

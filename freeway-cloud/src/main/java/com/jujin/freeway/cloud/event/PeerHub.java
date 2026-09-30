@@ -253,39 +253,48 @@ public final class PeerHub implements WebSocketEndpoint {
 
         @Override
         public void onText(String text) {
+            // Which frame this is, and whether the session may see it, is
+            // decided once in MeshFrame — see the note there on why the two
+            // legs must not each keep a copy of that rule.
             try {
-                var frame = com.jujin.freeway.commons.json.JsonUtils.parseObject(text);
-                if (frame.containsKey("proto")) {
-                    if (handshaken) {
-                        // The session already passed admission once; a second
-                        // hello would re-negotiate under a new origin.
+                switch (MeshFrame.classify(text, handshaken)) {
+                    case MeshFrame.Hello hello -> handshake(hello.payload());
+                    case MeshFrame.DuplicateHello ignored -> {
                         LOG.warn("Duplicate hello from peer — closing");
                         session.close(1002, "duplicate hello");
-                    } else {
-                        handshake(frame);
                     }
-                } else if (frame.containsKey("specversion")) {
-                    if (!handshaken) {
+                    case MeshFrame.Event event -> receive(CloudEventEnvelope.parse(event.text()));
+                    case MeshFrame.EventBeforeHello ignored -> {
                         // Admission gate: receive() hands frames to the
                         // broadcast plane, but the token check lives in the
                         // hello path — a CE frame before hello must never
                         // reach it.
                         LOG.warn("CE frame from peer before hello — closing");
                         session.close(1002, "hello expected");
-                    } else {
-                        receive(CloudEventEnvelope.parse(text));
                     }
-                } else {
-                    LOG.warn("Unrecognized frame from peer — closing");
-                    session.close(1002, "protocol error");
+                    case MeshFrame.Unrecognized ignored -> {
+                        LOG.warn("Unrecognized frame from peer — closing");
+                        session.close(1002, "protocol error");
+                    }
+                    case MeshFrame.Malformed bad -> throw new IllegalStateException(bad.reason());
                 }
             } catch (Exception e) {
                 LOG.error("Frame handling failed", e);
                 try {
                     session.close(1011, "frame handling failed");
                 } catch (Exception ignored) {
-                    // best effort
+                    // best effort — the session is already unusable
                 }
+            }
+        }
+
+        /** Reports a failure and closes the session, best-effort. */
+        private void fail(String message, Throwable cause) {
+            LOG.error(message, cause);
+            try {
+                session.close(1011, "frame handling failed");
+            } catch (Exception ignored) {
+                // best effort — the session is already unusable
             }
         }
 
