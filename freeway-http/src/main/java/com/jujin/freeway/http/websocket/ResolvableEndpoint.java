@@ -5,21 +5,31 @@ import java.util.Set;
 import java.util.function.Supplier;
 
 /**
- * A {@link WebSocketEndpoint} that wraps a handler class. The endpoint
- * instance is created through the container — constructor injection, field
- * injection and {@code @PostConstruct}; the container does not track it
- * afterwards, so there is no {@code @PreDestroy} — and handed in by
- * {@code HttpModule} when the WebSocket index is built at server startup —
- * see {@code HttpModule}'s WebSocketIndex binding — so missing or
- * misconfigured endpoints fail fast at startup rather than on the first
- * upgrade. The websocket package itself never sees the container: the
- * module keeps it and supplies the built instance from the outside.
+ * A {@link WebSocketEndpoint} that stands for an endpoint <em>class</em> until
+ * the container supplies an instance.
+ *
+ * <p>Same two-phase arrangement as {@code ResolvableHandler}, and for the same
+ * reasons: a route declared as {@code WebSocketRoute.of(path, MyEndpoint.class)}
+ * contributes a complete class, {@code HttpModule} instantiates it through
+ * {@code Container.create} while building the WebSocket index, and the result
+ * is <b>not</b> {@code @PostConstruct}-ed. This endpoint is a singleton — the
+ * same instance serves every connection that upgrades on its route, since
+ * {@code WebSocketIndex.match} hands the endpoint itself to
+ * {@code WebSocketUpgrade} — so lifecycle belongs with a binding, and nothing
+ * walking the result at shutdown could pair a {@code @PreDestroy} with
+ * anything.
+ *
+ * <p>Per-connection state belongs on the {@code WebSocketListener} that
+ * {@code open} returns, not on the endpoint.
+ *
+ * <p>Not API: {@code public} only so {@code HttpModule} can resolve it from
+ * another package.
  */
-public final class LazyEndpoint implements WebSocketEndpoint {
+public final class ResolvableEndpoint implements WebSocketEndpoint {
     private final Class<? extends WebSocketEndpoint> endpointType;
     private volatile WebSocketEndpoint resolved;
 
-    public LazyEndpoint(Class<? extends WebSocketEndpoint> endpointType) {
+    public ResolvableEndpoint(Class<? extends WebSocketEndpoint> endpointType) {
         this.endpointType = Objects.requireNonNull(endpointType, "endpointType");
     }
 
@@ -59,7 +69,7 @@ public final class LazyEndpoint implements WebSocketEndpoint {
         WebSocketEndpoint h = resolved;
         if (h == null) {
             throw new IllegalStateException(
-                "LazyEndpoint not resolved before upgrade: " + endpointType);
+                "ResolvableEndpoint not resolved before upgrade: " + endpointType);
         }
         return h.open(session);
     }
@@ -69,7 +79,7 @@ public final class LazyEndpoint implements WebSocketEndpoint {
         WebSocketEndpoint h = resolved;
         if (h == null) {
             throw new IllegalStateException(
-                "LazyEndpoint not resolved before handshake: " + endpointType);
+                "ResolvableEndpoint not resolved before handshake: " + endpointType);
         }
         return h.subprotocols();
     }

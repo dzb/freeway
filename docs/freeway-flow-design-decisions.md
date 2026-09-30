@@ -122,9 +122,9 @@ Final Container API: `get(Class)`, `get(Class, String)`, `extension(Class)`, `cr
 
 **Decision:** The `Route` record went from 4 fields to 3 (`method`, `path`, `handler`). The `handlerType` field and its accessor were removed.
 
-**Why:** The 4-field version created an awkward "either handler or handlerType" invariant that shifted validation complexity into every consumer. By moving class-based lazy resolution into `LazyHandler` (a `RouteHandler` wrapper), the record itself has no special cases — it always carries a resolved `RouteHandler`. Factory methods like `Route.get("/path", MyHandler.class)` internally create `new LazyHandler(MyHandler.class)`.
+**Why:** The 4-field version created an awkward "either handler or handlerType" invariant that shifted validation complexity into every consumer. By moving class-based lazy resolution into `ResolvableHandler` (a `RouteHandler` wrapper), the record itself has no special cases — it always carries a resolved `RouteHandler`. Factory methods like `Route.get("/path", MyHandler.class)` internally create `new ResolvableHandler(MyHandler.class)`.
 
-**See also:** `Route.java`, `LazyHandler.java` (`freeway-http`)
+**See also:** `Route.java`, `ResolvableHandler.java` (`freeway-http`)
 
 ---
 
@@ -135,12 +135,14 @@ Final Container API: `get(Class)`, `get(Class, String)`, `extension(Class)`, `cr
 **Why:** `RouteIndex` is a pure data structure (trie-based path matcher) — it should not know about IoC. The Container dependency was leaked into it because class-based handlers needed resolution during construction. The fix:
 
 1. `HttpModule` binds `RouteIndex` via a provider function
-2. The provider resolves all `LazyHandler` instances by calling `lh.resolve(container)` 
+2. The provider resolves all `ResolvableHandler` instances by calling
+   `lh.resolve(() -> c.create(lh.handlerType()))` — a supplier, so the route
+   package still does not name the container
 3. Passes the resolved handlers to `new RouteIndex(routes, groups)`
 
 This keeps the IoC dependency boundary at the Module level, identical to the `freeway-db` pattern.
 
-**See also:** `HttpModule.java:45-52`, `RouteIndex.java`, `LazyHandler.java`
+**See also:** `HttpModule`'s `RouteIndex` binding and `resolveLazy`, `RouteIndex`, `ResolvableHandler`
 
 ---
 
@@ -198,12 +200,40 @@ freeway-commons         zero deps
 
 ---
 
-## LazyHandler Resolution Strategy
+## ResolvableHandler Resolution Strategy
 
-**Decision:** `LazyHandler.resolve()` uses DCL (double-checked locking) with `volatile`. Resolution is eager in `HttpModule`'s provider (before `RouteIndex` construction) but the mechanism supports lazy resolution at match time.
+**Status: renamed from `LazyHandler`, and the index check restored.** The
+mechanism is unchanged; the name and one missing check are not.
+
+**Why rename.** The old name claimed laziness the implementation never had:
+`HttpModule` resolves every class-based route while building the `RouteIndex`
+(its provider, reached at startup via `HttpServer`), so there is no match-time
+resolution path. That was not only inaccurate — it had a cost. `WebSocketIndex`
+refuses an unresolved endpoint when its index is built; `RouteIndex` had no
+such check, so the same mistake surfaced on the first matching request from
+inside dispatch, naming only a class. One index had the check and the other
+did not, and the likeliest reason is that "lazy" made the check look
+unnecessary. `Resolvable` states the two phases and claims nothing about when
+they happen.
+
+**The check, restored.** `RouteIndex` now refuses a class route that reached it
+unresolved, naming the route, the class, who normally resolves it, and the way
+out — the same rule `WebSocketIndex` applies to endpoints. An index built by
+hand is still supported: the caller who holds the container resolves each
+wrapper before indexing, and `expand()` must be called once, so the expansion
+that is resolved is the expansion that is indexed.
+
+**The instance is caller-owned.** `HttpModule` builds handlers with
+`Container.create`, which resolves constructor and `@Inject` dependencies but
+runs **no** `@PostConstruct`** — the handler is a singleton whose lifetime is
+the server's, so lifecycle belongs with a binding. Earlier text here said the
+instance was created "with `@PostConstruct`"; that stopped being true when
+`create` became `new` plus dependency resolution.
+
+**Decision:** `ResolvableHandler.resolve()` uses DCL (double-checked locking) with `volatile`, and takes a `Supplier<RouteHandler>` — the route package never sees the container, so `HttpModule` supplies the factory.
 
 ```java
-RouteHandler resolve(Container container) {
+RouteHandler resolve(Supplier<RouteHandler> factory) {
     RouteHandler h = resolved;
     if (h == null) {
         synchronized (this) {
@@ -219,7 +249,7 @@ RouteHandler resolve(Container container) {
 
 **Why:** DCL provides thread-safe lazy initialization with minimal overhead on the fast path (a single volatile read). The `synchronized` block is package-private and only called during module wiring, not on the request path. The `handle()` method throws if `resolved` is null — this is a programming error guard (must call `resolve()` before handling) rather than a fallback.
 
-**See also:** `LazyHandler.java`
+**See also:** `ResolvableHandler.java`
 
 ---
 

@@ -15,6 +15,7 @@ import com.jujin.freeway.ioc.annotation.Inject;
 import com.jujin.freeway.ioc.annotation.Symbol;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -267,45 +268,97 @@ class RouteIndexTest {
         }
     }
 
+    /**
+     * A direct binding of {@code RouteIndex} — the application owns the index
+     * rather than letting HttpModule build it — still has to turn a handler
+     * class into an instance, because only the caller holding a container can
+     * do that. Resolving explicitly is the supported standalone shape.
+     */
     @Test
-    void handlerClassResolvedFromContainer() {
-        Container container = Freeway.create(b -> {
-            b.bind(RouteIndex.class).to(RouteIndex.class);
-            b.contribute(Route.class).add(Route.get("/test", NoDepsHandler.class));
-        });
-        RouteIndex index = container.get(RouteIndex.class);
-        assertNotNull(index.match("GET", "/test"));
+    void handlerClassResolvedByTheCallerThatOwnsTheIndex() {
+        Container container = Freeway.create(b ->
+            b.bind(RouteIndex.class).to(c -> {
+                Route r = Route.get("/test", NoDepsHandler.class);
+                ResolvableHandler h = (ResolvableHandler) r.handler();
+                h.resolve(() -> c.create(h.handlerType()));
+                return new RouteIndex(List.of(r), List.of());
+            }));
+        assertNotNull(container.get(RouteIndex.class).match("GET", "/test"));
     }
 
+    /**
+     * A class route that reached the index unresolved is refused at assembly.
+     *
+     * <p>This is the check the old "Lazy" name had been discouraging: the
+     * WebSocketIndex applied it to endpoints, RouteIndex did not, and the
+     * failure surfaced on the first matching request from inside dispatch,
+     * naming only a class. Both indexes now refuse the same state, at the same
+     * point, with the same diagnosis.
+     */
     @Test
-    void handlerClassLazyResolutionInStandaloneMode() {
-        RouteIndex index = new RouteIndex(
-            List.of(Route.get("/test", NoDepsHandler.class)),
-            List.of()
-        );
-        // LazyHandler -- matched route is returned, resolution deferred
-        assertNotNull(index.match("GET", "/test"));
+    void unresolvedHandlerClassIsRefusedAtAssembly() {
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+            () -> new RouteIndex(List.of(Route.get("/test", NoDepsHandler.class)), List.of()));
+        assertTrue(ex.getMessage().contains(NoDepsHandler.class.getName()),
+            "must name the class that has no instance: " + ex.getMessage());
+        assertTrue(ex.getMessage().contains("HttpModule"),
+            "must name who normally resolves it: " + ex.getMessage());
+        assertTrue(ex.getMessage().contains("/test"),
+            "must name the offending route: " + ex.getMessage());
     }
 
     @Test
     void handlerClassReceivesConstructorInjection() {
+        // The symbol is resolved by the container, so this asserts the whole
+        // point of resolving through it: the handler the index dispatches to
+        // is the one the container built, dependencies included.
         Container container = Freeway.create(b -> {
-            b.bind(RouteIndex.class).to(RouteIndex.class);
-            b.contribute(Route.class).add(Route.get("/greet", InjectedHandler.class));
+            b.bind(RouteIndex.class).to(c -> {
+                Route r = Route.get("/greet", InjectedHandler.class);
+                ResolvableHandler h = (ResolvableHandler) r.handler();
+                h.resolve(() -> c.create(h.handlerType()));
+                return new RouteIndex(List.of(r), List.of());
+            });
         });
         RouteIndex index = container.get(RouteIndex.class);
-        assertNotNull(index.match("GET", "/greet"));
+        var match = index.match("GET", "/greet");
+        assertNotNull(match);
+        // The index holds the wrapper; resolve() is idempotent and hands back
+        // the instance the container built — without consulting the factory
+        // again, which is what makes one handler class become one singleton
+        // however many routes reference it.
+        RouteHandler handler = ((ResolvableHandler) match.handler())
+            .resolve(() -> { throw new IllegalStateException("supplier must not re-run"); });
+        assertInstanceOf(InjectedHandler.class, handler,
+            "the index must dispatch to the instance the container built");
+        assertEquals("Hello", ((InjectedHandler) handler).greeting,
+            "and that instance carries its injected dependency");
     }
 
     @Test
     void handlerClassInRouteGroupIsResolved() {
-        Container container = Freeway.create(b -> {
-            b.bind(RouteIndex.class).to(RouteIndex.class);
-            b.contribute(RouteGroup.class).add(
-                RouteGroup.of("/api", Route.get("/health", NoDepsHandler.class))
-            );
-        });
-        RouteIndex index = container.get(RouteIndex.class);
-        assertNotNull(index.match("GET", "/api/health"));
+        // The group path is the one HttpModule handles in two passes — expand,
+        // then resolve what it produced — so a caller doing it by hand must do
+        // the same, and both must happen on the same expansion: expand()
+        // builds fresh Route objects, so resolving one expansion and indexing
+        // another would leave the index holding an unresolved route.
+        RouteGroup group = RouteGroup.of("/api", Route.get("/health", NoDepsHandler.class));
+
+        assertThrows(IllegalStateException.class,
+            () -> new RouteIndex(List.of(), List.of(group)),
+            "an unresolved group-expanded class route is refused the same way");
+
+        Container container = Freeway.create(b ->
+            b.bind(RouteIndex.class).to(c -> {
+                List<Route> expanded = group.expand();
+                for (Route r : expanded) {
+                    if (r.handler() instanceof ResolvableHandler h) {
+                        h.resolve(() -> c.create(h.handlerType()));
+                    }
+                }
+                return new RouteIndex(expanded, List.of());
+            }));
+        assertNotNull(container.get(RouteIndex.class).match("GET", "/api/health"),
+            "a group-expanded class route is resolved the same way as a direct one");
     }
 }

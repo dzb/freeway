@@ -25,12 +25,12 @@ import com.jujin.freeway.http.filter.ErrorHandler;
 import com.jujin.freeway.http.filter.HealthCheck;
 import com.jujin.freeway.http.filter.HealthFilter;
 import com.jujin.freeway.http.filter.HttpFilter;
-import com.jujin.freeway.http.route.LazyHandler;
+import com.jujin.freeway.http.route.ResolvableHandler;
 import com.jujin.freeway.http.route.Route;
 import com.jujin.freeway.http.route.RouteGroup;
 import com.jujin.freeway.http.route.RouteIndex;
 import com.jujin.freeway.http.staticfile.StaticResourceMount;
-import com.jujin.freeway.http.websocket.LazyEndpoint;
+import com.jujin.freeway.http.websocket.ResolvableEndpoint;
 import com.jujin.freeway.http.websocket.WebSocketGroup;
 import com.jujin.freeway.http.websocket.WebSocketIndex;
 import com.jujin.freeway.http.websocket.WebSocketRoute;
@@ -72,7 +72,7 @@ public final class HttpModule implements ModuleEx {
             for (var r : routes) {
                 resolveLazy(r, container);
             }
-            // Resolve LazyHandlers from RouteGroup-expanded routes too
+            // Resolve ResolvableHandlers from RouteGroup-expanded routes too
             var allRoutes = new ArrayList<>(routes);
             for (RouteGroup group : container.extension(RouteGroup.class).all()) {
                 for (Route expanded : group.expand()) {
@@ -88,7 +88,15 @@ public final class HttpModule implements ModuleEx {
             for (var r : routes) {
                 resolveEndpoint(r, container);
             }
-            // Resolve LazyEndpoints from group-expanded routes too
+            // Resolve ResolvableEndpoints from group-expanded routes too.
+            // WebSocketIndex expands the groups itself, so this is the second
+            // expansion of the same group — unlike the RouteIndex block above,
+            // which hands its expansion over and passes no groups. That is safe
+            // for one reason: expand() rebuilds the route but reuses the
+            // endpoint instance, and resolution state lives on the endpoint, so
+            // the copy the index builds is already resolved. Keep it that way —
+            // an expand() that minted a fresh endpoint per route would leave
+            // the index holding unresolved copies.
             for (WebSocketGroup group : groups) {
                 for (WebSocketRoute expanded : group.expand()) {
                     resolveEndpoint(expanded, container);
@@ -223,22 +231,22 @@ public final class HttpModule implements ModuleEx {
             container.get(SymbolSource.class), container.get(HealthCheck.class)));
     }
 
-    /** Resolves a {@link LazyHandler} (class-based route): the container
+    /** Resolves a {@link ResolvableHandler} (class-based route): the container
      *  instantiates the handler class with constructor injection and the
      *  instance is handed to the wrapper — the route package stays free of
      *  container types. */
     private static void resolveLazy(Route r, Container c) {
-        if (r.handler() instanceof LazyHandler lh) {
+        if (r.handler() instanceof ResolvableHandler lh) {
             lh.resolve(() -> c.create(lh.handlerType()));
         }
     }
 
-    /** Resolves a {@link LazyEndpoint} (class-based WebSocket route): the
+    /** Resolves a {@link ResolvableEndpoint} (class-based WebSocket route): the
      *  container instantiates the endpoint class with constructor injection
      *  and the instance is handed to the wrapper — the websocket package
      *  stays free of container types. */
     private static void resolveEndpoint(WebSocketRoute r, Container c) {
-        if (r.endpoint() instanceof LazyEndpoint le) {
+        if (r.endpoint() instanceof ResolvableEndpoint le) {
             le.resolve(() -> c.create(le.endpointType()));
         }
     }

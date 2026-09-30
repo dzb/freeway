@@ -26,7 +26,7 @@ public record Route(
     /** Creates a route from a handler class — the wrapper is resolved by
      *  {@code HttpModule} at startup, before the first request. */
     public static Route of(String method, String path, Class<? extends RouteHandler> handlerType) {
-        return new Route(method, path, new LazyHandler(handlerType));
+        return new Route(method, path, new ResolvableHandler(handlerType));
     }
 
     public static Route get(String path, RouteHandler handler) {

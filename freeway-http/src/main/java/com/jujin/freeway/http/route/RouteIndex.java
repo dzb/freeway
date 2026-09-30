@@ -48,11 +48,33 @@ public final class RouteIndex {
             }
         }
         if (routes != null) all.addAll(routes);
-        // Phase 2: insert into trie + exact cache
+        // Phase 2: a class-based route must already carry its instance.
+        // HttpModule resolves those while building this index, so an
+        // unresolved one means the index was assembled some other way — a
+        // hand-built RouteIndex, or a direct binding of RouteIndex that
+        // skipped HttpModule. Neither turns a handler CLASS into an instance:
+        // that is HttpModule's job, because it is what holds the container.
+        //
+        // Catching it here names the cause at assembly, where the whole route
+        // set is in hand. Without the check the failure lands on the first
+        // matching request, from inside dispatch, naming only a class. The
+        // WebSocketIndex applies the same rule to its endpoints.
+        for (Route route : all) {
+            if (route.handler() instanceof ResolvableHandler h && !h.isResolved()) {
+                throw new IllegalStateException(
+                    "Route " + route.method() + " " + route.path()
+                        + " uses handler class " + h.handlerType().getName()
+                        + " but it was never resolved — HttpModule resolves "
+                        + "class handlers while building this index; build the "
+                        + "index through the container, or declare the route "
+                        + "with a handler instance");
+            }
+        }
+        // Phase 3: insert into trie + exact cache
         for (Route route : all) {
             addRoute(route.method(), route.path(), route.handler());
         }
-        // Phase 3: freeze all tries (no further structural changes)
+        // Phase 4: freeze all tries (no further structural changes)
         for (TrieNode root : methodRoots.values()) {
             root.freeze();
         }

@@ -71,7 +71,7 @@ Container → Binder → ModuleEx → Defer → Extension<T> → RuntimeHook
 - Extension 适配器模块、benchmark 模块 — 移到外部仓库
 - `Route.handlerType` 字段 — 因为 4 字段版本的约束不变量散布在多个消费者中
 
-Route 从 4 字段变为 3 字段是一个典型案例：发现设计瑕疵 → 不打补丁 → 重新审视抽象 → 引入 `LazyHandler` 包装器 → 删除冗余字段。**这不是"修 bug"，这是设计迭代**。
+Route 从 4 字段变为 3 字段是一个典型案例：发现设计瑕疵 → 不打补丁 → 重新审视抽象 → 引入 `ResolvableHandler` 包装器 → 删除冗余字段。**这不是"修 bug"，这是设计迭代**。
 
 `AGENTS.md` 的仓库约定把这条写成了规则：
 
