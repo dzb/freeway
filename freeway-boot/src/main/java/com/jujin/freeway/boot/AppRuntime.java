@@ -7,9 +7,18 @@ package com.jujin.freeway.boot;
  * while already {@link AppState#RUNNING} returns without doing anything, so a
  * framework entry point may call it defensively. {@link #close()} is
  * idempotent and at-most-once: after the first call every later call is a
- * no-op, and closing while {@link AppState#STARTING} unwinds the startup
- * instead of racing it. A failure during startup leaves the runtime
+ * no-op. A failure during startup leaves the runtime
  * {@link AppState#FAILED} and closed.</p>
+ *
+ * <p><b>Closing during {@link AppState#STARTING}.</b> A {@code close()} on the
+ * thread that is running {@code start()} unwinds the startup: the hook sees
+ * the shutdown, and {@code start()} returns without publishing
+ * {@code AppStartedEvent} or overwriting the state the shutdown left behind.
+ * From <em>another</em> thread {@code close()} blocks until startup finishes —
+ * {@code start()} holds the runtime monitor for its whole body, so there is no
+ * interleaving to race against. That wait is the safe direction: an
+ * unwinding startup would leave the runtime briefly {@code STARTING} with its
+ * hooks half-run and nothing to close them.</p>
  *
  * <p>Shutdown publishes {@code AppStoppingEvent} as a <b>reliability point</b>
  * (hooks that must run before the container closes), while
