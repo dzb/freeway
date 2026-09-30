@@ -375,6 +375,77 @@ class SqlTest {
 
     // ====================== INSERT ======================
 
+    /**
+     * A {@code Sql} value is SQL, not data. Splicing it in is what makes
+     * {@code INSERT … SELECT} expressible through the INSERT-only
+     * {@code setColumn} — before this, the {@code Sql} object was bound as a
+     * JDBC parameter and the statement silently meant something else.
+     */
+    @Test
+    void setColumnInlinesANestedQuery() {
+        Sql sub = Sql.select("id").from("tenants").where("active = ?", true);
+        Sql q = Sql.insert("users")
+            .setColumn("tenant_id", sub)
+            .setColumn("name", "john");
+
+        assertEquals(
+            "INSERT INTO users (tenant_id, name) VALUES (SELECT id FROM tenants WHERE active = ?, ?)",
+            q.sql());
+        assertArrayEquals(new Object[]{true, "john"}, q.args(),
+            "the subquery's own placeholder comes first — binding order follows "
+                + "SQL text order (VALUES before WHERE)");
+    }
+
+    @Test
+    void setColumnInlinesTwoNestedQueries() {
+        Sql tenant = Sql.select("id").from("tenants").where("active = ?", true);
+        Sql owner = Sql.select("id").from("users").where("name = ?", "root");
+        Sql q = Sql.insert("memberships")
+            .setColumn("tenant_id", tenant)
+            .setColumn("owner_id", owner)
+            .setColumn("role", "admin");
+
+        assertEquals(
+            "INSERT INTO memberships (tenant_id, owner_id, role) VALUES ("
+                + "SELECT id FROM tenants WHERE active = ?, "
+                + "SELECT id FROM users WHERE name = ?, ?)",
+            q.sql());
+        assertArrayEquals(new Object[]{true, "root", "admin"}, q.args(),
+            "each inlined query contributes its own parameters at its own "
+                + "position, and plain values keep theirs");
+    }
+
+    @Test
+    void inlinedSubQueryWithNoParametersBindsNothing() {
+        Sql sub = Sql.select("id").from("tenants");
+        Sql q = Sql.insert("users").setColumn("tenant_id", sub);
+
+        assertEquals(
+            "INSERT INTO users (tenant_id) VALUES (SELECT id FROM tenants)", q.sql());
+        assertArrayEquals(new Object[0], q.args(),
+            "the inline wrapper is not itself a bind value");
+    }
+
+    @Test
+    void updatePathInlinesTheSameWay() {
+        Sql sub = Sql.select("name").from("admins").where("id = ?", 7);
+        Sql q = Sql.update("users")
+            .setExpression("name = ?", sub)
+            .where("id = ?", 3);
+
+        assertEquals(
+            "UPDATE users SET name = SELECT name FROM admins WHERE id = ? WHERE id = ?",
+            q.sql());
+        assertArrayEquals(new Object[]{7, 3}, q.args());
+    }
+
+    @Test
+    void plainValuesAreUnaffected() {
+        Sql q = Sql.insert("users").setColumn("name", "john").setColumn("status", 1);
+        assertEquals("INSERT INTO users (name, status) VALUES (?, ?)", q.sql());
+        assertArrayEquals(new Object[]{"john", 1}, q.args());
+    }
+
     @Test
     void simpleInsert() {
         Sql q = Sql.insert("users").setColumn("name", "john").setColumn("status", 1);

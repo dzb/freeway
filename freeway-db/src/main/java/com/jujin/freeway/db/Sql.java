@@ -218,13 +218,24 @@ public final class Sql {
     }
 
     private Sql addGroupedCondition(String connector, Consumer<Group> builder) {
+        Group group = buildGroup(builder);
+        return addCondition(connector, group.sql(), group.args());
+    }
+
+    /**
+     * Runs a group builder and rejects an empty result. Shared with
+     * {@link Group}, which nests the same way: the two differ in how a
+     * condition is stored — this class is immutable and copies its lists,
+     * {@code Group} appends in place — so only the builder step is common.
+     */
+    private static Group buildGroup(Consumer<Group> builder) {
         Objects.requireNonNull(builder, "builder");
         Group group = new Group();
         builder.accept(group);
         if (group.conditions.isEmpty()) {
             throw new IllegalStateException("Group must contain at least one condition");
         }
-        return addCondition(connector, group.sql(), group.args());
+        return group;
     }
 
     // ====================== ORDER BY / GROUP BY / HAVING ======================
@@ -372,7 +383,17 @@ public final class Sql {
         List<String> newTargets = new ArrayList<>(dmlTargets);
         newTargets.add(column);
         List<Object> newValues = new ArrayList<>(dmlValues);
-        newValues.add(value);
+        // A Sql value is SQL, not data: splice its text in and carry its
+        // placeholders over, exactly as appendValue does inside a fragment.
+        // Without this the object would be bound as a parameter and the
+        // statement would silently mean something else. setExpression has no
+        // equivalent step because UPDATE stores the whole "col = ?" fragment
+        // as text, so a subquery arrives already spliced.
+        if (value instanceof Sql nested) {
+            newValues.add(new InlineValue(nested.sql(), nested.args()));
+        } else {
+            newValues.add(value);
+        }
         return new Sql(head, conditions, tail, args,
             compoundQuery, ctes, dmlTable, newTargets, newValues);
     }
@@ -441,7 +462,7 @@ public final class Sql {
                 );
             }
             var cols = String.join(", ", dmlTargets);
-            var placeholders = String.join(", ", dmlValues.stream().map(v -> "?").toList());
+            var placeholders = renderInsertValues(dmlValues);
             return withClause + "INSERT INTO " + dmlTable + " (" + cols + ") VALUES (" + placeholders + ")" + tail;
         }
         if (isUpdate() && dmlTargets.isEmpty()) {
@@ -476,11 +497,37 @@ public final class Sql {
     public Object[] args() {
         Object[] cteArgs = cteArgs();
         if (isInsert()) {
-            return concat(cteArgs, dmlValues.toArray());
+            return concat(cteArgs, flattened(dmlValues));
         }
         // UPDATE binds SET values before WHERE values; SELECT/DELETE carry no
         // SET values — concat's empty short-circuit covers that case.
-        return concat(cteArgs, concat(dmlValues.toArray(), args));
+        return concat(cteArgs, concat(flattened(dmlValues), args));
+    }
+
+    /**
+     * The bind values of a DML assignment list, in SQL text order.
+     *
+     * <p>An {@link InlineValue} stands for one column whose text is already
+     * rendered, so it contributes its own parameters at that position rather
+     * than being bound as a value. The expansion is positional, which is what
+     * keeps the flattened list aligned with the placeholders in
+     * {@link #buildSql()} — the subquery's {@code ?}s sit inside its text, in
+     * the same position this expansion puts their values.
+     * </p>
+     */
+    private static Object[] flattened(List<Object> dmlValues) {
+        if (dmlValues.stream().noneMatch(v -> v instanceof InlineValue)) {
+            return dmlValues.toArray();
+        }
+        var out = new ArrayList<Object>(dmlValues.size());
+        for (Object value : dmlValues) {
+            if (value instanceof InlineValue inline) {
+                appendArgs(out, inline.params());
+            } else {
+                out.add(value);
+            }
+        }
+        return out.toArray();
     }
 
     // ====================== internals ======================
@@ -546,12 +593,7 @@ public final class Sql {
         }
 
         private Group addGroupedCondition(String connector, Consumer<Group> builder) {
-            Objects.requireNonNull(builder, "builder");
-            Group group = new Group();
-            builder.accept(group);
-            if (group.conditions.isEmpty()) {
-                throw new IllegalStateException("Group must contain at least one condition");
-            }
+            Group group = buildGroup(builder);
             return addCondition(connector, group.sql(), group.args());
         }
     }
@@ -840,6 +882,45 @@ public final class Sql {
         }
         sb.append('?');
         matched.add(value);
+    }
+
+    /**
+     * A value that is already SQL text, not a bind parameter — the INSERT-side
+     * counterpart of what {@link #appendValue} does for a {@link Sql} inside a
+     * fragment.
+     *
+     * <p>INSERT is positional: {@code dmlTargets} and {@code dmlValues} are
+     * parallel, one column per entry, and {@code buildSql} joins them with
+     * commas. A {@code Sql} value cannot ride in as an object — it would be
+     * bound as a parameter and the statement would mean something else. So the
+     * rendered text becomes the entry, and the nested query's own placeholders
+     * ride along inside that same text.
+     * </p>
+     *
+     * <p>The nested parameters must not be added to {@code dmlValues} as
+     * separate entries: that list is the column list, and an extra entry would
+     * render an extra {@code ?} and shift every later column. They belong to
+     * the text, so {@link #args()} reads them back off the wrapper.
+     * </p>
+     */
+    private record InlineValue(String text, Object[] params) {
+    }
+
+    /**
+     * Renders the VALUES list. Each entry is one column, so an inlined query
+     * contributes its own text (placeholders included) and every other value
+     * contributes exactly one {@code ?}.
+     */
+    private static String renderInsertValues(List<Object> dmlValues) {
+        var out = new StringBuilder();
+        for (int i = 0; i < dmlValues.size(); i++) {
+            if (i > 0) {
+                out.append(", ");
+            }
+            Object value = dmlValues.get(i);
+            out.append(value instanceof InlineValue inline ? inline.text() : "?");
+        }
+        return out.toString();
     }
 
     private static Object[] concat(Object[] a, Object[] b) {

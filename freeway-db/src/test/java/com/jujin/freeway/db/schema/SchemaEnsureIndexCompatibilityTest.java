@@ -29,6 +29,21 @@ class SchemaEnsureIndexCompatibilityTest {
         assertTrue(db.executedSql.isEmpty(), "no DDL should be executed");
     }
 
+    /** The index-only case: DDL runs, and the change count stays 0. */
+    @Test
+    void createdIndexIsExecutedButNotCountedAsAChange() {
+        IndexMissingDatabase db = new IndexMissingDatabase();
+
+        int applied = Schema.ensure(db, IndexedEntity.class);
+
+        assertEquals(1, db.executedSql.size(), "the missing index is created");
+        assertTrue(db.executedSql.get(0).contains("INDEX"), db.executedSql.get(0));
+        assertEquals(0, applied,
+            "the return value counts schema CHANGES, not statements — a table "
+                + "and its columns already existed, so nothing changed. See the "
+                + "@return contract on Schema.ensure");
+    }
+
     @Table("indexed_entity")
     record IndexedEntity(@Id Long id, @Index String email) {}
 
@@ -74,8 +89,65 @@ class SchemaEnsureIndexCompatibilityTest {
         }
     }
 
-    private static final class RecordingDatabase implements Database {
-        private final List<String> executedSql = new ArrayList<>();
+    /**
+     * Table and columns are all present; only the index is missing.
+     *
+     * <p>Exists to pin the return-value contract from the other side: the
+     * CREATE INDEX really is executed here, and the count is still 0. That
+     * asymmetry is deliberate — the count answers "did the schema structure
+     * change", and an index is the companion of a table rather than a change
+     * to it. Before the {@code @return} javadoc said so, the two were easy to
+     * read as a bug in either direction.
+     */
+    private static final class IndexMissingDatabase extends RecordingDatabase {
+        @Override
+        public Dialect dialect() {
+            return new Dialect() {
+                @Override
+                public String dialectId() {
+                    return "test";
+                }
+
+                @Override
+                public String quoteName(String name) {
+                    return name;
+                }
+
+                @Override
+                public boolean supportsIndexIfNotExists() {
+                    return false;
+                }
+
+                @Override
+                public Set<String> existingTables(Database db) {
+                    return Set.of("indexed_entity");
+                }
+
+                @Override
+                public Set<String> existingColumns(Database db, String tableName) {
+                    return Set.of("id", "email");
+                }
+
+                @Override
+                public Set<String> existingIndexes(Database db, String tableName) {
+                    return Set.of();   // the drift under test
+                }
+
+                @Override
+                public String generatedClause() {
+                    return "IDENTITY";
+                }
+
+                @Override
+                public String defaultUUIDType() {
+                    return "UUID";
+                }
+            };
+        }
+    }
+
+    private static class RecordingDatabase implements Database {
+        final List<String> executedSql = new ArrayList<>();
 
         @Override
         public Dialect dialect() {

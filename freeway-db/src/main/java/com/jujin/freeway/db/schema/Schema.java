@@ -96,7 +96,13 @@ public final class Schema {
      *
      * @param db          database connection
      * @param entityTypes entity classes annotated with @Table, @Id, etc.
-     * @return number of DDL statements executed
+     * @return number of <b>schema changes</b> applied — tables created and
+     *         columns added. <b>Indexes are executed but not counted</b>: they
+     *         are the companion of a table rather than a change to it, and a
+     *         second {@code ensure()} over an unchanged entity must report 0
+     *         even when it re-asserts the indexes. A caller that needs "was
+     *         there work to do" gets a truthful answer; a caller counting
+     *         statements should not read this as one.
      * @throws SqlException if execution fails, or when called inside a
      *                      transaction on a database without transactional DDL
      */
