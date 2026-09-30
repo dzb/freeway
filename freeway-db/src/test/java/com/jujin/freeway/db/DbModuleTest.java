@@ -224,7 +224,28 @@ class DbModuleTest {
 
     @Test
     @SuppressWarnings("deprecation")
-    void retiredSchemaAutoWarnsWithMapping() {
+    void retiredSchemaAutoAloneFailsStartup() {
+        String previousAuto = System.getProperty(ConfigKeys.SCHEMA_AUTO);
+        try {
+            // The retired key was the only way to say "no automatic DDL" in production: standing
+            // alone it must stop startup, not fall back to the default auto posture.
+            System.setProperty(ConfigKeys.SCHEMA_AUTO, "false");
+
+            IllegalStateException ex = assertThrows(IllegalStateException.class,
+                () -> DbModule.schemaMode(testSource()));
+
+            assertTrue(ex.getMessage().contains(ConfigKeys.SCHEMA_AUTO), ex.getMessage());
+            assertTrue(ex.getMessage().contains(ConfigKeys.SCHEMA_MODE),
+                "the failure must name the replacement: " + ex.getMessage());
+            assertTrue(ex.getMessage().contains("not applied"), ex.getMessage());
+        } finally {
+            restore(ConfigKeys.SCHEMA_AUTO, previousAuto);
+        }
+    }
+
+    @Test
+    @SuppressWarnings("deprecation")
+    void retiredSchemaAutoIsIgnoredWhenTheModeIsSet() {
         var records = new ArrayList<LogRecord>();
         Logger jul = Logger.getLogger("com.jujin.freeway.db.DbModule");
         Handler handler = new Handler() {
@@ -243,24 +264,29 @@ class DbModuleTest {
         };
         jul.addHandler(handler);
         String previousAuto = System.getProperty(ConfigKeys.SCHEMA_AUTO);
+        String previousMode = System.getProperty(ConfigKeys.SCHEMA_MODE);
         try {
-            System.setProperty(ConfigKeys.SCHEMA_AUTO, "false");
-            DbModule.reportRetiredSchemaAuto(testSource());
+            System.setProperty(ConfigKeys.SCHEMA_AUTO, "true");
+            System.setProperty(ConfigKeys.SCHEMA_MODE, "off");
 
+            assertEquals(SchemaMode.OFF, DbModule.schemaMode(testSource()),
+                "the new key decides; the retired value is never applied");
             assertTrue(records.stream().anyMatch(r ->
                     r.getLevel() == java.util.logging.Level.WARNING
                         && r.getMessage() != null
-                        && r.getMessage().contains("freeway.db.schema.mode")),
-                "the retired key must point at its replacement");
+                        && r.getMessage().contains(ConfigKeys.SCHEMA_AUTO)
+                        && r.getMessage().contains("off")),
+                "the ignored retired key is reported with the posture that won: " + records);
 
             records.clear();
             System.clearProperty(ConfigKeys.SCHEMA_AUTO);
-            DbModule.reportRetiredSchemaAuto(testSource());
+            assertEquals(SchemaMode.OFF, DbModule.schemaMode(testSource()));
 
-            assertTrue(records.isEmpty(), "an unset retired key stays silent");
+            assertTrue(records.isEmpty(), "an absent retired key stays silent");
         } finally {
             jul.removeHandler(handler);
             restore(ConfigKeys.SCHEMA_AUTO, previousAuto);
+            restore(ConfigKeys.SCHEMA_MODE, previousMode);
         }
     }
 

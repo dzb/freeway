@@ -103,8 +103,11 @@ class EventBusAsyncTraceTest {
             });
             // Present but carrying nothing: binding it on the executor would invent a context
             // the submitter never had — the carrier must dispatch bare instead.
-            InvocationContext.runWith(InvocationContext.of(null, null, null),
-                () -> bus.publishAsync("hello"));
+            InvocationContext.runWith(InvocationContext.of(null, null, null), () -> {
+                assertTrue(InvocationContext.current().isEmpty(),
+                    "the submitting thread binds nothing either: one rule, both sides of the handoff");
+                bus.publishAsync("hello");
+            });
             assertTrue(latch.await(2, TimeUnit.SECONDS), "blank-context async must deliver");
             Optional<InvocationContext> ctx = seen.get();
             assertTrue(ctx != null && ctx.isEmpty(),

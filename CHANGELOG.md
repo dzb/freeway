@@ -114,12 +114,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   改为 `ctx.sendJson(200, Map.of("status", "ok"))`——**body 逐字节不变**，变的只是响应头；顺带
   让这条路由也经由可替换的 `JsonCodec`（此前它对 `.primary()` 绑定的 codec 完全无感）。
   回归测试 `HealthEndpointsTest.bothProbesAnswerAsJson` 同时断言三个端点。
-- `BeanIntrospector.selectConstructor` 并发首算各返各的包装器：现返回 map 胜者（包装器不可变且按构造器内联，选择语义不变，并发下 `assertSame` 亦成立）。
+- `BeanIntrospector.selectConstructor` 并发首算各返各的包装器：现返回 map 胜者（包装器不可变；身份唯一由 `selectConstructor` 保证——`BeanConstructor.of(...)` 每次新分配，只有 MethodHandle 是缓存的；选择语义不变，并发下 `assertSame` 亦成立）。
 - `UnknownKeysHook` 跨词表建议去重：两词表列出同一拼写曾点名两次，现拼接去重后取前 3（各词表内仍按距离近优先、同距离按字母序）。
 - `KnownKeys.of` 空收割即绑定期失败（指引 `admit()`），`BootModule` 的 logging 词表为空同样启动失败——空词表不再静默关闭检测。
-- 全空 `InvocationContext` 不再跨执行器传播：三子上下文全 null 的 present 上下文按无上下文跑裸（与 mesh 入站同规则）。
-- `ModuleDiscovery` 跳过匿名/synthetic 模块类（与 `ModuleNode` 的 nameless 排除一致）；`HttpModule` 退役探测跳过 `PREFIX` 本体；`LogKeys` 键过滤与 `KnownKeys` 同一 dot-boundary 栅栏；19 处未用 outer-module import 清理（`ConfigKeys` 嵌套 import 保留）。
-- 排序引用分必需与条件：`Ordering` 新增 `beforeIfPresent/afterIfPresent`——缺席的可选伴侣是配置而非错误（`validateOrdering` 与 `all()` 双双放行），必需引用维持原语义（hook 路径 fail-fast、通用路径 WARN）。`DbModule` 迁移 hook 与云侧 discovery/RPC hook 切到条件形：纯 DB 应用、无 HTTP 的 discovery 不再死于缺席的 `freeway.http.server` 锚点；`RpcExportHook` 零导出时直接返回（纯 client 不再需要 `JsonCodec`）。`CloudEventModule` 保持必需（该平面事实需要 Http，缺席报错点名缺失模块更准）。
+- 全空 `InvocationContext` 不再跨执行器传播：三子上下文全 null 的 present 上下文按无上下文跑裸（与 mesh 入站同规则）。同批把这条规则收进 `InvocationContext` 本体（`carriesNothing()`，`runWith`/`replaceAmbient` 与入站 `PropagationFilter` 一律按"没带东西"处理），并修掉它暴露的真实缺陷：`TracerDefault` 在没有 ambient 时用 `Baggage.empty()` 顶替 null——那正是"请求没带 baggage 头、handler 却读到空 baggage"的来源（此前被"入站过滤器绑定了一个空白上下文"掩盖，`BaggagePropagationTest` 的既有契约因此才成立）。
+- `ModuleDiscovery` 跳过匿名/synthetic 模块类（与 `ModuleNode` 的 nameless 排除一致）；`HttpModule` 退役探测改用与 `KnownKeys`/`LogKeys` 相同的 dot 边界（`PREFIX + "."`），命名空间本体与兄弟命名空间都不再算孪生；19 处未用 outer-module import 清理（`ConfigKeys` 嵌套 import 保留）。
+- 排序引用分必需与条件：`Ordering` 新增 `beforeIfPresent/afterIfPresent`——缺席的可选伴侣是配置而非错误（`validateOrdering` 与 `all()` 双双放行），必需引用维持原语义（hook 路径 fail-fast、通用路径 WARN）。`DbModule` 迁移 hook 与云侧 discovery/RPC hook 切到条件形：纯 DB 应用、无 HTTP 的 discovery 不再死于缺席的 `freeway.http.server` 锚点；`RpcExportHook` 零导出时直接返回（启动期不再要求 `JsonCodec`——注意 `RemoteCaller` 首次解析时仍需要它，该绑定来自 `HttpModule`；只用 `CloudHttpClient` 的纯 client 才真的不需要）。`CloudEventModule` 保持必需（该平面事实需要 Http，缺席报错点名缺失模块更准）。
 - 线程作用域清理跟着条目走：`ScopedCache.get(key, factory, onExit)` 新重载，scope 退出跑条目清理（首注册胜出、异常记 WARN 不中断）；容器删 JVM-global 旁表与类加载期钩子，关容器后退出的 scope 照常跑生命周期。原 `onClose` 机制保留给 ext/应用。
 - **`@PostConstruct` 在 `to(c -> c.create(X))` 下不再跑两次**（`freeway-ioc`）：该写法是绑定里最自然的 provider 形状，而 provider 拿到的正是容器本身——`create` 返回一个**已注入**的实例，binding 随后又 materialize 一次，同一对象的 `@PostConstruct` 因此被静默执行两遍（不抛异常、不打日志；开连接、注册回调、起线程的 bean 就都做了两遍）。修法不是加"已初始化"记账，而是把归属划清：`@PostConstruct` 属于**受管**的那半段生命周期，而 `Container.create` 是**裸 `new` 加依赖解析**——给构造参数与 `@Inject` 字段，不给生命周期。四条 realize 路径（`to(Class)`／`to(c -> new X())`／`to(c -> c.create(X))`／`bind(Concrete)` 不带 `to`）统一在 binding 自己的 materialize 步执行一次，且因实例是绑定的，`@PreDestroy` 照常在 `close()` 配对执行。`contribute(X.class)` 承诺的 `@PostConstruct` 由贡献路径显式发出（`Contribution.add(Class)` 的 javadoc 契约不变），其不配对 `@PreDestroy` 的单边性是既有约定，见下表。
 - **`Sql.setColumn` 遇 `Sql` 值改为内联**（`freeway-db`）：`setExpression` 一直会把 `Sql` 值内联展开（`appendValue`），而 INSERT-only 的 `setColumn` 把值原样塞进 `dmlValues`，渲染时一律 `?`——于是 `Sql.insert("t").setColumn("a", sub)` 把 `Sql` **对象本身**绑成 JDBC 参数，语句静默地变成了另一回事，`INSERT … SELECT` 在这条路径上根本无法表达。现按 `setExpression` 的同一条规则内联；子查询的占位符留在其文本内部，**不占列槽位**（否则列数与占位符数脱节），`args()` 按位置把内联查询的参数摊平回来。
@@ -143,7 +143,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | 旧 API / 行为 | 新 API / 行为 |
 |---|---|
-| `freeway.db.schema.auto=true/false` | `freeway.db.schema.mode=auto/off`；生产再加一档 `validate`（迁移后比对实体与库，漂移即启动失败）。旧键删除，配置即 WARN 指新键（true→auto/false→off 的映射写进行）；键表保留常量供词表静默 |
+| `freeway.db.schema.auto=true/false` | `freeway.db.schema.mode=auto/off`；生产再加一档 `validate`（迁移后比对实体与库，漂移即启动失败）。旧键删除且**值不生效**：**只设旧键时启动失败**，报错点名新键与 true→auto/false→off——旧键是生产唯一能表达"不要自动 DDL"的开关，静默落到默认 `auto` 等于把生产切到启动收敛；两者都设时新键生效、旧键值被忽略并 WARN；键表保留常量供词表静默 |
 | Schema 与 migration 启动期都跑（Schema 先） | `auto` 原序不变；`validate` 改为 migration 先、比对后——比对必须发生在迁移带库追平之后 |
 | `Schema.ensure` 内联检查+应用 | 检查半抽成 `inspect`：`ensure` 执行、`validate` 上报（`Schema.validate(db, …)` 返回漂移行）；日志/计数/主键保护错与原来逐字一致 |
 

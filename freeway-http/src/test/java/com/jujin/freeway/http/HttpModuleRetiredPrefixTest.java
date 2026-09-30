@@ -66,6 +66,14 @@ class HttpModuleRetiredPrefixTest {
             "only twins of keys the table declares are this module's to report");
     }
 
+    @Test
+    void bareNamespaceRootIsNotAKey() {
+        // freeway.http is the namespace constant in the table, not a key: treating it as one would
+        // map it to the bare retired prefix and report a rename for a key nobody ever had.
+        assertTrue(HttpModule.retiredPrefixNotices(source(Map.of("freeway.web", "true"))).isEmpty(),
+            "the bare retired namespace root silences nothing and reports nothing");
+    }
+
     private static SymbolSource source(Map<String, String> values) {
         return SymbolSource.of(new CoercerDefault(),
             SymbolProvider.of(() -> values, SymbolProvider.TIER_FILES));

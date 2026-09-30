@@ -39,7 +39,10 @@ public final class PropagationFilter implements HttpFilter {
         for (Propagator propagator : propagators) {
             inbound = merge(inbound, propagator.extract(headers));
         }
-        if (inbound == null) {
+        // A blank merge means every propagator found nothing (they report absent parts as an
+        // all-unset context): binding it would invent a context the request never carried — the
+        // same rule the async carrier applies to a blank captured context.
+        if (inbound == null || inbound.carriesNothing()) {
             next.handle(ctx);
             return;
         }

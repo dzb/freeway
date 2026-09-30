@@ -340,11 +340,12 @@ public final class Schema {
                 } catch (SqlException e) {
                     // An introspection failure (e.g. pg_indexes absent on an
                     // H2-in-PostgreSQL-mode database) must not be read as "no
-                    // indexes exist" — that would re-create every index as
-                    // duplicate DDL. Skip index creation for this table.
+                    // indexes exist" — ensure would re-create every index as
+                    // duplicate DDL, and validate would report fabricated drift
+                    // and fail startup. Skip this table's indexes either way.
                     LOG.warn(
                         "Schema introspection failed to list indexes of table '{}'"
-                            + " — skipping index creation for this table: {}",
+                            + " — skipping the index check for this table: {}",
                         table.name(), e.getMessage());
                     continue;
                 }

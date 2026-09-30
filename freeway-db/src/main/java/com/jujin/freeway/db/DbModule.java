@@ -295,24 +295,33 @@ public final class DbModule implements ModuleEx {
     }
 
     /**
-     * The schema posture: reports the retired boolean key first (it is still
-     * harvested so the unknown-key check stays silent; this notice owns the
-     * migration message), then resolves the mode. Package-visible so a test
-     * can assert the wiring without booting.
+     * Resolves the schema posture. The retired boolean key is never honored, and it is not
+     * allowed to stand alone: the old key was the only way to say "no automatic DDL" in
+     * production, so silently falling back to the default ({@code auto}) would switch that
+     * deployment to startup DDL. Alone, it fails startup naming the replacement and the mapping;
+     * set beside the new key it is ignored with a warning that says so. Both outcomes are about
+     * this module's own key, so they exist exactly when {@code DbModule} is placed and the
+     * application starts through boot. Package-visible so a test can assert the wiring without
+     * booting.
      */
     @SuppressWarnings("deprecation")
-    static void reportRetiredSchemaAuto(SymbolSource symbols) {
-        if (symbols.resolve(ConfigKeys.SCHEMA_AUTO, (String) null) != null) {
-            LOG.warn("config key '{}' is retired: schema DDL is now '{}' (auto|validate|off)"
-                + " — true maps to auto, false maps to off; the old key is no longer read",
-                ConfigKeys.SCHEMA_AUTO, ConfigKeys.SCHEMA_MODE);
-        }
-    }
-
-    /** Resolves the schema posture, reporting the retired key first. */
     static SchemaMode schemaMode(SymbolSource symbols) {
-        reportRetiredSchemaAuto(symbols);
-        return symbols.resolve(SCHEMA_MODE);
+        String retired = symbols.resolve(ConfigKeys.SCHEMA_AUTO, (String) null);
+        String explicit = symbols.resolve(ConfigKeys.SCHEMA_MODE, (String) null);
+        if (retired != null && explicit == null) {
+            throw new IllegalStateException(
+                "config key '" + ConfigKeys.SCHEMA_AUTO + "' is retired and its value is not applied"
+                    + " — set '" + ConfigKeys.SCHEMA_MODE + "' to auto|validate|off (the retired"
+                    + " true→auto / false→off), or remove '" + ConfigKeys.SCHEMA_AUTO
+                    + "' to take the default (auto) on purpose");
+        }
+        SchemaMode mode = symbols.resolve(SCHEMA_MODE);
+        if (retired != null) {
+            LOG.warn("config key '{}' is retired and ignored — schema DDL posture comes from '{}'"
+                + " ({}) alone: the old true→auto / false→off is not applied",
+                ConfigKeys.SCHEMA_AUTO, ConfigKeys.SCHEMA_MODE, mode);
+        }
+        return mode;
     }
 
     private static void runMigration(Container container) {

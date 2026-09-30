@@ -13,7 +13,6 @@ import com.jujin.freeway.ioc.symbol.SymbolSource;
 import com.jujin.freeway.ioc.symbol.SymbolSpec;
 import com.jujin.freeway.http.HttpModule.ConfigKeys;
 
-
 public final class CorsFilter implements HttpFilter {
     private static final Logger LOG = LoggerFactory.getLogger(CorsFilter.class);
 

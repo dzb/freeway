@@ -11,7 +11,6 @@ import com.jujin.freeway.http.route.PathPattern;
 import com.jujin.freeway.http.route.RouteHandler;
 import com.jujin.freeway.http.HttpModule.ConfigKeys;
 
-
 /**
  * Filter that intercepts the health endpoint before routing.
  * <p>

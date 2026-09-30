@@ -1,6 +1,5 @@
 package com.jujin.freeway.cloud.observe;
 
-import com.jujin.freeway.cloud.context.Baggage;
 import com.jujin.freeway.cloud.context.InvocationContext;
 import com.jujin.freeway.cloud.context.TraceContext;
 import com.jujin.freeway.commons.metrics.Metrics;
@@ -69,12 +68,14 @@ public final class TracerDefault implements Tracer {
         TraceContext child = parent.child();
         // The child inherits the ambient tier's principal and baggage so
         // starting a span never drops identity/business context; only the
-        // trace is replaced by the child.
+        // trace is replaced by the child. An absent ambient leaves both unset
+        // (null, never Baggage.empty()): an empty baggage would read downstream
+        // as fabricated — the convention TracePropagator states for the wire.
         InvocationContext ambient = InvocationContext.current().orElse(null);
         InvocationContext childContext = InvocationContext.of(
             child,
             ambient == null ? null : ambient.principal(),
-            ambient == null ? Baggage.empty() : ambient.baggage());
+            ambient == null ? null : ambient.baggage());
         return new MdcSpan(name, childContext, metrics);
     }
 
