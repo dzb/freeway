@@ -37,7 +37,7 @@ final class RequestBody {
     }
 
     boolean limitExceeded() {
-        return limited != null && limited.limitExceeded;
+        return limited != null && limited.limitExceeded();
     }
 
     /** Reads the entire body, enforcing the configured size limit. */
@@ -73,7 +73,7 @@ final class RequestBody {
         if (contentLength > limit) return false;
         if (raw == null || (contentLength <= 0 && !chunked)) return true;
         InputStream remaining = stream();
-        if (remaining instanceof LimitedInputStream li && li.eof) return true;
+        if (remaining instanceof LimitedInputStream li && li.eof()) return true;
         try {
             while (remaining.read(drainBuffer) >= 0) {
                 // Keep draining until EOF; the bounded stream enforces the

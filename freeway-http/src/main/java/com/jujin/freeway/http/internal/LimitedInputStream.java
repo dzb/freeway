@@ -52,14 +52,24 @@ public final class LimitedInputStream extends InputStream {
     private final LongSupplier maxBodySize;
     private long total;
     /** EOF observed on the bounded stream — lets a drain stop without re-reading. */
-    public boolean eof;
+    private boolean eof;
     /** True once the body was found to exceed the limit. */
-    public boolean limitExceeded;
+    private boolean limitExceeded;
     private final byte[] oneByte = new byte[1];
 
     public LimitedInputStream(InputStream in, LongSupplier maxBodySize) {
         this.in = in;
         this.maxBodySize = maxBodySize;
+    }
+
+    /** Whether EOF was observed on the bounded stream — lets a drain stop without re-reading. */
+    public boolean eof() {
+        return eof;
+    }
+
+    /** True once the body was found to exceed the limit. */
+    public boolean limitExceeded() {
+        return limitExceeded;
     }
 
     @Override

@@ -2,7 +2,6 @@ package com.jujin.freeway.ioc;
 
 import com.jujin.freeway.ioc.extension.Extension;
 import java.lang.annotation.Annotation;
-import java.util.List;
 
 /**
  * Service lookup container. Created by {@link Freeway#create(ModuleEx...)}.

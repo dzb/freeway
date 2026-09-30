@@ -60,15 +60,23 @@ class WebSocketIndexTest {
     }
 
     @Test
-    void standaloneIndexRejectsUnresolvedClassRouteAtAssembly() {
+    void standaloneIndexRejectsUnresolvedEndpointAtAssembly() {
         // HttpModule resolves every class endpoint before building the index;
-        // a by-hand index has no such step, so it must fail here — at
-        // assembly, naming the class — instead of deferring to the first
-        // upgrade where it used to be swallowed at TRACE.
+        // a by-hand index has no such step, so it must fail here — at assembly,
+        // naming the route, the class and the way out — instead of deferring to
+        // the first upgrade where it used to be swallowed at TRACE. The HTTP
+        // side's RouteIndex asserts the same four things.
         var ex = assertThrows(IllegalStateException.class, () -> new WebSocketIndex(
             List.of(WebSocketRoute.of("/cls", GreetedEndpoint.class)), List.of()));
-        assertTrue(ex.getMessage().contains("GreetedEndpoint"),
-            "assembly failure must name the endpoint class: " + ex.getMessage());
+        String message = ex.getMessage();
+        assertTrue(message.contains("/cls"),
+            "must name the offending route: " + message);
+        assertTrue(message.contains("GreetedEndpoint"),
+            "must name the endpoint class: " + message);
+        assertTrue(message.contains("HttpModule"),
+            "must name who normally resolves it: " + message);
+        assertTrue(message.contains("endpoint instance"),
+            "must offer the way out — declare the endpoint with an instance: " + message);
     }
 
     @Test

@@ -57,6 +57,25 @@ class UnresolvedHandlerRouteTest {
     }
 
     @Test
+    void callingAnUnresolvedWrapperDirectlySaysWhatToDo() {
+        // An index cannot hold this wrapper unresolved, so the only way to
+        // reach the guard is to keep the wrapper and call it — which is worth
+        // naming rather than letting dispatch fail on a null instance.
+        ResolvableHandler wrapper = new ResolvableHandler(Plain.class);
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+            () -> wrapper.handle(null));
+
+        String message = ex.getMessage();
+        assertTrue(message.contains(Plain.class.getName()),
+            "must name the class that has no instance: " + message);
+        assertTrue(message.contains("invoked directly"),
+            "must say how an unresolved wrapper got here: " + message);
+        assertTrue(message.contains("ResolvableHandler.resolve"),
+            "must name the way out: " + message);
+    }
+
+    @Test
     void resolvingFirstThenIndexingWorks() {
         // The supported standalone shape: declare, resolve, then index — all on
         // the same Route, since resolve records on the wrapper the route holds.

@@ -201,15 +201,15 @@ class BodyLimitParityTest {
             new ByteArrayInputStream(latin("ab")), () -> limit[0]);
 
         assertThrows(BodyTooLargeException.class, engine::readAllBytes);
-        assertTrue(engine.limitExceeded);
+        assertTrue(engine.limitExceeded());
         assertThrows(BodyTooLargeException.class, helper::readAllBytes);
-        assertTrue(helper.limitExceeded);
+        assertTrue(helper.limitExceeded());
 
         limit[0] = 10;   // raised mid-request
         var raised = new LimitedInputStream(
             new ByteArrayInputStream(latin("ab")), () -> limit[0]);
         assertEquals(2, raised.readAllBytes().length,
             "a limit raised before the read must take effect immediately");
-        assertFalse(raised.limitExceeded);
+        assertFalse(raised.limitExceeded());
     }
 }

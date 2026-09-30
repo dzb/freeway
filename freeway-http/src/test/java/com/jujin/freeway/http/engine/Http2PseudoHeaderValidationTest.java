@@ -15,11 +15,9 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 
 import org.junit.jupiter.api.Test;
 
-import com.jujin.freeway.http.HttpServerConfig;
 import com.jujin.freeway.http.HttpServer;
 import com.jujin.freeway.http.HttpPipeline;
 import com.jujin.freeway.http.TestHttp;

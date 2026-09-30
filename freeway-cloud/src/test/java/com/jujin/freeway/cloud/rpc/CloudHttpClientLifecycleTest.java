@@ -10,7 +10,6 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
-import com.jujin.freeway.cloud.discovery.Endpoint;
 import com.jujin.freeway.cloud.discovery.LoadBalancerDefault;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.ioc.Container;

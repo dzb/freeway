@@ -25,8 +25,9 @@ import java.util.function.Supplier;
  *
  * <p>Resolution is eager: {@code HttpModule} resolves every one of these
  * before the first request, so a misconfigured handler fails at startup rather
- * than on live traffic. The unresolved branches below are for an index built by
- * hand, without that step.
+ * than on live traffic. {@link RouteIndex} refuses to be built while one is
+ * unresolved, so the guard in {@link #handle} is not an index path: it is for a
+ * wrapper invoked directly, by a caller holding it without an index.
  *
  * <p>The route package never sees the container — the module keeps it and
  * supplies the built instance from the outside. This type is an implementation
@@ -54,7 +55,8 @@ public final class ResolvableHandler implements RouteHandler {
      * index is being assembled names the cause — the index was built without
      * {@code HttpModule} — instead of surfacing it on the first matching
      * request from inside the dispatch path. The unresolved branch in
-     * {@link #handle} stays as a backstop for an index resolved afterwards.
+     * {@link #handle} is the separate guard for a wrapper the caller invoked
+     * directly; an index never holds one.
      */
     public boolean isResolved() {
         return resolved != null;
@@ -85,19 +87,18 @@ public final class ResolvableHandler implements RouteHandler {
     public void handle(HttpContext ctx) throws Exception {
         RouteHandler h = resolved;
         if (h == null) {
-            // Reachable, and the message says why. HttpModule resolves every
-            // class-based route while building the index, so this means the
-            // index was built some other way — a hand-built RouteIndex, or a
-            // binding of RouteIndex that skipped HttpModule. Both are
-            // legitimate; neither resolves class routes on its own, so the
-            // route is declared as a class and has nothing to dispatch to.
+            // An unresolved wrapper cannot be inside an index — RouteIndex
+            // refuses to build one — so this means the wrapper itself was
+            // called. It still names the class and the way out rather than
+            // failing on a null dispatch.
             throw new IllegalStateException(
-                "Handler class " + handlerType.getName() + " was never resolved, "
-                    + "so this route has no instance to dispatch to. HttpModule "
-                    + "resolves class-based routes while building the index; a "
-                    + "RouteIndex built another way must call "
-                    + "ResolvableHandler.resolve(...) on each, or declare the handler "
-                    + "as an instance — see Route.of(String, String, RouteHandler)");
+                "Handler class " + handlerType.getName() + " was never resolved: this "
+                    + "route wrapper was invoked directly, outside an index. HttpModule "
+                    + "resolves class routes while building the index, and RouteIndex "
+                    + "refuses to build one that still holds an unresolved wrapper — so "
+                    + "call ResolvableHandler.resolve(factory) on the wrapper you hold, or "
+                    + "declare the handler as an instance "
+                    + "(Route.of(String, String, RouteHandler))");
         }
         h.handle(ctx);
     }

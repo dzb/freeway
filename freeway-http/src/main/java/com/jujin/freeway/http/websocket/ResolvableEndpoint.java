@@ -68,8 +68,7 @@ public final class ResolvableEndpoint implements WebSocketEndpoint {
     public WebSocketListener open(WebSocketSession session) throws Exception {
         WebSocketEndpoint h = resolved;
         if (h == null) {
-            throw new IllegalStateException(
-                "ResolvableEndpoint not resolved before upgrade: " + endpointType);
+            throw unresolved("upgrade");
         }
         return h.open(session);
     }
@@ -78,9 +77,29 @@ public final class ResolvableEndpoint implements WebSocketEndpoint {
     public Set<String> subprotocols() {
         WebSocketEndpoint h = resolved;
         if (h == null) {
-            throw new IllegalStateException(
-                "ResolvableEndpoint not resolved before handshake: " + endpointType);
+            throw unresolved("handshake");
         }
         return h.subprotocols();
+    }
+
+    /**
+     * The guard for a wrapper invoked directly, outside an index — the same
+     * shape {@code ResolvableHandler.handle} uses, for the same reason.
+     *
+     * <p>{@code WebSocketIndex} refuses to build while an endpoint is
+     * unresolved (the rule {@code RouteIndex} applies to class routes), so an
+     * index never holds one of these. Reaching here therefore means the caller
+     * kept the wrapper and called it, and the message has to carry the whole
+     * explanation: the endpoint class by name, the phase it was called in, who
+     * resolves it normally, and the way out.
+     */
+    private IllegalStateException unresolved(String phase) {
+        return new IllegalStateException(
+            "Endpoint class " + endpointType.getName() + " was never resolved: this "
+                + "endpoint wrapper was invoked directly at " + phase + ", outside an "
+                + "index. HttpModule resolves class endpoints while building the index, "
+                + "and WebSocketIndex refuses to build one that still holds an unresolved "
+                + "wrapper — so call ResolvableEndpoint.resolve(factory) on the wrapper "
+                + "you hold, or declare the endpoint as an instance");
     }
 }
