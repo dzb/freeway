@@ -257,23 +257,15 @@ public final class FlowEngineDefault implements FlowEngine {
     }
 
     /**
-     * Join bookkeeping shared by INCLUSIVE and PARALLEL: every incoming
-     * branch counts in, and the gateway activates exactly on the arrival
-     * that completes it — earlier arrivals are provisional dead ends (cleared
-     * on activation) so a run that completes without full arrival fails
-     * loudly instead of silently. The counter re-arms at activation so a
-     * fork-join inside a LOOP body works again next iteration.
+     * Join bookkeeping shared by INCLUSIVE and PARALLEL. The transition
+     * itself — count, decide, and the provisional dead-end — lives in
+     * {@link ExecState#join}, which holds the node monitor; an earlier arrival
+     * records a provisional dead end (cleared on activation) so a run that
+     * completes without full arrival fails loudly instead of silently.
      */
     private boolean joinArrived(FlowEvaluation evaluation, Node node) {
-        int expected = node.prevLinks().size();
-        int arrived = evaluation.execState().countIncr(node.graph(), node.id());
-        if (arrived >= expected) {
-            evaluation.execState().countSet(node.graph(), node.id(), 0);
-            evaluation.execState().deadEndClear(node.graph(), node.id());
-            return true;
-        }
-        markDeadEnd(evaluation, node);
-        return false;
+        return evaluation.execState().join(
+            node.graph(), node.id(), node.prevLinks().size());
     }
 
     private void markDeadEnd(FlowEvaluation evaluation, Node node) {
@@ -545,8 +537,7 @@ public final class FlowEngineDefault implements FlowEngine {
             loopNode.graph(), loopNode.id(), () -> loopBodyJoins(loopNode));
         Graph graph = loopNode.graph();
         for (String joinId : joins) {
-            evaluation.execState().countSet(graph, joinId, 0);
-            evaluation.execState().deadEndClear(graph, joinId);
+            evaluation.execState().joinReset(graph, joinId);
         }
     }
 

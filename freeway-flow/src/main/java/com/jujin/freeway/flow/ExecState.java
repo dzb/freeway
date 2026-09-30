@@ -41,18 +41,13 @@ public final class ExecState {
      * Records that execution could not continue past the given node (see
      * {@link DeadEnd}). The engine throws a {@code FlowException} at eval
      * completion if a dead-end remains while the run finished without stop.
+     *
+     * <p>For a join gateway this is a <em>provisional</em> wait, and clearing
+     * it is deliberately not offered as a separate operation: the marker and
+     * the arrival counter have to move together, so both live in {@link #join}.
      */
     public void deadEnd(Graph graph, String nodeId) {
         deadEnds.add(new DeadEnd(graph.id(), nodeId));
-    }
-
-    /**
-     * Removes a previously recorded dead-end. Join gateways call this when
-     * they activate (all incoming branches arrived), since the "dead-end"
-     * was only a provisional wait.
-     */
-    public void deadEndClear(Graph graph, String nodeId) {
-        deadEnds.remove(new DeadEnd(graph.id(), nodeId));
     }
 
     /**
@@ -66,8 +61,49 @@ public final class ExecState {
 
     // --- join counters ---
 
-    int countIncr(Graph graph, String nodeId) {
-        return counter(graph.id() + "/" + nodeId).incrementAndGet();
+    /**
+     * One arriving branch at a join gateway (INCLUSIVE, or a PARALLEL node
+     * with more than one incoming link), and the whole join transition with
+     * it: count in, and either activate or record the provisional dead-end
+     * that says "not everyone has arrived yet".
+     *
+     * <p>All of it happens under the node's own monitor because the counter
+     * and the dead-end set are <em>two</em> structures, and updating one and
+     * then the other is not a step. A branch that counted itself in and was
+     * descheduled before writing its provisional marker can otherwise resume
+     * after the arrival that completed the join already cleared the marker,
+     * writing a stale dead-end onto a gateway that has already run. The run
+     * then completes and still reports "a join gateway never received all its
+     * incoming branches" — describing a lost branch where nothing was lost.
+     *
+     * @return {@code true} when this arrival completed the join; the caller
+     *         runs the gateway exactly once. The counter re-arms here so a
+     *         fork-join inside a LOOP body works again on the next iteration.
+     */
+    boolean join(Graph graph, String nodeId, int expected) {
+        AtomicInteger counter = counter(graph.id() + "/" + nodeId);
+        synchronized (counter) {
+            if (counter.incrementAndGet() >= expected) {
+                counter.set(0);
+                deadEnds.remove(new DeadEnd(graph.id(), nodeId));
+                return true;
+            }
+            deadEnds.add(new DeadEnd(graph.id(), nodeId));
+            return false;
+        }
+    }
+
+    /**
+     * Re-arm a body join for the next LOOP iteration. Takes the same monitor
+     * as {@link #join} so a reset cannot interleave with a branch arriving at
+     * a join that a nested parallel inside the body is still feeding.
+     */
+    void joinReset(Graph graph, String nodeId) {
+        AtomicInteger counter = counter(graph.id() + "/" + nodeId);
+        synchronized (counter) {
+            counter.set(0);
+            deadEnds.remove(new DeadEnd(graph.id(), nodeId));
+        }
     }
 
     void countSet(Graph graph, String nodeId, int value) {
