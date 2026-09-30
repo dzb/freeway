@@ -13,7 +13,6 @@ import com.jujin.freeway.http.HttpModule;
 import com.jujin.freeway.ioc.ModuleEx;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import org.junit.jupiter.api.Test;
@@ -25,7 +24,7 @@ import org.junit.jupiter.api.Test;
  * switch; nothing set keeps the module inert; an invalid explicit value fails
  * startup naming the key.
  */
-class CloudEventMeshActivationTest {
+class CloudEventMeshActivationTest extends CloudMeshTest {
 
     @Test
     void aTokenOverCleartextWebSocketIsFlaggedButNotRefused() {
@@ -38,23 +37,11 @@ class CloudEventMeshActivationTest {
         assertFalse(CloudEventLifecycleHook.tokenOverCleartext("ws", null));
     }
 
-    private AppRuntime nodeA;
-    private AppRuntime nodeB;
 
     @BeforeEach
     void randomPorts() {
         System.setProperty(HttpModule.ConfigKeys.SERVER_PORT, "0");
     }
-
-    @AfterEach
-    void cleanup() {
-        if (nodeA != null) nodeA.close();
-        if (nodeB != null) nodeB.close();
-        System.clearProperty(HttpModule.ConfigKeys.SERVER_PORT);
-        System.clearProperty(ConfigKeys.EVENT_PEERS);
-        System.clearProperty(ConfigKeys.EVENT_ENABLED);
-    }
-
     /** Declares mesh interest for "greet." and reports each payload to the latch. */
     private static ModuleEx greetListener(CountDownLatch latch,
                                           java.util.concurrent.atomic.AtomicReference<String> sink) {
@@ -140,18 +127,6 @@ class CloudEventMeshActivationTest {
     }
 
     // ==================== harness ====================
-
-    private static void awaitMesh(AppRuntime a, AppRuntime b) throws InterruptedException {
-        long deadline = System.currentTimeMillis() + 5000;
-        while (System.currentTimeMillis() < deadline) {
-            boolean aSeesB = !a.get(PeerHub.class).connections().isEmpty();
-            boolean bSeesA = !b.get(PeerHub.class).connections().isEmpty();
-            if (aSeesB && bSeesA) return;
-            Thread.sleep(50);
-        }
-        throw new AssertionError("mesh not established within 5s");
-    }
-
     private static long awaitSeconds() {
         return 5;
     }

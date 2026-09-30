@@ -19,7 +19,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -31,27 +30,15 @@ import org.junit.jupiter.api.Test;
  * boundary), the Defer commit gate on the cloud plane, and the wire subject
  * as an explicit publish argument.
  */
-class CloudEventBusTest {
+class CloudEventBusTest extends CloudMeshTest {
 
     record GreetEvent(String name) {}
 
-    private AppRuntime nodeA;
-    private AppRuntime nodeB;
 
     @BeforeEach
     void randomPorts() {
         System.setProperty(HttpModule.ConfigKeys.SERVER_PORT, "0");
     }
-
-    @AfterEach
-    void cleanup() {
-        if (nodeA != null) nodeA.close();
-        if (nodeB != null) nodeB.close();
-        System.clearProperty(HttpModule.ConfigKeys.SERVER_PORT);
-        System.clearProperty(ConfigKeys.EVENT_PEERS);
-        System.clearProperty(ConfigKeys.EVENT_ENABLED);
-    }
-
     /** Declares mesh interest for one prefix; payloads land in {@code sink}. */
     private static ModuleEx listening(String prefix, Consumer<String> sink) {
         return binder -> binder.contribute(CloudEventSubscription.class)
@@ -75,19 +62,7 @@ class CloudEventBusTest {
         return app.get(com.jujin.freeway.http.HttpServer.class).port();
     }
 
-    /** Waits until both nodes see the mesh connection established. */
-    private static void awaitMesh(AppRuntime a, AppRuntime b) throws InterruptedException {
-        long deadline = System.currentTimeMillis() + 5000;
-        while (System.currentTimeMillis() < deadline) {
-            boolean aSeesB = !a.get(PeerHub.class).connections().isEmpty();
-            boolean bSeesA = !b.get(PeerHub.class).connections().isEmpty();
-            if (aSeesB && bSeesA) return;
-            Thread.sleep(50);
-        }
-        throw new AssertionError("mesh not established within 5s");
-    }
-
-    private static void awaitUntil(java.util.function.BooleanSupplier condition)
+    /** Waits until both nodes see the mesh connection established. */    private static void awaitUntil(java.util.function.BooleanSupplier condition)
         throws InterruptedException {
         long deadline = System.currentTimeMillis() + 5000;
         while (System.currentTimeMillis() < deadline) {
