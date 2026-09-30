@@ -8,6 +8,7 @@ import java.util.Arrays;
 final class HeadersFrame extends BaseFrame {
     private int padLength;
     private long dependentStreamId;
+    private byte weight;
     private byte[] headerBlock;
 
     public HeadersFrame(FrameHeader header) { super(header); }
@@ -37,6 +38,7 @@ final class HeadersFrame extends BaseFrame {
                     "HEADERS PRIORITY field is truncated");
             frame.dependentStreamId = BinUtils.readInt(payload, pos, 4) & 0x7FFFFFFFL;
             if (frame.dependentStreamId == header.streamId()) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
+            frame.weight = payload[pos + 4];
             pos += 5;
         }
         if (end < pos) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
@@ -51,9 +53,31 @@ final class HeadersFrame extends BaseFrame {
      * END_HEADERS withheld when the block continues in CONTINUATION frames
      * (RFC 9113 §6.10), which
      * {@code hpack.HPackContext.encodeResponseHeaders} owns.
+     *
+     * <p>Writes the pad-length byte, the PRIORITY field and the padding, all
+     * of which {@link #parse} consumes and this previously dropped — a future
+     * caller would have emitted a HEADERS frame that no peer could decode.
+     * The frame length is recomputed because a decoded frame carries the
+     * length it arrived with, padding and priority bytes included.
      */
     public void writeTo(OutputStream outputStream) throws IOException {
-        header().writeTo(outputStream);
+        boolean padded = header().flags().contains(FrameFlag.PADDED);
+        boolean prioritised = header().flags().contains(FrameFlag.PRIORITY);
+        int length = headerBlock.length
+            + (padded ? 1 + padLength : 0)
+            + (prioritised ? 5 : 0);
+        new FrameHeader(length, FrameType.HEADERS, header().flags(), header().streamId())
+            .writeTo(outputStream);
+        if (padded) {
+            outputStream.write(padLength);
+        }
+        if (prioritised) {
+            BinUtils.writeInt(outputStream, (int) dependentStreamId, 4);
+            outputStream.write(weight);
+        }
         outputStream.write(headerBlock);
+        if (padded && padLength > 0) {
+            outputStream.write(new byte[padLength]);
+        }
     }
 }

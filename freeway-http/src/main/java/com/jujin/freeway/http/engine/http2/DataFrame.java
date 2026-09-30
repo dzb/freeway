@@ -45,5 +45,26 @@ final class DataFrame extends BaseFrame {
         return body.length + padLength + (header().flags().contains(FrameFlag.PADDED) ? 1 : 0);
     }
 
-    public void writeTo(OutputStream outputStream) throws IOException { outputStream.write(body); }
+    /**
+     * Writes header, pad-length byte, payload and padding — the whole frame.
+     *
+     * <p>Previously this emitted only the payload, so any future caller would
+     * have written a headerless, padding-less frame to the wire. The length in
+     * the header is recomputed rather than reused from {@code header()}, since
+     * a decoded frame carries the length it arrived with and a padded one
+     * includes bytes this class strips.
+     */
+    public void writeTo(OutputStream outputStream) throws IOException {
+        boolean padded = header().flags().contains(FrameFlag.PADDED);
+        int length = body.length + (padded ? 1 + padLength : 0);
+        new FrameHeader(length, FrameType.DATA, header().flags(), header().streamId())
+            .writeTo(outputStream);
+        if (padded) {
+            outputStream.write(padLength);
+        }
+        outputStream.write(body);
+        if (padded && padLength > 0) {
+            outputStream.write(new byte[padLength]);
+        }
+    }
 }

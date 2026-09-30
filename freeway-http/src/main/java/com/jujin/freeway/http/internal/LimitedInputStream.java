@@ -1,0 +1,100 @@
+package com.jujin.freeway.http.internal;
+
+import com.jujin.freeway.http.body.BodyTooLargeException;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.function.LongSupplier;
+
+/**
+ * The one body-size limiter in the framework: a stream that stops at
+ * {@code limit} and throws {@link BodyTooLargeException} past it.
+ *
+ * <p>Single implementation on purpose. {@code AbstractHttpContext#readBody}
+ * (the adapter seam) and {@code RequestBody} (the built-in engine) both need
+ * "read this body, refuse to exceed the configured size", and having two of
+ * them meant the documented cross-engine guarantee — that 413 accounting is
+ * identical everywhere — was enforced by nothing. The two happened to agree
+ * on every case {@code BodyLimitParityTest} explores, so this was a latent
+ * divergence rather than a live bug; what changed is that the guarantee is now
+ * structural instead of accidental.
+ *
+ * <p>Lives in {@code http.internal} rather than {@code engine} because the
+ * shared party is the root package's {@code AbstractHttpContext}, and Java
+ * has no sub-package visibility — the same reason {@code HttpUtils} sits here.
+ *
+ * <p>Two details that a naive read loop gets wrong, and that the engines'
+ * 413 behaviour depends on:
+ *
+ * <ul>
+ *   <li><b>The limit is read per read, not captured once</b>, so a filter that
+ *       raises {@code maxBodySize} mid-request takes effect immediately rather
+ *       than at the next request.</li>
+ *   <li><b>Reaching the limit is not yet a failure.</b> The stream probes for
+ *       one more byte: EOF means the body was exactly at the limit and the read
+ *       ends normally, while a real byte means it was over. Without the probe,
+ *       a body of exactly the limit either failed spuriously or silently
+ *       truncated.</li>
+ * </ul>
+ */
+public final class LimitedInputStream extends InputStream {
+
+    private final InputStream in;
+    private final LongSupplier maxBodySize;
+    private long total;
+    /** EOF observed on the bounded stream — lets a drain stop without re-reading. */
+    public boolean eof;
+    /** True once the body was found to exceed the limit. */
+    public boolean limitExceeded;
+    private final byte[] oneByte = new byte[1];
+
+    public LimitedInputStream(InputStream in, LongSupplier maxBodySize) {
+        this.in = in;
+        this.maxBodySize = maxBodySize;
+    }
+
+    @Override
+    public int read() throws IOException {
+        int n = read(oneByte, 0, 1);
+        return n < 0 ? -1 : oneByte[0] & 0xFF;
+    }
+
+    @Override
+    public int read(byte[] b, int off, int len) throws IOException {
+        if (len == 0) return 0;
+        long limit = maxBodySize.getAsLong();
+        long remaining = limit - total;
+        if (remaining <= 0) {
+            // At the limit: distinguish a clean EOF from an over-limit body.
+            int probe = in.read();
+            if (probe < 0) {
+                eof = true;
+                return -1;
+            }
+            limitExceeded = true;
+            throw new BodyTooLargeException(limit);
+        }
+        if (len > remaining) {
+            len = (int) remaining;
+        }
+        int n = in.read(b, off, len);
+        if (n < 0) {
+            eof = true;
+        } else if (n > 0) {
+            total += n;
+        }
+        return n;
+    }
+
+    @Override
+    public int available() throws IOException {
+        long limit = maxBodySize.getAsLong();
+        long remaining = Math.max(0, limit - total);
+        return (int) Math.min(in.available(), remaining);
+    }
+
+    @Override
+    public void close() throws IOException {
+        in.close();
+    }
+}

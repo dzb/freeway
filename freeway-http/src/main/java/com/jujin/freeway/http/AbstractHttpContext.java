@@ -3,11 +3,10 @@ package com.jujin.freeway.http;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.commons.util.Strings;
-import com.jujin.freeway.http.body.BodyTooLargeException;
 import com.jujin.freeway.http.body.UnsupportedMediaTypeException;
 import com.jujin.freeway.http.internal.HttpUtils;
+import com.jujin.freeway.http.internal.LimitedInputStream;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Type;
@@ -158,22 +157,17 @@ public abstract class AbstractHttpContext implements HttpContext {
      * Reads the complete request body from the transport stream, enforcing
      * {@link #setMaxBodySize(long)}. Adapters use this shared helper so their
      * body-size accounting matches the built-in engine exactly.
+     *
+     * <p>It is a thin wrapper over {@link LimitedInputStream} — the same
+     * limiter {@code RequestBody} runs — which is what makes "identical across
+     * engines" structural rather than a claim. It used to be a second,
+     * independent read loop; the two agreed on every case
+     * {@code BodyLimitParityTest} explores, so nothing was observably broken,
+     * but the guarantee was enforced by nothing but the two implementations
+     * happening to match.
      */
     protected final byte[] readBody(InputStream input) throws IOException {
-        var out = new ByteArrayOutputStream();
-        byte[] buffer = new byte[8192];
-        long total = 0;
-        int read;
-        while ((read = input.read(buffer)) >= 0) {
-            if (read == 0) continue;
-            long limit = maxBodySize;
-            if (total > limit - read) {
-                throw new BodyTooLargeException(limit);
-            }
-            out.write(buffer, 0, read);
-            total += read;
-        }
-        return out.toByteArray();
+        return new LimitedInputStream(input, () -> maxBodySize).readAllBytes();
     }
 
     @Override
