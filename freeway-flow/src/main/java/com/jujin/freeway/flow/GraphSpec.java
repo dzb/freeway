@@ -183,8 +183,9 @@ public class GraphSpec {
     }
 
     public Graph create() {
-        drainNodeLinks();
-        normalize();
+        // Validation lives in the Graph constructor — it is the only reader of
+        // the normalized blueprint, and both steps are idempotent, so running
+        // them here as well would only mean two places to keep in step.
         return new Graph(this);
     }
 

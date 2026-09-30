@@ -23,9 +23,12 @@ public class Graph {
     private Node start;
 
     Graph(GraphSpec blueprint) {
-        // Same validation as GraphSpec.create(): link references, cycles,
-        // duplicate unconditional links and entry resolution must not differ
-        // between the two construction paths.
+        // This is where the blueprint is brought to the form read below:
+        // link references, cycles, duplicate unconditional links and entry
+        // resolution are all settled here, because they are settled on the
+        // blueprint (normalize() rewrites in place and is idempotent) and this
+        // constructor is the only reader of the result — GraphSpec.create()
+        // defers to it rather than repeating the two steps.
         blueprint.drainNodeLinks();
         blueprint.normalize();
 
@@ -239,22 +242,46 @@ public class Graph {
         if (task == null || task.isEmpty()) return;
 
         if (displayMappingFunc != null) {
-            try {
-                PlantUmlDisplayResult result = displayMappingFunc.apply(PlantUmlDisplayContext.ofNode(node));
-                if (result != null) {
-                    if (!result.isVisible()) return;
-                    if (result.isUseDefault()) {
-                        sb.append(nodeId).append(" : ").append(escapePlantUmlText(task)).append("\n");
-                    } else {
-                        sb.append(nodeId).append(" : ").append(escapePlantUmlText(result.text())).append("\n");
-                    }
-                    return;
+            PlantUmlDisplayResult result = applyDisplayFunc(displayMappingFunc,
+                PlantUmlDisplayContext.ofNode(node), nodeId);
+            if (result != null) {
+                if (!result.isVisible()) return;
+                if (result.isUseDefault()) {
+                    sb.append(nodeId).append(" : ").append(escapePlantUmlText(task)).append("\n");
+                } else {
+                    sb.append(nodeId).append(" : ").append(escapePlantUmlText(result.text())).append("\n");
                 }
-            } catch (Exception ignored) {
-                // on exception, fall back to default handling
+                return;
             }
         }
         sb.append(nodeId).append(" : ").append(escapePlantUmlText(task)).append("\n");
+    }
+
+    /**
+     * Runs a user-supplied display function, reporting a failure instead of
+     * swallowing it.
+     *
+     * <p>This used to catch {@code Exception} and fall through to the default
+     * rendering. A typo or a null dereference inside the function then produced
+     * a perfectly well-formed diagram with the customization silently missing —
+     * the one outcome the caller could neither see nor debug, and the reason
+     * the hook was untested in the first place. Everywhere else in the
+     * framework a user callback that throws is reported; a diagram generator
+     * is no exception, and a diagram is a debugging aid, so silently
+     * rendering the wrong one costs exactly when it is needed.
+     */
+    private static PlantUmlDisplayResult applyDisplayFunc(
+            Function<PlantUmlDisplayContext, PlantUmlDisplayResult> func,
+            PlantUmlDisplayContext ctx, String subject) {
+        try {
+            return func.apply(ctx);
+        } catch (RuntimeException e) {
+            throw new IllegalStateException(
+                "PlantUML display function failed for " + subject
+                    + " — return PlantUmlDisplayResult.of(text) to relabel it, "
+                    + ".ofDefault() to keep the default, or .HIDDEN to drop it",
+                e);
+        }
     }
 
     private String buildLinkWhenText(Link link,
@@ -263,15 +290,12 @@ public class Graph {
         if (when == null || when.isEmpty()) return null;
 
         if (displayMappingFunc != null) {
-            try {
-                PlantUmlDisplayResult result = displayMappingFunc.apply(PlantUmlDisplayContext.ofLink(link));
-                if (result != null) {
-                    if (!result.isVisible()) return null;
-                    if (result.isUseDefault()) return escapePlantUmlText(when);
-                    return escapePlantUmlText(result.text());
-                }
-            } catch (Exception ignored) {
-                // on exception, fall back to default handling
+            PlantUmlDisplayResult result = applyDisplayFunc(displayMappingFunc,
+                PlantUmlDisplayContext.ofLink(link), "link " + link.prevId() + " → " + link.nextId());
+            if (result != null) {
+                if (!result.isVisible()) return null;
+                if (result.isUseDefault()) return escapePlantUmlText(when);
+                return escapePlantUmlText(result.text());
             }
         }
         return escapePlantUmlText(when);
