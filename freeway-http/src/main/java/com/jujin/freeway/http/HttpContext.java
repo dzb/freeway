@@ -40,11 +40,16 @@ public interface HttpContext extends ExchangeMeta, HttpRequest, HttpResponse {
      * Requests exceeding this limit receive a 413 Payload Too Large
      * response. Default is 10 MiB.
      *
-     * <p>Engines initialize this from {@link HttpServerConfig#maxBodySize()}
-     * when they create the exchange (the honor tiers on
-     * {@link HttpEngine#start}); a filter may change it for one request.
-     * Narrowing works on every engine. Raising it works where the body is read
-     * by the framework's own limiter
+     * <p>An engine gives the context the base value from
+     * {@link HttpServerConfig#maxBodySize()} when it creates the exchange (the
+     * honor tiers on {@link HttpEngine#start}); a filter may change it, and the
+     * change applies to <b>that request only</b> — raising the limit for an
+     * upload route must not leave every later request of a keep-alive
+     * connection unbounded. {@link AbstractHttpContext} keeps that base and
+     * restores it in {@code resetMaxBodySize()}, so an engine reusing one
+     * context across requests owes its own per-request reset one call.
+     * Narrowing works on every engine. Raising it works
+     * where the body is read by the framework's own limiter
      * ({@code http.internal.LimitedInputStream}, which reads this value per
      * read) — an adapter that enforces its own native ceiling before that
      * (Undertow's {@code MAX_ENTITY_SIZE}, fixed at server start) still

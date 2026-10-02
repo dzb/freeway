@@ -150,7 +150,7 @@ public final class Orm {
         BeanPlan plan = BeanIntrospector.plan(entity.getClass());
         String table = dialect.quoteName(SqlTypeMapping.tableName(plan.type()));
         ColumnInfo columns = insertColumns(plan);
-        ensureInsertable(columns, plan.type());
+        requireInsertable(columns, plan.type());
         Object[] values = extractValues(plan, entity, columns.properties);
 
         ExecuteResult result = db.execute(
@@ -196,7 +196,7 @@ public final class Orm {
             }
         }
         ColumnInfo columns = new ColumnInfo(names, rawNames, properties, baseColumns.generated);
-        ensureInsertable(columns, plan.type());
+        requireInsertable(columns, plan.type());
         Object[] insertValues = extractValues(plan, entity, columns.properties);
 
         String sql = "INSERT INTO " + table + " (" + String.join(", ", columns.names) + ") VALUES ("
@@ -355,7 +355,7 @@ public final class Orm {
     }
 
     /** Rejects an entity with nothing to insert (all properties @Generated/@Transient). */
-    private static void ensureInsertable(ColumnInfo columns, Class<?> type) {
+    private static void requireInsertable(ColumnInfo columns, Class<?> type) {
         if (columns.names.isEmpty()) {
             throw new SqlException(
                 "No insertable properties on " + type.getName()

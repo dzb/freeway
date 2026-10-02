@@ -142,7 +142,7 @@ Final Container API: `get(Class)`, `get(Class, String)`, `extension(Class)`, `cr
 
 This keeps the IoC dependency boundary at the Module level, identical to the `freeway-db` pattern.
 
-**See also:** `HttpModule`'s `RouteIndex` binding and `resolveLazy`, `RouteIndex`, `ResolvableHandler`
+**See also:** `HttpModule`'s `RouteIndex` binding and `resolveHandler`, `RouteIndex`, `ResolvableHandler`
 
 ---
 

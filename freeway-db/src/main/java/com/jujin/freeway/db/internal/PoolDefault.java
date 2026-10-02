@@ -76,7 +76,7 @@ public final class PoolDefault implements Pool {
      */
     @Override
     public PooledConnection borrow() {
-        ensureOpen();
+        requireOpen();
         long waitStart = System.nanoTime();
         try {
             if (
@@ -370,10 +370,10 @@ public final class PoolDefault implements Pool {
             );
         }
 
-        // Wake borrows still parked in tryAcquire (they passed ensureOpen
+        // Wake borrows still parked in tryAcquire (they passed requireOpen
         // before we set closed) so they fail fast with "Database is closed"
         // instead of burning the full connection timeout. Best-effort: a
-        // waiter that starts after this point hits ensureOpen directly.
+        // waiter that starts after this point hits requireOpen directly.
         int waiting = semaphore.getQueueLength();
         if (waiting > 0) {
             semaphore.release(waiting);
@@ -630,7 +630,7 @@ public final class PoolDefault implements Pool {
         borrowWaitNanos.addAndGet(System.nanoTime() - waitStart);
     }
 
-    private void ensureOpen() {
+    private void requireOpen() {
         if (closed) {
             throw new SqlException("Database is closed");
         }

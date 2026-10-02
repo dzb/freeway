@@ -1,6 +1,6 @@
 package com.jujin.freeway.cloud.rpc;
 
-import com.jujin.freeway.commons.bean.MethodHandleUtils;
+import com.jujin.freeway.commons.bean.ReflectiveHandles;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.commons.json.JsonArray;
 import com.jujin.freeway.commons.json.JsonObject;
@@ -95,7 +95,7 @@ public final class RpcEndpoint {
             return;
         }
         try {
-            Object result = MethodHandleUtils.invokeOn(entry.handle(), target.handler(), args);
+            Object result = ReflectiveHandles.invokeOn(entry.handle(), target.handler(), args);
             if (result == null) {
                 ctx.send(200, "");
             } else {

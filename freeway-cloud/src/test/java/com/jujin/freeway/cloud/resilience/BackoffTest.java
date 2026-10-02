@@ -74,6 +74,74 @@ class BackoffTest {
             "a sampled delay at a saturated attempt must still be positive");
     }
 
+    /**
+     * The guard has to be against the base, not against the width of a long.
+     *
+     * <p>A shift that wraps to a POSITIVE value sails past a sign check and past
+     * the cap: {@code 1000 << 61} is {@code 0} exactly, so {@code jitter(0)}
+     * returns {@code 0}, and the dial loop's {@code if (sleep > 0)} then skips
+     * the wait altogether. The counter only resets on a successful handshake, so
+     * this arrives after sustained disconnection — with the factory defaults
+     * (base 1000 / max 30000) at roughly 56 saturated intervals, about half an
+     * hour — and it arrives for every peer of every node at once, which is the
+     * synchronized wave this curve exists to prevent, arriving one exponent
+     * later.
+     *
+     * <p>So the invariant is not "the ceiling is capped" — a wrapped zero is
+     * capped — it is that a saturated attempt still produces a positive wait, for
+     * any base.
+     */
+    @Test
+    void aSaturatedAttemptStillWaitsForEveryBase() {
+        long[] bases = {1, 2, 100, 1_000, 1_024, 65_536, 1_000_000};
+        long[] caps = {1, 1_000, 30_000, 300_000};
+        for (long base : bases) {
+            for (long cap : caps) {
+                for (int attempt = 1; attempt <= 200; attempt++) {
+                    long ceiling = Backoff.ceilingMillis(attempt, base, cap);
+                    assertTrue(ceiling > 0,
+                        "base=" + base + " cap=" + cap + " attempt=" + attempt
+                            + " wrapped to a zero wait");
+                    assertTrue(ceiling <= cap,
+                        "base=" + base + " cap=" + cap + " attempt=" + attempt
+                            + " reported " + ceiling + ", above the cap");
+                }
+            }
+        }
+    }
+
+    /**
+     * The measured instance of that wrap, pinned as a fact rather than a range:
+     * 1000 is {@code 125 * 2^3}, so {@code 1000 << 61} is a whole number of
+     * wraps and lands on zero.
+     */
+    @Test
+    void theWrapThatProducedAZeroWaitIsCovered() {
+        assertEquals(MAX, Backoff.ceilingMillis(61, 1_000, MAX),
+            "1000 << 61 is 0 modulo 2^64 — the attempt index at which the old "
+                + "shift guard let a zero through");
+        assertTrue(Backoff.millis(61, 1_000, MAX) > 0,
+            "and the sampled wait must still be positive there");
+        assertEquals(MAX, Backoff.ceilingMillis(60, 1_000, MAX),
+            "the attempt before it was already saturated");
+    }
+
+    /**
+     * A base that is itself a power of two wraps earlier, and at its own bit
+     * width: {@code 1024 << 54} is a whole number of wraps and lands on 0. The
+     * attempt below it is where the sign bit first goes, which the old guard
+     * caught by accident — this states the boundary the new guard uses.
+     */
+    @Test
+    void aPowerOfTwoBaseWrapsAtItsOwnBitWidth() {
+        assertEquals(300_000, Backoff.ceilingMillis(53, 1_024, 300_000),
+            "just below the wrap the curve is already capped");
+        assertEquals(300_000, Backoff.ceilingMillis(54, 1_024, 300_000),
+            "1024 << 54 is 0 modulo 2^64 — the attempt the shift guard let through");
+        assertTrue(Backoff.millis(54, 1_024, 300_000) > 0,
+            "and the sampled wait must still be positive there");
+    }
+
     @Test
     void attemptZeroMeansDialImmediately() {
         // The dial loop's first attempt must not wait; that is a decision the
@@ -81,6 +149,13 @@ class BackoffTest {
         assertEquals(0, Backoff.ceilingMillis(0, BASE, MAX));
         assertEquals(0, Backoff.millis(0, BASE, MAX));
         assertEquals(0, Backoff.millis(-1, BASE, MAX), "a negative attempt is also immediate");
+    }
+
+    /** A non-positive base is "no schedule", the same reading as a non-positive attempt. */
+    @Test
+    void aNonPositiveBaseIsTreatedAsNoSchedule() {
+        assertEquals(0, Backoff.ceilingMillis(3, 0, MAX));
+        assertEquals(0, Backoff.millis(3, -1, MAX));
     }
 
     @Test

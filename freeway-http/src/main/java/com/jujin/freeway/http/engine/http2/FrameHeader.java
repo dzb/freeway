@@ -31,7 +31,16 @@ public final class FrameHeader {
     private final FrameFlag.FlagSet flags;
     private final int streamId;
 
+    /**
+     * @param length payload length; must fit the wire's 3-byte field. A length
+     *        that does not is not clamped — the three-byte write would silently
+     *        truncate (or wrap), and the peer would read a frame whose header
+     *        disagrees with the bytes after it. Every caller computes the length
+     *        from the payload it is about to write, so a violation is a bug worth
+     *        naming at the point it is written.
+     */
     public FrameHeader(int length, FrameType type, FrameFlag.FlagSet flags, int streamId) {
+        requireLength(length, type);
         this.len = length;
         this.type = type;
         this.flags = flags;
@@ -40,29 +49,48 @@ public final class FrameHeader {
 
     /** Parses a frame header from a 9-byte array. */
     public static FrameHeader parse(byte[] buffer) {
-        int length = BinUtils.readInt(buffer, 0, 3);
+        int length = Bytes.readInt(buffer, 0, 3);
         FrameType type = FrameType.fromValue(buffer[3] & 0xFF);
         FrameFlag.FlagSet flags = FrameFlag.parse(buffer[4], type);
-        int streamId = BinUtils.readInt(buffer, 5) & 0x7FFFFFFF;
+        int streamId = Bytes.readInt(buffer, 5) & 0x7FFFFFFF;
         return new FrameHeader(length, type, flags, streamId);
     }
 
-    /** Writes a frame header to the output stream. */
+    /**
+     * Writes a frame header to the output stream.
+     *
+     * <p>The 3-byte length write is unchecked by construction — it shifts the
+     * value out a byte at a time, so anything wider is truncated or wrapped with
+     * no signal. Both static entry points therefore run the same range check as
+     * the constructor; leaving them out would mean the invariant is enforced on
+     * one path and not the other, which is the arrangement this class exists to
+     * avoid.
+     */
     public static void writeTo(OutputStream outputStream, int length, FrameType type, FrameFlag.FlagSet flags, int streamId) throws IOException {
-        BinUtils.writeInt(outputStream, length, 3);
+        requireLength(length, type);
+        Bytes.writeInt(outputStream, length, 3);
         outputStream.write(type.value & 0xFF);
         outputStream.write(flags.value());
-        BinUtils.writeInt(outputStream, streamId);
+        Bytes.writeInt(outputStream, streamId);
     }
 
-    /** Encodes a frame header as a 9-byte array. */
+    /** Encodes a frame header as a 9-byte array. Checked as {@link #writeTo} is. */
     public static byte[] encode(int length, FrameType type, FrameFlag.FlagSet flags, int streamId) {
+        requireLength(length, type);
         byte[] buffer = new byte[9];
-        BinUtils.writeInt(buffer, 0, length, 3);
+        Bytes.writeInt(buffer, 0, length, 3);
         buffer[3] = (byte) (type.value & 0xFF);
         buffer[4] = flags.value();
-        BinUtils.writeInt(buffer, 5, streamId);
+        Bytes.writeInt(buffer, 5, streamId);
         return buffer;
+    }
+
+    private static void requireLength(int length, FrameType type) {
+        if (length < 0 || length > MAX_FRAME_SIZE) {
+            throw new IllegalArgumentException(
+                "Frame length " + length + " does not fit the 3-byte field"
+                    + " (0.." + MAX_FRAME_SIZE + ") for " + type);
+        }
     }
 
     /** Returns the payload length. */
@@ -87,10 +115,10 @@ public final class FrameHeader {
 
     /** Writes this header to the output stream. */
     public void writeTo(OutputStream outputStream) throws IOException {
-        BinUtils.writeInt(outputStream, len, 3);
+        Bytes.writeInt(outputStream, len, 3);
         outputStream.write(type.value & 0xFF);
         outputStream.write(flags.value());
-        BinUtils.writeInt(outputStream, streamId);
+        Bytes.writeInt(outputStream, streamId);
     }
 
 }

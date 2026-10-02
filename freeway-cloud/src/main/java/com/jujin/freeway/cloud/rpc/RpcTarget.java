@@ -1,6 +1,6 @@
 package com.jujin.freeway.cloud.rpc;
 
-import com.jujin.freeway.commons.bean.MethodHandleUtils;
+import com.jujin.freeway.commons.bean.ReflectiveHandles;
 import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -62,7 +62,7 @@ final class RpcTarget {
                 continue;
             }
             if (methods.putIfAbsent(method.getName(),
-                    new Exported(method, MethodHandleUtils.methodHandle(method))) != null) {
+                    new Exported(method, ReflectiveHandles.methodHandle(method))) != null) {
                 throw new IllegalStateException(
                     "Mapping '" + export.mapping() + "' type "
                         + export.type().getName() + " declares method '"

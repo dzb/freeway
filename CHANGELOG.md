@@ -123,14 +123,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 排序引用分必需与条件：`Ordering` 新增 `beforeIfPresent/afterIfPresent`——缺席的可选伴侣是配置而非错误（`validateOrdering` 与 `all()` 双双放行），必需引用维持原语义（hook 路径 fail-fast、通用路径 WARN）。`DbModule` 迁移 hook 与云侧 discovery/RPC hook 切到条件形：纯 DB 应用、无 HTTP 的 discovery 不再死于缺席的 `freeway.http.server` 锚点；`RpcExportHook` 零导出时直接返回（启动期不再要求 `JsonCodec`——注意 `RemoteCaller` 首次解析时仍需要它，该绑定来自 `HttpModule`；只用 `CloudHttpClient` 的纯 client 才真的不需要）。`CloudEventModule` 保持必需（该平面事实需要 Http，缺席报错点名缺失模块更准）。
 - 线程作用域清理跟着条目走：`ScopedCache.get(key, factory, onExit)` 新重载，scope 退出跑条目清理（首注册胜出、异常记 WARN 不中断）；容器删 JVM-global 旁表与类加载期钩子，关容器后退出的 scope 照常跑生命周期。原 `onClose` 机制保留给 ext/应用。
 - **`@PostConstruct` 在 `to(c -> c.create(X))` 下不再跑两次**（`freeway-ioc`）：该写法是绑定里最自然的 provider 形状，而 provider 拿到的正是容器本身——`create` 返回一个**已注入**的实例，binding 随后又 materialize 一次，同一对象的 `@PostConstruct` 因此被静默执行两遍（不抛异常、不打日志；开连接、注册回调、起线程的 bean 就都做了两遍）。修法不是加"已初始化"记账，而是把归属划清：`@PostConstruct` 属于**受管**的那半段生命周期，而 `Container.create` 是**裸 `new` 加依赖解析**——给构造参数与 `@Inject` 字段，不给生命周期。四条 realize 路径（`to(Class)`／`to(c -> new X())`／`to(c -> c.create(X))`／`bind(Concrete)` 不带 `to`）统一在 binding 自己的 materialize 步执行一次，且因实例是绑定的，`@PreDestroy` 照常在 `close()` 配对执行。`contribute(X.class)` 承诺的 `@PostConstruct` 由贡献路径显式发出（`Contribution.add(Class)` 的 javadoc 契约不变），其不配对 `@PreDestroy` 的单边性是既有约定，见下表。
+- **`Sql.setColumn` 的列名按名字校验**（`freeway-db`）：javadoc 声称「The column name is quoted/validated as a name」，实现里只有 `requireNonNull`——`setColumn("a = 1, evil", v)` 实测渲染出 `INSERT INTO t (a = 1, evil) VALUES (?)`，把一个名组装成 SQL 的调用点（map 驱动批量写入、`setColumn(kind.name().toLowerCase(), v)`）畅通无阻。值侧这次补上了内联，名侧仍是裸拼接，而 javadoc 断言的是两个维度都安全。现按名字校验：限定名按 `.` 切分、**逐段**独立判断，裸标识符与调用方自带的引号**可组合**（`users.name`、`public`."My Col"、`` `db`.`table`.col `` 都是各方言的合法写法），引号内接受成对重复的分隔符（`"a""b"` 是名字 `a"b` 的标准转义）、放行外来引号字符（反引号内的 `"` 在 MySQL 上是普通字符），只拒绝**自己那个**分隔符提前闭合。同批：`setColumn` 拒绝非纯 `SELECT` 的嵌套 `Sql`（`UNION`／DML 被括起来当表达式是渲染得出来但语法无意义的东西，而渲染期不报错意味着失败会落到数据库、离调用点很远）。**不做引号添加**：这个 builder 到 `sql(Dialect)` 之前都是方言无关的，没有引号规则可用，需要引号的名字必须自己带来。**这是行为变更**，见 Migration 表。
 - **`Sql.setColumn` 遇 `Sql` 值按标量子查询内联**（`freeway-db`）：`setExpression` 一直会把 `Sql` 值内联展开（`appendValue`），而 INSERT-only 的 `setColumn` 把值原样塞进 `dmlValues`，渲染时一律 `?`——于是 `Sql.insert("t").setColumn("a", sub)` 把 `Sql` **对象本身**绑成 JDBC 参数，语句静默地变成了另一回事。现把它渲染成一个**带括号的标量子查询**：`setColumn("tenant_id", Sql.select("id").from("t"))` → `VALUES ((SELECT id FROM t))`。括号是关键——`VALUES (SELECT …)` 在 PostgreSQL/MySQL/SQLite 上都不是表达式（只有宽松的 H2 接受），而这个 API 没有 fragment 位置让调用方自己补，所以由渲染器补上；`setExpression` 相反，fragment 是调用方写的，括号也由调用方写（`setExpression("tenant_id = (?)", sub)`），已在 javadoc 写明。子查询的占位符留在其文本内部，**不占列槽位**（否则列数与占位符数脱节），`args()` 按位置把内联查询的参数摊平回来。注意这表达的是"每列一个标量子查询"，不是多行 `INSERT … SELECT`。
 - **关闭与 `get()` 并发不再向封印后的容器发布代理**（`freeway-ioc`）：`get()` 无锁而 `close()` 有锁，缓存未命中后的铸代理若落在 `close()` 清空之后，会把代理写回**已封印**的 `proxyCache`——调用方拿到一个每个方法都抛 `Container is closed` 的活对象。现在"仍开着？"与"发布进 proxyCache"合成 `realizeLock` 内的**一步**（缓存命中仍无锁，那条路径不写任何东西），PROTOTYPE 分支补上同样的关闭检查——它在封印后构造出的实例永远收不到 `@PreDestroy`。THREAD 作用域代理在 `get()` 之后的调用路径检查**保留**：代理的存活期长于产出它的那次 `get()`，那是唯一能拒绝它的地方。
+- **最终 drain 不再持 realize 锁**（`freeway-ioc`）：上面那条修复把"仍开着？"与"发布"合进锁内的同时，也让最终 drain 落进了同一个临界区——而那把锁自己的规则写着「deliberately NOT held across the container's lifecycle drain」，理由正是用户回调可能 join 会去解析服务的线程。窗口只有一个方向：某个解析方在 `closed` 置位前过了 `requireOpen()`、卡在等锁上，而正在 drain 的线程 join 它——两边都没有超时。`ServiceRuntime.seal` 改为三步：**锁内置位 `closed`** → **锁外跑 drain** → **锁内清缓存**。S2-2 的不变量没有被削弱：所有发布路径都在同一把锁内复检 `closed`，而它在清缓存之前就已在锁内置位。`SealDrainLockTest` 断言的是形状而非竞态——回调执行时该线程不持有 realize 锁（确定性，无需重复采样）；同文件另两条是**契约测试而非回归守卫**，它们在旧实现下同样通过，因为 `closed` 在两版里都先于 drain 置位，drain 期间到达的解析方在 `requireOpen()` 就被拒、走不到锁——真正的死锁需要解析方在置位前过了检查且置位后仍在等锁，那是竞态，单线程测试钉不住。
 - `Schema.ensure` 的 `@return` 改为说真话：索引 DDL **会执行但不计入**返回值（它已被 `SchemaTest` 以「indexes not counted」固化——索引是表的配套物而非结构变更）。此前 javadoc 写的是「number of DDL statements executed」，与实现和该测试都矛盾，容易被读成疏漏。
 - **body 限制收敛为单一实现**（`freeway-http`）：`AbstractHttpContext#readBody`（适配器接缝）与 `RequestBody`（内建引擎）各有一份读循环，而 `HttpEngine` 的契约与 `AGENTS.md:227` 都把前者点名为**共享实现**——实际零调用方。现 `readBody` 改为委托 `LimitedInputStream`（即引擎自己用的那个，已移入 `http.internal` 供跨包组装），`AGENTS.md` 的「Adapters」条款随之成立。两份实现在 `BodyLimitParityTest` 穷举的所有用例上**本就一致**（不是活 bug，而是未被强制的保证），变的是保证从"碰巧相符"变成结构性事实。
 - **`AppRuntime` 的关闭语义改为说真话**（`freeway-boot`）：接口 javadoc 称关闭会「unwind the startup」，而 `start()` 全程持监视器，**跨线程 `close()` 是等待**而非展开——只有同线程重入被真正处理。改为写明这个区分：同线程展开、跨线程等待，并说明为什么等待是安全的方向（展开会让运行时短暂处于 STARTING 且 hook 半途而无从收尾）。**代码不动**，当前语义是安全的那个。
-- **HTTP/2 帧的 `writeTo` 修好**（`freeway-http`）：`DataFrame` 此前只写 payload、**不带帧头**；`HeadersFrame` 解析了 pad-length、PRIORITY 与 padding 却全部丢弃。这些方法在服务器实现里没有生产调用方（响应头块走 `HPackContext`），但**没人调用的错代码比没有代码更糟**——下一个调用者会继承这个线格式。现按 `FrameHeader` 的既有写法补全，帧长重算而非复用解码时的长度；`HeadersFrame` 另存了此前解析后未留存的 weight 字节。`FrameWriteToRoundTripTest` 以「解析→序列化→再解析」为判据（回退修复后 5/7 失败并给出字节数差异）。
+- **启动失败不再覆盖已完成的关停状态**（`freeway-boot`）：hook 先 `close()` 再抛异常时，`catch` 把 `state` 置 FAILED，与两件事同时为真——关停已经跑完（`shutdownAttempted` 为真，此后 `close()` 直接 return），而启动确实失败了。结果是 `state()` 永久报 FAILED、`close()` 说「已关过」，同一件事两个答案。现沿用同一线程重入已有的规则：`shutdownAttempted` 为真时保留 `close()` 落定的状态。
+- **HTTP/2 帧的 `writeTo` 修好**（`freeway-http`）：`DataFrame` 此前只写 payload、**不带帧头**；`HeadersFrame` 解析了 pad-length、PRIORITY 与 padding 却全部丢弃。这些方法在服务器实现里没有生产调用方（响应头块走 `HPackContext`），但**没人调用的错代码比没有代码更糟**——下一个调用者会继承这个线格式。现按 `FrameHeader` 的既有写法补全，帧长重算而非复用解码时的长度；`HeadersFrame` 另存了此前解析后未留存的 weight 字节与 PRIORITY 的 E 位（此前写的是 31 位 id 独占位，exclusive 依赖在上一根线上静默变成非 exclusive）。`GoawayFrame`、`PushPromiseFrame`、`NotImplementedFrame` 三个此前**声明的长度与实写的字节不符**（GOAWAY 丢 debug data），一并补上载荷。`FrameWriteToRoundTripTest` 以「解析→序列化→再解析」为判据（回退修复后 5/7 失败并给出字节数差异）。
+- **`maxBodySize` 的调整不再跨请求存活**（`freeway-http`）：`HttpContext` 在 HTTP/1.1 上是**每连接一个、跨请求复用**的，而 `setMaxBodySize` 是 filter 可改的**每请求状态**——两者曾是同一个字段且 `reset()` 不复位它，于是 filter 为某个请求收窄或放宽的限制活到了同一连接上的下一个请求。**放宽方向是要紧的那个**：一个只为上传路由把上限提到 50 MB 的 filter，会让该连接之后所有请求的实际上限都变成 50 MB，而服务端配置仍是默认 10 MiB。现引擎配置的初值随 context 构造时给定，`reset()` 每请求复位为它；`HttpContext#setMaxBodySize` 的 javadoc 早已写着 "for one request"——那句话此前在 HTTP/1.1 上不成立，现在成立了。HTTP/2 每流新建 context，不受影响。`FreewayHttpEngineTest.aFiltersBodySizeAdjustmentDoesNotOutliveItsRequest` 两个方向都断言，且必须真读 body——不读 body 的 handler 两种行为下都观察不到限制。
+- **分支跨迭代域混合的 join 在 `load()` 时被拒绝**（`freeway-flow`）：join 等待 `prevLinks().size()` 次到达，而只要某条分支上游有 LOOP，这个计数就不再成立——循环体内的分支**每轮迭代到达一次**。判据是**迭代域**：一条分支的域 = 包住它的最外层迭代 LOOP，而 **LOOP 节点自身属于它自己的域**（`loopRun` 每轮走一遍它的匹配后继，所以循环直接喂入 join 也是每轮一次）；join 的所有分支必须同域。跨域的图曾在运行末尾以
+  `dead end at node 'j' (… a join gateway never received all its incoming branches)`
+  暴露——而那条文案把一个配置问题描述成了分支丢失，会把排查带偏（实际一条分支都没丢）。现按本仓对无效配置的一贯做法在 `load()` 期报错，点名节点、图与**每个分支的域**（"runs once" 还是 "repeats per iteration of 'x'"）。
+  受支持写法：所有分支同域——无循环上游，或全在同一个循环体内（含直接由循环节点喂入）；以及 join 位于所有循环下游。**无 `$for` 的 LOOP 只 fanOut 一次，因此不算循环**，该判据与 `loopRun` 共用 `iterates(node)` 一份定义，两处不可能漂。归因按嵌套**深度**而非声明顺序，否则同一张图只因两行 `addLoop` 换了位置就从放行变成拒绝。**这是行为变更**，见 Migration 表。
 - **PlantUML display 函数抛异常不再被静默吞掉**（`freeway-flow`）：`Graph` 的两处 `catch (Exception ignored)` 会把用户 display 函数的异常吞掉、改用默认渲染——产出一张格式完好但完全错误的图，屏幕与日志都没有任何线索说定制被丢弃，看起来就像那个函数"没生效"。现改为抛出并点名三种真实结局（`of` / `ofDefault` / `HIDDEN`）。这是本仓唯一两处「静默吞用户回调异常」的地方，与全仓 fail-loud 的守则一致。
 - **mesh 重连补上 jitter**（`freeway-cloud`，`PeerConnector`）：退避是裸的 `base * 2^n`，**没有 jitter**——而这正是最需要它的调用方：滚动重启后每个节点在同一瞬间失去全部 peer，无抖动的退避会让它们永远同步重连。新增 `resilience.Backoff`（含抖动曲线 + 溢出防护），`RetryerDefault` 与 mesh 共用；**配置键仍各自独立**（`rpc.retry.backoff-*` vs `event.backoff-*`），因为出站调用与 peer 拨号该用不同节奏是不同决策。两者的第一跳语义**不统一**：RPC 失败过一次就先等 base，mesh 对没试过的 peer 立即拨号——这个差异留在调用点；但**两条路径的等待都带抖动**：`Backoff.jitter(ceiling)` 让 RPC 的首次重试（`attempt <= 0`）也落在 `[base/2, base]` 内，否则滚动重启后全体客户端会在**第一次重试**上重新同步——那正是这次要消灭的波。`MeshDialBackoffJitterTest` 直接断言 dial 腿在抖动，`BackoffTest` 断言 RPC 首次重试的区间与非常量性：只测共享曲线曾在 mesh 仍是无抖动实现时通过。随共享曲线还有一处行为变化：旧 mesh 实现把指数位移截在 5（`base * (1 << min(attempts, 5))`），共享曲线一直涨到配置的 `max` 为止——默认 `base=1000 / max=30000` 下第五次前已饱和、看不出差别，但 `event.backoff-max-ms` 远大于 `32 × base` 时新实现会继续拉长（这正是"涨到配置上限"的意思，旧截断是未记录的实现细节）。
+- **`Backoff` 的指数位移按 base 定界，不再回绕成零**（`freeway-cloud`）：守卫只挡了 `attempt >= 62` 与符号位，**回绕成正数**这一类两处都不挡——`1000 << 61` 恰好是 `0`（`1000 = 125 × 2³`，整整绕了一圈），于是 `ceilingMillis` 返回 0、`jitter(0)` 返回 0、dial 腿的 `if (sleep > 0)` 跳过等待，**这一轮拨号完全不等待**。计数只在握手成功时清零，出厂默认（base 1000 / max 30000）下曲线第 5 次就饱和，所以这出现在持续断连约 56 × 30 s ≈ 28 分钟之后；且同一集群所有节点的所有 peer 几乎同时到达——同步波没被消除，只是搬到了第 61 次。base 取 2 的幂时命中点低得多（`1024` 在第 53 次）。改用 `baseMillis > Long.MAX_VALUE >> attempt`（问题始终是 `base × 2^attempt` 是否超出 long，而不是位移本身是否合法；写成 `attempt >= Long.numberOfLeadingZeros(base)` 能算出同一个答案，但那要读者自己推一遍，而守卫要说的就是它检查的那件事）。`BackoffTest` 断言的是**不变量**而非某一点：7 个 base × 4 个 cap × 200 次尝试，每次的 ceiling 都必须 `> 0` 且 `<= cap`——回绕成零的那个值同样"满足上限"，只断言上限是抓不到的。
+- **`PeerConnector.Wiring` 拒绝 `backoffMaxMs < backoffBaseMs`**（`freeway-cloud`）：上限低于基准不是上限——曲线把每次尝试都夹到它，于是 `withBackoff(60_000, 1_000)` 产生至多 1 毫秒的等待，即一个按网络允许的速度重拨的 dial 循环，与这两个值要表达的调度正好相反，且悄无声息。`RetryerDefault` 在构造期就拒绝同一组合；共用一条曲线的两个调用方不该对这个问题给出两个答案。
+- **`CloudHttpClient.close()` 的 in-flight 兜底移入 `finally`**（`freeway-cloud`）：结算循环原本在 `asyncExecutor.shutdownNow()` 之后、`http.close()` 之前且不在 `finally` 里。目前 `shutdownNow` 按规范实践中不抛，但一旦抛，调用方就永远等不到那个 future——而这个循环存在的全部理由就是"不让任何人永久阻塞"。
+- **mesh 帧分类先认保留字段 `specversion`**（`freeway-cloud`）：此前先判 `proto`，而 `specversion` 是 CloudEvents 保留字段、`proto` 不是——一个把 `proto` 用作扩展属性的第三方 producer，其合法事件会被判成 hello，而已准入会话上的 hello 是协议错误（服务端 1002／客户端 abort）。优先级与重构前一致、**不是回归**，但那条规则现已被声明为"唯一的共享规则"并由 `MeshFrameTest` 钉住，它就是一条带可避免误判的契约了。
 - **mesh 帧分类收敛为单一实现**（`freeway-cloud`）：`PeerHub`（服务端）与 `PeerConnector`（客户端）各有一份五分支分派（hello / 二次 hello / 事件 / hello 前的事件 / 未识别），仅靠注释「mirror the server leg」保持同步。其中安全属性——**事件帧在 peer 通过准入前绝不能进入广播面**——被陈述两次、执行两次。现抽为 `MeshFrame.classify(text, handshaken)`（密封接口：Hello / DuplicateHello / Event / EventBeforeHello / Unrecognized / Malformed），两条腿只保留各自真正不同的部分（回什么、关会话还是中断拨号）。`MeshFrameTest` 把"准入状态是唯一改变结果的因素"钉成一张表。
 
 ### Migration
@@ -139,6 +151,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 |---|---|---|
 | `Container.create(X)` 跑 `@PostConstruct` | 不跑；只做构造注入 + 字段注入 | **签名不变**（`Container.create(Class)` 编译期无感），但依赖 `create` 跑 `@PostConstruct` 的代码会静默失去该回调。`@PostConstruct` 的典型内容（开连接、注册回调、起线程）本就无人配对 `@PreDestroy`——`create` 造出的实例不进服务缓存，`Shutdown` 不遍历它。**需要完整生命周期的类型请改为绑定**（`binder.bind(X.class).to(X.class)` + `container.get(X.class)`），受管路径两半齐全 |
 | `create` 跑 `@PostConstruct` 时无人记录"已初始化" | 单次 realize 作用域内按身份去重（`ThreadLocal`，退出即清） | 作用域刻意是**单次 realize** 而非容器生命周期：容器级强引用集合会让容器钉住每一个经 `create` 造出的对象，而那些对象按契约不归容器管。caller-owned 实例不被任何容器字段持有，有测试反射钉住 |
+
+无编译错误保护的另外十处行为变更：
+
+| 旧行为 | 新行为 | 影响 |
+|---|---|---|
+| filter 的 `ctx.setMaxBodySize` 调整活到同一 keep-alive 连接上的下一个请求 | 每请求复位为服务端配置值 | **签名不变**，但依赖"抬高后长期生效"的 filter 会看到 413——这正是 `setMaxBodySize` javadoc 早已声明的「for this request only」。不想要 per-request 语义就别在 filter 里改它，改 `freeway.http.max-body-size`。承载复位的 `baseMaxBodySize` 在 `AbstractHttpContext`，初值由构造器给定（见下方形状变更），**复用 context 的适配器在自己的 `reset()` 里调 `resetMaxBodySize()` 即可**，不必自己实现 |
+| `PeerConnector.Wiring` 接受 `backoffMaxMs < backoffBaseMs` | 构造器拒绝 | 上限低于基准会让曲线夹到上限，dial 循环近乎空转。`withBackoff(60_000, 1_000)` 现在抛 `IllegalArgumentException`——**编译期无感**（`Wiring` 是 record，形状未变） |
+| 分支落在不同迭代域的 join 可 `load()`，运行末尾报 dead end | `load()` 即拒，点名节点与每个分支的域 | 图的结构未变，**加载期**多了一次校验。校验失败不会留下已注册的图（回滚后再抛），重试同 id 不会被"already loaded"拦下。所有分支同域（无循环上游，或全在同一个循环体内，含直接由循环节点喂入）、或 join 位于所有循环下游的写法不受影响；无 `$for` 的 LOOP 不算循环 |
+| `Sql.setColumn` 的列名只做 null 检查，裸拼接进语句 | 按名字校验（限定名逐段、裸/引号可组合、拒绝提前闭合） | 此前能用的**会开始抛 `IllegalArgumentException`**。接受面是三种方言引号约定的并集；方言特有的名字形态若不在其中，用该方言的引号显式带来。见上文 |
+| `Sql.setColumn` 把 `UNION`／`INSERT`／`UPDATE`／`DELETE` 形态的嵌套 `Sql` 渲染进列槽位 | 拒绝，仅接受纯 `SELECT`（`WITH` 查询仍可） | 此前渲染出语法无意义但**不报错**的语句，失败落到数据库、离调用点很远。现在构造点即抛，报错点名语句种类但不回显语句原文或绑定值 |
+| `LimitedInputStream.read(b,off,len)` 对非法参数返回 0 或 -1 | 抛 `IndexOutOfBoundsException` / `NullPointerException` | 此前把参数错误报成"body 结束"，调用方拿到 -1 会当成读完。框架内两个调用方都传合法参数；该类型是 `public` 且适配器按文档直接构造它 |
+| `GoawayFrame.parse` 原样保留 last-stream-id 的保留位（R） | 屏蔽（R 为 RFC 9113 §6.8 的保留位，接收方必须忽略），`writeTo` 随之写回已屏蔽的值 | **线上字节变化**。此前一个置了保留位的 GOAWAY 会被我们原样转发，把对端的协议违规再发一次；`Http2Connection` 只读 `errorCode`，当前无活路径受害 |
+| 方法参数上的注入注解在构造函数跑完后才被拒 | 构造函数之前即拒（`Container.create` 亦纳入） | 失败时机前移：懒 realize 的单例从"先跑完构造器副作用再报错"变成"第一次 `get()` 直接报"，不再为一个不会注入的类执行副作用 |
+| hook 先 `close()` 再抛异常时 `AppRuntime#state()` 报 `FAILED` | 保留 `close()` 落定的状态 | 关停已完成时不再报启动失败——此前状态与 `close()` 的"已关过"互相矛盾。`state()` 可观测 |
+| `MeshFrame.classify` 先判 `proto` 再判 `specversion` | 先判保留字段 `specversion` | 带 `proto` 扩展属性的合法第三方事件不再被当成 hello——而已准入会话上的 hello 是协议错误（服务端 1002／客户端 abort）。本框架自己的帧不受影响（hello 用 `proto`、事件用 `specversion`） |
+
+六处**面向发布的形状变更**（编译错误即迁移路径，仍列在此处以便检索）：
+
+| 旧 | 新 | 影响 |
+|---|---|---|
+| `AbstractHttpContext#setMaxBodySize(long)` 可被覆写 | `final` | 覆写过它的适配器编译失败。方法只写一个字段，覆写没有正当理由；改为 `final` 后"每请求复位"这条承诺才有一个不可绕过的实现点 |
+| `AbstractHttpContext` 的构造器为 `(codec, coercer)` 与 `(codec, coercer, correlationId)` | 各多一个 `maxBodySize` 参数 | 适配器的 context 编译失败——这是它该补的：配置的 body 上限只有 server 起来之后才知道，而 context 是在那时被造出来的，于是池也跟着挪到 `start()` 里建。`JettyHttpEngine`/`UndertowHttpEngine` 随之从每请求 `setMaxBodySize(config...)` 改为在 `reset()` 里 `resetMaxBodySize()`，同一个动作只剩一处 |
+| `FrameHeader` 的三个入口对超界长度静默截断 | 构造器 / `encode` / `writeTo` 统一抛 `IllegalArgumentException` | 该类型是 `public`。框架内无调用方能触发（发送路径由 `peerMaxFrameSize` 夹到 `MAX_FRAME_SIZE`），但按算出的长度自行构造 header 的适配器会从"写出错帧"变成"抛异常" |
+| `http.engine.http2.hpack.Huffman` / `StaticHeaderTable` 是 `public` | 包私有 | 二者是 HPACK 编解码的实现细节，包外无引用。按算出的长度自行构造 HPACK 表的代码会从"能编译"变成编译失败——而那本来就不该由外部做 |
+| `commons.bean.MethodHandleUtils` | `commons.bean.ReflectiveHandles` | 它管的不止 `MethodHandle`——字段访问器是 `VarHandle`、构造器句柄也是 `MethodHandle`，三者缓存方式一致，旧名把范围说窄了。避开 `MethodHandles` 是为了不和 `java.lang.invoke.MethodHandles` 混淆。纯重命名，方法与缓存不变 |
+| `http.internal.HttpUtils` 的 6 个 header 方法 | `http.internal.HttpHeaders` | 拆开：`isToken`（RFC 7230 tchar）、`mergeVary`、`headerValue`/`headerValues`、`httpDate`（RFC 7231）、`invalidHostValue` 都是 header 的线格式规则，`parseQueryParams` 是查询串，与 header 无关。`HttpUtils` 保留查询串解析。全部包私有，跨模块无引用 |
+| `http.engine.http2.BinUtils` | `http.engine.http2.Bytes` | 10 个方法分两组：大端整数读写（帧长、stream id、HPACK 字段都在用它）与字节拼接。`Utils` 掩盖了它有形状。纯重命名 |
+| `http.engine.ws.WebSocketUtils` | 方法移入 `WebSocketUpgrade.acceptKey` | 只有 1 个方法、1 个调用方，而 `Utils` 后缀最没有说服力。`Sec-WebSocket-Accept` 的派生（RFC 6455 §4.2.2）本就属于握手 |
+| `AppConfigDefaultTest` / `BootConfigTierTest` 在 `com.jujin.freeway.boot` | 在 `com.jujin.freeway.boot.internal`，与被测类同包 | 纯测试位置变更。它们此前从包外构造 `ConfigSources`，这也是为什么收窄可见性时该类型必须保持 `public`：`AppConfigDefault` 的 public 构造器以它为参数，而 `freeway-cloud` 在自己的测试里构造它——public 签名够到谁，那个类型就得对谁可见 |
+
+本轮同时**试过收窄但被事实驳回**的两处，记在这里是因为它们各自都是"可见性规则的例外"，
+而规则文件此前没写：
+
+- `boot.internal.ConfigSources` 保持 `public`。`AppConfigDefault` 的 public 构造器以它为参数，
+  而 `freeway-cloud` 自己的测试要构造一个（`CloudSymbolPrecedenceTest`）——一个 public 签名
+  够到的类型，就得对那个调用方可见。
+- `boot.internal.AppLogSource` 保持 `public`。它是 `META-INF/services` 里的
+  `LogConfigSource` provider，由 `java.base` 的 `ServiceLoader` 反射构造，类与无参构造器
+  都必须 public。收窄它会在任何一次日志初始化时炸掉，且栈里看不出是可见性问题。
+
+两条都写进了 AGENTS.md 的可见性规则；全仓按"包外无引用"筛出 72 个候选，其余 70 个是
+假阳性——**库自身的 API 没有仓内调用方是正常的，grep 单独回答不了这个问题**。
+
+三处私有方法 `ensureOpen()` / `checkOpen()` 统一为 `requireOpen()`（`PoolDefault`、`WebSocketSessionImpl`、
+`EventExecutorSupport` 的参数名）——三者是同一个 `if (closed) throw`，此前用了三种词干。**只统一词干，
+异常类型各自不变**（`SqlException` / `IOException` / `IllegalStateException`），所以对调用方零影响。
+
+`Orm.ensureInsertable` → `Orm.requireInsertable`（私有方法，零 API 影响）：它的方法体只有
+`throw new SqlException(...)`，而它自己的 javadoc 写的是 "Rejects an entity"——名字与文档
+直接矛盾。现在 **`require*` 一律是「拒绝」，`ensure*` 一律是「幂等补救」**，这个区分此前只存在
+于行为里、没人写下过，已写进 AGENTS.md 的 Naming 段。按新规则扫全仓，`ensure*` 里已无「只抛不补救」者。
+
+`freeway-db` 的两处 `Sql` 形状修正（都是 `Sql` 自己的问题，无编译错误保护）：
+
+| 旧 | 新 | 影响 |
+|---|---|---|
+| `where("id in ?", sub)` 把嵌套 `Sql` 裸拼进 fragment，渲染出 `id in SELECT …`，由驱动报错 | 构建期即拒，消息点名写成 `"(?)"` | **此前能用的写法现在抛 `SqlException`**。裸拼产出的语句读起来像合法 SQL、意思却是另一句（子查询自己的 `WHERE` 并进外层），而错误来自 JDBC、栈里指向别处——所以判据放在 `appendValue`（所有 fragment 方法共用的一处），不是散在各方法的文档里。`setColumn` 不受影响：它没有 fragment 让调用方写括号，渲染器自己加 |
+| 链式 `a.union(b).union(c)` 每层再包一次左括号 | 左侧不再重复包裹，右侧保留 | 纯形状。UNION 左结合，`(A ∪ B) ∪ C` 与 `A ∪ B ∪ C` 等价，此前只是文本逐层嵌套；右侧必须留括号（`A ∪ (B ∪ C)` 不等于 `A ∪ B ∪ C`），分组不丢。绑定顺序不变 |
 
 方向正过来：Schema 归开发、migration 归生产，`freeway.db.schema.mode` 三档替代布尔键。
 
@@ -454,7 +524,7 @@ EventBus 两处形状变化（record 规范构造器/组件类型随内容迁移
 - `Graph` 的公开构造器收为包私有：全仓唯一的 `new Graph(…)` 是同包的 `GraphSpec.create()`，
   公开构造器只是第二个派生点；蓝图用法不变（`graphSpec.create()` / `FlowEngine.load(spec)`）。
 - `WebSocketUtil` → `WebSocketUtils`：与同族 `BinUtils` / `HttpUtils` / `JsonUtils` /
-  `MethodHandleUtils` 的 `Utils` 后缀对齐（仓内原为 4:1，唯一调用点 `WebSocketUpgrade` 同批改）。
+  `ReflectiveHandles` 的 `Utils` 后缀对齐（仓内原为 4:1，唯一调用点 `WebSocketUpgrade` 同批改）。
 - `Tracer` 方法签名中的两处 `com.jujin.freeway.cloud.context.TraceContext` 全限定名改为
   import（同文件 `InvocationContext` 一并清理）——签名类型不变，无迁移项。
 - `FlowExchanger` → `FlowEvaluation`：该类型是"一次在途求值的状态"（graph/engine/driver/context/
@@ -1820,7 +1890,7 @@ EventBus 两处形状变化（record 规范构造器/组件类型随内容迁移
   该组方法刻意**不**实现为 `publishInbound` 的重载——`(String, String)` 调用
   无法在三参 topic 形态与泛型两参形态之间消歧。事件 id 为 null/空白时一律
   投递，旧版生产者不带 id 头不会被丢事件。
-- **`MethodHandleUtils.defaultMethodHandle`（freeway-commons）** — 缓存的
+- **`ReflectiveHandles.defaultMethodHandle`（freeway-commons）** — 缓存的
   非虚派发方法句柄（`findSpecial`）：在代理接收者上调用接口 default 方法
   的正确句柄形态（`methodHandle` 的虚派发会命中代理自身，无限递归）。
   按 Method 缓存、Lock-free 读取，与既有句柄缓存同构。
@@ -1839,7 +1909,7 @@ EventBus 两处形状变化（record 规范构造器/组件类型随内容迁移
 - **`Orm.of(db)` 补齐 JDBC 强制规则（freeway-db）** — 默认 Coercer 现在与
   `DatabaseBuilder`/IoC 路径一致地携带 Date/Timestamp/Time → java.time 规则，
   generated-key 回写等 Orm 内部转换行为不再因构建路径而异。
-- **命名清晰化（freeway-commons/ioc）** — `MethodHandleUtils` 的
+- **命名清晰化（freeway-commons/ioc）** — `ReflectiveHandles` 的
   `invoke(handle, receiver, args)` 更名 `invokeOn(...)`：与位置参数形态
   `invoke(handle, args...)` 在调用点不可区分，Lifecycle 曾以
   `invoke(handle, instance)` 表达接收者语义、靠无参句柄的巧合才正确；
@@ -1865,7 +1935,7 @@ EventBus 两处形状变化（record 规范构造器/组件类型随内容迁移
   topic 由类型推导，本就是 class 通道）。总线始终传显式通道，故仅影响直接
   调用 SPI 的代码。
 - **CallBus 派发走缓存方法句柄（freeway-ioc）** — 热路径从裸
-  `Method.invoke` 切换为注册期解析的 `MethodHandleUtils.invokeOn`，与
+  `Method.invoke` 切换为注册期解析的 `ReflectiveHandles.invokeOn`，与
   AOP/Lifecycle 的既有惯例一致；业务异常不再经
   `InvocationTargetException` 拆包（方法句柄直接抛原异常），DeadCall
   时的 default 方法降级改用共享缓存的非虚句柄。行为差异仅一处：直接

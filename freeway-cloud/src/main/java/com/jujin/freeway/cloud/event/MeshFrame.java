@@ -59,11 +59,17 @@ sealed interface MeshFrame {
         } catch (RuntimeException e) {
             return new Malformed(e.getMessage() == null ? e.toString() : e.getMessage());
         }
-        if (frame.containsKey("proto")) {
-            return handshaken ? new DuplicateHello() : new Hello(frame);
-        }
+        // specversion first: it is the one field CloudEvents reserves and every
+        // conforming producer sets, while "proto" is an extension attribute a
+        // third-party producer is free to use. Testing "proto" first meant such
+        // an event was classified as a hello, and a hello on an admitted session
+        // is a protocol error — so a valid event could be refused by the very
+        // rule this class exists to state once.
         if (frame.containsKey("specversion")) {
             return handshaken ? new Event(text) : new EventBeforeHello();
+        }
+        if (frame.containsKey("proto")) {
+            return handshaken ? new DuplicateHello() : new Hello(frame);
         }
         return new Unrecognized();
     }

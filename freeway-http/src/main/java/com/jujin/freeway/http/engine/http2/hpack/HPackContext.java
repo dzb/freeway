@@ -10,11 +10,11 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-import com.jujin.freeway.http.internal.HttpUtils;
+import com.jujin.freeway.http.internal.HttpHeaders;
 import com.jujin.freeway.http.engine.http2.FrameFlag;
 import com.jujin.freeway.http.engine.http2.FrameHeader;
 import com.jujin.freeway.http.engine.http2.FrameType;
-import com.jujin.freeway.http.engine.http2.BinUtils;
+import com.jujin.freeway.http.engine.http2.Bytes;
 import com.jujin.freeway.http.engine.http2.ContinuationFrame;
 import com.jujin.freeway.http.engine.http2.Http2ErrorCode;
 import com.jujin.freeway.http.engine.http2.Http2Exception;
@@ -117,7 +117,7 @@ public final class HPackContext {
         byte[] nameBytes = nameIndex != null ? null : encodeStringHuffman(name.getBytes(StandardCharsets.UTF_8));
         byte[] valueBytes = encodeStringHuffman(value.getBytes(StandardCharsets.UTF_8));
 
-        return nameBytes == null ? BinUtils.combine(prefix, valueBytes) : BinUtils.combine(prefix, nameBytes, valueBytes);
+        return nameBytes == null ? Bytes.combine(prefix, valueBytes) : Bytes.combine(prefix, nameBytes, valueBytes);
     }
 
     /**
@@ -383,7 +383,7 @@ public final class HPackContext {
             // front-end later, so reject them here. Pseudo-header names
             // start with ':' and are exempt: HeaderFields validates them
             // against the known pseudo-header set.
-            if (!name.startsWith(":") && !HttpUtils.isToken(name))
+            if (!name.startsWith(":") && !HttpHeaders.isToken(name))
                 throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
             field.name = name;
             field.normalizedName = Http2HeaderField.normalize(name);
@@ -468,7 +468,7 @@ public final class HPackContext {
                     : (endStream
                         ? FrameFlag.FlagSet.of(FrameFlag.END_STREAM)
                         : FrameFlag.NONE);
-                frames.add(BinUtils.combine(
+                frames.add(Bytes.combine(
                     FrameHeader.encode(length, FrameType.HEADERS, flags, streamId), payload));
                 first = false;
             } else {

@@ -13,6 +13,7 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 import com.jujin.freeway.http.body.UnsupportedMediaTypeException;
+import com.jujin.freeway.http.internal.HttpHeaders;
 import com.jujin.freeway.http.internal.HttpUtils;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -136,9 +137,9 @@ class HttpContextTest {
         long first = 1_700_000_000_000L;
         long second = first + 1000L;
 
-        String date = HttpUtils.httpDate(first);
-        assertSame(date, HttpUtils.httpDate(first));
-        assertNotSame(date, HttpUtils.httpDate(second));
+        String date = HttpHeaders.httpDate(first);
+        assertSame(date, HttpHeaders.httpDate(first));
+        assertNotSame(date, HttpHeaders.httpDate(second));
 
         ZonedDateTime parsed =
             ZonedDateTime.parse(date, DateTimeFormatter.RFC_1123_DATE_TIME);

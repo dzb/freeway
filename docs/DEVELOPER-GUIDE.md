@@ -1099,7 +1099,7 @@ accepts `application/json` and structured-syntax suffixes
 (`application/*+json`, e.g. `application/vnd.api+json`); any other media type
 (including a missing header) is a client error mapped to **415 Unsupported
 Media Type** — never a 500. `maxBodySize` (default 10 MiB, configurable per
-server and per request via `ctx.maxBodySize(...)`) is enforced on the body
+server and per request via `ctx.setMaxBodySize(...)`) is enforced on the body
 stream itself, not just on buffered reads: a counting wrapper sits outside the
 framing decision (chunked, fixed-length, and unknown-length), so every byte
 delivered to any consumer — buffered `body()` reads or streaming reads during
@@ -1110,6 +1110,9 @@ On a keep-alive connection the context is reused between requests, but all
 per-request exchange state is reset: the security principal, request
 attributes, and the correlation id are cleared and a fresh id is rolled for
 request N+1 (an incoming `X-Request-Id` header is then applied on top).
+`maxBodySize` is reset too, back to the server's configured value — so a filter
+that raises the limit for an upload route governs that request only, and the
+next request on the same connection is bounded by the configured limit again.
 
 ### Response
 

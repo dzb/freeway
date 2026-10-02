@@ -78,6 +78,22 @@ class MeshFrameTest {
     }
 
     @Test
+    void aReservedEventFieldOutranksAUserDefinedOne() {
+        // CloudEvents reserves specversion and requires it on every event;
+        // "proto" is an extension attribute a third-party producer may use for
+        // anything. Asking about "proto" first classified such an event as a
+        // hello — and a hello on an admitted session is a protocol error, so a
+        // valid event was refused by the rule meant to describe it.
+        String eventWithProtoExtension =
+            "{\"specversion\":\"1.0\",\"id\":\"e1\",\"type\":\"t\",\"source\":\"s\",\"proto\":7}";
+        assertEquals(MeshFrame.Event.class,
+            MeshFrame.classify(eventWithProtoExtension, true).getClass(),
+            "an admitted session must see it as the event it is");
+        assertEquals(MeshFrame.EventBeforeHello.class,
+            MeshFrame.classify(eventWithProtoExtension, false).getClass());
+    }
+
+    @Test
     void admissionIsTheOnlyThingThatChangesTheOutcome() {
         // The protocol has three frame shapes; the handshake state is what
         // decides between accepting and refusing each. Pinning that mapping as

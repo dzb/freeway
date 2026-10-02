@@ -7,6 +7,21 @@ import java.lang.reflect.Type;
 /**
  * Static JSON entry points: parsing, serializing and coercing.
  *
+ * <p><b>Which one to use.</b> This and {@link JsonCodec} both turn an object
+ * into JSON text ({@code stringify} / {@code toJson}) and both re-type a parsed
+ * node ({@code coerce} / {@code convert}), and for a plain object graph the two
+ * produce identical output. They differ in where the {@link Coercer} comes
+ * from: here it is the built-in one, so every call site is static and needs no
+ * container; {@link JsonCodec} carries an injected coercer, which is what an
+ * application wants once it has registered its own coercion rules
+ * ({@link JsonCodecDefault} does). Reach for {@code JsonCodec} when you have
+ * one, for this when you do not.
+ *
+ * <p>This is also the only way to the node layer — {@link JsonObject} /
+ * {@link JsonArray}, the {@code parse*} family and the {@code object()} /
+ * {@code array()} factories — which {@code JsonCodec} deliberately does not
+ * expose: its contract is text and types, not trees.
+ *
  * <p><b>Stream ownership.</b> Every {@code parse*(InputStream)} overload
  * <em>closes</em> the stream it is given (the parser wraps it in
  * try-with-resources). Callers that need the stream afterwards must hand over a

@@ -12,7 +12,12 @@ package com.jujin.freeway.boot;
 public enum AppState {
     /** Built but not started. */
     CREATED,
-    /** Hooks are running. A {@code close()} on the starting thread unwinds it; from another thread it waits for {@code start()}, which holds the runtime monitor. */
+    /**
+     * Hooks are running. A {@code close()} on the starting thread unwinds the
+     * startup; from another thread it waits for {@code start()}, which holds
+     * the runtime monitor — see {@link AppRuntime} for why waiting is the safe
+     * direction.
+     */
     STARTING,
     /** Serving; {@code start()} is a no-op and {@code isRunning()} is true. */
     RUNNING,

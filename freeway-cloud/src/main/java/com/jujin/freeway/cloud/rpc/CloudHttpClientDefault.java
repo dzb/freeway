@@ -505,15 +505,21 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
         // call while the reply is still on the wire. Bounded by the deployment
         // grace, and free when nothing is in flight.
         waitForInFlight();
-        asyncExecutor.shutdownNow();
-        // Whatever the grace did not drain never completes on its own —
-        // settle it so no caller blocks forever on a dead client.
-        for (java.util.concurrent.CompletableFuture<CloudResponse> future : inFlight) {
-            future.completeExceptionally(
-                new IllegalStateException("CloudHttpClient is closed"));
+        try {
+            asyncExecutor.shutdownNow();
+        } finally {
+            // Whatever the grace did not drain never completes on its own —
+            // settle it so no caller blocks forever on a dead client. In a
+            // finally because that is the whole point of this loop: a caller
+            // waiting on one of these futures must be released even if the
+            // executor refuses to shut down.
+            for (java.util.concurrent.CompletableFuture<CloudResponse> future : inFlight) {
+                future.completeExceptionally(
+                    new IllegalStateException("CloudHttpClient is closed"));
+            }
+            inFlight.clear();
+            http.close();
         }
-        inFlight.clear();
-        http.close();
     }
 
     /** Waits for in-flight calls to settle, up to the configured grace. */

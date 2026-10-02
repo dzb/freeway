@@ -43,10 +43,10 @@ class MethodParameterInjectionTest {
     }
 
     /**
-     * The check runs inside field injection, so it reaches the caller
-     * wrapped by the realize path's {@code "Unable to initialize …"} frame —
-     * the same shape every other startup configuration error in the framework
-     * has. The actionable text is the root cause.
+     * The check runs before the constructor, so it reaches the caller wrapped
+     * by the realize path's {@code "Unable to construct …"} frame — the same
+     * shape every other configuration error in the framework has. The
+     * actionable text is the root cause.
      */
     private static String rootCauseMessage(Throwable thrown) {
         Throwable at = thrown;
@@ -84,6 +84,39 @@ class MethodParameterInjectionTest {
 
         assertTrue(message.contains("@Symbol"), message);
         assertTrue(message.contains("SymbolCaller.fetch"), message);
+    }
+
+    /**
+     * Rejection happens before the constructor, so a class whose constructor
+     * has side effects — opening a connection, starting a thread — never gets to
+     * perform them for an instance the container is about to refuse to build.
+     * The check used to run inside field injection, i.e. after the constructor,
+     * where the damage was already done.
+     */
+    @Test
+    void theConstructorIsNotRunForAClassThatWillBeRejected() {
+        SideEffectingCaller.CONSTRUCTED.set(0);
+
+        RuntimeException thrown = assertThrows(RuntimeException.class,
+            () -> Freeway.create(binder -> {
+                binder.bind(SideEffectingCaller.class).to(SideEffectingCaller.class);
+            }).get(SideEffectingCaller.class));
+
+        assertEquals(0, SideEffectingCaller.CONSTRUCTED.get(),
+            "the class is not injectable at all, so its constructor must not run: "
+                + rootCauseMessage(thrown));
+    }
+
+    public static final class SideEffectingCaller {
+        static final java.util.concurrent.atomic.AtomicInteger CONSTRUCTED =
+            new java.util.concurrent.atomic.AtomicInteger();
+
+        SideEffectingCaller() {
+            CONSTRUCTED.incrementAndGet();
+        }
+
+        void call(@Inject String ignored) {
+        }
     }
 
     @Test

@@ -68,21 +68,25 @@ public final class Backoff {
 
     /**
      * The jitter-free exponential value for {@code attempt}: {@code base *
-     * 2^attempt} capped at {@code maxMillis}, and 0 for a non-positive attempt.
+     * 2^attempt} capped at {@code maxMillis}, and 0 for a non-positive attempt
+     * or base.
      *
      * <p>For a caller that needs the ceiling itself rather than a sample from
      * it — a bound on total elapsed time, say.
      */
     public static long ceilingMillis(int attempt, long baseMillis, long maxMillis) {
-        if (attempt <= 0) {
+        if (attempt <= 0 || baseMillis <= 0) {
             return 0;
         }
-        // Guard the shift itself: past this the multiplication overflows a
-        // long, and a negative result would sail past the Math.min cap.
-        if (attempt >= 62) {
+        // Would base * 2^attempt fit in a long? Past that point the answer is the
+        // cap by definition, and the shift is never reached — which also rules out
+        // the wrap the shift alone would let through: a shift past 63 wraps to a
+        // POSITIVE value that sails past the Math.min cap (1000 << 61 is 0),
+        // handing the dial loop a zero-millisecond wait and turning the backoff
+        // into a busy loop.
+        if (attempt >= Long.SIZE - 1 || baseMillis > Long.MAX_VALUE >> attempt) {
             return maxMillis;
         }
-        long shifted = baseMillis << attempt;
-        return shifted < 0 ? maxMillis : Math.min(shifted, maxMillis);
+        return Math.min(baseMillis << attempt, maxMillis);
     }
 }

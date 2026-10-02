@@ -16,6 +16,7 @@ import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -191,6 +192,97 @@ class FreewayHttpEngineTest {
         } finally {
             server.stop();
         }
+    }
+
+    /**
+     * A filter's body-size adjustment governs its own request and no other.
+     *
+     * <p>On HTTP/1.1 the {@code HttpContext} is one per connection and reused,
+     * while the limit is per-request state a filter may change — so the two used
+     * to be the same field with no restore, and the adjustment outlived the
+     * request. {@link HttpContext#setMaxBodySize} promises "this request only",
+     * and the direction that matters is raising: a filter that widened the limit
+     * for an upload route left every later request of that connection bounded by
+     * the widened value instead of the server's.
+     *
+     * <p>The handlers read the body, because that is when the limit is enforced
+     * — a handler that answers without reading cannot observe it either way.
+     */
+    @Test
+    void aFiltersBodySizeAdjustmentDoesNotOutliveItsRequest() throws Exception {
+        int port = freePort();
+        // A configured limit low enough that "over it" and "under it" are both
+        // a few hundred bytes, so both directions are testable without megabytes
+        // on the wire.
+        var server = HttpServer.create(TestHttp.engine(),
+            TestServerConfig.loopback(port).withMaxBodySize(1024),
+            HttpPipeline.of(
+                Route.post("/narrow", FreewayHttpEngineTest::readBody),
+                Route.post("/wide", FreewayHttpEngineTest::readBody),
+                Route.post("/plain", FreewayHttpEngineTest::readBody))
+            .withFilter((ctx, next) -> {
+                if ("/narrow".equals(ctx.path())) {
+                    ctx.setMaxBodySize(32);
+                } else if ("/wide".equals(ctx.path())) {
+                    ctx.setMaxBodySize(200_000);
+                }
+                next.handle(ctx);
+            }));
+        server.start();
+        try {
+            // Two connections, one per direction. Each needs two requests on one
+            // socket — a fresh connection would pass under either behaviour and
+            // prove nothing. The raise case ends in a 413 (an unread body may
+            // not leave the connection usable), so it runs last.
+            narrowDoesNotOutlive(port);
+            raiseDoesNotOutlive(port);
+        } finally {
+            server.stop();
+        }
+    }
+
+    private static void readBody(HttpContext ctx) throws Exception {
+        ctx.send(200, String.valueOf(ctx.body().length));
+    }
+
+    /** 500 bytes is under the configured 1024 and over the filter's 32. */
+    private void narrowDoesNotOutlive(int port) throws Exception {
+        try (var sock = new Socket("127.0.0.1", port)) {
+            sock.setSoTimeout(3000);
+            var out = sock.getOutputStream();
+            post(out, "/narrow", 8);
+            assertEquals(200, TestRawHttp.statusOf(readHttpResponse(sock)),
+                "first response missing");
+            post(out, "/plain", 500);
+            assertEquals(200, TestRawHttp.statusOf(readHttpResponse(sock)),
+                "500 bytes is within the configured 1024, so the previous "
+                    + "request's 32-byte limit must not govern this one");
+        }
+    }
+
+    /** 100 KB is over the configured 1024 and well under the filter's 200 000. */
+    private void raiseDoesNotOutlive(int port) throws Exception {
+        try (var sock = new Socket("127.0.0.1", port)) {
+            sock.setSoTimeout(3000);
+            var out = sock.getOutputStream();
+            post(out, "/wide", 100_000);
+            assertEquals(200, TestRawHttp.statusOf(readHttpResponse(sock)),
+                "the filter's raised limit must apply to its own request");
+            post(out, "/plain", 100_000);
+            assertEquals(413, TestRawHttp.statusOf(readHttpResponse(sock)),
+                "the previous request's raised limit must not outlive it — the "
+                    + "configured 1024 governs a request the filter did not touch");
+        }
+    }
+
+    private static void post(OutputStream out, String path, int bodyBytes) throws IOException {
+        out.write(("POST " + path + " HTTP/1.1\r\n"
+                + "Host: x\r\n"
+                + "Content-Length: " + bodyBytes + "\r\n"
+                + "\r\n"
+                + "x".repeat(bodyBytes))
+            .getBytes(StandardCharsets.US_ASCII));
+        out.flush();
     }
 
     @Test

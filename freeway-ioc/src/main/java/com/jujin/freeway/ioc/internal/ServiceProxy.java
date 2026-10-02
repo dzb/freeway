@@ -1,6 +1,6 @@
 package com.jujin.freeway.ioc.internal;
 
-import com.jujin.freeway.commons.bean.MethodHandleUtils;
+import com.jujin.freeway.commons.bean.ReflectiveHandles;
 import com.jujin.freeway.ioc.advisor.MethodInvocation;
 import java.lang.invoke.MethodHandle;
 import java.lang.reflect.InvocationHandler;
@@ -122,8 +122,8 @@ final class ServiceProxy {
                 }
             }
             MethodHandle handle = targetHandles.computeIfAbsent(
-                method, MethodHandleUtils::methodHandle);
-            return MethodHandleUtils.invokeOn(handle, real, args);
+                method, ReflectiveHandles::methodHandle);
+            return ReflectiveHandles.invokeOn(handle, real, args);
         }
     }
 

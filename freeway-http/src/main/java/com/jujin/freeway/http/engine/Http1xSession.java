@@ -15,7 +15,7 @@ import com.jujin.freeway.http.engine.http2.FrameFlag;
 import com.jujin.freeway.http.engine.http2.FrameHeader;
 import com.jujin.freeway.http.engine.http2.FrameType;
 import com.jujin.freeway.http.engine.http2.SettingsFrame;
-import com.jujin.freeway.http.internal.HttpUtils;
+import com.jujin.freeway.http.internal.HttpHeaders;
 
 /**
  * HTTP/1.1 connection loop: keep-alive parsing, request dispatch, and the
@@ -35,8 +35,8 @@ final class Http1xSession {
             var in = connection.inputStream();
             var out = connection.outputStream();
             var parser = new Http1xParser(in);
-            var context = new HttpContextImpl(ctx.jsonCodec(), ctx.coercer());
-            context.setMaxBodySize(ctx.config().maxBodySize());
+            var context = new HttpContextImpl(
+                ctx.jsonCodec(), ctx.coercer(), ctx.config().maxBodySize());
             context.setCompression(ctx.config().compression());
             if (ctx.engine().sslContext() == null
                     && connection.socket().getChannel() != null) {
@@ -169,7 +169,7 @@ final class Http1xSession {
         }
         // RFC 7230 §5.4: exactly one Host; the value follows the shared
         // Host/:authority character rules in HttpUtils.
-        return HttpUtils.invalidHostValue(values.getFirst());
+        return HttpHeaders.invalidHostValue(values.getFirst());
     }
 
     private static SettingsFrame tryPrepareH2cUpgrade(Http1xParser.ParsedRequest req) {

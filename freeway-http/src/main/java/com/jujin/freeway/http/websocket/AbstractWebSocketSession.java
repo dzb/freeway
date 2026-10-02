@@ -9,7 +9,7 @@ import java.util.Objects;
 import java.util.Optional;
 
 import com.jujin.freeway.http.ExchangeMetaDefault;
-import com.jujin.freeway.http.internal.HttpUtils;
+import com.jujin.freeway.http.internal.HttpHeaders;
 
 /**
  * Shared request-identification half of a {@link WebSocketSession}: the
@@ -143,12 +143,12 @@ public abstract class AbstractWebSocketSession implements WebSocketSession {
 
     @Override
     public final Optional<String> header(String name) {
-        return Optional.ofNullable(HttpUtils.headerValue(headers, name));
+        return Optional.ofNullable(HttpHeaders.headerValue(headers, name));
     }
 
     @Override
     public final List<String> headers(String name) {
-        return HttpUtils.headerValues(headers, name);
+        return HttpHeaders.headerValues(headers, name);
     }
 
     @Override

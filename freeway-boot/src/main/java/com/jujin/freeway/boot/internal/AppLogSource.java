@@ -22,6 +22,10 @@ import java.util.Map;
  * <p>Registered via {@code META-INF/services} — ServiceLoader is how the boot
  * layer hands the bootstrap log cascade its application knowledge without
  * inverting a dependency.
+ *
+ * <p>Public because {@code java.util.ServiceLoader} instantiates it reflectively
+ * from the {@code META-INF/services} file — the one case where a type inside
+ * {@code internal} cannot narrow, because {@code java.base} is the caller.
  */
 public final class AppLogSource implements LogConfigSource {
 

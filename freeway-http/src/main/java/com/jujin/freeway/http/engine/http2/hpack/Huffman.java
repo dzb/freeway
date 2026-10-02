@@ -14,7 +14,7 @@ import com.jujin.freeway.http.engine.http2.Http2Exception;
  * Decodes Huffman-encoded strings using a table-driven lookup and encodes
  * via the same canonical table (symbol → code + bit length).
  */
-public final class Huffman {
+final class Huffman {
     private static final int[][] CODE_TABLE = new int[257][];
 
     static {

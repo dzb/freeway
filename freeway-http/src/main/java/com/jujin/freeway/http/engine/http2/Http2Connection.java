@@ -557,7 +557,7 @@ public final class Http2Connection {
         }
 
         byte[] combined() {
-            return BinUtils.combine(fragments);
+            return Bytes.combine(fragments);
         }
 
         void reset() {

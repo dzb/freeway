@@ -4,8 +4,18 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.util.List;
 
-public final class BinUtils {
-    private BinUtils() {}
+/**
+ * Big-endian integer read/write over byte arrays and streams, plus the
+ * concatenation this transport needs — the two byte-level operations every
+ * HTTP/2 frame and HPACK field is built from.
+ *
+ * <p>Named for what it is rather than {@code Utils}: the integer methods all
+ * share one wire order, and {@code combine} is the join that keeps a payload
+ * split across buffers in one array.
+ */
+public final class Bytes {
+
+    private Bytes() {}
 
     public static int readInt(byte[] bytes, int offset, int length) {
         int result = 0;

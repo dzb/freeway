@@ -8,6 +8,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
+import com.jujin.freeway.http.internal.HttpHeaders;
 import com.jujin.freeway.http.internal.HttpUtils;
 import com.jujin.freeway.http.websocket.AbstractWebSocketSession;
 
@@ -38,7 +39,7 @@ public final class WebSocketSessionImpl extends AbstractWebSocketSession {
 
     @Override public boolean isOpen() { return open; }
 
-    private void checkOpen() throws IOException {
+    private void requireOpen() throws IOException {
         if (!open) throw new IOException("WebSocket is closed");
     }
 
@@ -70,7 +71,7 @@ public final class WebSocketSessionImpl extends AbstractWebSocketSession {
      *  fragment ends mid-character. */
     private void writeFragmented(OpCode opCode, byte[] data) throws IOException {
         synchronized (writeLock) {
-            checkOpen();
+            requireOpen();
             int offset = 0;
             boolean first = true;
             while (offset < data.length) {
@@ -111,7 +112,7 @@ public final class WebSocketSessionImpl extends AbstractWebSocketSession {
     @Override
     public void sendTextBatch(List<String> texts) throws IOException {
         synchronized (writeLock) {
-            checkOpen();
+            requireOpen();
             for (String text : texts) {
                 WebSocketReadLoop.writeFrameNoFlush(out, new WebSocketFrame(OpCode.Text, true, text));
             }
@@ -142,7 +143,7 @@ public final class WebSocketSessionImpl extends AbstractWebSocketSession {
     /** Synchronized frame write shared with the read loop's automatic pong/close replies. */
     void writeFrame(WebSocketFrame frame) throws IOException {
         synchronized (writeLock) {
-            checkOpen();
+            requireOpen();
             WebSocketReadLoop.writeFrame(out, frame);
         }
     }
@@ -150,7 +151,7 @@ public final class WebSocketSessionImpl extends AbstractWebSocketSession {
     /** Synchronized batched frame write without per-frame flush. */
     void writeFrameNoFlush(WebSocketFrame frame) throws IOException {
         synchronized (writeLock) {
-            checkOpen();
+            requireOpen();
             WebSocketReadLoop.writeFrameNoFlush(out, frame);
         }
     }

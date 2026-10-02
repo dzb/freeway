@@ -22,6 +22,7 @@ import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.http.AbstractHttpContext;
 import com.jujin.freeway.http.Compression;
 import com.jujin.freeway.http.HttpResponse;
+import com.jujin.freeway.http.internal.HttpHeaders;
 import com.jujin.freeway.http.internal.HttpUtils;
 import com.jujin.freeway.http.HttpServerConfig;
 import com.jujin.freeway.http.MediaTypes;
@@ -69,15 +70,15 @@ public class HttpContextImpl extends AbstractHttpContext {
         void transfer(FileChannel channel, long offset, long length)
             throws IOException;
     }
-    public HttpContextImpl(JsonCodec jsonCodec, Coercer coercer) {
-        super(jsonCodec, coercer);
+    public HttpContextImpl(JsonCodec jsonCodec, Coercer coercer, long maxBodySize) {
+        super(jsonCodec, coercer, maxBodySize);
     }
 
     /** Creates a context seeded with the given correlation id (auto-generated
      *  when blank); keep-alive reuse updates it per request via reset(). */
     public HttpContextImpl(JsonCodec jsonCodec, Coercer coercer,
-                              String correlationId) {
-        super(jsonCodec, coercer, correlationId);
+                              String correlationId, long maxBodySize) {
+        super(jsonCodec, coercer, correlationId, maxBodySize);
     }
 
     /** Routes responses through the given transport writer (HTTP/2 stream). */
@@ -140,6 +141,10 @@ public class HttpContextImpl extends AbstractHttpContext {
         this.pathVariables.clear();
         this.headersWritten = false;
         this.chunkedResponse = false;
+        // Per-request state, and this context outlives the request on a
+        // keep-alive connection: restore the configured limit so the previous
+        // request's filter adjustment cannot govern this one.
+        resetMaxBodySize();
     }
 
     /** Sets the gzip compression policy for this connection's requests. */
@@ -412,7 +417,7 @@ public class HttpContextImpl extends AbstractHttpContext {
      *  for the already-responded guard). */
     private void ensureDateHeader() {
         if (!responseHeaders.contains("Date")) {
-            responseHeaders.set("Date", HttpUtils.httpDate(System.currentTimeMillis()));
+            responseHeaders.set("Date", HttpHeaders.httpDate(System.currentTimeMillis()));
         }
     }
 
@@ -421,7 +426,7 @@ public class HttpContextImpl extends AbstractHttpContext {
      *  ({@code setHeader} is a no-op after {@code responded}). */
     private void addVaryAcceptEncoding() {
         responseHeaders.set("Vary",
-            HttpUtils.mergeVary(responseHeaders.get("Vary"), "Accept-Encoding"));
+            HttpHeaders.mergeVary(responseHeaders.get("Vary"), "Accept-Encoding"));
     }
 
 

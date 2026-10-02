@@ -76,12 +76,14 @@ final class ServiceRuntime {
             return realize(binding);
         }
         ServiceKey key = new ServiceKey(binding.type(), binding.id());
-        // A cache hit needs no lock: the entry was published by a mint that
-        // ran under realizeLock, so seeing it means the container was open at
-        // that point. A miss mints, and the mint must hold the lock — that is
-        // what makes "still open?" and "publish into proxyCache" one step, so
-        // a close() landing between them cannot clear the cache and leave this
-        // thread repopulating a sealed one.
+        // A cache hit needs no lock: the proxy behind it is fully built before
+        // the publish, so reading it unlocked is safe. Whether the container is
+        // still open is a separate question this path deliberately does not ask
+        // — a proxy obtained before close() and invoked after it throws from
+        // the invocation, which is the contract every scope shares. A miss mints,
+        // and the mint must hold the lock: that is what makes "still open?" and
+        // "publish into proxyCache" one step, so a close() landing between them
+        // cannot clear the cache and leave this thread repopulating a sealed one.
         Object cached = proxyCache.get(key);
         if (cached != null) {
             return binding.type().cast(cached);
@@ -170,21 +172,35 @@ final class ServiceRuntime {
     }
 
     /**
-     * Seals the runtime: {@code finalDrain} (which marks the container closed
-     * and runs the last lifecycle pass) and the cache clear happen atomically
-     * with respect to {@link #realize}. A realization that passed its first
-     * closed check may still be constructing while the container drains — it
-     * holds the lock, so its target lands before we acquire it (and the final
-     * drain sees it), or it blocks here and then fails its closed re-check.
-     * Either way no freshly realized singleton outlives the clear.
+     * Seals the runtime around the container's last lifecycle pass, in three
+     * steps that must not be collapsed into two.
+     *
+     * <p>{@code markClosed} runs under the realize lock: the closed flag is what
+     * every publishing path re-checks under that same lock, so once it is up,
+     * nothing can be minted or realized into the caches again — which is what
+     * makes the clear below safe even though it now happens later. A realization
+     * that passed its first closed check and is already constructing holds the
+     * lock, so it finishes before {@code markClosed} runs and its target is in
+     * the cache when {@code finalDrain} snapshots.
+     *
+     * <p>{@code finalDrain} — user {@code @PreDestroy} and {@code close()}
+     * callbacks — runs OUTSIDE the lock, deliberately, per the rule this lock
+     * documents: a callback may join a worker thread that is itself resolving a
+     * service, and that thread needs the lock to mint or realize. Holding it here
+     * would deadlock the shutdown. A resolver racing the drain cannot publish
+     * (the flag is already up), so it fails its re-check and throws rather than
+     * waiting for the drain to finish.
      */
-    RuntimeException seal(Supplier<RuntimeException> finalDrain) {
+    RuntimeException seal(Runnable markClosed, Supplier<RuntimeException> finalDrain) {
         synchronized (realizeLock) {
-            RuntimeException failure = finalDrain.get();
+            markClosed.run();
+        }
+        RuntimeException failure = finalDrain.get();
+        synchronized (realizeLock) {
             proxyCache.clear();
             targetCache.clear();
-            return failure;
         }
+        return failure;
     }
 
     /**

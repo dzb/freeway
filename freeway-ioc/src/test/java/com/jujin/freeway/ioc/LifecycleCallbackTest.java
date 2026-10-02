@@ -1,6 +1,7 @@
 package com.jujin.freeway.ioc;
 
 import com.jujin.freeway.ioc.annotation.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -122,6 +123,60 @@ class LifecycleCallbackTest {
         SubPostConstructBean bean = container.get(SubPostConstructBean.class);
 
         assertTrue(bean.parentInit, "parent @PostConstruct should be inherited");
+    }
+
+    /**
+     * A class-based binding with no {@code to(...)} builds its own instance, and
+     * that build used to construct AND initialize before handing the instance to
+     * the binding's materialize step — so the fields were injected twice and the
+     * one-shot {@code @PostConstruct} rule was carried by the realize scope rather
+     * than by the shape of the path. Both are invisible while field injection is
+     * idempotent assignment, which is why only a counted callback can see them.
+     */
+    @Test
+    void concreteBindingWithoutProviderInjectsFieldsOnceAndPostConstructsOnce() {
+        CountingLifecycleBean.POST_CONSTRUCT.set(0);
+        Dependency.CONSTRUCTED.set(0);
+
+        try (Container container = Freeway.create(binder -> {
+            // PROTOTYPE, so every field-injection pass builds a fresh
+            // dependency: a second pass is then visible as a second construction
+            // rather than being hidden by an idempotent overwrite.
+            binder.bind(Dependency.class).scope(Scope.PROTOTYPE);
+            binder.bind(CountingLifecycleBean.class);
+        })) {
+
+            container.get(CountingLifecycleBean.class);
+        }
+
+        assertEquals(1, CountingLifecycleBean.POST_CONSTRUCT.get(),
+            "bind(Concrete.class) with no to(...) must post-construct once");
+        assertEquals(1, Dependency.CONSTRUCTED.get(),
+            "and inject its fields once — the binding's materialize step is the "
+                + "one that initializes, so the construction step must not "
+                + "initialize as well and leave the one-shot rule resting on the "
+                + "realize scope instead of on the shape of the path");
+    }
+
+    static class Dependency {
+        static final AtomicInteger CONSTRUCTED = new AtomicInteger();
+
+        Dependency() {
+            CONSTRUCTED.incrementAndGet();
+        }
+    }
+
+    static class CountingLifecycleBean {
+        static final java.util.concurrent.atomic.AtomicInteger POST_CONSTRUCT =
+            new java.util.concurrent.atomic.AtomicInteger();
+
+        @Inject
+        Dependency dependency;
+
+        @PostConstruct
+        void init() {
+            POST_CONSTRUCT.incrementAndGet();
+        }
     }
 
     @Test

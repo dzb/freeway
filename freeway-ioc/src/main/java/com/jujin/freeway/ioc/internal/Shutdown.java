@@ -39,11 +39,15 @@ final class Shutdown {
      * (identity-deduped). The iteration cap guards against a pathological
      * callback chain that realizes a fresh service on every pass.
      *
+     * <p>"Still open" is true of this pass and not of the whole shutdown:
+     * {@link #drainRemaining} runs after the container has been marked closed,
+     * so a callback there cannot resolve anything. See
+     * {@link ContainerImpl#close()} for the order.
+     *
      * <p>Deliberately does NOT clear the caches or seal the container — the
-     * caller does that atomically under the realize lock after this drain
-     * (see {@link ServiceRuntime#seal}), so a realization racing
-     * {@code close()} cannot insert a fresh singleton past the last snapshot
-     * and escape lifecycle cleanup.
+     * caller does both around a final pass (see {@link ServiceRuntime#seal}),
+     * so a realization racing {@code close()} cannot insert a fresh singleton
+     * past the last snapshot and escape lifecycle cleanup.
      */
     RuntimeException close() {
         RuntimeException failure = drainRemaining(null);
@@ -63,11 +67,15 @@ final class Shutdown {
 
     /**
      * Final drain pass for targets realized concurrently with the main drain.
-     * The caller must hold the realize lock ({@link ServiceRuntime#seal})
-     * while invoking this: under the lock no new realization can add targets after this
-     * pass's last snapshot, so the pass stabilizes in at most two iterations
-     * and the subsequent cache clear cannot orphan anything. Targets already
-     * processed by {@link #close()} are skipped via the shared dedup sets.
+     *
+     * <p>Invoked from {@link ServiceRuntime#seal} with the container already
+     * marked closed, so the guarantee the later cache clear needs is simply that
+     * no realization can add a target after this pass's last snapshot. Targets
+     * already processed by {@link #close()} are skipped via the shared dedup
+     * sets.
+     *
+     * <p>The pass must NOT run while holding the realize lock: it invokes user
+     * callbacks, and a callback that resolves a service needs the lock.
      */
     RuntimeException drainRemaining(RuntimeException failure) {
         failure = drainPhase(failure, true);

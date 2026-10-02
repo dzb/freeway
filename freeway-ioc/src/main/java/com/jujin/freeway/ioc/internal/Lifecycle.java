@@ -1,6 +1,6 @@
 package com.jujin.freeway.ioc.internal;
 
-import com.jujin.freeway.commons.bean.MethodHandleUtils;
+import com.jujin.freeway.commons.bean.ReflectiveHandles;
 import com.jujin.freeway.ioc.annotation.PostConstruct;
 import com.jujin.freeway.ioc.annotation.PreDestroy;
 import java.lang.annotation.Annotation;
@@ -34,7 +34,7 @@ final class Lifecycle {
         try {
             // Receiver form: the callback handle is (receiver)void, and the
             // intent must not silently degrade to "single positional arg".
-            MethodHandleUtils.invokeOn(handle, instance, null);
+            ReflectiveHandles.invokeOn(handle, instance, null);
         } catch (Throwable ex) {
             // Errors included: a throwing callback is a failure of that
             // callback, not a reason to skip the rest of the lifecycle drain.
@@ -101,8 +101,8 @@ final class Lifecycle {
             Method postConstruct = findLifecycleMethod(type, PostConstruct.class);
             Method preDestroy = findLifecycleMethod(type, PreDestroy.class);
             return new LifecyclePlan(
-                postConstruct == null ? null : MethodHandleUtils.methodHandle(postConstruct),
-                preDestroy == null ? null : MethodHandleUtils.methodHandle(preDestroy)
+                postConstruct == null ? null : ReflectiveHandles.methodHandle(postConstruct),
+                preDestroy == null ? null : ReflectiveHandles.methodHandle(preDestroy)
             );
         }
     }

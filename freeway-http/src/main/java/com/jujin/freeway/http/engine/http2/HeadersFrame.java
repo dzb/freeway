@@ -13,7 +13,8 @@ final class HeadersFrame extends BaseFrame {
     private byte weight;
     private byte[] headerBlock;
 
-    public HeadersFrame(FrameHeader header) { super(header); }
+    /** For {@link #parse}, which fills the block in from the payload. */
+    private HeadersFrame(FrameHeader header) { super(header); }
 
     public byte[] headerBlock() { return headerBlock; }
 
@@ -29,7 +30,7 @@ final class HeadersFrame extends BaseFrame {
             if (payload.length < 1)
                 throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR,
                     "PADDED frame with no pad-length byte");
-            frame.padLength = BinUtils.readInt(payload, pos, 1);
+            frame.padLength = Bytes.readInt(payload, pos, 1);
             if (frame.padLength >= header.length()) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
             pos++;
         }
@@ -38,7 +39,7 @@ final class HeadersFrame extends BaseFrame {
             if (end - pos < 5)
                 throw new Http2Exception(Http2ErrorCode.FRAME_SIZE_ERROR,
                     "HEADERS PRIORITY field is truncated");
-            int rawDependency = BinUtils.readInt(payload, pos, 4);
+            int rawDependency = Bytes.readInt(payload, pos, 4);
             frame.exclusive = (rawDependency & 0x80000000) != 0;
             frame.dependentStreamId = rawDependency & 0x7FFFFFFFL;
             if (frame.dependentStreamId == header.streamId()) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
@@ -79,12 +80,15 @@ final class HeadersFrame extends BaseFrame {
             outputStream.write(padLength);
         }
         if (prioritised) {
-            BinUtils.writeInt(outputStream,
+            Bytes.writeInt(outputStream,
                 (int) dependentStreamId | (exclusive ? 0x80000000 : 0), 4);
             outputStream.write(weight);
         }
         outputStream.write(headerBlock);
         if (padded && padLength > 0) {
+            // Zeros, not the bytes that arrived — parse keeps the padding's
+            // length only, and RFC 9113 §6.1 lets a receiver ignore padding. The
+            // header block is what round-trips.
             outputStream.write(new byte[padLength]);
         }
     }

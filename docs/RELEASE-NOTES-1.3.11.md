@@ -10,7 +10,7 @@ green across all core modules.
 
 ## Added
 
-- **`MethodHandleUtils.defaultMethodHandle`** (`freeway-commons.bean`) —
+- **`ReflectiveHandles.defaultMethodHandle`** (`freeway-commons.bean`) —
   cached non-virtual (`findSpecial`) handle for invoking interface default
   methods on proxy receivers; the virtual handle from `methodHandle` would
   re-enter the proxy instead of running the default body. Same
@@ -28,7 +28,7 @@ green across all core modules.
 
 - **CallBus dispatch rides cached method handles** (`freeway-ioc`) — the
   hot path switched from raw `Method.invoke` to registration-resolved
-  `MethodHandleUtils.invokeOn`, matching the AOP/Lifecycle idiom. Business
+  `ReflectiveHandles.invokeOn`, matching the AOP/Lifecycle idiom. Business
   exceptions arrive unwrapped (no `InvocationTargetException` artifact);
   DeadCall default-method degradation uses the shared cached handle. One
   observable difference: a direct `call(topic, payload)` with mismatched

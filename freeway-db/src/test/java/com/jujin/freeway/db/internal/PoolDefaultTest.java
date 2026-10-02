@@ -385,7 +385,7 @@ class PoolDefaultTest {
 
     @Test
     void borrowAfterCloseDoesNotCreateConnection() throws Exception {
-        // Regression: a borrow that passed ensureOpen() before close() used to
+        // Regression: a borrow that passed requireOpen() before close() used to
         // dial a BRAND-NEW connection after close() completed and hand it out,
         // leaking it (close()'s drains were already done). The post-acquire
         // closed re-check must fail it fast and destroy the connection.
@@ -469,7 +469,7 @@ class PoolDefaultTest {
                 });
 
                 // Borrower is now inside the driver's connect() — the pool has
-                // already passed ensureOpen and acquired its permit.
+                // already passed requireOpen and acquired its permit.
                 assertTrue(createStarted.await(5, TimeUnit.SECONDS));
                 pool.close();
                 releaseCreate.countDown();

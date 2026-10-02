@@ -15,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
  * Cached method handles: plain virtual dispatch, and non-virtual
  * default-method dispatch for proxy receivers.
  */
-class MethodHandleUtilsTest {
+class ReflectiveHandlesTest {
 
     interface Greeter {
         String greet(String name);
@@ -35,11 +35,11 @@ class MethodHandleUtilsTest {
     @Test
     void methodHandleInvokesWithPositionalArgsAndIsCached() throws Throwable {
         Method greet = Greeter.class.getMethod("greet", String.class);
-        MethodHandle handle = MethodHandleUtils.methodHandle(greet);
+        MethodHandle handle = ReflectiveHandles.methodHandle(greet);
 
         assertEquals("loud:ada",
-            MethodHandleUtils.invokeOn(handle, new LoudGreeter(), new Object[]{"ada"}));
-        assertSame(handle, MethodHandleUtils.methodHandle(greet),
+            ReflectiveHandles.invokeOn(handle, new LoudGreeter(), new Object[]{"ada"}));
+        assertSame(handle, ReflectiveHandles.methodHandle(greet),
             "handles are cached per method");
     }
 
@@ -54,15 +54,15 @@ class MethodHandleUtilsTest {
             (p, method, args) -> "PROXY:" + method.getName());
 
         assertEquals("PROXY:fallback",
-            MethodHandleUtils.invokeOn(
-                MethodHandleUtils.methodHandle(fallback), proxy, new Object[]{"ada"}),
+            ReflectiveHandles.invokeOn(
+                ReflectiveHandles.methodHandle(fallback), proxy, new Object[]{"ada"}),
             "virtual dispatch on a proxy hits the proxy handler");
         assertEquals("default:ada",
-            MethodHandleUtils.invokeOn(
-                MethodHandleUtils.defaultMethodHandle(fallback), proxy, new Object[]{"ada"}),
+            ReflectiveHandles.invokeOn(
+                ReflectiveHandles.defaultMethodHandle(fallback), proxy, new Object[]{"ada"}),
             "the default handle bypasses the proxy into the default body");
-        assertSame(MethodHandleUtils.defaultMethodHandle(fallback),
-            MethodHandleUtils.defaultMethodHandle(fallback),
+        assertSame(ReflectiveHandles.defaultMethodHandle(fallback),
+            ReflectiveHandles.defaultMethodHandle(fallback),
             "default handles are cached per method");
     }
 
@@ -70,6 +70,6 @@ class MethodHandleUtilsTest {
     void defaultHandleRejectsNonDefaultMethods() throws Exception {
         Method greet = Greeter.class.getMethod("greet", String.class);
         assertThrows(IllegalArgumentException.class,
-            () -> MethodHandleUtils.defaultMethodHandle(greet));
+            () -> ReflectiveHandles.defaultMethodHandle(greet));
     }
 }

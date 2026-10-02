@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -72,19 +73,29 @@ class FrameWriteToRoundTripTest {
     @Test
     void paddedDataFrameRoundTrips() throws Exception {
         // PADDED DATA: [padLen][body][padding] — a shape no test covered.
+        // The padding bytes are NON-ZERO on purpose: parse strips them and keeps
+        // only the length, so writeTo re-emits zeros. With an all-zero fixture
+        // that re-emission is indistinguishable from a faithful round trip, and
+        // the test would pass either way — which is the whole reason this
+        // fixture is spelled out here.
         byte[] body = {(byte) 0x01, (byte) 0x02};
         int pad = 3;
-        byte[] payload = new byte[1 + body.length + pad];
-        payload[0] = (byte) pad;
-        System.arraycopy(body, 0, payload, 1, body.length);
+        byte[] sent = new byte[1 + body.length + pad];
+        sent[0] = (byte) pad;
+        System.arraycopy(body, 0, sent, 1, body.length);
+        Arrays.fill(sent, 1 + body.length, sent.length, (byte) 0xAA);
 
-        var frame = (DataFrame) DataFrame.parse(payload, new FrameHeader(payload.length,
+        var frame = (DataFrame) DataFrame.parse(sent, new FrameHeader(sent.length,
             FrameType.DATA, FrameFlag.FlagSet.of(FrameFlag.PADDED), 9));
 
-        byte[] wire = write(frame);
-        assertArrayEquals(payload, payloadOf(wire),
-            "pad-length byte, payload and padding all belong on the wire");
-        assertArrayEquals(body, ((DataFrame) read(wire)).body);
+        byte[] expected = sent.clone();
+        Arrays.fill(expected, 1 + body.length, expected.length, (byte) 0x00);
+        assertArrayEquals(expected, payloadOf(write(frame)),
+            "pad-length byte, payload and padding all belong on the wire — with "
+                + "the padding re-emitted as zeros, since only its length survives "
+                + "parsing and RFC 9113 §6.1 lets a receiver ignore it");
+        assertArrayEquals(body, ((DataFrame) read(write(frame))).body,
+            "the payload is what round-trips byte for byte");
     }
 
     @Test
@@ -104,20 +115,30 @@ class FrameWriteToRoundTripTest {
 
     @Test
     void headersFrameRoundTripsPadding() throws Exception {
-        // PADDED HEADERS: [padLen][block][padding]
+        // PADDED HEADERS: [padLen][block][padding]. The padding bytes are
+        // NON-ZERO for the same reason as the DATA fixture: only the padding's
+        // length survives parsing, so with zeros on the way in this test cannot
+        // tell a faithful round trip from re-emitting zeros.
         byte[] block = {(byte) 0x82, (byte) 0x86};
-        byte[] payload = new byte[1 + block.length + 3];
-        payload[0] = 3;                       // pad length
-        System.arraycopy(block, 0, payload, 1, block.length);
+        byte[] sent = new byte[1 + block.length + 3];
+        sent[0] = 3;                          // pad length
+        System.arraycopy(block, 0, sent, 1, block.length);
+        Arrays.fill(sent, 1 + block.length, sent.length, (byte) 0xBB);
 
-        var frame = HeadersFrame.parse(payload, new FrameHeader(payload.length,
+        var frame = HeadersFrame.parse(sent, new FrameHeader(sent.length,
             FrameType.HEADERS, FrameFlag.FlagSet.of(FrameFlag.PADDED), 7));
 
         byte[] wire = write(frame);
-        assertEquals(9 + payload.length, wire.length,
-            "padding must be written back — the previous implementation dropped "
-                + "the pad-length byte and the padding entirely");
-        assertArrayEquals(payload, payloadOf(wire));
+        assertEquals(9 + sent.length, wire.length,
+            "the pad-length byte and the padding must be written back — the "
+                + "previous implementation dropped both entirely");
+
+        byte[] expected = sent.clone();
+        Arrays.fill(expected, 1 + block.length, expected.length, (byte) 0x00);
+        assertArrayEquals(expected, payloadOf(wire),
+            "padding is re-emitted as zeros (only its length survives parsing, and "
+                + "RFC 9113 §6.1 lets a receiver ignore it); the header block is "
+                + "what round-trips");
 
         var decoded = (HeadersFrame) read(wire);
         assertTrue(decoded.header().flags().contains(FrameFlag.PADDED));
@@ -129,7 +150,7 @@ class FrameWriteToRoundTripTest {
         // PRIORITY HEADERS: [depStreamId:4][weight:1][block]
         byte[] block = {(byte) 0x82, (byte) 0x86, (byte) 0x84};
         byte[] payload = new byte[5 + block.length];
-        BinUtils.writeInt(payload, 0, 9, 4);      // dependent stream, != our own
+        Bytes.writeInt(payload, 0, 9, 4);      // dependent stream, != our own
         payload[4] = (byte) 200;                      // weight
         System.arraycopy(block, 0, payload, 5, block.length);
 
@@ -154,7 +175,7 @@ class FrameWriteToRoundTripTest {
         // alone silently demoted an exclusive dependency.
         byte[] block = {(byte) 0x82};
         byte[] payload = new byte[5 + block.length];
-        BinUtils.writeInt(payload, 0, 0x80000000 | 9, 4);
+        Bytes.writeInt(payload, 0, 0x80000000 | 9, 4);
         payload[4] = (byte) 16;
         System.arraycopy(block, 0, payload, 5, block.length);
 
@@ -172,7 +193,7 @@ class FrameWriteToRoundTripTest {
         int pad = 2;
         byte[] payload = new byte[1 + 4 + 1 + block.length + pad];
         payload[0] = (byte) pad;
-        BinUtils.writeInt(payload, 1, 11, 4);
+        Bytes.writeInt(payload, 1, 11, 4);
         payload[5] = (byte) 128;
         System.arraycopy(block, 0, payload, 6, block.length);
 
@@ -250,8 +271,8 @@ class FrameWriteToRoundTripTest {
         byte[] debug = "peer closed the connection".getBytes(
             java.nio.charset.StandardCharsets.ISO_8859_1);
         byte[] payload = new byte[8 + debug.length];
-        BinUtils.writeInt(payload, 0, 41, 4);                 // last stream id
-        BinUtils.writeInt(payload, 4, Http2ErrorCode.NO_ERROR.value, 4);
+        Bytes.writeInt(payload, 0, 41, 4);                 // last stream id
+        Bytes.writeInt(payload, 4, Http2ErrorCode.NO_ERROR.value, 4);
         System.arraycopy(debug, 0, payload, 8, debug.length);
 
         var frame = GoawayFrame.parse(payload, new FrameHeader(payload.length,
@@ -271,12 +292,79 @@ class FrameWriteToRoundTripTest {
     @Test
     void goawayFrameWithoutDebugDataStaysEightBytes() throws Exception {
         byte[] payload = new byte[8];
-        BinUtils.writeInt(payload, 0, 7, 4);
-        BinUtils.writeInt(payload, 4, Http2ErrorCode.PROTOCOL_ERROR.value, 4);
+        Bytes.writeInt(payload, 0, 7, 4);
+        Bytes.writeInt(payload, 4, Http2ErrorCode.PROTOCOL_ERROR.value, 4);
 
         var frame = GoawayFrame.parse(payload, new FrameHeader(payload.length,
             FrameType.GOAWAY, FrameFlag.NONE, 0));
 
         assertArrayEquals(payload, payloadOf(write(frame)));
+    }
+
+    /**
+     * RFC 9113 §6.8: the high bit of the last-stream-id is reserved and a
+     * receiver must ignore it. The two GOAWAY cases above cannot see this — their
+     * ids are 41 and 7, so the bit is always 0 and the mask would be a no-op.
+     *
+     * <p>It matters because {@code writeTo} now puts the field back on the wire:
+     * unmasked, a peer that set the reserved bit would have its protocol
+     * violation faithfully re-emitted by us.
+     */
+    @Test
+    void goawayReservedBitIsIgnoredAndNotWrittenBack() throws Exception {
+        byte[] payload = new byte[8];
+        Bytes.writeInt(payload, 0, 41 | 0x80000000, 4);
+        Bytes.writeInt(payload, 4, Http2ErrorCode.NO_ERROR.value, 4);
+
+        var frame = GoawayFrame.parse(payload, new FrameHeader(payload.length,
+            FrameType.GOAWAY, FrameFlag.NONE, 0));
+
+        assertEquals(41, frame.lastSeenStream,
+            "the reserved bit must be masked off on parse, not carried");
+
+        byte[] out = new byte[8];
+        Bytes.writeInt(out, 0, 41, 4);
+        Bytes.writeInt(out, 4, Http2ErrorCode.NO_ERROR.value, 4);
+        assertArrayEquals(out, payloadOf(write(frame)),
+            "and writeTo must emit the masked id, not echo the reserved bit");
+    }
+
+    /**
+     * The length field is three bytes on the wire, so the 3-byte write silently
+     * truncates (or wraps) anything outside that range — a frame whose header
+     * disagrees with the bytes after it. Every caller computes the length from
+     * the payload it is about to write, so a violation is a bug worth naming.
+     */
+    @Test
+    void aLengthOutsideTheThreeByteFieldIsRefused() {
+        FrameType[] types = {FrameType.DATA, FrameType.GOAWAY};
+        for (FrameType type : types) {
+            assertThrows(IllegalArgumentException.class,
+                () -> new FrameHeader(FrameHeader.MAX_FRAME_SIZE + 1, type,
+                    FrameFlag.NONE, 1),
+                "must be refused: " + type);
+            assertThrows(IllegalArgumentException.class,
+                () -> new FrameHeader(-1, type, FrameFlag.NONE, 1),
+                "must be refused: " + type);
+            assertEquals(FrameHeader.MAX_FRAME_SIZE,
+                new FrameHeader(FrameHeader.MAX_FRAME_SIZE, type, FrameFlag.NONE, 1)
+                    .length(),
+                "the bound itself is legal");
+
+            // The two static entry points write the same field with the same
+            // unchecked 3-byte shift, so they carry the same check — otherwise
+            // the invariant would hold on one path only.
+            assertThrows(IllegalArgumentException.class,
+                () -> FrameHeader.encode(-1, type, FrameFlag.NONE, 1), "encode");
+
+            var out = new java.io.ByteArrayOutputStream();
+            assertThrows(IllegalArgumentException.class,
+                () -> FrameHeader.writeTo(out, FrameHeader.MAX_FRAME_SIZE + 1,
+                    type, FrameFlag.NONE, 1),
+                "writeTo");
+            assertEquals(0, out.size(),
+                "nothing may be written before the length is rejected — a header "
+                    + "that fails validation must not leave a partial frame behind");
+        }
     }
 }

@@ -87,7 +87,16 @@ public final class AppRuntimeDefault implements AppRuntime {
             // shutdown FAILED — shutdown must be reliable, startup is not.
             publish(new AppStartedEvent(container));
         } catch (Throwable ex) {
-            state = AppState.FAILED;
+            // A hook that shut the application down and then threw has already
+            // run the whole shutdown sequence, so the state it left (STOPPED,
+            // or FAILED if that shutdown itself failed) is the truthful one.
+            // Marking FAILED here would contradict close(), which now refuses to
+            // run again — state would report a failed startup for an application
+            // that is in fact fully shut down. Same reentrancy rule as the
+            // shutdownAttempted check above.
+            if (!shutdownAttempted) {
+                state = AppState.FAILED;
+            }
             LOG.error("Application startup failed", ex);
             throw new IllegalStateException("Application startup failed", ex);
         }

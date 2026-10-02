@@ -3,6 +3,8 @@ package com.jujin.freeway.http.engine;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.Base64;
 import java.util.Set;
 
@@ -11,7 +13,6 @@ import org.slf4j.LoggerFactory;
 
 import com.jujin.freeway.http.engine.ws.WebSocketReadLoop;
 import com.jujin.freeway.http.engine.ws.WebSocketSessionImpl;
-import com.jujin.freeway.http.engine.ws.WebSocketUtils;
 import com.jujin.freeway.http.websocket.WebSocketListener;
 import com.jujin.freeway.http.websocket.WebSocketMatch;
 
@@ -21,6 +22,9 @@ import com.jujin.freeway.http.websocket.WebSocketMatch;
 final class WebSocketUpgrade {
 
     private static final Logger LOG = LoggerFactory.getLogger(WebSocketUpgrade.class);
+
+    /** RFC 6455's handshake GUID, concatenated before hashing the client key. */
+    private static final String ACCEPT_MAGIC = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
     private final SessionContext ctx;
 
@@ -56,7 +60,7 @@ final class WebSocketUpgrade {
             }
             String acceptKey;
             try {
-                acceptKey = WebSocketUtils.makeAcceptKey(wsKey);
+                acceptKey = acceptKey(wsKey);
             } catch (Exception e) {
                 HttpSession.sendUpgradeError(connection.outputStream(), 500,
                     "Key generation failed");
@@ -141,5 +145,19 @@ final class WebSocketUpgrade {
         } finally {
             connection.close();
         }
+    }
+
+    /**
+     * The {@code Sec-WebSocket-Accept} value for a client key: base64 of the
+     * SHA-1 over the key plus the handshake GUID (RFC 6455 §4.2.2).
+     */
+    private static String acceptKey(String key) throws Exception {
+        var md = MessageDigest.getInstance("SHA-1");
+        // Explicit UTF-8: getBytes() follows the platform default, and its
+        // byte count can differ from length() for non-ASCII input — update
+        // must cover exactly the encoded bytes, not the char count.
+        byte[] text = (key + ACCEPT_MAGIC).getBytes(StandardCharsets.UTF_8);
+        md.update(text, 0, text.length);
+        return Base64.getEncoder().encodeToString(md.digest());
     }
 }

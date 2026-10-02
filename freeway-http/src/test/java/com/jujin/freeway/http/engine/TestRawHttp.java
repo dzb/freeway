@@ -122,4 +122,24 @@ final class TestRawHttp {
         byte[] body = in.readNBytes(contentLength);
         return headers + new String(body, StandardCharsets.UTF_8);
     }
+
+    /**
+     * The status code from the response line, e.g. {@code 413}.
+     *
+     * <p>Prefer this to scanning the whole response for a digit string: the
+     * concatenated head+body carries {@code Content-Length}, echoed limits and
+     * the body itself, so {@code contains("200")} is satisfied by a 413 response
+     * whose headers happen to mention 200.
+     */
+    static int statusOf(String response) {
+        int sp = response.indexOf(' ');
+        if (!response.startsWith("HTTP/") || sp < 0) {
+            throw new AssertionError("not an HTTP response: " + response);
+        }
+        int end = response.indexOf(' ', sp + 1);
+        String code = end < 0
+            ? response.substring(sp + 1)
+            : response.substring(sp + 1, end);
+        return Integer.parseInt(code.trim());
+    }
 }

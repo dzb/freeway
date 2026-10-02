@@ -40,7 +40,7 @@ public final class BeanConstructor {
         Objects.requireNonNull(constructor, "constructor");
         return new BeanConstructor(
             constructor,
-            MethodHandleUtils.constructorHandle(constructor),
+            ReflectiveHandles.constructorHandle(constructor),
             constructor.getAnnotations(),
             parameters(constructor)
         );

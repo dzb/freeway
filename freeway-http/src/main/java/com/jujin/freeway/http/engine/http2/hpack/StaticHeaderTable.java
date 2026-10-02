@@ -5,7 +5,7 @@ import java.util.Map;
 
 import com.jujin.freeway.http.engine.http2.Http2HeaderField;
 
-public final class StaticHeaderTable {
+final class StaticHeaderTable {
     private static final Http2HeaderField[] TABLE = new Http2HeaderField[62];
     private static final Map<String, Integer> NAME_INDEX = new HashMap<>(128);
     private static final Map<String, byte[]> STATUS_INDEX = new HashMap<>(8);

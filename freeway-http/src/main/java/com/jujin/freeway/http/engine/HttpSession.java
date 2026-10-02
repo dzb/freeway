@@ -23,7 +23,7 @@ import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.http.ExchangeHandler;
 import com.jujin.freeway.http.HttpServerConfig;
-import com.jujin.freeway.http.internal.HttpUtils;
+import com.jujin.freeway.http.internal.HttpHeaders;
 
 /**
  * Per-connection entry point. Tunes the socket, wraps TLS/ALPN, then hands
@@ -149,7 +149,7 @@ final class HttpSession implements Runnable {
     }
 
     static String headerValue(Map<String, List<String>> headers, String name) {
-        return HttpUtils.headerValue(headers, name);
+        return HttpHeaders.headerValue(headers, name);
     }
 
     /** Echoes the correlation id as a response header, ignoring a hostile

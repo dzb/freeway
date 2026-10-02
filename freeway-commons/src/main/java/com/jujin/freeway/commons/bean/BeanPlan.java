@@ -115,7 +115,7 @@ public final class BeanPlan {
                     component.getName(),
                     component.getGenericType(),
                     recordAnnotations(type, component),
-                    MethodHandleUtils.methodHandle(component.getAccessor())
+                    ReflectiveHandles.methodHandle(component.getAccessor())
                 ));
             }
             Constructor<?> constructor = type.getDeclaredConstructor(parameterTypes);
@@ -216,9 +216,9 @@ public final class BeanPlan {
                     field.getName(),
                     field.getGenericType(),
                     field.getAnnotations(),
-                    MethodHandleUtils.varHandle(field),
+                    ReflectiveHandles.varHandle(field),
                     null, // getter attached in the second pass, when present
-                    setter != null ? MethodHandleUtils.methodHandle(setter) : null,
+                    setter != null ? ReflectiveHandles.methodHandle(setter) : null,
                     !Modifier.isFinal(field.getModifiers()) || setter != null
                 ));
             }
@@ -253,7 +253,7 @@ public final class BeanPlan {
                     fieldProperty.type(),
                     fieldProperty.annotations(),
                     fieldProperty.field(),
-                    MethodHandleUtils.methodHandle(getter),
+                    ReflectiveHandles.methodHandle(getter),
                     fieldProperty.setter(),
                     fieldProperty.writable()
                 ));
@@ -263,8 +263,8 @@ public final class BeanPlan {
                     name,
                     getter.getGenericReturnType(),
                     getter.getAnnotations(),
-                    MethodHandleUtils.methodHandle(getter),
-                    setter != null ? MethodHandleUtils.methodHandle(setter) : null,
+                    ReflectiveHandles.methodHandle(getter),
+                    setter != null ? ReflectiveHandles.methodHandle(setter) : null,
                     setter != null
                 ));
             }
@@ -328,7 +328,7 @@ public final class BeanPlan {
         @Override
         public Object read(Object target) {
             try {
-                return MethodHandleUtils.invoke(accessor, target);
+                return ReflectiveHandles.invoke(accessor, target);
             } catch (Error e) { throw e; } catch (Throwable ex) {
                 throw new IllegalArgumentException("Cannot read record property: " + name, ex);
             }
@@ -361,7 +361,7 @@ public final class BeanPlan {
                 // class declares one — a transforming getter is honored
                 // instead of bypassed.
                 try {
-                    return MethodHandleUtils.invoke(getter, target);
+                    return ReflectiveHandles.invoke(getter, target);
                 } catch (Error e) { throw e; } catch (Throwable ex) {
                     throw new IllegalArgumentException("Cannot read property: " + name, ex);
                 }
@@ -376,7 +376,7 @@ public final class BeanPlan {
             }
             if (setter != null) {
                 try {
-                    MethodHandleUtils.invoke(setter, target, value);
+                    ReflectiveHandles.invoke(setter, target, value);
                 } catch (Error e) { throw e; } catch (Throwable ex) {
                     throw new IllegalArgumentException("Cannot write property: " + name, ex);
                 }
@@ -404,7 +404,7 @@ public final class BeanPlan {
         @Override
         public Object read(Object target) {
             try {
-                return MethodHandleUtils.invoke(getter, target);
+                return ReflectiveHandles.invoke(getter, target);
             } catch (Error e) { throw e; } catch (Throwable ex) {
                 throw new IllegalArgumentException("Cannot read property: " + name, ex);
             }
@@ -416,7 +416,7 @@ public final class BeanPlan {
                 throw new UnsupportedOperationException("Property is read-only: " + name);
             }
             try {
-                MethodHandleUtils.invoke(setter, target, value);
+                ReflectiveHandles.invoke(setter, target, value);
             } catch (Error e) { throw e; } catch (Throwable ex) {
                 throw new IllegalArgumentException("Cannot write property: " + name, ex);
             }

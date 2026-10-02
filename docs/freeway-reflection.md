@@ -10,7 +10,12 @@ reachability metadata is ever needed.
 
 1. **One home**: class-shape introspection (fields, properties, constructors,
    method handles) lives in `commons.bean` (`BeanIntrospector`, `BeanPlan`,
-   `MethodHandleUtils`). Modules call those; nothing scans a class by hand.
+   `ReflectiveHandles`). Modules call those; nothing scans a class by hand.
+   The one site that cannot follow the rule is
+   `InjectionResolver`'s method-parameter reject — it reads *annotations*, which
+   are an `ioc` concept, so `commons.bean` could not decide what to reject even
+   if it performed the walk. It is a table row like any other, and the rule is
+   stated here rather than left for the reader to notice the contradiction.
 2. **ClassValue for anything keyed by a class**, with the two documented
    exceptions below. A new `Class.getClass*` / `getDeclared*` / `Method.invoke`
    site outside this table needs a row and a reason.
@@ -27,7 +32,7 @@ reachability metadata is ever needed.
 | Site | Mechanism | Cache | Path |
 |---|---|---|---|
 | `commons.bean.BeanIntrospector` | plans; wrapped constructors; constructor **selection** | `ClassValue` × 3 (`PLANS`, `CONSTRUCTORS`, `SELECTED`) | every instance creation |
-| `commons.bean.MethodHandleUtils` | method / default-method / constructor / VarHandle lookup | `ClassValue` per declaring class, inner `ConcurrentHashMap` | every advice call, lifecycle call, bean read |
+| `commons.bean.ReflectiveHandles` | method / default-method / constructor / VarHandle lookup | `ClassValue` per declaring class, inner `ConcurrentHashMap` | every advice call, lifecycle call, bean read |
 | `commons.bean.BeanPlan` | record + bean property model (`VarHandle` fields, MH accessors) | via `BeanIntrospector.PLANS` | JSON, ORM, validation, injection |
 | `commons.json.JsonCoercions` | empty-collection constructors | `ClassValue` | JSON deserialization |
 | `commons.logging.LogBootstrap` | `Class.forName(name, false, loader)` provider probe | none (cold, once per boot) | startup |

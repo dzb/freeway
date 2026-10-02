@@ -4,7 +4,7 @@ import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.commons.util.Strings;
 import com.jujin.freeway.http.body.UnsupportedMediaTypeException;
-import com.jujin.freeway.http.internal.HttpUtils;
+import com.jujin.freeway.http.internal.HttpHeaders;
 import com.jujin.freeway.http.internal.LimitedInputStream;
 
 import java.io.IOException;
@@ -32,19 +32,33 @@ public abstract class AbstractHttpContext implements HttpContext {
 
     protected final JsonCodec jsonCodec;
     protected final Coercer coercer;
-    protected volatile long maxBodySize = HttpServerConfig.DEFAULT_MAX_BODY_SIZE;
+    /** The limit in force for the current request; see {@link #setMaxBodySize}. */
+    protected volatile long maxBodySize;
+    /** What every request starts from — the base the current limit departs from,
+     *  the way {@code Backoff.baseMillis} is the base an attempt grows from. */
+    private final long baseMaxBodySize;
     protected final Map<String, String> pathVariables = new LinkedHashMap<>(4);
     private final ExchangeMetaDefault exchangeMeta;
 
-    protected AbstractHttpContext(JsonCodec jsonCodec, Coercer coercer) {
-        this(jsonCodec, coercer, null);
+    protected AbstractHttpContext(JsonCodec jsonCodec, Coercer coercer,
+                                  long maxBodySize) {
+        this(jsonCodec, coercer, null, maxBodySize);
     }
 
     protected AbstractHttpContext(JsonCodec jsonCodec, Coercer coercer,
-                                  String correlationId) {
+                                  String correlationId, long maxBodySize) {
         this.jsonCodec = Objects.requireNonNull(jsonCodec, "jsonCodec");
         this.coercer = Objects.requireNonNull(coercer, "coercer");
         this.exchangeMeta = new ExchangeMetaDefault(correlationId);
+        this.baseMaxBodySize = requirePositive(maxBodySize);
+        this.maxBodySize = this.baseMaxBodySize;
+    }
+
+    private static long requirePositive(long maxBodySize) {
+        if (maxBodySize <= 0) {
+            throw new IllegalArgumentException("maxBodySize must be positive");
+        }
+        return maxBodySize;
     }
 
     /** Returns the current response header value for the given name, or null. */
@@ -145,12 +159,19 @@ public abstract class AbstractHttpContext implements HttpContext {
     }
 
     @Override
-    public HttpContext setMaxBodySize(long maxBodySize) {
-        if (maxBodySize <= 0) {
-            throw new IllegalArgumentException("maxBodySize must be positive");
-        }
-        this.maxBodySize = maxBodySize;
+    public final HttpContext setMaxBodySize(long maxBodySize) {
+        this.maxBodySize = requirePositive(maxBodySize);
         return this;
+    }
+
+    /**
+     * Puts the base limit back, so a filter's adjustment does not outlive its
+     * request. An engine reuses one context across a keep-alive connection and
+     * calls this before each request — the same place it calls
+     * {@link #resetExchangeMeta()}.
+     */
+    protected final void resetMaxBodySize() {
+        this.maxBodySize = baseMaxBodySize;
     }
 
     /**
@@ -195,7 +216,7 @@ public abstract class AbstractHttpContext implements HttpContext {
         if (token == null || token.isBlank()) {
             throw new IllegalArgumentException("Vary token must not be blank");
         }
-        setHeader("Vary", HttpUtils.mergeVary(responseHeader("Vary"), token));
+        setHeader("Vary", HttpHeaders.mergeVary(responseHeader("Vary"), token));
     }
 
     @Override
@@ -240,7 +261,7 @@ public abstract class AbstractHttpContext implements HttpContext {
      */
     protected static void validateHeaderName(String name) {
         if (name == null) throw new IllegalArgumentException("Header name must not be null");
-        if (!HttpUtils.isToken(name)) {
+        if (!HttpHeaders.isToken(name)) {
             throw new IllegalArgumentException("Invalid header name: " + name);
         }
     }

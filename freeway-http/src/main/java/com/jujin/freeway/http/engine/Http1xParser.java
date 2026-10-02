@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-import com.jujin.freeway.http.internal.HttpUtils;
+import com.jujin.freeway.http.internal.HttpHeaders;
 
 /**
  * Parses HTTP/1.x request line and headers from a raw {@code InputStream}.
@@ -234,7 +234,7 @@ final class Http1xParser {
             }
             String rawKey = headerKeyBuf.substring(0, colon);
             if (rawKey.isEmpty() || !rawKey.equals(rawKey.trim())
-                    || !HttpUtils.isToken(rawKey)) {
+                    || !HttpHeaders.isToken(rawKey)) {
                 throw new IOException("Invalid header name");
             }
             String key = rawKey;

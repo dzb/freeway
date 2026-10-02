@@ -5,6 +5,8 @@ import com.jujin.freeway.cloud.CloudModule;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
@@ -50,5 +52,27 @@ class PeerConnectorWiringTest {
             wiring.withBackoff(0, -1).backoffBaseMs());
         assertEquals(ConfigKeys.EVENT_BACKOFF_MAX_MS_DEFAULT,
             wiring.withBackoff(0, -1).backoffMaxMs());
+    }
+
+    /**
+     * A cap below the base is not a cap. The curve clamps every attempt to the
+     * cap, so {@code withBackoff(60_000, 1_000)} produced waits of at most one
+     * millisecond — a dial loop that re-dials as fast as the network allows,
+     * which is the failure the two values exist to schedule against.
+     * {@code RetryerDefault} refuses the same pair in its constructor; one
+     * shared curve must not be guarded by one caller and not the other.
+     */
+    @Test
+    void aCapBelowTheBaseIsRefused() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+            () -> PeerConnector.Wiring.defaults().withBackoff(60_000, 1_000));
+        assertTrue(ex.getMessage().contains("backoffMaxMs must be >= backoffBaseMs"),
+            ex.getMessage());
+    }
+
+    @Test
+    void aCapEqualToTheBaseIsAccepted() {
+        assertEquals(1_000,
+            PeerConnector.Wiring.defaults().withBackoff(1_000, 1_000).backoffMaxMs());
     }
 }

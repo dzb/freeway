@@ -153,10 +153,13 @@ final class InjectionResolver {
      * container gets {@code null} and a later {@code NullPointerException}
      * that names neither the annotation nor the method.
      *
-     * <p>So this fails at startup instead, in the same spirit as the
-     * non-writable-field check below: the annotation was written, the
-     * container cannot honor it, and silence is the one outcome that leaves
-     * the reader with nothing to act on.
+     * <p>So this fails instead, in the same spirit as the non-writable-field
+     * check below: the annotation was written, the container cannot honor it,
+     * and silence is the one outcome that leaves the reader with nothing to
+     * act on. The failure lands at the first realization of the declaring
+     * type, before its constructor runs — for a lazily realized singleton that
+     * is the first {@code get()}, not boot; {@link Inject} says the same in
+     * the annotation's own terms.
      */
     private static final ClassValue<List<String>> METHOD_PARAMETER_INJECTIONS =
         new ClassValue<>() {
@@ -217,7 +220,14 @@ final class InjectionResolver {
         }
     }
 
-    private static void rejectMethodParameterInjections(Class<?> ownerType) {
+    /**
+     * Fails when {@code ownerType} declares an injection annotation on a method
+     * parameter. Called from {@link ContainerImpl#constructInstance} before the
+     * constructor runs, and again from {@link #injectFields} — the second call
+     * is a cache hit for a type that got past the first, and it covers an
+     * instance that arrived from a provider already built.
+     */
+    void rejectMethodParameterInjections(Class<?> ownerType) {
         List<String> stray = METHOD_PARAMETER_INJECTIONS.get(ownerType);
         if (stray.isEmpty()) {
             return;

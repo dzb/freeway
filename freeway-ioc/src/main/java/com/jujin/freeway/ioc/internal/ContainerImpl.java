@@ -230,30 +230,6 @@ public final class ContainerImpl implements Container {
     }
 
     /**
-     * Construct-and-initialize, for the realize path — the owner-scoped
-     * counterpart to the caller-owned {@link #create(Class)}, which stops at
-     * injection.
-     *
-     * <p>Used when the binding itself has no provider, so it must be
-     * self-sufficient. The instance it returns is a managed one: it lands in
-     * the service caches and {@link Shutdown} will pair its
-     * {@code @PreDestroy} at {@code close()}.
-     * </p>
-     *
-     * @param owner the binding being realized on the realize path
-     */
-    <T> T create(Class<T> type, BindingImpl<?> owner) {
-        requireOpen();
-        try {
-            T value = constructInstance(type, owner);
-            initialize(value, owner);
-            return value;
-        } catch (Exception ex) {
-            throw new RuntimeException("Unable to instantiate " + type.getName(), ex);
-        }
-    }
-
-    /**
      * Post-constructs an already-injected instance without registering it.
      *
      * <p>For contributions. {@code Contribution.add(Class)} promises to invoke
@@ -267,8 +243,10 @@ public final class ContainerImpl implements Container {
      * with no contract behind it.
      * </p>
      *
-     * <p>Runs inside the caller's realize scope when there is one, so a
-     * contribution met twice in one realization still fires once.
+     * <p>The one-shot guard is a no-op on this path: contributions are drained
+     * once, from the constructor, where no realize scope is open — so
+     * {@link #claimPostConstruct} always answers true. It stays because the
+     * rule is one rule, and a second caller cannot tell whether it is the first.
      * </p>
      */
     void postConstruct(Object instance) {
@@ -315,14 +293,15 @@ public final class ContainerImpl implements Container {
             // re-snapshot loop; realization after close is rejected inside
             // realize() (it re-checks the closed flag under the lock).
             RuntimeException drained = shutdown.close();
-            // closed is set BEFORE the final drain, under the realize lock, so
-            // get()/extension() reject new lookups from this point on while
-            // PreDestroy callbacks of the earlier passes kept the documented
-            // "look up services during close" contract.
-            RuntimeException failure = serviceRuntime.seal(() -> {
-                closed = true;
-                return shutdown.drainRemaining(drained);
-            });
+            // Sealing is three steps, and the middle one is outside the realize
+            // lock on purpose: the flag goes up under it (so no realization can
+            // publish into the caches about to be cleared), the final drain —
+            // user callbacks — runs unlocked, then the caches are cleared.
+            // See ServiceRuntime#seal for why the drain must not hold that lock.
+            RuntimeException failure = serviceRuntime.seal(
+                () -> closed = true,
+                () -> shutdown.drainRemaining(drained)
+            );
             bindingIndex.clear();
             markerIndex.clear();
             coercer.clearRules();
@@ -426,6 +405,11 @@ public final class ContainerImpl implements Container {
      * {@code @Inject} rules as every other realization path.
      */
     <T> T constructInstance(Class<T> type, BindingImpl<?> owner) throws NoSuchMethodException {
+        // Reject an injection annotation on a method parameter BEFORE the
+        // constructor runs: the class is not injectable at all, and a
+        // constructor that opens a connection or starts a thread must not get
+        // to do that for an instance the container will refuse to build.
+        injectResolver.rejectMethodParameterInjections(type);
         BeanConstructor constructor = BeanIntrospector.selectConstructor(type, Inject.class);
         Object[] args = injectResolver.resolveArguments(owner, type, constructor.parameters());
         return type.cast(constructor.newInstance(args));
@@ -450,6 +434,13 @@ public final class ContainerImpl implements Container {
      * caller that re-initializes on purpose. Only {@code @PostConstruct} is
      * guarded, because only it is a one-shot side effect (opening a
      * connection, registering a callback, starting a thread).
+     * </p>
+     *
+     * <p>The guard is scoped to one realization, not to the instance: two
+     * bindings handed the same instance (a shared provider value, a memoized
+     * PROTOTYPE provider) realize it twice and post-construct it twice. Each
+     * realization is a managed lifecycle of its own, and neither knows about
+     * the other.
      * </p>
      */
     void initialize(Object instance, BindingImpl<?> owner) {

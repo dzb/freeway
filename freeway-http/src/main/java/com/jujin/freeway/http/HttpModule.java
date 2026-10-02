@@ -70,13 +70,13 @@ public final class HttpModule implements ModuleEx {
         binder.bind(RouteIndex.class).to(container -> {
             var routes = new ArrayList<>(container.extension(Route.class).all());
             for (var r : routes) {
-                resolveLazy(r, container);
+                resolveHandler(r, container);
             }
             // Resolve ResolvableHandlers from RouteGroup-expanded routes too
             var allRoutes = new ArrayList<>(routes);
             for (RouteGroup group : container.extension(RouteGroup.class).all()) {
                 for (Route expanded : group.expand()) {
-                    resolveLazy(expanded, container);
+                    resolveHandler(expanded, container);
                     allRoutes.add(expanded);
                 }
             }
@@ -235,7 +235,7 @@ public final class HttpModule implements ModuleEx {
      *  instantiates the handler class with constructor injection and the
      *  instance is handed to the wrapper — the route package stays free of
      *  container types. */
-    private static void resolveLazy(Route r, Container c) {
+    private static void resolveHandler(Route r, Container c) {
         if (r.handler() instanceof ResolvableHandler lh) {
             lh.resolve(() -> c.create(lh.handlerType()));
         }

@@ -11,6 +11,61 @@
 配套 `docs/audit-philosophy-modernity-1.5.2.md`（理念与现代性）——本文不重复理念层结论，
 只处理**行为正确性、文档与实现的一致性、同一机制的多份实现、能力缺口**四类。
 
+## 0.1 复核轮发现的问题（本文定稿后）
+
+本文的整改批次完成后又做了一轮独立复核（三份并行深审 + 交叉核对），找出 8 项本文
+**没有发现**的问题。记录在此是因为它们与本文的判据同源，且其中三项揭示了本文
+自身修法的副作用——那正是"改完还要再看一遍"的理由。
+
+### 本文修法引入的回归
+
+| 项 | 与哪条有关 | 性质 |
+|---|---|---|
+| 最终 drain 在 `realizeLock` 内执行用户回调 | S2-2 | S2-2 把"仍开着？"与"发布进 proxyCache"合成锁内一步时，顺带把 `drainRemaining` 裹进了同一个临界区——而那把锁的规则明写「不在 lifecycle drain 期间持锁」。用户 `@PreDestroy` 里 join 一个解析服务的线程即死锁；框架内的形状（`PoolDefault`、`HttpServerHandleImpl`）都是有上限的 join，所以表现为关停变慢而非挂死 |
+| `Sql.setColumn` 的列名 javadoc 声称已校验 | S1-2 | S1-2 补上了值侧，javadoc 里的"quoted/validated"却对**名**侧从未成立。本文读到了那句 javadoc、判定为"已校验"而未去核对实现 |
+| `Backoff` 指数位移回绕成零 | R3 | R3 只记了"不再截断到 5"这个行为变化，没检查新曲线在极大 attempt 下的行为。守卫挡了 `attempt >= 62` 与符号位，挡不住回绕成**正数**（`1000 << 61 == 0`） |
+
+### 与本文无关的独立缺陷
+
+| 项 | 判据 |
+|---|---|
+| `maxBodySize` 的 filter 调整跨 keep-alive 请求存活 | 实测：HTTP/1.1 的 context 每连接一个且复用，限制是每请求状态，`reset()` 不复位它。**放宽方向更要紧**——只为上传路由抬到 50 MB 的 filter 会让该连接之后所有请求的实际上限都变成 50 MB |
+| 分支跨 LOOP 内外混合的 join 永远报假死胡同 | 实测引擎跑出 `dead end at node 'j'`。两种重置策略都不成立（每轮清零 → 永远等不到体外分支；跨轮累加 → 过激活后下一轮重新打标记），因此这不是记账 bug 而是**配置无效**，已改为 `load()` 期拒绝 |
+| `bind(Concrete)` 无 `to(...)` 时字段注入跑两遍 | 代码事实：`instantiateDefault` 走 `create(type, owner)`（构造+initialize），随后 `materialize` 又 initialize 一次。今天无害（字段注入是幂等赋值），但 `@PostConstruct` 的单次性此前**只由 realize 作用域兜着**——正是本文"划清归属"要摆脱的那种依赖 |
+| hook 先 `close()` 再抛异常时状态被覆盖成 FAILED | 代码事实：与"关停已完成"同时为真，而 `close()` 此后拒绝重跑。同一件事两个答案 |
+| `MeshFrame` 先判 `proto` 后判 `specversion` | 代码事实：`specversion` 是 CloudEvents 保留字段、`proto` 不是，故合法事件会被判成 hello，而已准入会话上的 hello 是协议错误。优先级与重构前一致，**不是回归** |
+
+### 定稿判据：flow 的迭代域
+
+`load()` 拒绝分支跨迭代域混合的 join。**域 = 沿图到达该分支时所处的最外层迭代循环**，
+其中"迭代循环"是一个带 `$for` 的 LOOP（无 `$for` 的 LOOP 只 fanOut 一次，不算）。
+
+- **LOOP 节点属于它自己的域**——`loopRun` 每轮走一遍它的匹配后继，所以它自己也是
+  "每轮到达一次"。
+- **嵌套循环体内的节点继承外层的域**，不自成一个域：内层循环重复的次数就是外层的次数。
+- 归因与 spec 里 `addLoop` 的**声明顺序无关**。
+- `null`（不在任何域内）是合法域值，不能当"第一个分支"的哨兵。
+
+嵌套时外层 loop 的 body 传递包含内层的节点，所以按"体内/体外"或按"最先声明的 loop"
+归因都不成立——只有"最外层"给出与声明顺序无关、且不误拒可数嵌套的答案。
+
+### 实测复杂度：这张检查跑在 `load()` 里
+
+`load()` 期拒绝买的是"更早、更响的失败"，代价记在启动时间上，而启动时间是没人测的。
+按域排序要算嵌套深度，写法上是 `O(V+E)`：深度一次记忆化算完，遍历在**已归属节点处
+剪枝**——被外层 loop 认领的节点，其下游必然也已被同一 loop 认领。（用
+`Node.prevLinks()` 反而是 `O(V×E)`：它按节点懒加载，首次调用要扫全图所有 link。）
+
+| 节点数 | load 耗时 |
+|---|---|
+| 403 | 3 ms |
+| 2 003 | 3 ms |
+| 20 003 | 62 ms |
+| 100 003 | 171 ms |
+
+判据上加一条：**往 `load()` 或生命周期钩子里加图分析时，用一个大一个数量级的输入实测
+复杂度**——这张表是这个缺陷唯一的暴露方式。
+
 ## 0. 结论速览
 
 1. **两处会静默出错的行为缺陷**（S1，均已修）：`@PostConstruct` 在最自然的绑定写法下**跑两次**；
@@ -154,6 +209,12 @@ javadoc 移除 "and `@PostConstruct`" 一项；其余四句保留。属 `AGENTS.
 
 ### S1-2 `Sql.setColumn` 不内联 `Sql` 值 — ✅ 已修
 
+> **复核轮修正**：本条的判据只覆盖**值**侧，而同一句 javadoc 还声称列名
+> 「quoted/validated as a name」——实现里只有 `requireNonNull`，
+> `setColumn("a = 1, evil", v)` 实测渲染出 `INSERT INTO t (a = 1, evil) VALUES (?)`。
+> 读到那句 javadoc、判定"已校验"而未核对实现，是本轮最省事的一次误判：
+> **紧邻被改机制的那句契约文本，要单独核一遍。** 名侧已补校验，见 §0.1。
+
 **证据类型：实测**（1.5.6-SNAPSHOT 实跑 + H2 端到端）
 
 **判据（不依赖行号）**：值拼接存在两条路径——`setExpression` 走 `normalizeArgs`，
@@ -281,6 +342,13 @@ markDeadEnd(gw);                             // 同上，另一个结构
    所以清缓存与铸代理互斥。PROTOTYPE 分支补同样的检查：它在封印后构造的实例
    永远收不到 `@PreDestroy`。
 
+   > **复核轮修正**：第 2 步把 `drainRemaining` 一并裹进了那个临界区，而
+   > `realizeLock` 的规则写着「deliberately NOT held across the container's
+   > lifecycle drain」——用户回调在锁内执行，回调里 join 一个解析服务的线程即死锁。
+   > 正确形态是三步：**锁内置位 `closed`** → **锁外 drain** → **锁内清缓存**。
+   > 不变量没有被削弱：所有发布路径都在同一把锁内复检 `closed`，而它在清缓存之前
+   > 已置位。见 §0.1。
+
 **一处必须保留的检查**：`realizeThreadScoped` 里的 closed 检查**不能**因为
 "入口已检查"就删——THREAD 作用域的代理存活期**长于**产出它的那次 `get()`，
 其目标在**首次方法调用**时实现，调用根本不经过 `get()`。
@@ -352,6 +420,15 @@ pad-length、PRIORITY 与 padding 却全部丢弃。这些方法在服务器实�
 **回归测试** `FrameWriteToRoundTripTest`（7 例）：判据是**解析→序列化→再解析**，
 因为这是唯一能检验「无人调用的 writeTo」的诚实标准。**回退修复后 5/7 失败**，
 失败信息给出具体字节数差异（如 `expected: <14> but was: <5>`）。
+
+**复核轮补记（本文修完才发现）**：本条只覆盖了 `DataFrame` 与 `HeadersFrame`，
+而同一形状的错还有三处——`GoawayFrame`、`PushPromiseFrame`、`NotImplementedFrame`
+**声明的长度与实写的字节不符**（GOAWAY 丢了 §6.8 的 debug data）。另有两处往返
+本身不成立，已按各自的理由写进 javadoc 而不是假装成立：`NotImplementedFrame` 的
+type/flags 在到达它之前已被 `FrameType.fromValue` 与 `FrameFlag.parse` 归一化
+（只有 payload 逐字节往返），`DataFrame`/`HeadersFrame` 的 padding 按 RFC 9113 §6.1
+重新发为零。`FrameHeader` 的长度字段另加了范围校验——3 字节写入对超界值静默截断或
+回绕，而这类"没人调用的错代码"正是本条存在的原因。
 
 ### §7 遗留 — ✅ 已修：PlantUML display 函数的静默吞异常
 
@@ -453,6 +530,12 @@ side, whose engine hands over a completed message"。所以两个 16MB 不是同
 **相反**——`RetryerDefault` 返回 `baseMillis`（失败过一次要先等），mesh 返回 0
 （没试过的 peer 立即拨号）。强行统一会改变一方行为，因此**第一跳的语义留在调用点**，
 共享的只是曲线（`Backoff.millis` / `ceilingMillis`）。配置键同样各自独立。
+
+> **复核轮修正**：共享曲线的溢出守卫只挡了 `attempt >= 62` 与符号位，挡不住位移
+> **回绕成正数**——`1000 << 61` 恰好是 `0`，于是 dial 腿这一轮完全不等待。旧实现把
+> 指数截在 5，不可能出现，所以这是 R3 引入的。判据应写成不变量：**任何 base 下
+> 饱和后的 ceiling 仍须 `> 0`**（回绕成的零同样"满足上限"，只测上限抓不到它）。
+> 见 §0.1。
 
 **R3 的一处测试盲区**：`BackoffTest` 只测共享曲线时**通过了**，而 mesh 仍是无抖动
 实现——因为两者是两条代码路径。补 `MeshDialBackoffJitterTest`（在 `event` 包，
@@ -790,9 +873,11 @@ grep -n "default Optional<URL> presignedUrl" \
 
 - `docs/audit-philosophy-modernity-1.5.2.md` — 理念一致性与现代性审计（本文不重复）
 - `docs/ARCHITECTURE.md` — 模块边界、配置级联机制
-- `docs/freeway-reflection.md` — 反射点台账（批次 1 若改到 `BeanPlan`/`MethodHandleUtils` 需回写）。
+- `docs/freeway-reflection.md` — 反射点台账（批次 1 若改到 `BeanPlan`/`ReflectiveHandles` 需回写）。
   **后续追加**：为方法参数注入的 fail-loud 检查新增了 `ioc.internal.InjectionResolver` 一行——
   `getDeclaredMethods()` + `getParameterAnnotations()` 的 `ClassValue` 站点（该表此前**完全没有**
   `InjectionResolver` 的行，尽管它一直在做字段属性扫描）。该特性本身经讨论后**不做**（结论见
-  §6），但检查留下，因为它把静默无效变成指名报错。
+  §6），但检查留下，因为它把静默无效变成指名报错。**复核轮再追加**：该站点现覆盖
+  接口（方法注解不被实现继承），且规则 1 那句「nothing scans a class by hand」与它
+  矛盾——已把例外写进规则本身，而不是留给下一个人去发现。
 - `AGENTS.md` — "Regressions to Watch"（S2-1 直接修订其中一条）

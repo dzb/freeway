@@ -26,8 +26,13 @@ final class GoawayFrame extends BaseFrame {
     public static GoawayFrame parse(byte[] body, FrameHeader header) throws IOException {
         if (header.streamId() != 0) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
         if (body.length < 8) throw new Http2Exception(Http2ErrorCode.FRAME_SIZE_ERROR);
-        return new GoawayFrame(header, Http2ErrorCode.fromValue(BinUtils.readInt(body, 4, 4)),
-            BinUtils.readInt(body, 0), Arrays.copyOfRange(body, 8, body.length));
+        // RFC 9113 §6.8: the high bit of the last-stream-id is reserved and a
+        // receiver must ignore it. Masked here, as FrameHeader.parse and the
+        // PRIORITY field both already do — and unlike those, this one feeds a
+        // public field that writeTo now puts back on the wire, so an unmasked
+        // value would re-emit a protocol violation the parse just accepted.
+        return new GoawayFrame(header, Http2ErrorCode.fromValue(Bytes.readInt(body, 4, 4)),
+            Bytes.readInt(body, 0) & 0x7FFFFFFF, Arrays.copyOfRange(body, 8, body.length));
     }
 
     /**
@@ -41,8 +46,8 @@ final class GoawayFrame extends BaseFrame {
     public void writeTo(OutputStream outputStream) throws IOException {
         new FrameHeader(8 + debugData.length, FrameType.GOAWAY, header().flags(), 0)
             .writeTo(outputStream);
-        BinUtils.writeInt(outputStream, lastSeenStream);
-        BinUtils.writeInt(outputStream, errorCode.value);
+        Bytes.writeInt(outputStream, lastSeenStream);
+        Bytes.writeInt(outputStream, errorCode.value);
         if (debugData.length > 0) {
             outputStream.write(debugData);
         }

@@ -11,10 +11,14 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Caching utility for {@link MethodHandle}, {@link VarHandle}, and
- * constructor handles — the framework-wide home for cached reflective
- * invocation, usable from any module (the IoC container's AOP and lifecycle
- * callbacks, HTTP route handlers, remote invocation dispatch, ...).
+ * Cached reflective invocation — the framework-wide home for
+ * {@link MethodHandle}, {@link VarHandle} and constructor handles, usable
+ * from any module (the IoC container's AOP and lifecycle callbacks, HTTP route
+ * handlers, remote invocation dispatch, ...).
+ *
+ * <p>Named for what it holds rather than for {@code MethodHandle} alone: the
+ * field accessors are {@code VarHandle}s and the constructors are
+ * {@code MethodHandle}s, and all three are cached the same way.
  *
  * <p>All handles are lazily created and cached in {@link ClassValue}-keyed
  * concurrent maps: reads are lock-free on every path (including the AOP
@@ -26,7 +30,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * use; package-private methods support handle creation for fields and
  * constructors used internally by {@link BeanIntrospector}.
  */
-public final class MethodHandleUtils {
+public final class ReflectiveHandles {
     private static final MethodHandles.Lookup LOOKUP = MethodHandles.lookup();
     private static final MethodHandles.Lookup PUBLIC =
         MethodHandles.publicLookup();
@@ -64,7 +68,7 @@ public final class MethodHandleUtils {
             }
         };
 
-    private MethodHandleUtils() {
+    private ReflectiveHandles() {
     }
 
     // -- public: handles and invocation for reflection-based dispatch --
@@ -81,7 +85,7 @@ public final class MethodHandleUtils {
      */
     public static MethodHandle methodHandle(Method method) {
         return METHOD_HANDLES.get(method.getDeclaringClass())
-            .computeIfAbsent(method, MethodHandleUtils::createMethodHandle);
+            .computeIfAbsent(method, ReflectiveHandles::createMethodHandle);
     }
 
     /**
@@ -101,7 +105,7 @@ public final class MethodHandleUtils {
             throw new IllegalArgumentException("not a default method: " + method);
         }
         return DEFAULT_HANDLES.get(method.getDeclaringClass())
-            .computeIfAbsent(method, MethodHandleUtils::createDefaultMethodHandle);
+            .computeIfAbsent(method, ReflectiveHandles::createDefaultMethodHandle);
     }
 
     /**
@@ -157,7 +161,7 @@ public final class MethodHandleUtils {
      */
     static VarHandle varHandle(Field field) {
         return VAR_HANDLES.get(field.getDeclaringClass())
-            .computeIfAbsent(field, MethodHandleUtils::createVarHandle);
+            .computeIfAbsent(field, ReflectiveHandles::createVarHandle);
     }
 
     /**
@@ -168,7 +172,7 @@ public final class MethodHandleUtils {
      */
     static MethodHandle constructorHandle(Constructor<?> constructor) {
         return CONSTRUCTOR_HANDLES.get(constructor.getDeclaringClass())
-            .computeIfAbsent(constructor, MethodHandleUtils::createConstructorHandle);
+            .computeIfAbsent(constructor, ReflectiveHandles::createConstructorHandle);
     }
 
     // -- private factories --

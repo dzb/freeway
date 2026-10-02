@@ -23,6 +23,7 @@ import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.commons.json.JsonCodecDefault;
+import com.jujin.freeway.http.HttpServerConfig;
 import com.jujin.freeway.http.sse.SseEmitter;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -39,6 +40,7 @@ class HttpContextImplTest {
             new JsonCodecDefault();
     private static final Coercer COERCER =
             new CoercerDefault();
+    private static final long BODY_LIMIT = HttpServerConfig.DEFAULT_MAX_BODY_SIZE;
 
     /** Records writer calls without needing a real transport. */
     private static final class RecordingWriter implements HttpResponseWriter {
@@ -74,7 +76,7 @@ class HttpContextImplTest {
     }
 
     private static HttpContextImpl context(RecordingWriter writer) {
-        var ctx = new HttpContextImpl(CODEC, COERCER);
+        var ctx = new HttpContextImpl(CODEC, COERCER, BODY_LIMIT);
         ctx.setWriter(writer);
         return ctx;
     }
@@ -194,7 +196,7 @@ class HttpContextImplTest {
         // handler set one — the header must not leak onto the wire next to
         // a suppressed body.
         var out = new ByteArrayOutputStream();
-        var ctx = new HttpContextImpl(CODEC, COERCER);
+        var ctx = new HttpContextImpl(CODEC, COERCER, BODY_LIMIT);
         ctx.reset("GET", "/", null, Map.of(), null, -1, false, out, null, false);
 
         ctx.setStatus(204).setHeader("Content-Length", "999");
@@ -208,7 +210,7 @@ class HttpContextImplTest {
     @Test
     void notModifiedStatusDropsHandlerSetContentLength() throws Exception {
         var out = new ByteArrayOutputStream();
-        var ctx = new HttpContextImpl(CODEC, COERCER);
+        var ctx = new HttpContextImpl(CODEC, COERCER, BODY_LIMIT);
         ctx.reset("GET", "/", null, Map.of(), null, -1, false, out, null, false);
 
         ctx.setStatus(304).setHeader("Content-Length", "999");
@@ -223,7 +225,7 @@ class HttpContextImplTest {
     void bodyAllowedKeepsHandlerSetContentLength() throws Exception {
         // A body-allowed status keeps the handler's Content-Length verbatim.
         var out = new ByteArrayOutputStream();
-        var ctx = new HttpContextImpl(CODEC, COERCER);
+        var ctx = new HttpContextImpl(CODEC, COERCER, BODY_LIMIT);
         ctx.reset("GET", "/", null, Map.of(), null, -1, false, out, null, false);
 
         ctx.setHeader("Content-Length", "5");
@@ -238,7 +240,7 @@ class HttpContextImplTest {
     @Test
     void defaultsToHttp1Writer() throws Exception {
         var out = new ByteArrayOutputStream();
-        var ctx = new HttpContextImpl(CODEC, COERCER);
+        var ctx = new HttpContextImpl(CODEC, COERCER, BODY_LIMIT);
         ctx.reset("GET", "/", null, Map.of(), null, -1, false, out, null, false);
 
         ctx.send(200, "ok");
@@ -314,7 +316,7 @@ class HttpContextImplTest {
     @Test
     void http1WriterEmitsMultipleSetCookieLines() throws Exception {
         var out = new ByteArrayOutputStream();
-        var ctx = new HttpContextImpl(CODEC, COERCER);
+        var ctx = new HttpContextImpl(CODEC, COERCER, BODY_LIMIT);
         ctx.reset("GET", "/", null, Map.of(), null, -1, false, out, null, false);
         ctx.addHeader("Set-Cookie", "a=1");
         ctx.addHeader("Set-Cookie", "b=2");
@@ -384,7 +386,7 @@ class HttpContextImplTest {
     @Test
     void http1StreamingKnownLengthUsesContentLength() throws Exception {
         var out = new ByteArrayOutputStream();
-        var ctx = new HttpContextImpl(CODEC, COERCER);
+        var ctx = new HttpContextImpl(CODEC, COERCER, BODY_LIMIT);
         ctx.reset("GET", "/", null, Map.of(), null, 0, false, out, null, false);
 
         ctx.output(new ByteArrayInputStream("hello".getBytes()), 5);
@@ -398,7 +400,7 @@ class HttpContextImplTest {
     @Test
     void http1StreamingUnknownLengthUsesChunked() throws Exception {
         var out = new ByteArrayOutputStream();
-        var ctx = new HttpContextImpl(CODEC, COERCER);
+        var ctx = new HttpContextImpl(CODEC, COERCER, BODY_LIMIT);
         ctx.reset("GET", "/", null, Map.of(), null, 0, false, out, null, false);
 
         ctx.output(new ByteArrayInputStream("hello".getBytes()), -1);
@@ -411,7 +413,7 @@ class HttpContextImplTest {
     @Test
     void http1BufferedGzipRoundTrips() throws Exception {
         var out = new ByteArrayOutputStream();
-        var ctx = new HttpContextImpl(CODEC, COERCER);
+        var ctx = new HttpContextImpl(CODEC, COERCER, BODY_LIMIT);
         ctx.reset("POST", "/", null,
             Map.of("accept-encoding", List.of("gzip")), null, 0, false,
             out, null, false);
@@ -433,7 +435,7 @@ class HttpContextImplTest {
     @Test
     void http1StreamingGzipUsesChunked() throws Exception {
         var out = new ByteArrayOutputStream();
-        var ctx = new HttpContextImpl(CODEC, COERCER);
+        var ctx = new HttpContextImpl(CODEC, COERCER, BODY_LIMIT);
         ctx.reset("POST", "/", null,
             Map.of("accept-encoding", List.of("gzip")), null, 0, false,
             out, null, false);
@@ -451,7 +453,7 @@ class HttpContextImplTest {
     @Test
     void http1HeadSuppressesBodyButKeepsLength() throws Exception {
         var out = new ByteArrayOutputStream();
-        var ctx = new HttpContextImpl(CODEC, COERCER);
+        var ctx = new HttpContextImpl(CODEC, COERCER, BODY_LIMIT);
         ctx.reset("HEAD", "/", null, Map.of(), null, 0, false, out, null, false);
 
         ctx.send(200, "hello");
@@ -468,7 +470,7 @@ class HttpContextImplTest {
             int size = 64 * 1024;
             Files.write(file, new byte[size]);
             var out = new ByteArrayOutputStream();
-            var ctx = new HttpContextImpl(CODEC, COERCER);
+            var ctx = new HttpContextImpl(CODEC, COERCER, BODY_LIMIT);
             long[] transferred = new long[2];
             ctx.setFileSender((channel, offset, length) -> {
                 transferred[0] = offset;
@@ -576,7 +578,7 @@ class HttpContextImplTest {
             byte[] content = "hello".getBytes(StandardCharsets.UTF_8);
             Files.write(file, content);
             var out = new ByteArrayOutputStream();
-            var ctx = new HttpContextImpl(CODEC, COERCER);
+            var ctx = new HttpContextImpl(CODEC, COERCER, BODY_LIMIT);
             ctx.setFileSender((c, o, l) -> {
                 throw new AssertionError("small file must not use sendfile");
             });

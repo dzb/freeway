@@ -129,6 +129,17 @@ final class PeerConnector implements AutoCloseable {
             handshakeTimeout = handshakeTimeout == null ? HANDSHAKE_TIMEOUT : handshakeTimeout;
             backoffBaseMs = backoffBaseMs <= 0 ? BACKOFF_BASE_MS : backoffBaseMs;
             backoffMaxMs = backoffMaxMs <= 0 ? BACKOFF_MAX_MS : backoffMaxMs;
+            // A cap below the base is not a cap: the curve clamps every attempt
+            // to it, so the dial loop waits a millisecond and re-dials — the
+            // opposite of what the pair was meant to say, and quietly so.
+            // RetryerDefault refuses the same combination at construction; two
+            // callers of one curve must not answer this question differently.
+            if (backoffMaxMs < backoffBaseMs) {
+                throw new IllegalArgumentException(
+                    "backoffMaxMs must be >= backoffBaseMs: " + backoffMaxMs
+                        + " < " + backoffBaseMs + " — a cap below the base makes "
+                        + "every attempt wait the cap, which is no backoff at all");
+            }
         }
 
         /** Production defaults from the config keys, no outbound TLS material. */

@@ -16,7 +16,7 @@ final class PriorityFrame extends BaseFrame {
     public static PriorityFrame parse(byte[] body, FrameHeader header) throws IOException {
         if (body.length != 5) throw new Http2Exception(Http2ErrorCode.FRAME_SIZE_ERROR);
         var frame = new PriorityFrame(header);
-        int temp = BinUtils.readInt(body, 0, 4);
+        int temp = Bytes.readInt(body, 0, 4);
         frame.exclusive = (temp & 0x80000000) != 0;
         frame.streamDependency = temp & 0x7FFFFFFF;
         if (frame.streamDependency == header.streamId()) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
@@ -28,7 +28,7 @@ final class PriorityFrame extends BaseFrame {
         header().writeTo(outputStream);
         byte[] body = new byte[5];
         int dep = streamDependency | (exclusive ? 0x80000000 : 0);
-        BinUtils.writeInt(body, 0, dep, 4);
+        Bytes.writeInt(body, 0, dep, 4);
         body[4] = (byte) (weight - 1);
         outputStream.write(body);
     }

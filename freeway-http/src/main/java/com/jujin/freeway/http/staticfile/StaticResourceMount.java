@@ -32,7 +32,7 @@ import com.jujin.freeway.http.HttpRequest;
 import com.jujin.freeway.http.HttpResponse;
 import com.jujin.freeway.http.HttpStatus;
 import com.jujin.freeway.http.MediaTypes;
-import com.jujin.freeway.http.internal.HttpUtils;
+import com.jujin.freeway.http.internal.HttpHeaders;
 import com.jujin.freeway.http.route.PathPattern;
 
 public final class StaticResourceMount {
@@ -352,7 +352,7 @@ public final class StaticResourceMount {
         }
         response.setHeader("Cache-Control", cacheControl.toString());
         if (meta.lastModifiedMillis() > 0) {
-            response.setHeader("Last-Modified", HttpUtils.httpDate(meta.lastModifiedMillis()));
+            response.setHeader("Last-Modified", HttpHeaders.httpDate(meta.lastModifiedMillis()));
         }
         response.setHeader("ETag", meta.etag());
     }

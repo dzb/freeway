@@ -2,6 +2,16 @@ package com.jujin.freeway.commons.json;
 
 import java.lang.reflect.Type;
 
+/**
+ * Object ↔ JSON text with an injected {@link Coercer}, for an application
+ * that has one — the container's, or its own.
+ *
+ * <p>The counterpart to {@link JsonUtils}, which does the same conversions
+ * with a built-in coercer and no instance. This interface covers text and
+ * types only: the node layer ({@link JsonObject} / {@link JsonArray}, the
+ * {@code parse*} family) stays on the static side, because a caller holding a
+ * codec already has a coercer and does not need the built-in coercion rules.
+ */
 public interface JsonCodec {
     String toJson(Object value);
 

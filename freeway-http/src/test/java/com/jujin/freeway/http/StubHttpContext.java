@@ -15,6 +15,8 @@ import java.util.TreeMap;
 
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.json.JsonCodecDefault;
+import com.jujin.freeway.http.HttpServerConfig;
+import com.jujin.freeway.http.internal.HttpHeaders;
 import com.jujin.freeway.http.internal.HttpUtils;
 import com.jujin.freeway.http.sse.SseEmitter;
 
@@ -58,7 +60,8 @@ public final class StubHttpContext extends AbstractHttpContext {
     }
 
     public StubHttpContext(String method, String path) {
-        super(new JsonCodecDefault(COERCER), COERCER);
+        super(new JsonCodecDefault(COERCER), COERCER,
+              HttpServerConfig.DEFAULT_MAX_BODY_SIZE);
         this.method = method;
         int q = path.indexOf('?');
         if (q >= 0) {

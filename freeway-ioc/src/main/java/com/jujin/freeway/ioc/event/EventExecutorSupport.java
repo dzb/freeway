@@ -19,19 +19,19 @@ final class EventExecutorSupport {
     /** Grace period for in-flight dispatch before shutdown is forced. */
     private static final long DEFAULT_SHUTDOWN_TIMEOUT_MS = 5_000;
 
-    private final Runnable ensureOpen;
+    private final Runnable requireOpen;
     private final long shutdownTimeoutMs;
     private volatile Executor asyncExecutor;
     private volatile ExecutorService defaultAsyncExecutor;
     private volatile ExecutorService orderedExecutor;
 
-    EventExecutorSupport(Runnable ensureOpen) {
-        this(ensureOpen, DEFAULT_SHUTDOWN_TIMEOUT_MS);
+    EventExecutorSupport(Runnable requireOpen) {
+        this(requireOpen, DEFAULT_SHUTDOWN_TIMEOUT_MS);
     }
 
     /** Tests shrink the timeout to keep close() fast. */
-    EventExecutorSupport(Runnable ensureOpen, long shutdownTimeoutMs) {
-        this.ensureOpen = Objects.requireNonNull(ensureOpen, "ensureOpen");
+    EventExecutorSupport(Runnable requireOpen, long shutdownTimeoutMs) {
+        this.requireOpen = Objects.requireNonNull(requireOpen, "requireOpen");
         this.shutdownTimeoutMs = shutdownTimeoutMs;
     }
 
@@ -57,7 +57,7 @@ final class EventExecutorSupport {
         synchronized (this) {
             d = defaultAsyncExecutor;
             if (d == null) {
-                ensureOpen.run();
+                requireOpen.run();
                 d = defaultAsyncExecutor = Executors.newVirtualThreadPerTaskExecutor();
             }
             return d;
@@ -72,7 +72,7 @@ final class EventExecutorSupport {
         synchronized (this) {
             e = orderedExecutor;
             if (e == null) {
-                ensureOpen.run();
+                requireOpen.run();
                 e = orderedExecutor = Executors.newSingleThreadExecutor(
                     Thread.ofVirtual().factory()
                 );
@@ -91,7 +91,7 @@ final class EventExecutorSupport {
      * <p>Only the detach runs under the monitor: the (up-to-timeout) wait
      * happens outside, so a concurrent {@link #asyncExecutor()} /
      * {@link #orderedExecutor()} never queues behind a shutdown — it fails
-     * fast through {@code ensureOpen} (the bus is already closed by then).
+     * fast through {@code requireOpen} (the bus is already closed by then).
      * Safe because {@code EventBus.close()} sets the closed flag before
      * calling in, and creation re-checks that flag under this lock.</p>
      */

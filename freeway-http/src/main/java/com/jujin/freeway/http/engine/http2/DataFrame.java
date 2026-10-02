@@ -39,7 +39,6 @@ final class DataFrame extends BaseFrame {
                 Arrays.copyOfRange(body, index, body.length - padLen), padLen);
     }
 
-    /** Padding bytes (excluding the pad-length byte itself). */
     /** Flow-controlled length: data + pad-length byte + padding (RFC 7540 §6.9.1). */
     public int flowLength() {
         return body.length + padLength + (header().flags().contains(FrameFlag.PADDED) ? 1 : 0);
@@ -64,6 +63,10 @@ final class DataFrame extends BaseFrame {
         }
         outputStream.write(body);
         if (padded && padLength > 0) {
+            // Re-emitted as zeros, not the bytes that arrived: parse strips the
+            // padding and keeps only its length. RFC 9113 §6.1 lets a receiver
+            // ignore padding, so the frame is correct — it is the payload that
+            // round-trips, not the frame's padding.
             outputStream.write(new byte[padLength]);
         }
     }

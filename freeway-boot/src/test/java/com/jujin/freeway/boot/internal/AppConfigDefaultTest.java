@@ -1,9 +1,6 @@
-package com.jujin.freeway.boot;
+package com.jujin.freeway.boot.internal;
 
-import com.jujin.freeway.boot.internal.AppConfigDefault;
-import com.jujin.freeway.boot.internal.BootModule;
-import com.jujin.freeway.boot.internal.ConfigLoaderImpl;
-import com.jujin.freeway.boot.internal.ConfigSources;
+import com.jujin.freeway.boot.AppConfig;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.ioc.symbol.SymbolSpec;
