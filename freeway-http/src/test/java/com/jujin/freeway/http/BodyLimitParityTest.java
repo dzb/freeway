@@ -4,6 +4,7 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
@@ -21,22 +22,21 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * and AGENTS.md both promise it: "413 accounting is identical across
  * engines".
  *
- * <p>That promise was not enforced by anything. The built-in engine bounded
- * bodies through {@code RequestBody}; the adapter seam exposed
- * {@link AbstractHttpContext#readBody} — a second implementation, which
- * {@code HttpEngine}'s javadoc and AGENTS.md both named as <em>the</em>
- * shared one while nothing in the framework called it. Two independent loops,
- * one documented guarantee.
+ * <p><b>This is now a regression guard for a past shape, not a comparison of
+ * two live implementations.</b> It was written when the built-in engine bounded
+ * bodies through {@code RequestBody} and the adapter seam exposed
+ * {@link AbstractHttpContext#readBody} — a second implementation that
+ * {@code HttpEngine}'s javadoc and AGENTS.md both named as <em>the</em> shared
+ * one while nothing in the framework called it. Two independent loops, one
+ * documented guarantee, and the two happened to agree on every case here, so the
+ * duplication was a latent divergence rather than a live bug.
  *
- * <p>Worth being precise about what was and was not broken: the two happened
- * to agree on every case this test explores, so the duplication was a latent
- * divergence rather than a live bug. The fix makes the guarantee structural
- * — {@code readBody} now runs {@code LimitedInputStream}, the limiter the
- * engine itself uses — and this test keeps it that way.
- *
- * <p>Compared case by case rather than each asserted in isolation, because
- * that is the property at stake: either side could drift alone and both would
- * still pass their own tests.
+ * <p>{@code readBody} is now a one-line delegate to {@code LimitedInputStream},
+ * the limiter the engine itself runs, so {@link #viaEngine} and
+ * {@link #viaAdapterHelper} drive the same object and the case-by-case
+ * comparison below has become an assertion about the delegation rather than
+ * about two implementations. It is kept in that shape on purpose: should the
+ * delegate ever be re-inlined, these cases are what would notice.
  */
 class BodyLimitParityTest {
 
@@ -78,6 +78,45 @@ class BodyLimitParityTest {
         StubHttpContext ctx = new StubHttpContext();
         ctx.setMaxBodySize(limit);
         return ctx.readBody(new DripFeed(latin(body), chunk));
+    }
+
+    /**
+     * The limiter honours {@link InputStream#read(byte[], int, int)}'s argument
+     * contract, not just its limit.
+     *
+     * <p>The argument bounds are checked first
+     * ({@code Objects.checkFromIndexSize}), then the {@code len == 0} shortcut,
+     * and only then the limit — so a request already at its limit answers this
+     * call's probe with EOF ({@code -1}). Without the explicit bounds check an
+     * out-of-range {@code off}, a {@code len} past the array end, or a null array
+     * was reported as end-of-body instead of the IndexOutOfBoundsException /
+     * NullPointerException every caller expects — and this type is {@code public}
+     * in a package adapters are told to reach for, so third-party code calls it
+     * directly.
+     */
+    @Test
+    void readValidatesItsArgumentsTheWayInputStreamDoes() throws IOException {
+        for (LimitedInputStream stream : List.of(
+            new LimitedInputStream(new ByteArrayInputStream(new byte[8]), () -> 100L),
+            // at the limit: the early-return path is where an unchecked
+            // out-of-range offset would have been reported as EOF
+            new LimitedInputStream(new ByteArrayInputStream(new byte[8]), () -> 0L))) {
+
+            byte[] buf = new byte[4];
+            assertThrows(IndexOutOfBoundsException.class,
+                () -> stream.read(buf, 99, 5), "off past the end");
+            assertThrows(IndexOutOfBoundsException.class,
+                () -> stream.read(buf, 2, 5), "off + len past the end");
+            assertThrows(IndexOutOfBoundsException.class,
+                () -> stream.read(buf, 0, 5), "len past the end");
+            assertThrows(IndexOutOfBoundsException.class,
+                () -> stream.read(buf, 99, 0),
+                "a zero length does not excuse an out-of-range offset");
+            assertThrows(NullPointerException.class,
+                () -> stream.read(null, 0, 3), "null array");
+            assertEquals(0, stream.read(buf, 0, 0),
+                "a zero-length read at a valid offset is legal and returns 0");
+        }
     }
 
     /** Yields at most {@code chunk} bytes per read, like a socket does. */

@@ -98,13 +98,12 @@ final class BindingImpl<T> implements Binding<T> {
      *
      * <p>"Here" does not mean "only here". A provider is handed the container,
      * and {@code c.create(X)} is a documented way to get an injected instance,
-     * so an instance arriving from a provider may already be initialized —
-     * and it will be, because {@code create} is complete in itself and the
-     * contribution path depends on that. Running {@code @PostConstruct}
-     * twice on {@code to(c -> c.create(Impl.class))} would then be silent, so
-     * single-shot is enforced one level down, per instance, in
-     * {@link ContainerImpl#initialize} — which is the only place that can
-     * know whether this particular instance has been through it.
+     * so an instance arriving from a provider may already have been through
+     * {@code create} — which stops at field injection and never post-constructs.
+     * A provider that builds its own instance with {@code new X()} and injects
+     * it by hand can still arrive pre-initialized, so single-shot is enforced
+     * one level down, per realization, in {@link ContainerImpl#initialize} —
+     * the only place that can know whether this instance has been through it.
      * </p>
      */
     T directInstance() {
@@ -114,6 +113,20 @@ final class BindingImpl<T> implements Binding<T> {
         // step is what post-constructs it, and it happens once between here and
         // the exit. The instance is a managed one: it lands in the service
         // caches, so Shutdown pairs its @PreDestroy at close().
+        //
+        // Note that nothing here re-checks the closed flag: ServiceRuntime's
+        // realize path and the get() that builds a proxy both check it, and a
+        // realization that started before close() is meant to finish.
+        // Construct-and-initialize used to open with a requireOpen() of its own;
+        // it is gone because ContainerImpl.create(Class, BindingImpl) — which had
+        // one — no longer exists, and re-adding the check here would refuse
+        // exactly those in-flight realizations.
+        //
+        // One path is checked earlier than the work rather than at it: an advised
+        // PROTOTYPE binding's proxy realizes its target on the first method call,
+        // so a proxy handed out before close() can still construct one after it.
+        // That gap is recorded here rather than papered over with a fourth check —
+        // this comment used to claim all three callers covered it.
         Set<Object> previous = container.enterRealize();
         try {
             T created = provider == null ? instantiateDefault() : provided();
@@ -154,13 +167,7 @@ final class BindingImpl<T> implements Binding<T> {
         requireOpen("to()");
         Class<? extends T> actual = Objects.requireNonNull(implementation, "implementation");
         addMarkers(MarkerIndex.extractClassMarkers(actual));
-        return to(ignored -> {
-            try {
-                return container.constructInstance(actual, this);
-            } catch (Exception ex) {
-                throw new RuntimeException("Unable to construct " + actual.getName(), ex);
-            }
-        });
+        return to(ignored -> construct(actual));
     }
 
     @Override
@@ -226,11 +233,27 @@ final class BindingImpl<T> implements Binding<T> {
         return this;
     }
 
+    /**
+     * The binding's own construction for a concrete type bound without a
+     * provider — construction only, because {@link #directInstance} materializes
+     * whatever comes back. Constructing and initializing here would inject the
+     * fields twice and leave the one-shot {@code @PostConstruct} rule resting on
+     * the realize scope instead of on the shape of the path.
+     */
     private T instantiateDefault() {
         if (!type.isInterface() && !Modifier.isAbstract(type.getModifiers())) {
-            return container.create(type, this);
+            return construct(type);
         }
         throw new IllegalStateException("No implementation configured for " + type.getName());
+    }
+
+    /** Construction, with the one error frame every realize path reports it in. */
+    private T construct(Class<? extends T> target) {
+        try {
+            return container.constructInstance(target, this);
+        } catch (Exception ex) {
+            throw new RuntimeException("Unable to construct " + target.getName(), ex);
+        }
     }
 
     private T materialize(T value, BindingImpl<?> owner) {

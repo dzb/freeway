@@ -4,6 +4,7 @@ import com.jujin.freeway.http.body.BodyTooLargeException;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Objects;
 import java.util.function.LongSupplier;
 
 /**
@@ -80,6 +81,12 @@ public final class LimitedInputStream extends InputStream {
 
     @Override
     public int read(byte[] b, int off, int len) throws IOException {
+        // The InputStream contract's own argument checks, first and
+        // unconditionally. The len == 0 shortcut below returns without touching
+        // the stream, so without these an out-of-range off or a null array would
+        // be reported as end-of-body instead of the IndexOutOfBoundsException /
+        // NullPointerException every caller of read(byte[],int,int) expects.
+        Objects.checkFromIndexSize(off, len, b.length);
         if (len == 0) return 0;
         long limit = maxBodySize.getAsLong();
         long remaining = limit - total;

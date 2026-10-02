@@ -47,7 +47,8 @@ public final class Sql {
     private final List<Condition> conditions;
     private final String tail;
     private final Object[] args;
-    private final boolean compoundQuery;
+    /** The compound keyword in force ({@code UNION} / {@code UNION ALL}), or null. */
+    private final String compoundQuery;
     private final List<Cte> ctes;
 
     /**
@@ -74,7 +75,7 @@ public final class Sql {
         List<Condition> conditions,
         String tail,
         Object[] args,
-        boolean compoundQuery,
+        String compoundQuery,
         List<Cte> ctes,
         String dmlTable,
         List<String> dmlTargets,
@@ -96,25 +97,25 @@ public final class Sql {
     /** SELECT:{@code Sql.select("id, name").from("users").where(...)} */
     public static Sql select(String columns) {
         return new Sql("SELECT " + columns, List.of(), "", new Object[0],
-            false, List.of(), null, List.of(), List.of());
+            null, List.of(), null, List.of(), List.of());
     }
 
     /** UPDATE:{@code Sql.update("users").setExpression("name = ?", v).where("id = ?", id)} */
     public static Sql update(String tableName) {
         return new Sql("UPDATE " + tableName, List.of(), "", new Object[0],
-            false, List.of(), tableName, List.of(), List.of());
+            null, List.of(), tableName, List.of(), List.of());
     }
 
     /** INSERT:{@code Sql.insert("users").setColumn("name", v).setColumn("status", v)} */
     public static Sql insert(String tableName) {
         return new Sql(null, List.of(), "", new Object[0],
-            false, List.of(), tableName, List.of(), List.of());
+            null, List.of(), tableName, List.of(), List.of());
     }
 
     /** DELETE:{@code Sql.delete("users").where("id = ?", id)} */
     public static Sql delete(String tableName) {
         return new Sql("DELETE FROM " + tableName, List.of(), "", new Object[0],
-            false, List.of(), null, List.of(), List.of());
+            null, List.of(), null, List.of(), List.of());
     }
 
     public Sql with(String name, Sql query) {
@@ -169,7 +170,16 @@ public final class Sql {
 
     // ====================== WHERE conditions ======================
 
-    /** {@code WHERE expr} (or {@code AND expr} when a condition already exists). */
+    /**
+     * {@code WHERE expr} (or {@code AND expr} when a condition already exists).
+     *
+     * <p>A {@link Sql} among the values must arrive through parentheses:
+     * {@code where("id in (?)", sub)}. Spliced bare it merges the subquery's own
+     * {@code WHERE} into this one, and the statement is rejected by the driver
+     * rather than here — so a bare splice is refused at build time, with the fix
+     * in the message. For a column slot use {@link #setColumn(String, Object)},
+     * which parenthesizes for you.
+     */
     public Sql where(String expr, Object... values) {
         requireWhereAllowed("WHERE");
         return addCondition(andConnector(conditions), expr, values);
@@ -367,19 +377,28 @@ public final class Sql {
      * <p>INSERT-only, and the name says so — the mode used to be guessed from
      * the fragment's characters, which rejected legitimate quoted column names
      * such as {@code "`my col`"} and deferred real misuse to placeholder
-     * counting. The column name is quoted/validated as a name; expressions
-     * belong in {@link #setExpression(String, Object)}.</p>
+     * counting.</p>
+     *
+     * <p>The column name is <b>validated as a name</b>, not quoted: this builder
+     * is dialect-free until {@link #sql(Dialect)}, so it has no quoting rules to
+     * apply, and a name that needs quoting must arrive quoted. Each part of a
+     * qualified name is checked on its own, and the bare and quoted forms
+     * compose — {@code tenant_id}, {@code users.name}, {@code `my col`},
+     * {@code [my col]}, {@code public}."My Col" and {@code `db`.`table`.col} are
+     * all accepted, as is a doubled delimiter inside a quoted part
+     * ({@code "a""b"}). Anything else — {@code "a = 1, evil"} — is an expression,
+     * and expressions belong in {@link #setExpression(String, Object)}. The
+     * validation is what keeps a request-derived name from becoming SQL.</p>
      *
      * <p>A {@link Sql} value is SQL rather than data: it renders as a
      * <b>parenthesized scalar subquery</b> in this column's slot, and its
      * parameters ride along at that position. So
      * {@code setColumn("tenant_id", Sql.select("id").from("tenants"))} renders
      * {@code VALUES ((SELECT id FROM tenants))} — the form every dialect
-     * accepts, and the only shape of a nested query that fits one column. This
-     * is where it differs from {@link #setExpression(String, Object)}: there
-     * the caller writes the fragment and therefore owns the parentheses
-     * ({@code setExpression("tenant_id = (?)", sub)}), while here there is no
-     * fragment to write them in.</p>
+     * accepts, and the only shape of a nested query that fits one column. The
+     * parentheses are the renderer's because this API takes a bare name and a
+     * value, not a fragment; in {@link #setExpression(String, Object)} the
+     * caller writes the fragment and therefore writes them.</p>
      */
     public Sql setColumn(String column, Object value) {
         requireUpdateOrInsert("setColumn");
@@ -390,7 +409,7 @@ public final class Sql {
             );
         }
         requireNoPendingJoin("setColumn");
-        Objects.requireNonNull(column, "column");
+        requireColumnName(column);
         List<String> newTargets = new ArrayList<>(dmlTargets);
         newTargets.add(column);
         List<Object> newValues = new ArrayList<>(dmlValues);
@@ -398,9 +417,11 @@ public final class Sql {
         // subquery and carry its placeholders over. Without this the object
         // would be bound as a parameter and the statement would silently mean
         // something else. The parentheses are added at render time
-        // (renderInsertValues) because, unlike setExpression, this API has no
-        // fragment in which the caller could write them.
+        // (renderInsertValues) because this is the one path with no fragment in
+        // which a caller could write them — a fragment method leaves the
+        // grouping to its caller (setExpression("tenant_id = (?)", sub)).
         if (value instanceof Sql nested) {
+            requireScalarSubquery(nested);
             newValues.add(new InlineValue(nested.sql(), nested.args()));
         } else {
             newValues.add(value);
@@ -410,15 +431,193 @@ public final class Sql {
     }
 
     /**
+     * Rejects a nested {@link Sql} that cannot stand in a column slot.
+     *
+     * <p>The slot renders as a parenthesized scalar subquery, so the value must
+     * be a plain {@code SELECT}. Anything else renders syntactically valid
+     * nonsense — a {@code UNION} parenthesized as an expression, an
+     * {@code INSERT} spliced into a {@code VALUES} row — and renders without
+     * complaint, which is the part that matters: the failure would otherwise be
+     * the database's, far from the call that made it. A {@code WITH} query is
+     * fine; it is still a {@code SELECT}.
+     * </p>
+     */
+    private void requireScalarSubquery(Sql nested) {
+        if (nested.isSelect()) {
+            return;
+        }
+        throw new IllegalArgumentException(
+            "setColumn() renders a Sql value as a scalar subquery, but "
+                + describe(nested) + " is not a plain SELECT — a column slot "
+                + "holds one row-producing query, and a compound (UNION) or a "
+                + "DML statement parenthesized as an expression is not one. "
+                + "Use a SELECT here, or build the statement yourself."
+        );
+    }
+
+    /**
+     * What kind of statement this is, for an error message. Deliberately not the
+     * statement's own text: it can be arbitrarily long and carry bind values,
+     * and an exception message is the wrong place to spill either.
+     */
+    private static String describe(Sql sql) {
+        if (sql.isInsert()) {
+            return "an INSERT";
+        }
+        if (sql.isUpdate()) {
+            return "an UPDATE";
+        }
+        if (sql.compoundQuery != null) {
+            return "a compound query (" + sql.compoundQuery + ")";
+        }
+        // head == null identifies the INSERT factory and is covered above, so
+        // what reaches here is a statement with a head: DELETE, or a SELECT
+        // that failed the isSelect() shape check.
+        return "a " + (sql.head == null ? "statement" : sql.head.split("\\s+", 2)[0]);
+    }
+
+    /**
+     * A column name, or a name the caller has already quoted for their target
+     * dialect. Each part of a qualified name is checked on its own, and the bare
+     * and quoted forms compose. What is rejected is anything carrying SQL
+     * structure — an operator, a comma, an unbalanced quote, a comment marker —
+     * so that a name assembled from request data cannot become an expression or
+     * a second column. It is not a dialect's quoting implementation: this builder
+     * is dialect-free until {@link #sql(Dialect)}, so a name needing quoting must
+     * arrive quoted, and the quotes it accepts come from the same dialect-free
+     * superset the fragment scanner uses
+     * ({@code SqlTextParser.LexerConfig.closingIdentifierQuote}) — one list, not
+     * two.
+     */
+    private static void requireColumnName(String column) {
+        Objects.requireNonNull(column, "column");
+        // A qualified name is a dot-separated list of parts, and each part is
+        // independently bare or quoted — "public".\"My Col\" and
+        // `db`.`table`.col are how PostgreSQL and MySQL spell a qualified name
+        // whose parts need quoting, so the two forms compose rather than being
+        // alternatives. A dot inside a QUOTED part is that part's own character
+        // (`arr[0]`-style names, or a column literally named "a.b"), which is
+        // why the split only happens between parts, never inside quotes.
+        int start = 0;
+        while (true) {
+            int dot = indexOfUnquotedDot(column, start);
+            if (!isNamePart(column, start, dot < 0 ? column.length() : dot)) {
+                throw notAColumnName(column);
+            }
+            if (dot < 0) {
+                return;
+            }
+            start = dot + 1;
+        }
+    }
+
+    /**
+     * The next '.' that is not inside a quoted part, or -1.
+     *
+     * <p>Opens and closes are tracked separately because {@code [} and {@code ]}
+     * are different characters — matching the opening one would never close the
+     * quote, and every following dot would then read as part of the name.
+     */
+    private static int indexOfUnquotedDot(String column, int from) {
+        char close = 0;
+        for (int i = from; i < column.length(); i++) {
+            char c = column.charAt(i);
+            if (close == 0) {
+                close = SqlTextParser.LexerConfig.closingIdentifierQuote(c);
+                if (close == 0 && c == '.') {
+                    return i;
+                }
+            } else if (c == close) {
+                close = 0;
+            }
+        }
+        return -1;
+    }
+
+    /** One part of a qualified name: a bare identifier, or a quoted one. */
+    private static boolean isNamePart(String column, int from, int to) {
+        int length = to - from;
+        if (length <= 0) {
+            return false;
+        }
+        char first = column.charAt(from);
+        char last = column.charAt(to - 1);
+        if (paired(first, last)) {
+            return isQuotedPart(column, from, to, first);
+        }
+        // Unquoted: every character must be legal in a bare identifier, so a
+        // comma, an operator, a space or a stray quote cannot get in.
+        if (!Character.isLetter(first) && first != '_') {
+            return false;
+        }
+        for (int i = from + 1; i < to; i++) {
+            char c = column.charAt(i);
+            if (!Character.isLetterOrDigit(c) && c != '_' && c != '$') {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean paired(char first, char last) {
+        return last != 0 && SqlTextParser.LexerConfig.closingIdentifierQuote(first) == last;
+    }
+
+    /**
+     * A quoted part. The caller has already decided the delimiters, so this only
+     * checks that the closing one does not appear bare inside — a name that closes
+     * its own quoting is the one thing this check exists to catch. A doubled
+     * delimiter is the standard way to write one inside a quoted identifier
+     * ({@code "a""b"} is the name {@code a"b}), so it is allowed.
+     */
+    private static boolean isQuotedPart(String column, int from, int to, char open) {
+        char close = SqlTextParser.LexerConfig.closingIdentifierQuote(open);
+        String inner = column.substring(from + 1, to - 1);
+        if (inner.isBlank()) {
+            return false;
+        }
+        for (int i = 0; i < inner.length(); i++) {
+            char c = inner.charAt(i);
+            if (c != close) {
+                continue;
+            }
+            // A doubled delimiter is the escape; a single one ends the name and
+            // whatever followed would be SQL again.
+            boolean doubled = i + 1 < inner.length() && inner.charAt(i + 1) == close;
+            if (!doubled) {
+                return false;
+            }
+            i++;
+        }
+        return true;
+    }
+
+    private static IllegalArgumentException notAColumnName(String column) {
+        // The name is echoed so the reader can see which part failed, but
+        // flattened: a name carrying newlines would otherwise turn one message
+        // into several lines of log.
+        return new IllegalArgumentException(
+            "'" + column.replaceAll("\\s+", " ") + "' is not a column name — "
+                + "setColumn() takes one column per value, and expressions belong "
+                + "in setExpression(\"column = ?\", value). A name may be qualified "
+                + "(users.name) and any part may be quoted for your dialect "
+                + "(`my col`, \"my col\", [my col])."
+        );
+    }
+
+    /**
      * One UPDATE assignment as a full expression
      * ({@code Sql.update("users").setExpression("name = ?", name)}).
      *
      * <p>UPDATE-only; placeholders are normalized like everywhere else
-     * ({@code ?}, {@code :name} and {@code $1} all become {@code ?}). A
-     * {@link Sql} value is spliced in where the placeholder is, so write the
-     * parentheses yourself when the value is a subquery —
-     * {@code setExpression("tenant_id = (?)", sub)} — because this API renders
-     * text and cannot add them for you.</p>
+     * ({@code ?}, {@code :name} and {@code $1} all become {@code ?}).</p>
+     *
+     * <p>A fragment is raw SQL you have written, so you own the grouping: a
+     * {@link Sql} value must arrive through parentheses —
+     * {@code setExpression("tenant_id = (?)", sub)} — the same rule every
+     * fragment method follows and enforces (see {@link #where}). {@link
+     * #setColumn} is the one that differs, because a column name is not a
+     * fragment and there is nowhere for you to write them.</p>
      */
     public Sql setExpression(String expr, Object value) {
         requireUpdateOrInsert("setExpression");
@@ -671,14 +870,21 @@ public final class Sql {
             throw new IllegalStateException(operator + " requires the right query to finish before ORDER BY/LIMIT/OFFSET");
         }
 
-        String combined = "(" + sql() + ") " + operator + " (" + other.sql() + ")";
+        // Asymmetric on purpose. The left side needs no parentheses: UNION is
+        // left-associative, so `(A ∪ B) ∪ C` and `(A) UNION (B) UNION (C)` are the
+        // same query, and re-wrapping only nests the text a level per chained
+        // call. The right side does need them — `A ∪ (B ∪ C)` is not
+        // `A ∪ B ∪ C`, and dropping them would silently re-associate what the
+        // caller grouped.
+        String combined = (compoundQuery == null ? "(" + sql() + ")" : sql())
+            + " " + operator + " (" + other.sql() + ")";
         Object[] combinedArgs = concat(args(), other.args());
         return new Sql(combined, List.of(), "", combinedArgs,
-            true, List.of(), null, List.of(), List.of());
+            operator, List.of(), null, List.of(), List.of());
     }
 
     private void requireSimpleSelect(String operation) {
-        if (!isSelect() || compoundQuery) {
+        if (!isSelect() || compoundQuery != null) {
             throw new IllegalStateException(operation + " is only supported for a plain SELECT");
         }
     }
@@ -711,7 +917,7 @@ public final class Sql {
         if (isInsert()) {
             throw new IllegalStateException(operation + " is not supported for INSERT");
         }
-        if (compoundQuery) {
+        if (compoundQuery != null) {
             throw new IllegalStateException(operation + " is not supported for compound SELECT");
         }
         requireNoPendingJoin(operation);
@@ -745,7 +951,7 @@ public final class Sql {
     }
 
     private boolean isSelectable() {
-        return isSelect() || compoundQuery;
+        return isSelect() || compoundQuery != null;
     }
 
     public boolean isInsert() {
@@ -767,7 +973,7 @@ public final class Sql {
     }
 
     private boolean hasPendingJoin() {
-        if (!isSelect() || head == null || compoundQuery) {
+        if (!isSelect() || head == null || compoundQuery != null) {
             return false;
         }
         int joinIndex = Math.max(
@@ -889,14 +1095,67 @@ public final class Sql {
         return new NormalizedFragment(sb.toString(), matched.toArray());
     }
 
+    /**
+     * Splices a value into a fragment: {@code ?} for data, the nested query's own
+     * text for a {@link Sql}.
+     *
+     * <p>A {@link Sql} must arrive through parentheses — {@code (?)} in the
+     * fragment, {@code where("id in (?)", sub)} — and this is where that is
+     * enforced. It belongs here rather than in prose because the failure without
+     * it is a statement that reads as valid SQL, means something else, and is
+     * rejected by the driver rather than by this call. {@link
+     * #setColumn(String, Object)} does not come through here: it has no fragment
+     * for the caller to write parentheses in, so it renders them itself.
+     */
     private static void appendValue(StringBuilder sb, List<Object> matched, Object value) {
         if (value instanceof Sql sql) {
+            requireParens(sb, sql);
             sb.append(sql.sql());
             appendArgs(matched, sql.args());
             return;
         }
         sb.append('?');
         matched.add(value);
+    }
+
+    /**
+     * A {@code Sql} spliced into a fragment must arrive through parentheses.
+     *
+     * <p>Spliced bare it produces a statement that reads as valid SQL and means
+     * something else: {@code where("id in ?", sub)} renders {@code id in SELECT
+     * user_id FROM orders WHERE total > ?}, and the subquery's own {@code WHERE}
+     * merges into the enclosing one. Nothing here can catch that — the builder
+     * does not parse SQL, and the error surfaces from the driver, far from the
+     * call that made it.
+     *
+     * <p>So the caller owns the grouping and this checks they did: the
+     * placeholder they wrote must be the one inside {@code (?)}. {@link
+     * #setColumn} does not consult this — it has no fragment for the caller to
+     * write parentheses in, so the renderer adds them itself.
+     */
+    private static void requireParens(StringBuilder sb, Sql spliced) {
+        if (!atOpenParen(sb)) {
+            throw new SqlException(
+                "A Sql value spliced into a fragment needs its own parentheses — "
+                    + "write \"(?)\" where the query goes, not \"?\", or the "
+                    + "subquery merges into the enclosing statement. Splicing "
+                    + describe(spliced) + " as-is would render "
+                    + "… in SELECT … WHERE …, which the database rejects far "
+                    + "from this call. For a column slot use setColumn(\"col\", "
+                    + "sub), which parenthesizes for you."
+            );
+        }
+    }
+
+    /** Whether the text so far ends at an opening parenthesis. */
+    private static boolean atOpenParen(StringBuilder sb) {
+        for (int i = sb.length() - 1; i >= 0; i--) {
+            char c = sb.charAt(i);
+            if (!Character.isWhitespace(c)) {
+                return c == '(';
+            }
+        }
+        return false;
     }
 
     /**

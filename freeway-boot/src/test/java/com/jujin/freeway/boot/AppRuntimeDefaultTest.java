@@ -185,6 +185,60 @@ class AppRuntimeDefaultTest {
         assertEquals(AppState.STOPPED, app.state());
     }
 
+    /**
+     * A hook shuts the application down and then throws. Both facts are true, and
+     * the state may only report one of them: {@code close()} has already run the
+     * whole shutdown sequence and set {@code shutdownAttempted}, so the runtime
+     * is fully shut down. Marking it FAILED would contradict {@code close()},
+     * which now refuses to run again — the state would claim a failed startup
+     * for an application that is in fact stopped.
+     */
+    @Test
+    void hookThatClosesThenThrowsLeavesTheShutdownStateItReached() {
+        var events = new CopyOnWriteArrayList<String>();
+        var module = new CloseThenThrowModule(events);
+        AppRuntime app = runtime(module);
+        module.runtime = app;
+
+        assertThrows(IllegalStateException.class, app::start);
+
+        assertEquals(AppState.STOPPED, app.state(),
+            "close() already completed inside the hook; startup failing "
+                + "afterwards must not overwrite the state that shutdown reached");
+        assertEquals(List.of("closer:start", "closer:stop"), events,
+            "the closer hook ran its stop exactly once — shutdown inside the hook "
+                + "is not repeated by the failure path");
+        assertDoesNotThrow(app::close,
+            "and close() still refuses to re-run, rather than closing twice");
+        assertEquals(AppState.STOPPED, app.state());
+    }
+
+    public static final class CloseThenThrowModule implements ModuleEx {
+        volatile AppRuntime runtime;
+        private final List<String> events;
+
+        CloseThenThrowModule(List<String> events) {
+            this.events = events;
+        }
+
+        @Override
+        public void bind(Binder binder) {
+            binder.contribute(RuntimeHook.class).add(new RuntimeHook() {
+                @Override
+                public void start(Container container) {
+                    events.add("closer:start");
+                    runtime.close();
+                    throw new IllegalStateException("failed after shutting down");
+                }
+
+                @Override
+                public void stop(Container container) {
+                    events.add("closer:stop");
+                }
+            });
+        }
+    }
+
     /** First hook starts, second calls close() from start(), third must never start. */
     public static final class MultiHookCloseModule implements ModuleEx {
         volatile AppRuntime runtime;

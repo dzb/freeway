@@ -77,6 +77,21 @@ public final class SqlTextParser {
             true
         );
 
+        /**
+         * The character that closes the identifier quote {@code open} opened, or
+         * {@code 0} when {@code open} opens none. The dialect-free answer
+         * ({@link #SUPERSET}), exposed so a caller validating a name before a
+         * dialect is known asks the same question here instead of restating the
+         * quote set — {@code Sql}'s column-name check used to carry its own copy
+         * of exactly this list.
+         */
+        public static char closingIdentifierQuote(char open) {
+            if (open == '[' && SUPERSET.bracketQuoting()) {
+                return ']';
+            }
+            return SUPERSET.isQuoteChar(open) ? open : 0;
+        }
+
         /** Capabilities declared by the given dialect. */
         public static LexerConfig of(Dialect dialect) {
             return new LexerConfig(

@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -265,6 +266,28 @@ class SqlTest {
     }
 
     @Test
+    void chainedUnionDoesNotNestTheLeftSide() {
+        Sql a = Sql.select("id").from("a").where("k = ?", 1);
+        Sql b = Sql.select("id").from("b").where("k = ?", 2);
+        Sql c = Sql.select("id").from("c").where("k = ?", 3);
+
+        // UNION is left-associative, so a chained left side needs no
+        // parentheses of its own — re-wrapping nested the text one level per
+        // call for a query that reads the same either way.
+        assertEquals(
+            "(SELECT id FROM a WHERE k = ?) UNION (SELECT id FROM b WHERE k = ?) UNION (SELECT id FROM c WHERE k = ?)",
+            a.union(b).union(c).sql());
+        // The right side is the other case: `A ∪ (B ∪ C)` is not `A ∪ B ∪ C`, so
+        // the grouping the caller wrote has to survive.
+        assertEquals(
+            "(SELECT id FROM a WHERE k = ?) UNION ((SELECT id FROM b WHERE k = ?) UNION (SELECT id FROM c WHERE k = ?))",
+            a.union(b.union(c)).sql());
+        // Bind order follows the branch order in both shapes.
+        assertArrayEquals(new Object[]{1, 2, 3}, a.union(b).union(c).args());
+        assertArrayEquals(new Object[]{1, 2, 3}, a.union(b.union(c)).args());
+    }
+
+    @Test
     void unionRejectsFurtherWhereClauses() {
         assertThrows(IllegalStateException.class, () ->
             Sql.select("*").from("users")
@@ -295,6 +318,41 @@ class SqlTest {
         Sql q = Sql.select("*").from("users").where("id in (?)", sub);
         assertEquals("SELECT * FROM users WHERE id in (SELECT user_id FROM orders WHERE total > ?)", q.sql());
         assertArrayEquals(new Object[]{100}, q.args());
+    }
+
+    /**
+     * A {@code Sql} spliced bare into a fragment renders a statement that reads
+     * as valid SQL, means something else, and is rejected by the driver — so the
+     * refusal has to happen at build time, where the caller's own line is on the
+     * stack. Each case below renders {@code … in SELECT …} or {@code … = SELECT
+     * …} if the guard is removed; none of them throws today.
+     */
+    @Test
+    void spliceWithoutParenthesesIsRefusedAtBuildTime() {
+        Sql sub = Sql.select("user_id").from("orders").where("total > ?", 100);
+        assertSpliceRefused(() -> Sql.select("*").from("users").where("id in ?", sub));
+        assertSpliceRefused(() -> Sql.select("*").from("users").where("a = 1 and id in ?", sub));
+        // A bare `?` carrying data, and a `?` inside someone else's parentheses,
+        // are both untouched — the guard reads the fragment, not the argument.
+        assertSpliceRefused(() -> Sql.update("t").setExpression("owner = ?", sub));
+        assertSpliceRefused(() -> Sql.select("a").from("t").groupBy("a").having("cnt > ?", sub));
+        assertEquals(
+            "SELECT * FROM users WHERE a = ? and id in (SELECT user_id FROM orders WHERE total > ?)",
+            Sql.select("*").from("users").where("a = ? and id in (?)", 1, sub).sql());
+        assertEquals("SELECT * FROM users WHERE exists (select 1 from x where y = ?)",
+            Sql.select("*").from("users")
+                .where("exists (select 1 from x where y = ?)", 1).sql());
+    }
+
+    /**
+     * Every fragment method splices through one place, so one message shape
+     * covers all of them — and the message names the fix rather than the
+     * symptom, because the symptom is a JDBC error the caller never sees.
+     */
+    private static void assertSpliceRefused(org.junit.jupiter.api.function.Executable call) {
+        SqlException ex = assertThrows(SqlException.class, call);
+        assertTrue(ex.getMessage().contains("\"(?)\""), ex.getMessage());
+        assertTrue(ex.getMessage().contains("setColumn"), ex.getMessage());
     }
 
     @Test
@@ -431,8 +489,8 @@ class SqlTest {
     void updatePathInlinesTheSameWay() {
         Sql sub = Sql.select("name").from("admins").where("id = ?", 7);
         Sql q = Sql.update("users")
-            // A fragment value is spliced where the placeholder is, so the
-            // caller writes the parentheses that make it a scalar subquery.
+            // A fragment is raw SQL the caller wrote, so the caller parenthesizes
+            // a nested value — the same rule as where("id in (?)", sub).
             .setExpression("name = (?)", sub)
             .where("id = ?", 3);
 
@@ -440,6 +498,139 @@ class SqlTest {
             "UPDATE users SET name = (SELECT name FROM admins WHERE id = ?) WHERE id = ?",
             q.sql());
         assertArrayEquals(new Object[]{7, 3}, q.args());
+    }
+
+    /**
+     * The parenthesis rule belongs to the renderer, not to the call site: an
+     * unparenthesized splice merged the subquery's own WHERE into the enclosing
+     * statement's, so {@code setExpression("a = ?", sub)} silently produced a
+     * different query. Requiring {@code "a = (?)"} in the fragment pushed that
+     * knowledge onto every caller, and the INSERT path had no fragment to carry
+     * it — the same defect with two answers.
+     */
+    @Test
+    void setColumnRejectsAFragmentAsTheColumnName() {
+        // The javadoc promised a name is validated as a name; only a null check
+        // existed, so a request-derived name became SQL: "a = 1, evil" rendered
+        // as a second column.
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+            () -> Sql.insert("t").setColumn("a = 1, evil", "v"));
+        assertTrue(ex.getMessage().contains("is not a column name"), ex.getMessage());
+        assertTrue(ex.getMessage().contains("setExpression"), ex.getMessage());
+    }
+
+    @Test
+    void setColumnAcceptsBareAndQuotedNames() {
+        for (String name : new String[]{"tenant_id", "_x", "col$1", "`my col`", "\"my col\"", "[my col]"}) {
+            assertEquals("INSERT INTO users (" + name + ") VALUES (?)",
+                Sql.insert("users").setColumn(name, "v").sql(),
+                "must be accepted: " + name);
+        }
+    }
+
+    /**
+     * Bare and quoted are not alternatives — they compose, per part of a
+     * qualified name. PostgreSQL and MySQL both spell a qualified name whose
+     * parts need quoting this way, and a validator that rejects it breaks code
+     * that worked the day before.
+     */
+    @Test
+    void qualifiedNamesComposeBareAndQuotedParts() {
+        for (String name : new String[]{
+            "users.name", "public.\"My Col\"", "`db`.`table`.col",
+            "\"sch\".tbl.\"c\"", "[db].[my table].[c]"}) {
+            assertEquals("INSERT INTO users (" + name + ") VALUES (?)",
+                Sql.insert("users").setColumn(name, "v").sql(),
+                "must be accepted: " + name);
+        }
+    }
+
+    /**
+     * A dot inside a quoted part is that part's own character, so it must not
+     * split the name — {@code "a.b"} is one column literally called {@code a.b}.
+     */
+    @Test
+    void aDotInsideQuotesIsPartOfTheName() {
+        assertEquals("INSERT INTO users (\"a.b\") VALUES (?)",
+            Sql.insert("users").setColumn("\"a.b\"", "v").sql());
+    }
+
+    /**
+     * A doubled delimiter is the standard escape ({@code "a""b"} is the name
+     * {@code a"b}), and a foreign quote character inside a quoted part is an
+     * ordinary character on the dialect that uses these delimiters. Rejecting
+     * either would be the validator inventing rules the dialect does not have.
+     */
+    @Test
+    void quotedPartsAllowEscapesAndForeignQuotes() {
+        for (String name : new String[]{"\"a\"\"b\"", "`a\"b`", "`arr[0]`", "[a[b]"}) {
+            assertEquals("INSERT INTO users (" + name + ") VALUES (?)",
+                Sql.insert("users").setColumn(name, "v").sql(),
+                "must be accepted: " + name);
+        }
+    }
+
+    /** A name that closes its own quoting is the one thing the check exists for. */
+    @Test
+    void aNameThatClosesItsOwnQuotingIsRejected() {
+        for (String name : new String[]{"\"a\"b\"", "`a`b`", "[a]b]", "a`b", "\"a\" = 1"}) {
+            assertThrows(IllegalArgumentException.class,
+                () -> Sql.insert("t").setColumn(name, "v"),
+                "must be rejected: " + name);
+        }
+    }
+
+    @Test
+    void setColumnRejectsAValueThatIsNotAQuery() {
+        // The slot renders as a scalar subquery; a UNION or an INSERT parenthesized
+        // as an expression is nonsense that renders without complaint and fails at
+        // the database instead.
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+            () -> Sql.insert("t").setColumn("x",
+                Sql.select("id").from("a").union(Sql.select("id").from("b"))));
+        assertTrue(ex.getMessage().contains("scalar subquery"), ex.getMessage());
+        assertTrue(ex.getMessage().contains("compound query"), ex.getMessage());
+    }
+
+    /** Each rejected kind is named, so the reader knows which call site to fix. */
+    @Test
+    void setColumnNamesTheKindOfStatementItRefuses() {
+        assertTrue(assertThrows(IllegalArgumentException.class,
+            () -> Sql.insert("t").setColumn("x", Sql.insert("u").setColumn("a", 1)))
+            .getMessage().contains("an INSERT"));
+        assertTrue(assertThrows(IllegalArgumentException.class,
+            () -> Sql.insert("t").setColumn("x", Sql.update("u").setExpression("a = ?", 1)))
+            .getMessage().contains("an UPDATE"));
+        assertTrue(assertThrows(IllegalArgumentException.class,
+            () -> Sql.insert("t").setColumn("x", Sql.delete("u")))
+            .getMessage().contains("a DELETE"));
+        assertTrue(assertThrows(IllegalArgumentException.class,
+            () -> Sql.insert("t").setColumn("x",
+                Sql.select("1").unionAll(Sql.select("2"))))
+            .getMessage().contains("UNION ALL"),
+            "unionAll must not be reported as a plain UNION");
+    }
+
+    /** The message must not spill the statement's text or its bind values. */
+    @Test
+    void theRefusalDoesNotEchoTheStatementText() {
+        String secret = "s3cret-tenant";
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+            () -> Sql.insert("t").setColumn("x",
+                Sql.select("id").from("tenants").where("name = ?", secret)
+                    .union(Sql.select("id").from("other"))));
+        assertFalse(ex.getMessage().contains(secret),
+            "a bind value must not reach the exception message: " + ex.getMessage());
+        assertFalse(ex.getMessage().contains("FROM tenants"),
+            "nor the statement text: " + ex.getMessage());
+    }
+
+    /** A WITH query is still a SELECT, and the javadoc says so. */
+    @Test
+    void aCommonTableExpressionIsAcceptedAsAColumnValue() {
+        Sql cte = Sql.select("id").from("t").with("recent", Sql.select("id").from("u"));
+        assertEquals("INSERT INTO t (x) VALUES ((WITH recent AS (SELECT id FROM u) SELECT id FROM t))",
+            Sql.insert("t").setColumn("x", cte).sql());
     }
 
     @Test

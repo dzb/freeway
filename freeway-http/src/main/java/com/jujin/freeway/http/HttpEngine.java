@@ -15,12 +15,16 @@ import java.io.IOException;
  *       {@code readTimeout}, {@code writeTimeout}, {@code receiveBufferSize},
  *       {@code sendBufferSize} and {@code maxConnections} wherever the engine
  *       has a counterpart (the built-in engine has one for all five).</li>
- *   <li><b>Per-exchange policy</b> — state-shaped: {@code maxBodySize}, the
- *       engine initializes {@link HttpContext#setMaxBodySize} on every exchange
- *       it creates (the built-in engine does so at session start), enforcement
- *       lives in the shared {@link AbstractHttpContext#readBody}, so 413
- *       accounting is identical across engines, and a filter may legitimately
- *       narrow the limit further; wire-adjacent: {@code compression}, whose
+ *   <li><b>Per-exchange policy</b> — state-shaped: {@code maxBodySize}, which the
+ *       engine hands to the {@link HttpContext} it creates as a constructor
+ *       argument, so an engine cannot forget to set it at all; one that reuses a
+ *       context across requests calls {@code resetMaxBodySize()} from its own
+ *       {@code reset()}, enforcement
+ *       lives in {@code http.internal.LimitedInputStream} — the one limiter both
+ *       paths run, {@link AbstractHttpContext#readBody} being a one-line delegate
+ *       to it — so 413 accounting is identical across engines rather than two
+ *       loops that happen to agree, and a filter may legitimately narrow the
+ *       limit further; wire-adjacent: {@code compression}, whose
  *       execution <em>is</em> transport, so it runs in the engine's own output
  *       path over the shared {@link Compression} primitives (q-value
  *       negotiation) — deliberately not a seam setter (that relocates state,
