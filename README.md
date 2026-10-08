@@ -240,15 +240,14 @@ Boot turns a composed container into an application runtime:
 
 ```mermaid
 stateDiagram-v2
-    direction LR
     CREATED --> STARTING : start()
-    CREATED --> STOPPING : close()
     STARTING --> RUNNING : hooks started
-    STARTING --> FAILED : hook failure
-    STARTING --> STOPPING : close() (same thread)
     RUNNING --> STOPPING : close()
+    STARTING --> FAILED : hook failure
     STOPPING --> STOPPED : drained
     STOPPING --> FAILED : stop error
+    CREATED --> STOPPING : close()
+    STARTING --> STOPPING : close() (same thread)
     FAILED --> STOPPING : close()
     classDef idle fill:#eceff1,stroke:#607d8b,color:#263238
     classDef live fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
