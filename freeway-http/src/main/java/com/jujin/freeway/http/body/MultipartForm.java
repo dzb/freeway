@@ -21,6 +21,16 @@ public final class MultipartForm {
 
     private static final Charset RAW = StandardCharsets.ISO_8859_1;
 
+    /**
+     * Default ceiling for one part, used by the no-argument {@link #parse} the
+     * framework itself calls. Deliberately its own fact, not the exchange's
+     * {@code maxBodySize}: a body of many parts has a per-part limit that is
+     * independent of the whole-body one, and this stays a fixed policy rather
+     * than a key — the request as a whole is still bounded by
+     * {@code freeway.http.max-body-size}, which is what a deployment tunes.
+     */
+    private static final long DEFAULT_MAX_PART_SIZE = 10 * 1024 * 1024L;
+
     private final List<Part> parts;
     private final Map<String, List<Part>> byName;
 
@@ -41,7 +51,7 @@ public final class MultipartForm {
 
     public static MultipartForm parse(String contentType, byte[] body)
         throws IOException {
-        return parse(contentType, body, 10 * 1024 * 1024L); // 10MB default per part
+        return parse(contentType, body, DEFAULT_MAX_PART_SIZE);
     }
 
     public static MultipartForm parse(String contentType, byte[] body, long maxPartSize)

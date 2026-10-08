@@ -27,6 +27,11 @@ import java.util.Map;
 @Marker(Builtin.class)
 public final class CloudHealthModule implements ModuleEx {
 
+    /** Liveness probe path — the one owner; {@code TracingFilter} skips it. */
+    public static final String LIVE_PATH = "/health/live";
+    /** Readiness probe path — the one owner; {@code TracingFilter} skips it. */
+    public static final String READY_PATH = "/health/ready";
+
     @Override
     public void bind(Binder b) {
         // sendJson, not send with a body literal: it is what types the answer
@@ -37,8 +42,8 @@ public final class CloudHealthModule implements ModuleEx {
         // on content type was a downgrade, not a choice.
         b.contribute(Route.class)
             .add("freeway.cloud.health.live",
-                Route.get("/health/live", ctx -> ctx.sendJson(200, Map.of("status", "ok"))));
+                Route.get(LIVE_PATH, ctx -> ctx.sendJson(200, Map.of("status", "ok"))));
         b.contribute(Route.class)
-            .add("freeway.cloud.health.ready", Route.get("/health/ready", ReadyHandler.class));
+            .add("freeway.cloud.health.ready", Route.get(READY_PATH, ReadyHandler.class));
     }
 }

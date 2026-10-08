@@ -23,6 +23,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`/health/ready` 与 RPC 响应的 `Content-Type` 由 `application/json` 改为
+  `application/json; charset=utf-8`**（`freeway-cloud`，**无编译错误保护的行为变更**）：二者统一
+  走 `sendJson` 的结果，与 `/health/live`、`/healthz` 及框架其余 JSON 响应一致。JSON 客户端不受
+  影响（charset 只是显式化）。
+- **`ReadyHandler` 的构造器去掉 `JsonCodec` 参数**（`freeway-cloud.internal`，非公开面）：改用
+  `sendJson` 后它不再需要自带 codec。形状变更，编译错误即迁移。
+- **`MultipartForm` 的每分部上限提为具名常量 `DEFAULT_MAX_PART_SIZE`**（`freeway-http`，仅可读性）：
+  原先内联 `10 * 1024 * 1024L`，与 `HttpServerConfig.DEFAULT_MAX_BODY_SIZE` **数值相同但语义不同**
+  （每分部 vs 整体），容易被误读为有关联。注释写明它刻意固定、与 `maxBodySize` 无关，且整体仍由
+  `freeway.http.max-body-size` 约束。
+
 - **`LazyHandler` / `LazyEndpoint` 更名为 `ResolvableHandler` / `ResolvableEndpoint`**（`freeway-http`，非公开面，仓内改名）：旧名承诺了实现从未有过的惰性——`HttpModule` 在构建 `RouteIndex` 时（启动期经 `HttpServer` 到达）就解析了全部类路线，**不存在 match 时的解析路径**。这不只是不准，还付了代价：`WebSocketIndex` 在建索引时拒绝未解析的端点，而 `RouteIndex` **没有**对应检查，同一个错误改为在首个匹配请求上从分发路径内部抛出、只报一个类名。两个索引一个有检查一个没有，最可能的原因就是"lazy"让那条检查显得多余。`Resolvable` 陈述两阶段事实，不对时机作任何承诺。两者始终不是公开面（全部引用在 `freeway-http` 内部，`handlerType()` 的调用点只有 `HttpModule` 与 `RouteIndex`，都在 `freeway-http` 内），`freeway-ext` 与应用侧零影响——它们写的是 `Route.get(path, X.class)`。
 - **`RouteIndex` 恢复未解析类路线的 fail-fast**：与 `WebSocketIndex` 对称，在装配期报出**哪个路由、哪个类、谁负责解析、以及出路**，而不是在首个请求上从分发内部抛出。手工构建索引仍是受支持的——持有容器的调用方在索引前解析每个包装器即可。注意 `expand()` 需只调一次，使被解析的展开与被索引的展开是同一份（`RouteGroup.expand()` 每次新建 `Route`）。
 - **未解析包装器的守卫消息对齐**（`freeway-http`）：`ResolvableHandler.handle` 与 `ResolvableEndpoint.open`/`subprotocols` 现在说同样几件事——类的全名、`invoked directly, outside an index`、谁负责解析（`HttpModule`）、出路（`resolve(factory)` 或声明实例）。端点侧不再用 `+ endpointType` 打印 `class Foo`（`Class.toString`），两条几乎相同的消息并为一条（phase 参数区分 upgrade/handshake）。措辞同时据实修正：两个索引都在**装配期拒绝**未解析包装器，所以这一支只有"直接调用包装器"能到，此前"手工构建的索引也可能持有未解析包装器、由调用方负责 resolve"的说法已经不成立。`UnresolvedHandlerRouteTest` 与新增的 `UnresolvedEndpointTest` 各钉一条。
@@ -77,6 +88,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   之间产生歧义（试过，javac 报"引用不明确"），所以类声明要么 `new X()`，要么走 boot 链命名。
 
 ### Fixed
+
+- **`TracingFilter` 不再自己抄一份探针路径，改从路径的 owner 取（`freeway-cloud`）**：它此前把
+  `/healthz`、`/health/live`、`/health/ready`、`/metrics` 四个字面量抄进一个静态集合，而这四个
+  路径分别归 `HealthFilter`（**且 `freeway.http.health.path` 可配**）、`CloudHealthModule`、
+  `CloudObserveModule`。后果是真实的：部署把健康路径挪走后，探针会被追踪（正是这个 filter 要
+  避免的 span 噪声），而旧默认值白留在跳过集里。现在由 `CloudObserveModule` 在贡献 filter 时
+  解析**已绑定的** `HealthFilter.healthPath()`（缺省回退 `HealthFilter.DEFAULT_PATH`，因此
+  "只装 observe 不装 HttpModule" 仍可启动），两个 cloud 路径提为
+  `CloudHealthModule.LIVE_PATH`/`READY_PATH` 与 `CloudObserveModule.METRICS_PATH`。回归测试
+  `InboundTracingTest.aMovedHealthPathIsStillNotTraced`（破坏后精确变红）。
+- **JSON 响应收归 `sendJson` 一处产生（`freeway-cloud`）**：`ReadyHandler`、`RpcEndpoint`（成功
+  路径与两处错误路径）、`RegistryApi` 此前手写 `setHeader("Content-Type","application/json")` +
+  `send(codec.toJson(...))`，而框架的 `sendJson`→`outputJson` 本就做这件事（`ensureContentType` +
+  注入的 `JsonCodec`）。**可观测的不一致**：`/health/ready` 与 `/health/live` 是同模块的兄弟探针，
+  却一个报 `application/json`、一个报 `application/json; charset=utf-8`（R10 只改了 live）。
+  统一后三者一致，`HealthEndpointsTest.bothProbesAnswerAsJson` 收紧为**精确**断言
+  `MediaTypes.JSON_UTF8`（破坏后变红）。
 
 - **并行分支汇聚的 join 记账不再是原子的（竞态修复，`freeway-flow`）**：多条分支汇聚到同一个
   INCLUSIVE/PARALLEL 网关时，偶发 `FlowException: Graph '…' did not complete: dead end at node

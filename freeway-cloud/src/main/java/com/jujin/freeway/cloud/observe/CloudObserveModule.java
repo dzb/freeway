@@ -4,6 +4,7 @@ import com.jujin.freeway.cloud.annotation.Local;
 import com.jujin.freeway.cloud.internal.MetricsHandler;
 import com.jujin.freeway.cloud.internal.TracingFilter;
 import com.jujin.freeway.commons.metrics.Metrics;
+import com.jujin.freeway.http.filter.HealthFilter;
 import com.jujin.freeway.http.filter.HttpFilter;
 import com.jujin.freeway.http.route.Route;
 import com.jujin.freeway.ioc.Binder;
@@ -44,6 +45,10 @@ import com.jujin.freeway.ioc.annotation.Marker;
 @Marker(Builtin.class)
 public final class CloudObserveModule implements ModuleEx {
 
+    /** Scrape endpoint path — the one owner; {@code TracingFilter} skips it. */
+    public static final String METRICS_PATH = "/metrics";
+
+
     @Override
     public void bind(Binder b) {
         b.bind(Tracer.class)
@@ -61,10 +66,20 @@ public final class CloudObserveModule implements ModuleEx {
         b.bind(MetricsSnapshot.class)
             .to((Container container) -> container.get(MetricsDefault.class));
         b.contribute(Route.class)
-            .add("freeway.cloud.metrics", Route.get("/metrics", MetricsHandler.class));
+            .add("freeway.cloud.metrics", Route.get(METRICS_PATH, MetricsHandler.class));
         // Inbound server spans: this module owns the Tracer, so the filter is
         // contributed here rather than by the context module (which must stay
-        // installable without a tracer).
-        b.contribute(HttpFilter.class).add(TracingFilter.class);
+        // installable without a tracer). The http probe path is resolved from
+        // the bound HealthFilter when HttpModule is present — it is
+        // configurable there — and falls back to the framework default when it
+        // is not, so an observe-only install (no HttpModule) still starts.
+        b.contribute(HttpFilter.class).add("freeway.cloud.tracing",
+            container -> new TracingFilter(container.get(Tracer.class), healthPath(container)));
+    }
+
+    private static String healthPath(Container container) {
+        return container.isActiveBinding(HealthFilter.class)
+            ? container.get(HealthFilter.class).healthPath()
+            : HealthFilter.DEFAULT_PATH;
     }
 }

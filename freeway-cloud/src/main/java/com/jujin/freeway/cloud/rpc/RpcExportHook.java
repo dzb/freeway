@@ -94,7 +94,7 @@ final class RpcExportHook implements RuntimeHook {
         RpcTarget target = resolved.get(mapping);
         if (target == null) {
             // Unexported or malformed mapping: not reachable, by declaration.
-            RpcEndpoint.reject(ctx, json, 404, "no export for mapping " + mapping);
+            RpcEndpoint.reject(ctx, 404, "no export for mapping " + mapping);
             return;
         }
         RpcEndpoint.serve(ctx, mapping, target, json);

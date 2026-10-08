@@ -72,7 +72,7 @@ public final class RpcEndpoint {
             throws IOException {
         String rpcVersion = ctx.header(RemoteCaller.VERSION_HEADER).orElse(null);
         if (!RemoteCaller.VERSION.equals(rpcVersion)) {
-            reject(ctx, codec, 400, "unsupported rpc version: " + rpcVersion);
+            reject(ctx, 400, "unsupported rpc version: " + rpcVersion);
             return;
         }
         String method = ctx.pathVar(RpcPaths.METHOD_VAR).orElse("");
@@ -81,7 +81,7 @@ public final class RpcEndpoint {
         // the same answer as "nobody exports that name".
         RpcTarget.Exported entry = target.method(method);
         if (entry == null) {
-            reject(ctx, codec, 404, "no handler for topic " + mapping + "." + method);
+            reject(ctx, 404, "no handler for topic " + mapping + "." + method);
             return;
         }
 
@@ -91,7 +91,7 @@ public final class RpcEndpoint {
             args = decodeArgs(new String(rawBody, StandardCharsets.UTF_8),
                 entry.parameterTypes(), entry.method().isVarArgs(), codec);
         } catch (RuntimeException e) {
-            reject(ctx, codec, 400, "malformed argument array: " + e.getMessage());
+            reject(ctx, 400, "malformed argument array: " + e.getMessage());
             return;
         }
         try {
@@ -99,13 +99,12 @@ public final class RpcEndpoint {
             if (result == null) {
                 ctx.send(200, "");
             } else {
-                ctx.setHeader("Content-Type", "application/json");
-                ctx.send(200, codec.toJson(result));
+                ctx.sendJson(200, result);
             }
         } catch (Throwable e) {
             // Handler failures (business or otherwise) never escape as a 500:
             // the class crosses the boundary, the message only on request.
-            encodeBusinessFailure(ctx, codec, mapping, target.propagateMessage(), e);
+            encodeBusinessFailure(ctx, mapping, target.propagateMessage(), e);
         }
     }
 
@@ -160,8 +159,8 @@ public final class RpcEndpoint {
     }
 
     private static void encodeBusinessFailure(
-            HttpContext ctx, JsonCodec codec, String mapping,
-            boolean propagateMessage, Throwable ex) throws IOException {
+            HttpContext ctx, String mapping, boolean propagateMessage, Throwable ex)
+            throws IOException {
         // The detail is always available to operators on THIS side; what
         // crosses the boundary is the class (the contract) and, only on
         // request, the free-text message. The warn line names the mapping and
@@ -174,19 +173,14 @@ public final class RpcEndpoint {
         String message = propagateMessage
             ? String.valueOf(ex.getMessage())
             : "remote handler failed";
-        ctx.setStatus(400);
-        ctx.setHeader("Content-Type", "application/json");
         ctx.setHeader(RemoteCaller.EXCEPTION_CLASS_HEADER, headerText(className));
         ctx.setHeader(RemoteCaller.EXCEPTION_MESSAGE_HEADER, headerText(message));
-        ctx.send(400, errorBody(codec, className));
+        ctx.sendJson(400, Map.of("error", className));
     }
 
-    static void reject(HttpContext ctx, JsonCodec codec, int status, String message)
-            throws IOException {
-        ctx.setStatus(status);
-        ctx.setHeader("Content-Type", "application/json");
+    static void reject(HttpContext ctx, int status, String message) throws IOException {
         ctx.setHeader("X-RPC-Reject-Reason", headerText(message));
-        ctx.send(status, errorBody(codec, message));
+        ctx.sendJson(status, Map.of("error", message));
     }
 
     /**
@@ -201,7 +195,4 @@ public final class RpcEndpoint {
 
     /** Bodies go through the codec: an invalid JSON error document is a worse
      *  failure than the one it reports. */
-    private static String errorBody(JsonCodec codec, String message) {
-        return codec.toJson(Map.of("error", message));
-    }
 }

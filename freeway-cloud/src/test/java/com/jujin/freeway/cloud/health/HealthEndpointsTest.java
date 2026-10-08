@@ -8,6 +8,7 @@ import com.jujin.freeway.cloud.discovery.ServiceDiscovery;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.cloud.discovery.ServiceRegistry;
 import com.jujin.freeway.http.HttpModule;
+import com.jujin.freeway.http.MediaTypes;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.ModuleEx;
 import org.junit.jupiter.api.AfterEach;
@@ -93,7 +94,9 @@ class HealthEndpointsTest {
             for (String probe : List.of("/health/live", "/health/ready", "/healthz")) {
                 HttpResponse<String> response = get(app, probe);
                 String contentType = response.headers().firstValue("content-type").orElse("<none>");
-                assertTrue(contentType.startsWith("application/json"),
+                // Exact, not startsWith: one owner (sendJson) types every JSON
+                // body, so the three probes must not disagree even on charset.
+                assertEquals(MediaTypes.JSON_UTF8, contentType,
                     probe + " must answer as JSON; got " + contentType
                         + " with body " + response.body());
             }

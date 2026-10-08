@@ -113,6 +113,22 @@ class InboundTracingTest {
         }
     }
 
+    @Test
+    void aMovedHealthPathIsStillNotTraced() throws Exception {
+        RecordingTracer tracer = new RecordingTracer();
+        // The probe path is configurable; the skip list must follow the
+        // configured one, not the old default.
+        System.setProperty(HttpModule.ConfigKeys.HEALTH_PATH, "/internal/health");
+        try (AppRuntime app = FreewayApp.create(new HttpModule()).add(CloudModule.class).add(new Routes()).add(binder -> binder.bind(Tracer.class).to(container -> tracer).primary()).start()) {
+            assertEquals(200, get(app, "/internal/health", true).statusCode());
+            assertEquals(200, get(app, "/api/thing", true).statusCode());
+            assertEquals(List.of("GET /api/thing"), tracer.names,
+                "the configured health path must be skipped, not the framework default");
+        } finally {
+            System.clearProperty(HttpModule.ConfigKeys.HEALTH_PATH);
+        }
+    }
+
     /** A tracer that records span names and owns a child context, like the default one. */
     static final class RecordingTracer implements Tracer {
         final List<String> names = new CopyOnWriteArrayList<>();

@@ -5,7 +5,6 @@ import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.route.RouteHandler;
 
 import java.io.IOException;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -57,17 +56,14 @@ public final class RegistryApi implements RouteHandler {
     }
 
     private void discover(HttpContext ctx, String serviceId) throws IOException {
-        List<ServiceInstance> list = discovery.instances(serviceId);
-        ctx.setHeader("Content-Type", "application/json");
-        ctx.send(200, codec.toJson(list));
+        ctx.sendJson(200, discovery.instances(serviceId));
     }
 
     private void register(HttpContext ctx) throws IOException {
         String json = ctx.bodyText();
         ServiceInstance instance = codec.fromJson(json, ServiceInstance.class);
         registry.register(instance);
-        ctx.setHeader("Content-Type", "application/json");
-        ctx.send(200, codec.toJson(instance));
+        ctx.sendJson(200, instance);
     }
 
     private void renew(HttpContext ctx, String serviceId, String instanceId) throws IOException {
@@ -83,7 +79,6 @@ public final class RegistryApi implements RouteHandler {
         Optional<ServiceInstance> match = discovery.instances(serviceId).stream()
             .filter(i -> i.instanceId().equals(instanceId))
             .findFirst();
-        ctx.setHeader("Content-Type", "application/json");
         if (match.isPresent()) {
             registry.unregister(match.get());
             ctx.sendJson(200, Map.of("unregistered", true));

@@ -1,10 +1,13 @@
 package com.jujin.freeway.cloud.internal;
 
 import com.jujin.freeway.cloud.context.InvocationContext;
+import com.jujin.freeway.cloud.health.CloudHealthModule;
+import com.jujin.freeway.cloud.observe.CloudObserveModule;
 import com.jujin.freeway.cloud.observe.Tracer;
 import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.filter.HttpFilter;
 import com.jujin.freeway.http.route.RouteHandler;
+import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
@@ -29,18 +32,26 @@ import java.util.Set;
  *
  * <p>The framework's own probes and scrape endpoint are skipped: they are
  * infrastructure traffic, and tracing them would drown the application's spans
- * in every backend that keeps a per-name series.</p>
+ * in every backend that keeps a per-name series. The paths come from the
+ * modules that serve them rather than being restated here — and the http probe
+ * is the <em>configured</em> one, so a deployment that moves
+ * {@code freeway.http.health.path} keeps its probe out of the spans.</p>
  */
 public final class TracingFilter implements HttpFilter {
 
-    /** {@code /healthz} (http), {@code /health/*} (cloud health), {@code /metrics} (cloud observe). */
-    private static final Set<String> INFRASTRUCTURE_PATHS =
-        Set.of("/healthz", "/health/live", "/health/ready", "/metrics");
-
     private final Tracer tracer;
+    private final Set<String> infrastructurePaths;
 
-    public TracingFilter(Tracer tracer) {
+    public TracingFilter(Tracer tracer, String healthPath) {
         this.tracer = Objects.requireNonNull(tracer, "tracer");
+        Objects.requireNonNull(healthPath, "healthPath");
+        // Set.copyOf tolerates a pathological overlap (a health path set to
+        // /metrics) instead of throwing at startup.
+        this.infrastructurePaths = Set.copyOf(List.of(
+            healthPath,
+            CloudHealthModule.LIVE_PATH,
+            CloudHealthModule.READY_PATH,
+            CloudObserveModule.METRICS_PATH));
     }
 
     @Override
@@ -50,7 +61,7 @@ public final class TracingFilter implements HttpFilter {
 
     @Override
     public void doFilter(HttpContext ctx, RouteHandler next) throws Exception {
-        if (INFRASTRUCTURE_PATHS.contains(ctx.path())) {
+        if (infrastructurePaths.contains(ctx.path())) {
             next.handle(ctx);
             return;
         }

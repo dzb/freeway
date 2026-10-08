@@ -2,7 +2,6 @@ package com.jujin.freeway.cloud.internal;
 
 import com.jujin.freeway.cloud.health.CloudHealthContributor;
 import com.jujin.freeway.cloud.health.HealthResult;
-import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.route.RouteHandler;
 
@@ -39,14 +38,13 @@ public final class ReadyHandler implements RouteHandler {
         Executors.newVirtualThreadPerTaskExecutor();
     private static final long READINESS_CHECK_TIMEOUT_MS = 2_000;
     private final List<CloudHealthContributor> contributors;
-    private final JsonCodec jsonCodec;
 
     /**
      * @throws IllegalStateException on duplicate contributor names — a wiring
      *                               error, so it surfaces at construction
      *                               instead of failing every readiness probe
      */
-    public ReadyHandler(List<CloudHealthContributor> contributors, JsonCodec jsonCodec) {
+    public ReadyHandler(List<CloudHealthContributor> contributors) {
         Set<String> names = new HashSet<>();
         List<CloudHealthContributor> active = new ArrayList<>(contributors.size());
         for (CloudHealthContributor contributor : contributors) {
@@ -60,7 +58,6 @@ public final class ReadyHandler implements RouteHandler {
             active.add(contributor);
         }
         this.contributors = List.copyOf(active);
-        this.jsonCodec = jsonCodec;
     }
 
     @Override
@@ -97,8 +94,7 @@ public final class ReadyHandler implements RouteHandler {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("status", healthy ? "ok" : "unhealthy");
         body.put("cloud", cloud);
-        ctx.setHeader("Content-Type", "application/json");
-        ctx.send(healthy ? 200 : 503, jsonCodec.toJson(body));
+        ctx.sendJson(healthy ? 200 : 503, body);
     }
 
     private HealthResult withTimeout(CloudHealthContributor contributor) throws Exception {
