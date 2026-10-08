@@ -9,289 +9,163 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
-- **`freeway-http` 不再产出 `tests` classifier 的测试 jar**（`freeway-http/pom.xml` 整个
-  `<build>` 段移除，含 `maven-jar-plugin` 的 `test-jar` goal）。它自 1.0.3 起存在，唯一理由是
-  `freeway-ext` 的两个引擎适配器要复用 core 测试树里的引擎契约测试——那是当时它们唯一可能在的
-  地方。而 ext 已于 2026-09-13（`746e5b9`）把这些契约收敛进自己的
-  `freeway-http-adapter-testkit`（普通 `src/main` 产物），那条 `tests` 依赖却被遗下；本轮已核实
-  并删除（61 个顶层类对 ext 全部源码交叉核对 **0 引用**、无通配符导入、无反射、无类名字符串），
-  至此产出侧也没有消费方了。按「无兼容 shim」与「先看角色再判死」两条，产出侧一并去掉。
-  **这是面向发布的形状变更**：从 1.5.6 起 `freeway-http` 不再附带
-  `freeway-http-<version>-tests.jar`（其 `.asc` 签名同样不再生成）。任何仍在依赖该 classifier 的
-  外部代码会**解析失败**——这正是本项目要的迁移路径：编译/解析错误就是迁移提示。
-  `freeway-http` 此前是七个模块里**唯一**带 `<build>` 段的，去掉后与其它六个一致。
+- **`freeway-http` 不再产出 `tests` classifier 的测试 jar**：它自 1.0.3 起存在，唯一理由是
+  `freeway-ext` 的两个引擎适配器要复用 core 测试树里的契约测试；ext 已把这些契约收敛进自己的
+  `freeway-http-adapter-testkit`（`746e5b9`），那条依赖被遗下并已核实删除（61 个顶层类对 ext
+  全部源码 0 引用）。**面向发布的形状变更**：仍依赖该 classifier 的外部代码会解析失败——解析
+  错误即迁移提示。
 
 ### Changed
 
+- **模块组合的公开词汇收敛为"模块 + 入口列表"**：树类型 `ModuleNode` 移入 `ioc.internal`（包私有），
+  删除 `Freeway.create(ModuleNode)`、`FreewayApp.run/create(ModuleNode…)`、
+  `AppBuilder.add(ModuleNode…)`、`Container.moduleTree()`；`AppBuilder` 消融进 `FreewayApp`
+  （`create(...)` 返回它、链式方法返回它、`start()` 返回 `AppRuntime`）；删除
+  `FreewayApp.run(String[])`——唯一一个"应用完全由 classpath 决定"的入口，与"No classpath
+  scanning"相抵。boot 的公开词汇从三个类型收敛为两个，`ContainerImpl` 成为唯一的"声明 → 结构"
+  装配点。迁移就是把树形写法写成 `new OrderModule(), CloudModule.class`。
+- **`@PostConstruct` 只属于受管路径**：`Container.create` 是裸 `new` 加依赖解析，不再跑
+  `@PostConstruct`（此前 `to(c -> c.create(X))` 下静默跑两遍）。四条 realize 路径统一在 binding
+  的 materialize 步执行一次；`contribute(X.class)` 承诺的 `@PostConstruct` 由贡献路径显式发出，
+  其不配对 `@PreDestroy` 是既有约定。见 Migration。
+- **收尾首选 `AutoCloseable`，`@PreDestroy` 收窄为"必须能在 `EventBus` 仍存活时发布"的那一类**
+  （见 `DEVELOPER-GUIDE` 的 Service Lifecycle）。同时标两者时都跑、各一次（去重只在阶段内成立）；
+  `AutoCloseable` 放最后是刻意的，`@PreDestroy` 在它之前。`@PostConstruct` 无替代品：`advise`
+  拦截的是方法调用，而它发生在对象尚不可调用之时。
 - **`/health/ready` 与 RPC 响应的 `Content-Type` 由 `application/json` 改为
-  `application/json; charset=utf-8`**（`freeway-cloud`，**无编译错误保护的行为变更**）：二者统一
-  走 `sendJson` 的结果，与 `/health/live`、`/healthz` 及框架其余 JSON 响应一致。JSON 客户端不受
-  影响（charset 只是显式化）。
-- **`ReadyHandler` 的构造器去掉 `JsonCodec` 参数**（`freeway-cloud.internal`，非公开面）：改用
-  `sendJson` 后它不再需要自带 codec。形状变更，编译错误即迁移。
-- **`MultipartForm` 的每分部上限提为具名常量 `DEFAULT_MAX_PART_SIZE`**（`freeway-http`，仅可读性）：
-  原先内联 `10 * 1024 * 1024L`，与 `HttpServerConfig.DEFAULT_MAX_BODY_SIZE` **数值相同但语义不同**
-  （每分部 vs 整体），容易被误读为有关联。注释写明它刻意固定、与 `maxBodySize` 无关，且整体仍由
-  `freeway.http.max-body-size` 约束。
-
-- **`LazyHandler` / `LazyEndpoint` 更名为 `ResolvableHandler` / `ResolvableEndpoint`**（`freeway-http`，非公开面，仓内改名）：旧名承诺了实现从未有过的惰性——`HttpModule` 在构建 `RouteIndex` 时（启动期经 `HttpServer` 到达）就解析了全部类路线，**不存在 match 时的解析路径**。这不只是不准，还付了代价：`WebSocketIndex` 在建索引时拒绝未解析的端点，而 `RouteIndex` **没有**对应检查，同一个错误改为在首个匹配请求上从分发路径内部抛出、只报一个类名。两个索引一个有检查一个没有，最可能的原因就是"lazy"让那条检查显得多余。`Resolvable` 陈述两阶段事实，不对时机作任何承诺。两者始终不是公开面（全部引用在 `freeway-http` 内部，`handlerType()` 的调用点只有 `HttpModule` 与 `RouteIndex`，都在 `freeway-http` 内），`freeway-ext` 与应用侧零影响——它们写的是 `Route.get(path, X.class)`。
-- **`RouteIndex` 恢复未解析类路线的 fail-fast**：与 `WebSocketIndex` 对称，在装配期报出**哪个路由、哪个类、谁负责解析、以及出路**，而不是在首个请求上从分发内部抛出。手工构建索引仍是受支持的——持有容器的调用方在索引前解析每个包装器即可。注意 `expand()` 需只调一次，使被解析的展开与被索引的展开是同一份（`RouteGroup.expand()` 每次新建 `Route`）。
-- **未解析包装器的守卫消息对齐**（`freeway-http`）：`ResolvableHandler.handle` 与 `ResolvableEndpoint.open`/`subprotocols` 现在说同样几件事——类的全名、`invoked directly, outside an index`、谁负责解析（`HttpModule`）、出路（`resolve(factory)` 或声明实例）。端点侧不再用 `+ endpointType` 打印 `class Foo`（`Class.toString`），两条几乎相同的消息并为一条（phase 参数区分 upgrade/handshake）。措辞同时据实修正：两个索引都在**装配期拒绝**未解析包装器，所以这一支只有"直接调用包装器"能到，此前"手工构建的索引也可能持有未解析包装器、由调用方负责 resolve"的说法已经不成立。`UnresolvedHandlerRouteTest` 与新增的 `UnresolvedEndpointTest` 各钉一条。
-- `Sql.Group` 与 `Sql` 共享 group 构建：`addGroupedCondition` 的 7 行（建 Group、跑 builder、查空、委托）此前逐字存在两份，抽为 `Sql.buildGroup(Consumer<Group>)` 静态工厂。**只抽这一处**——两者的 6 个公有条件方法形状相似是接口必然（都要能被 `.whereGroup(...)` 链式调用），而 `addCondition` 看着同名却是不同语义：`Sql` 不可变（复制列表后 `new Sql(...)`），`Group` 可变（原地追加后 `return this`），合并会毁掉其中一个的契约。抽"构建"而非自引用 helper，是因为 Java 没有 self-type。
-- `GraphSpec.create()` 不再重复规范化：`new Graph(GraphSpec)` 全仓只有 `create()` 一个调用方，而构造器自己就调 `drainNodeLinks()` + `normalize()`（`normalize()` 返回 `this`，幂等）。两步都收归构造器——它是那份已规范化 blueprint 的唯一读者，放在两处就是要让两处保持同步。`Graph.java` 的注释原文"must not differ between the two construction paths"防守的是一个不存在的分叉，已改为陈述归属。
-- 两处**只改注释**的更正。① `PeerConnector.MAX_INBOUND_MESSAGE` 曾注 "Mirrors the server side's inbound message limit (`WebSocket.MAX_MESSAGE_SIZE`)"——该名字**在全仓不存在**（真实常量是 `WebSocketReadLoop.MAX_MESSAGE_SIZE`，且为 `private`），且"mirrors"掩盖了单位差异：服务端读循环按 `frame.payload().length` 累计**字节**，mesh 侧按 `data.length()` 累计**字符**（JDK 客户端已把分片边界交给 `onText(data, last)`）。两个 16MB 是"同量级"而非"同一常量"。② `HttpModule` 的 WS 块补上说明：它与 `WebSocketIndex` 构造器**各展开一次** `WebSocketGroup`（HTTP 侧则是展开一次、把结果交给索引并传 `List.of()`），之所以安全是因为 `expand()` 复用 endpoint 实例、解析状态长在 endpoint 上；并点明若 `expand()` 改为每个 route 新铸 endpoint，索引就会拿到未解析的副本。**不统一两处展开**——两条路径的索引内顺序本来就不同（HTTP 显式在前、WS 组展开在前），改了会变更同优先级路由的胜者与重复路径报错时点名的对象。
-- `LazyHandler` / `LazyEndpoint` 的 javadoc 更正：它们曾称实例"created through the container … and `@PostConstruct`"，而 `Container.create` 已是 `new` 加依赖解析、不跑 `@PostConstruct`（见 Migration 表）。`route/package-info` 亦更正——它把该包装器列为 "application-facing"，实际不是：应用只写 `Route.get(path, X.class)`，从不接触它。
-- **收尾首选 `AutoCloseable`，`@PreDestroy` 收窄为"必须能在 `EventBus` 仍存活时发布"的那一类**（设计决定，见 `DEVELOPER-GUIDE` 的 Service Lifecycle）。按项目"首推 JDK 自身能力"的准则，一个拥有资源的类型实现 `AutoCloseable` 即可——**容器按类型看见它**，无需记得加注解；`@PreDestroy` 则是 opt-in、漏了就静默泄漏。核实后的三条机制事实支撑这个分工：① 两条路径**都跑、各跑一次**——`Shutdown.drainPhase` 每个阶段各持一个身份去重集（`preDestroyed` / `closed`），去重**只在阶段内**成立，跨阶段不成立：同时标注解又实现 `AutoCloseable` 的类型先 `@PreDestroy`、后 `close()`（`LifecycleCallbackTest` 断言的 `"preDestroy,close"` 就是这条事实）。因此双标类型必须让两个回调各自能独立站住，不能假设容器只叫一次；② `AutoCloseable` 被放在**最后**是刻意的（编译器保证、形状最普通），而 `@PreDestroy` 在它之前，因为它可能还要发事件而 `EventBus` 刻意延后关闭——这个顺序只有在 `AutoCloseable` 是主路径时才讲得通；③ `@PostConstruct` **没有替代品**：`advise` 拦截的是方法调用（`MethodInvocation` 带 `method()`/`target()`），而 `@PostConstruct` 发生在"对象刚由构造器产生、尚无人能调用其方法"的那一刻，据此实现它等于在 `ServiceProxy` 里另加一个钩子，AOP 反而不纯。**不删两个注解**：`@PreDestroy` 有一个 `AutoCloseable` 表达不了的位置（`AutoCloseable` 拿不到"`EventBus` 仍可用"），框架不该收走这个选择权。
+  `application/json; charset=utf-8`**（无编译错误保护的行为变更）：二者统一走 `sendJson`，与
+  `/health/live`、`/healthz` 及框架其余 JSON 响应一致。
+- **`ReadyHandler` 的构造器去掉 `JsonCodec` 参数**（`cloud.internal`，非公开面）：改用 `sendJson`
+  后不再需要自带 codec。
+- **`LazyHandler`/`LazyEndpoint` 更名为 `ResolvableHandler`/`ResolvableEndpoint`**
+  （`freeway-http`，非公开面）：旧名承诺了实现从未有过的惰性——类路线在启动期即全部解析。
+  `Resolvable` 陈述两阶段事实，不对时机作承诺。
+- **`RouteIndex` 恢复未解析类路线的 fail-fast**：与 `WebSocketIndex` 对称，装配期报出哪个路由、
+  哪个类、谁负责解析、以及出路；手工构建索引仍受支持。
+- **未解析包装器的守卫消息对齐**：`ResolvableHandler.handle` 与 `ResolvableEndpoint` 的
+  `open`/`subprotocols` 说同样几件事（类全名、`invoked directly, outside an index`、谁解析、出路）。
+- **`AppRuntime` 的关闭语义改为说真话**：同线程展开、跨线程等待（此前 javadoc 称一律
+  "unwind the startup"）。代码不动。
+- **启动失败不再覆盖已完成的关停状态**：hook 先 `close()` 再抛异常时保留 `close()` 落定的状态，
+  `state()` 不再与 `close()` 的"已关过"互相矛盾。
+- `Sql.Group` 与 `Sql` 共享 group 构建（抽 `Sql.buildGroup`）。两者的 6 个公有条件方法形状相似是
+  接口必然，`addCondition` 同名不同语义（`Sql` 不可变、`Group` 原地追加），不合并。
+- `GraphSpec.create()` 不再重复规范化：`drainNodeLinks()` + `normalize()` 收归 `Graph` 构造器
+  （已规范化 blueprint 的唯一读者）。
+- `Schema.ensure` 的 `@return` 改为说真话：索引 DDL 会执行但不计入返回值。
+- 两处**只改注释**的更正：`PeerConnector.MAX_INBOUND_MESSAGE` 的注释指向一个全仓不存在的常量，
+  且掩盖了单位差异（服务端按字节、mesh 按字符）；`HttpModule` 的 WS 块说明它与 `WebSocketIndex`
+  各展开一次 `WebSocketGroup`（安全，因为 `expand()` 复用 endpoint 实例）。
+- `MultipartForm` 的每分部上限提为具名常量 `DEFAULT_MAX_PART_SIZE`（仅可读性；它与
+  `DEFAULT_MAX_BODY_SIZE` 数值相同但语义不同——每分部 vs 整体——刻意固定）。
 
 ### Added
 
-- **`AsyncCarrier`——异步派发的上下文跟随**（`ioc.event`，`@FunctionalInterface`）：
-  提交线程的 ambient 上下文在 `publishAsync`/`publishOrdered` 入口捕获、执行线程恢复；
-  cloud 以一行 lambda 绑定 `InvocationContext` 载体（同信任域传全量，线上传 trace 的规则不变），
-  无绑定时恒等、无 trace 提交跑裸（与 mesh 入站同规则）。`EventBus` 构造期解析一次缓存，
-  派发零查找。
-- **`KnownKeys`——已声明配置词表**（`ioc.symbol`，调用方参数化，与 `SymbolSpec` 同层）：
-  一个模块一张键表、一条词表——键表是**嵌在模块类里的 `ConfigKeys`**（`HttpModule.ConfigKeys`、
-  `DbModule.ConfigKeys`、`CloudModule.ConfigKeys`、级联旋钮 `BootModule.ConfigKeys`），**键一律写成
-  完整字面量**（不再 `PREFIX + "…"` 组合：值就在本行可读、可 grep；`PREFIX` 只作词表栅栏），
-  `of(keysClass, prefixes…)` 从该表反射收割并**声明它拥有的全部命名空间**（cloud 表同时含
-  `freeway.cloud` 与 `freeway.app`），`admit(prefixes…)` 纯前缀准入用于名字**部分动态**的命名空间；
-  `suggest(unknown)` 同前缀、编辑距离≤2、最多 3 个（精确命中零建议——规则由测试钉住）。
-  身份串（hook id / WS 路由 / 贡献 id）同样拼 `freeway.*`，但**留在 `ConfigKeys` 之外**——类型边界
-  就是它们不进词表的保证。
-  表与词表必须一致：表内任何 `freeway.*` 公共常量落在声明之外即**绑定期失败**并给出修法
-  （新增键却忘改贡献，从此不会静默少报）；同理，读不到的常量（跨包的包私有常量类）也失败。
-  归属按模块分两类：**infra**（`commons`/`ioc`/`boot`）只提供基础能力，唯一配置是 logging
-  ——它归 `commons.logging.LogKeys`，以 `LogConfig` 公布命名空间与固定键名（不泄常量），由
-  boot 声明；级联自身的激活键是 `BootKeys`（`freeway.profile`/`freeway.config.file`/
-  引用 `EnvKeys.PREFIX_KEY`），属机制不属模块表面。**特性模块**（http/db/cloud）各一张
-  `*ConfigKeys` 表、各一条贡献。`app.name` 是无前缀的 `-D` 键，拼写收进 `LogKeys` 单点。
-   `UnknownKeysHook`（`freeway.boot.unknown-keys`）启动期一次 WARN，两条规则点名无人读取的
-   未知 `freeway.*` 键：与词表相距 ≤2 的给拼写建议；无近邻但落在**已声明模块命名空间**（根
-   `freeway.` 不算声明——boot 的键表坐在根上）下的直接点名“已声明却无人读取”。两者皆不满足
-   则静默——命名空间未贡献词表即无从判断（子集装配），`admit` 准入的动态键族整体豁免
-   （`freeway.log.file.<name>.*`）。只报不拦、热重载不重报；退役 `freeway.web.*` 走原精确
-   通告，不受模糊影响。
-- **反射清单（`docs/freeway-reflection.md`）**——全框架反射点的单页台账：站点、缓存形态、
-  路径与新增规则（ClassValue 默认、失败不缓存、spread 为标准形、预适配需 profiling 授权——
-  JSON 路径实验证明稳态无收益已回退，见 benchmark 附录）。顺带修复真实缺陷：
-  `BeanIntrospector.selectConstructor` 此前每次实例化都重扫 `getDeclaredConstructors`，
-  现按 (type, annotation) 缓存选择结果（`SELECTED`，行为不变：失败照旧逐次抛）。
-- **应用根可以命名了：`FreewayApp.create(...).name("order-service")`（无 boot 时
-  `Freeway.create("order-service", …)`）**——名字只进启动日志与组合错误：日志根行从 `application`
-  变成该名字，重复类错误里的路径首段也随之变成 `order-service → CloudModule → HttpModule`。
-  它是展示层信息，不参与任何绑定、顺序或身份；空白名字在 `start()` 抛
-  `IllegalArgumentException`（校验的唯一归属仍在 ioc 的 `ModuleNode.rootName`），null 在链上即拒。
-  上一轮删掉"命名树"时这条能力连带消失，现在以最小的形状回来：ioc 面只加
-  `Freeway.create(String appName, ModuleEx...)` 一个重载，boot 面只加 `name(String)` 一个链方法。
-  ioc 的命名入口只收**实例**：再加一个命名的 class 形参重载会让"只给一个名字"在这两个 varargs
-  之间产生歧义（试过，javac 报"引用不明确"），所以类声明要么 `new X()`，要么走 boot 链命名。
+- **应用根可以命名**：`FreewayApp.create(...).name("order-service")`，无 boot 时
+  `Freeway.create("order-service", …)`。名字只进启动日志与组合错误，不参与绑定、顺序或身份；
+  空白名字在 `start()` 抛 `IllegalArgumentException`。
+- **`AsyncCarrier`**（`ioc.event`，`@FunctionalInterface`）：提交线程的 ambient 上下文在
+  `publishAsync`/`publishOrdered` 入口捕获、执行线程恢复；无绑定时恒等、无 trace 提交跑裸。
+- **`KnownKeys`**（`ioc.symbol`）：一个模块一张 `ConfigKeys` 表、一条词表，键写成完整字面量
+  （不 `PREFIX + "…"` 组合）；`of(...)` 反射收割并声明命名空间，`admit(...)` 供名字部分动态的
+  命名空间，`suggest(...)` 给拼写建议；表内常量落在声明之外即绑定期失败。`UnknownKeysHook`
+  启动期一次 WARN 点名无人读取的未知 `freeway.*` 键。
+- **反射清单 `docs/freeway-reflection.md`**：全框架反射点的单页台账（站点、缓存形态、路径与规则）。
+  顺带修一处真实缺陷：`BeanIntrospector.selectConstructor` 此前每次实例化都重扫
+  `getDeclaredConstructors`，现按 (type, annotation) 缓存（行为不变）。
 
 ### Fixed
 
-- **`TracingFilter` 不再自己抄一份探针路径，改从路径的 owner 取（`freeway-cloud`）**：它此前把
-  `/healthz`、`/health/live`、`/health/ready`、`/metrics` 四个字面量抄进一个静态集合，而这四个
-  路径分别归 `HealthFilter`（**且 `freeway.http.health.path` 可配**）、`CloudHealthModule`、
-  `CloudObserveModule`。后果是真实的：部署把健康路径挪走后，探针会被追踪（正是这个 filter 要
-  避免的 span 噪声），而旧默认值白留在跳过集里。现在由 `CloudObserveModule` 在贡献 filter 时
-  解析**已绑定的** `HealthFilter.healthPath()`（缺省回退 `HealthFilter.DEFAULT_PATH`，因此
-  "只装 observe 不装 HttpModule" 仍可启动），两个 cloud 路径提为
-  `CloudHealthModule.LIVE_PATH`/`READY_PATH` 与 `CloudObserveModule.METRICS_PATH`。回归测试
-  `InboundTracingTest.aMovedHealthPathIsStillNotTraced`（破坏后精确变红）。
-- **JSON 响应收归 `sendJson` 一处产生（`freeway-cloud`）**：`ReadyHandler`、`RpcEndpoint`（成功
-  路径与两处错误路径）、`RegistryApi` 此前手写 `setHeader("Content-Type","application/json")` +
-  `send(codec.toJson(...))`，而框架的 `sendJson`→`outputJson` 本就做这件事（`ensureContentType` +
-  注入的 `JsonCodec`）。**可观测的不一致**：`/health/ready` 与 `/health/live` 是同模块的兄弟探针，
-  却一个报 `application/json`、一个报 `application/json; charset=utf-8`（R10 只改了 live）。
-  统一后三者一致，`HealthEndpointsTest.bothProbesAnswerAsJson` 收紧为**精确**断言
-  `MediaTypes.JSON_UTF8`（破坏后变红）。
-
-- **并行分支汇聚的 join 记账不再是原子的（竞态修复，`freeway-flow`）**：多条分支汇聚到同一个
-  INCLUSIVE/PARALLEL 网关时，偶发 `FlowException: Graph '…' did not complete: dead end at node
-  'gw' … (a join gateway never received all its incoming branches)`——**而这张图其实跑完了**：
-  网关激活过、后继节点执行过，运行却仍报死胡同。原因是**到达计数与临时死胡同标记是两个结构、
-  更新它们不是一步**：某条分支 `countIncr` 到 5 后被切走，恢复时第六条分支已 `countIncr` 到 6、
-  清标记并激活了网关——于是它把一个**已经完成**的 join 又标上死胡同。原先那句报错文案描述的是
-  "丢失了分支"，而实际什么都没丢，误导排查方向。现将整个 join 转换收进
-  `ExecState.join(graph, nodeId, expected)`，在**该节点自己的监视器**下完成"计数→判定→标记/
-  清标记"；`resetLoopBodyJoins` 的重置也改走同一监视器（`joinReset`），使嵌套并行里
-  "重置迭代"与"分支到达"不会交错。回归测试 `JoinMarkerAtomicityTest`（6 分支 × 400 轮）
-  **修复前首次运行即失败**，修复后稳定通过。
-- **`ExecState.deadEndClear(Graph, String)` 删除**：它正是导致上述竞态的那个不安全操作——单独
-  清标记而不做配对的计数变更。清理权已并入 `join`/`joinReset`，留着它等于把成因重新开放。
-  形状变更，编译错误即迁移。
-- **`@Inject` / `@Symbol` 标在方法参数上不再被静默忽略，改为启动期报错**（`freeway-ioc`，
-  **无编译错误保护的行为变更**）：`call(@Inject Greeter g)` 此前**能编译**——`PARAMETER` 在
-  `@Inject` 的 `@Target` 里，且必须在那儿，构造器参数正需要它——但容器只解析**构造器参数**与
-  **字段**（`InjectionResolver` 仅 `resolveArguments` / `injectFields` 两个入口，`BeanPlan`
-  也只描述构造器与属性，方法仅作为 getter/setter 参与属性模型）。于是该参数原样收到调用方
-  传的值：期望容器注入的调用方会拿到 `null`，随后在**与注解和方法都无关**的地方抛 NPE。
-  机制上无解——框架不做字节织造，无法拦截对具体类的方法调用，而 `MethodInvocation.args()`
-  返回**防御性副本**，advisor 同样改不了实参；`@Target` 也不能收窄（去掉 `PARAMETER` 会连
-  构造器参数一起禁掉，那正是唯一生效的地方）。因此沿用 `injectFields` 里 final 字段那处
-  fail-fast 的既有做法，在注入时按类型（`ClassValue` 缓存、沿应用类层级**与所实现的全部接口**、止于 JDK 类）扫描
-  方法参数上的 `@Inject`/`@Symbol` 并抛错，报文点名**声明类、方法、参数序号、注解**，并给出
-  出路（移到构造器参数/字段，或作为普通参数由调用方传入）。仓内与全量 2198 例**无误报**——
-  此前无任何一处这样用过。两种注解的 javadoc 亦补上说明（`@Symbol` 原无 javadoc，且它的
-  target 没有 `CONSTRUCTOR` 却对构造器参数生效，最易误解）。
-- **`/health/live` 的 `Content-Type` 由 `text/plain` 改为 `application/json`**（`freeway-cloud`，
-  **无编译错误保护的行为变更**）：`CloudHealthModule` 用 `ctx.send(200, "{\"status\":\"ok\"}")`
-  硬编码 body，而 `HttpResponse.send(int, String)` 的契约是"Content-Type defaults to
-  text/plain"——只有 `sendJson` 才默认 application/json。**同一模块的三个探针端点因此有两种
-  类型**：`/health/ready`（显式 `setHeader` + 注入的 codec）与 http 侧的 `/healthz`
-  （`HealthFilter` → `sendJson`）都是 JSON，只有 liveness 是纯文本，而它的 body 恰恰是 JSON。
-  改为 `ctx.sendJson(200, Map.of("status", "ok"))`——**body 逐字节不变**，变的只是响应头；顺带
-  让这条路由也经由可替换的 `JsonCodec`（此前它对 `.primary()` 绑定的 codec 完全无感）。
-  回归测试 `HealthEndpointsTest.bothProbesAnswerAsJson` 同时断言三个端点。
-- `BeanIntrospector.selectConstructor` 并发首算各返各的包装器：现返回 map 胜者（包装器不可变；身份唯一由 `selectConstructor` 保证——`BeanConstructor.of(...)` 每次新分配，只有 MethodHandle 是缓存的；选择语义不变，并发下 `assertSame` 亦成立）。
-- `UnknownKeysHook` 跨词表建议去重：两词表列出同一拼写曾点名两次，现拼接去重后取前 3（各词表内仍按距离近优先、同距离按字母序）。
-- `KnownKeys.of` 空收割即绑定期失败（指引 `admit()`），`BootModule` 的 logging 词表为空同样启动失败——空词表不再静默关闭检测。
-- 全空 `InvocationContext` 不再跨执行器传播：三子上下文全 null 的 present 上下文按无上下文跑裸（与 mesh 入站同规则）。同批把这条规则收进 `InvocationContext` 本体（`carriesNothing()`，`runWith`/`replaceAmbient` 与入站 `PropagationFilter` 一律按"没带东西"处理），并修掉它暴露的真实缺陷：`TracerDefault` 在没有 ambient 时用 `Baggage.empty()` 顶替 null——那正是"请求没带 baggage 头、handler 却读到空 baggage"的来源（此前被"入站过滤器绑定了一个空白上下文"掩盖，`BaggagePropagationTest` 的既有契约因此才成立）。
-- `ModuleDiscovery` 跳过匿名/synthetic 模块类（与 `ModuleNode` 的 nameless 排除一致）；`HttpModule` 退役探测改用与 `KnownKeys`/`LogKeys` 相同的 dot 边界（`PREFIX + "."`），命名空间本体与兄弟命名空间都不再算孪生；19 处未用 outer-module import 清理（`ConfigKeys` 嵌套 import 保留）。
-- 排序引用分必需与条件：`Ordering` 新增 `beforeIfPresent/afterIfPresent`——缺席的可选伴侣是配置而非错误（`validateOrdering` 与 `all()` 双双放行），必需引用维持原语义（hook 路径 fail-fast、通用路径 WARN）。`DbModule` 迁移 hook 与云侧 discovery/RPC hook 切到条件形：纯 DB 应用、无 HTTP 的 discovery 不再死于缺席的 `freeway.http.server` 锚点；`RpcExportHook` 零导出时直接返回（启动期不再要求 `JsonCodec`——注意 `RemoteCaller` 首次解析时仍需要它，该绑定来自 `HttpModule`；只用 `CloudHttpClient` 的纯 client 才真的不需要）。`CloudEventModule` 保持必需（该平面事实需要 Http，缺席报错点名缺失模块更准）。
-- 线程作用域清理跟着条目走：`ScopedCache.get(key, factory, onExit)` 新重载，scope 退出跑条目清理（首注册胜出、异常记 WARN 不中断）；容器删 JVM-global 旁表与类加载期钩子，关容器后退出的 scope 照常跑生命周期。原 `onClose` 机制保留给 ext/应用。
-- **`@PostConstruct` 在 `to(c -> c.create(X))` 下不再跑两次**（`freeway-ioc`）：该写法是绑定里最自然的 provider 形状，而 provider 拿到的正是容器本身——`create` 返回一个**已注入**的实例，binding 随后又 materialize 一次，同一对象的 `@PostConstruct` 因此被静默执行两遍（不抛异常、不打日志；开连接、注册回调、起线程的 bean 就都做了两遍）。修法不是加"已初始化"记账，而是把归属划清：`@PostConstruct` 属于**受管**的那半段生命周期，而 `Container.create` 是**裸 `new` 加依赖解析**——给构造参数与 `@Inject` 字段，不给生命周期。四条 realize 路径（`to(Class)`／`to(c -> new X())`／`to(c -> c.create(X))`／`bind(Concrete)` 不带 `to`）统一在 binding 自己的 materialize 步执行一次，且因实例是绑定的，`@PreDestroy` 照常在 `close()` 配对执行。`contribute(X.class)` 承诺的 `@PostConstruct` 由贡献路径显式发出（`Contribution.add(Class)` 的 javadoc 契约不变），其不配对 `@PreDestroy` 的单边性是既有约定，见下表。
-- **`Sql.setColumn` 的列名按名字校验**（`freeway-db`）：javadoc 声称「The column name is quoted/validated as a name」，实现里只有 `requireNonNull`——`setColumn("a = 1, evil", v)` 实测渲染出 `INSERT INTO t (a = 1, evil) VALUES (?)`，把一个名组装成 SQL 的调用点（map 驱动批量写入、`setColumn(kind.name().toLowerCase(), v)`）畅通无阻。值侧这次补上了内联，名侧仍是裸拼接，而 javadoc 断言的是两个维度都安全。现按名字校验：限定名按 `.` 切分、**逐段**独立判断，裸标识符与调用方自带的引号**可组合**（`users.name`、`public`."My Col"、`` `db`.`table`.col `` 都是各方言的合法写法），引号内接受成对重复的分隔符（`"a""b"` 是名字 `a"b` 的标准转义）、放行外来引号字符（反引号内的 `"` 在 MySQL 上是普通字符），只拒绝**自己那个**分隔符提前闭合。同批：`setColumn` 拒绝非纯 `SELECT` 的嵌套 `Sql`（`UNION`／DML 被括起来当表达式是渲染得出来但语法无意义的东西，而渲染期不报错意味着失败会落到数据库、离调用点很远）。**不做引号添加**：这个 builder 到 `sql(Dialect)` 之前都是方言无关的，没有引号规则可用，需要引号的名字必须自己带来。**这是行为变更**，见 Migration 表。
-- **`Sql.setColumn` 遇 `Sql` 值按标量子查询内联**（`freeway-db`）：`setExpression` 一直会把 `Sql` 值内联展开（`appendValue`），而 INSERT-only 的 `setColumn` 把值原样塞进 `dmlValues`，渲染时一律 `?`——于是 `Sql.insert("t").setColumn("a", sub)` 把 `Sql` **对象本身**绑成 JDBC 参数，语句静默地变成了另一回事。现把它渲染成一个**带括号的标量子查询**：`setColumn("tenant_id", Sql.select("id").from("t"))` → `VALUES ((SELECT id FROM t))`。括号是关键——`VALUES (SELECT …)` 在 PostgreSQL/MySQL/SQLite 上都不是表达式（只有宽松的 H2 接受），而这个 API 没有 fragment 位置让调用方自己补，所以由渲染器补上；`setExpression` 相反，fragment 是调用方写的，括号也由调用方写（`setExpression("tenant_id = (?)", sub)`），已在 javadoc 写明。子查询的占位符留在其文本内部，**不占列槽位**（否则列数与占位符数脱节），`args()` 按位置把内联查询的参数摊平回来。注意这表达的是"每列一个标量子查询"，不是多行 `INSERT … SELECT`。
-- **关闭与 `get()` 并发不再向封印后的容器发布代理**（`freeway-ioc`）：`get()` 无锁而 `close()` 有锁，缓存未命中后的铸代理若落在 `close()` 清空之后，会把代理写回**已封印**的 `proxyCache`——调用方拿到一个每个方法都抛 `Container is closed` 的活对象。现在"仍开着？"与"发布进 proxyCache"合成 `realizeLock` 内的**一步**（缓存命中仍无锁，那条路径不写任何东西），PROTOTYPE 分支补上同样的关闭检查——它在封印后构造出的实例永远收不到 `@PreDestroy`。THREAD 作用域代理在 `get()` 之后的调用路径检查**保留**：代理的存活期长于产出它的那次 `get()`，那是唯一能拒绝它的地方。
-- **最终 drain 不再持 realize 锁**（`freeway-ioc`）：上面那条修复把"仍开着？"与"发布"合进锁内的同时，也让最终 drain 落进了同一个临界区——而那把锁自己的规则写着「deliberately NOT held across the container's lifecycle drain」，理由正是用户回调可能 join 会去解析服务的线程。窗口只有一个方向：某个解析方在 `closed` 置位前过了 `requireOpen()`、卡在等锁上，而正在 drain 的线程 join 它——两边都没有超时。`ServiceRuntime.seal` 改为三步：**锁内置位 `closed`** → **锁外跑 drain** → **锁内清缓存**。S2-2 的不变量没有被削弱：所有发布路径都在同一把锁内复检 `closed`，而它在清缓存之前就已在锁内置位。`SealDrainLockTest` 断言的是形状而非竞态——回调执行时该线程不持有 realize 锁（确定性，无需重复采样）；同文件另两条是**契约测试而非回归守卫**，它们在旧实现下同样通过，因为 `closed` 在两版里都先于 drain 置位，drain 期间到达的解析方在 `requireOpen()` 就被拒、走不到锁——真正的死锁需要解析方在置位前过了检查且置位后仍在等锁，那是竞态，单线程测试钉不住。
-- `Schema.ensure` 的 `@return` 改为说真话：索引 DDL **会执行但不计入**返回值（它已被 `SchemaTest` 以「indexes not counted」固化——索引是表的配套物而非结构变更）。此前 javadoc 写的是「number of DDL statements executed」，与实现和该测试都矛盾，容易被读成疏漏。
-- **body 限制收敛为单一实现**（`freeway-http`）：`AbstractHttpContext#readBody`（适配器接缝）与 `RequestBody`（内建引擎）各有一份读循环，而 `HttpEngine` 的契约与 `AGENTS.md:227` 都把前者点名为**共享实现**——实际零调用方。现 `readBody` 改为委托 `LimitedInputStream`（即引擎自己用的那个，已移入 `http.internal` 供跨包组装），`AGENTS.md` 的「Adapters」条款随之成立。两份实现在 `BodyLimitParityTest` 穷举的所有用例上**本就一致**（不是活 bug，而是未被强制的保证），变的是保证从"碰巧相符"变成结构性事实。
-- **`AppRuntime` 的关闭语义改为说真话**（`freeway-boot`）：接口 javadoc 称关闭会「unwind the startup」，而 `start()` 全程持监视器，**跨线程 `close()` 是等待**而非展开——只有同线程重入被真正处理。改为写明这个区分：同线程展开、跨线程等待，并说明为什么等待是安全的方向（展开会让运行时短暂处于 STARTING 且 hook 半途而无从收尾）。**代码不动**，当前语义是安全的那个。
-- **启动失败不再覆盖已完成的关停状态**（`freeway-boot`）：hook 先 `close()` 再抛异常时，`catch` 把 `state` 置 FAILED，与两件事同时为真——关停已经跑完（`shutdownAttempted` 为真，此后 `close()` 直接 return），而启动确实失败了。结果是 `state()` 永久报 FAILED、`close()` 说「已关过」，同一件事两个答案。现沿用同一线程重入已有的规则：`shutdownAttempted` 为真时保留 `close()` 落定的状态。
-- **HTTP/2 帧的 `writeTo` 修好**（`freeway-http`）：`DataFrame` 此前只写 payload、**不带帧头**；`HeadersFrame` 解析了 pad-length、PRIORITY 与 padding 却全部丢弃。这些方法在服务器实现里没有生产调用方（响应头块走 `HPackContext`），但**没人调用的错代码比没有代码更糟**——下一个调用者会继承这个线格式。现按 `FrameHeader` 的既有写法补全，帧长重算而非复用解码时的长度；`HeadersFrame` 另存了此前解析后未留存的 weight 字节与 PRIORITY 的 E 位（此前写的是 31 位 id 独占位，exclusive 依赖在上一根线上静默变成非 exclusive）。`GoawayFrame`、`PushPromiseFrame`、`NotImplementedFrame` 三个此前**声明的长度与实写的字节不符**（GOAWAY 丢 debug data），一并补上载荷。`FrameWriteToRoundTripTest` 以「解析→序列化→再解析」为判据（回退修复后 5/7 失败并给出字节数差异）。
-- **`maxBodySize` 的调整不再跨请求存活**（`freeway-http`）：`HttpContext` 在 HTTP/1.1 上是**每连接一个、跨请求复用**的，而 `setMaxBodySize` 是 filter 可改的**每请求状态**——两者曾是同一个字段且 `reset()` 不复位它，于是 filter 为某个请求收窄或放宽的限制活到了同一连接上的下一个请求。**放宽方向是要紧的那个**：一个只为上传路由把上限提到 50 MB 的 filter，会让该连接之后所有请求的实际上限都变成 50 MB，而服务端配置仍是默认 10 MiB。现引擎配置的初值随 context 构造时给定，`reset()` 每请求复位为它；`HttpContext#setMaxBodySize` 的 javadoc 早已写着 "for one request"——那句话此前在 HTTP/1.1 上不成立，现在成立了。HTTP/2 每流新建 context，不受影响。`FreewayHttpEngineTest.aFiltersBodySizeAdjustmentDoesNotOutliveItsRequest` 两个方向都断言，且必须真读 body——不读 body 的 handler 两种行为下都观察不到限制。
-- **分支跨迭代域混合的 join 在 `load()` 时被拒绝**（`freeway-flow`）：join 等待 `prevLinks().size()` 次到达，而只要某条分支上游有 LOOP，这个计数就不再成立——循环体内的分支**每轮迭代到达一次**。判据是**迭代域**：一条分支的域 = 包住它的最外层迭代 LOOP，而 **LOOP 节点自身属于它自己的域**（`loopRun` 每轮走一遍它的匹配后继，所以循环直接喂入 join 也是每轮一次）；join 的所有分支必须同域。跨域的图曾在运行末尾以
-  `dead end at node 'j' (… a join gateway never received all its incoming branches)`
-  暴露——而那条文案把一个配置问题描述成了分支丢失，会把排查带偏（实际一条分支都没丢）。现按本仓对无效配置的一贯做法在 `load()` 期报错，点名节点、图与**每个分支的域**（"runs once" 还是 "repeats per iteration of 'x'"）。
-  受支持写法：所有分支同域——无循环上游，或全在同一个循环体内（含直接由循环节点喂入）；以及 join 位于所有循环下游。**无 `$for` 的 LOOP 只 fanOut 一次，因此不算循环**，该判据与 `loopRun` 共用 `iterates(node)` 一份定义，两处不可能漂。归因按嵌套**深度**而非声明顺序，否则同一张图只因两行 `addLoop` 换了位置就从放行变成拒绝。**这是行为变更**，见 Migration 表。
-- **PlantUML display 函数抛异常不再被静默吞掉**（`freeway-flow`）：`Graph` 的两处 `catch (Exception ignored)` 会把用户 display 函数的异常吞掉、改用默认渲染——产出一张格式完好但完全错误的图，屏幕与日志都没有任何线索说定制被丢弃，看起来就像那个函数"没生效"。现改为抛出并点名三种真实结局（`of` / `ofDefault` / `HIDDEN`）。这是本仓唯一两处「静默吞用户回调异常」的地方，与全仓 fail-loud 的守则一致。
-- **mesh 重连补上 jitter**（`freeway-cloud`，`PeerConnector`）：退避是裸的 `base * 2^n`，**没有 jitter**——而这正是最需要它的调用方：滚动重启后每个节点在同一瞬间失去全部 peer，无抖动的退避会让它们永远同步重连。新增 `resilience.Backoff`（含抖动曲线 + 溢出防护），`RetryerDefault` 与 mesh 共用；**配置键仍各自独立**（`rpc.retry.backoff-*` vs `event.backoff-*`），因为出站调用与 peer 拨号该用不同节奏是不同决策。两者的第一跳语义**不统一**：RPC 失败过一次就先等 base，mesh 对没试过的 peer 立即拨号——这个差异留在调用点；但**两条路径的等待都带抖动**：`Backoff.jitter(ceiling)` 让 RPC 的首次重试（`attempt <= 0`）也落在 `[base/2, base]` 内，否则滚动重启后全体客户端会在**第一次重试**上重新同步——那正是这次要消灭的波。`MeshDialBackoffJitterTest` 直接断言 dial 腿在抖动，`BackoffTest` 断言 RPC 首次重试的区间与非常量性：只测共享曲线曾在 mesh 仍是无抖动实现时通过。随共享曲线还有一处行为变化：旧 mesh 实现把指数位移截在 5（`base * (1 << min(attempts, 5))`），共享曲线一直涨到配置的 `max` 为止——默认 `base=1000 / max=30000` 下第五次前已饱和、看不出差别，但 `event.backoff-max-ms` 远大于 `32 × base` 时新实现会继续拉长（这正是"涨到配置上限"的意思，旧截断是未记录的实现细节）。
-- **`Backoff` 的指数位移按 base 定界，不再回绕成零**（`freeway-cloud`）：守卫只挡了 `attempt >= 62` 与符号位，**回绕成正数**这一类两处都不挡——`1000 << 61` 恰好是 `0`（`1000 = 125 × 2³`，整整绕了一圈），于是 `ceilingMillis` 返回 0、`jitter(0)` 返回 0、dial 腿的 `if (sleep > 0)` 跳过等待，**这一轮拨号完全不等待**。计数只在握手成功时清零，出厂默认（base 1000 / max 30000）下曲线第 5 次就饱和，所以这出现在持续断连约 56 × 30 s ≈ 28 分钟之后；且同一集群所有节点的所有 peer 几乎同时到达——同步波没被消除，只是搬到了第 61 次。base 取 2 的幂时命中点低得多（`1024` 在第 53 次）。改用 `baseMillis > Long.MAX_VALUE >> attempt`（问题始终是 `base × 2^attempt` 是否超出 long，而不是位移本身是否合法；写成 `attempt >= Long.numberOfLeadingZeros(base)` 能算出同一个答案，但那要读者自己推一遍，而守卫要说的就是它检查的那件事）。`BackoffTest` 断言的是**不变量**而非某一点：7 个 base × 4 个 cap × 200 次尝试，每次的 ceiling 都必须 `> 0` 且 `<= cap`——回绕成零的那个值同样"满足上限"，只断言上限是抓不到的。
-- **`PeerConnector.Wiring` 拒绝 `backoffMaxMs < backoffBaseMs`**（`freeway-cloud`）：上限低于基准不是上限——曲线把每次尝试都夹到它，于是 `withBackoff(60_000, 1_000)` 产生至多 1 毫秒的等待，即一个按网络允许的速度重拨的 dial 循环，与这两个值要表达的调度正好相反，且悄无声息。`RetryerDefault` 在构造期就拒绝同一组合；共用一条曲线的两个调用方不该对这个问题给出两个答案。
-- **`CloudHttpClient.close()` 的 in-flight 兜底移入 `finally`**（`freeway-cloud`）：结算循环原本在 `asyncExecutor.shutdownNow()` 之后、`http.close()` 之前且不在 `finally` 里。目前 `shutdownNow` 按规范实践中不抛，但一旦抛，调用方就永远等不到那个 future——而这个循环存在的全部理由就是"不让任何人永久阻塞"。
-- **mesh 帧分类先认保留字段 `specversion`**（`freeway-cloud`）：此前先判 `proto`，而 `specversion` 是 CloudEvents 保留字段、`proto` 不是——一个把 `proto` 用作扩展属性的第三方 producer，其合法事件会被判成 hello，而已准入会话上的 hello 是协议错误（服务端 1002／客户端 abort）。优先级与重构前一致、**不是回归**，但那条规则现已被声明为"唯一的共享规则"并由 `MeshFrameTest` 钉住，它就是一条带可避免误判的契约了。
-- **mesh 帧分类收敛为单一实现**（`freeway-cloud`）：`PeerHub`（服务端）与 `PeerConnector`（客户端）各有一份五分支分派（hello / 二次 hello / 事件 / hello 前的事件 / 未识别），仅靠注释「mirror the server leg」保持同步。其中安全属性——**事件帧在 peer 通过准入前绝不能进入广播面**——被陈述两次、执行两次。现抽为 `MeshFrame.classify(text, handshaken)`（密封接口：Hello / DuplicateHello / Event / EventBeforeHello / Unrecognized / Malformed），两条腿只保留各自真正不同的部分（回什么、关会话还是中断拨号）。`MeshFrameTest` 把"准入状态是唯一改变结果的因素"钉成一张表。
+- **并行分支汇聚的 join 记账改为原子**（`freeway-flow`）：到达计数与临时死胡同标记分属两个结构、
+  更新非一步，偶发"图已跑完却报 dead end"（文案还把记账顺序问题描述成丢分支）。整个 join 转换
+  收进 `ExecState.join`（节点监视器内完成），`resetLoopBodyJoins` 改走 `joinReset`；
+  `ExecState.deadEndClear` 删除——它正是那个不安全操作。
+- **`@Inject`/`@Symbol` 标在方法参数上改为启动期报错**（无编译错误保护的行为变更）：容器只解析
+  构造器参数与字段，方法参数此前能编译却被静默忽略，参数原样收到调用方传的值。报文点名声明类、
+  方法、参数序号、注解与出路。
+- **`/health/live` 的 `Content-Type` 由 `text/plain` 改为 `application/json`**：改用 `sendJson`，
+  body 逐字节不变。
+- **`TracingFilter` 不再自抄探针路径**：改从路径的 owner 取——`HealthFilter.healthPath()`（可配）
+  优先、缺省回退其默认；cloud 两路径提为 `CloudHealthModule.LIVE_PATH`/`READY_PATH` 与
+  `CloudObserveModule.METRICS_PATH`。
+- **JSON 响应收归 `sendJson` 一处产生**：`ReadyHandler`/`RpcEndpoint`/`RegistryApi` 此前手写
+  `Content-Type` 头，导致兄弟探针 `/health/ready` 与 `/health/live` 类型不一致。
+- **关闭与 `get()` 并发不再向封印后的容器发布代理**（`freeway-ioc`）："仍开着？"与"发布进
+  proxyCache"合成锁内一步；PROTOTYPE 分支补上同样的关闭检查。
+- **最终 drain 不再持 realize 锁**（`freeway-ioc`）：`ServiceRuntime.seal` 改为锁内置位 `closed`
+  → 锁外 drain → 锁内清缓存，去掉一个方向的死锁窗口（用户回调 join 一个正等锁的解析方）。
+- **body 限制收敛为单一实现**（`freeway-http`）：`AbstractHttpContext#readBody` 改为委托
+  `LimitedInputStream`（引擎自己用的那个），`AGENTS.md` 的 Adapters 条款随之成立。
+- **`maxBodySize` 的调整不再跨请求存活**（`freeway-http`）：见 Migration。
+- **HTTP/2 帧的 `writeTo` 修好**（`freeway-http`）：`DataFrame` 补帧头，`HeadersFrame` 补
+  pad-length/PRIORITY/padding，`GoawayFrame`/`PushPromiseFrame`/`NotImplementedFrame` 补载荷。
+- **分支跨迭代域混合的 join 在 `load()` 时被拒绝**（`freeway-flow`）：见 Migration。
+- **PlantUML display 函数抛异常不再被静默吞掉**（`freeway-flow`）：改为抛出并点名三种真实结局
+  （`of`/`ofDefault`/`HIDDEN`）。
+- **mesh 重连补上 jitter**：新增 `resilience.Backoff` 供 RPC 与 mesh 共用（配置键各自独立、
+  第一跳语义各自保留）。同批：**`Backoff` 的指数位移按 base 定界，不再回绕成零**；
+  **`PeerConnector.Wiring` 拒绝 `backoffMaxMs < backoffBaseMs`**。
+- **`CloudHttpClient.close()` 的 in-flight 兜底移入 `finally`**。
+- **mesh 帧分类收敛为单一实现** `MeshFrame.classify`（密封接口：Hello/DuplicateHello/Event/
+  EventBeforeHello/Unrecognized/Malformed），两条腿只留各自不同的处置；分类先认保留字段
+  `specversion`（`proto` 只是本框架 hello 的字段，第三方可用作扩展属性）。
+- `BeanIntrospector.selectConstructor` 并发首算返回 map 胜者（选择语义不变）；`UnknownKeysHook`
+  跨词表建议去重；`KnownKeys.of` 空收割即绑定期失败；全空 `InvocationContext` 不再跨执行器传播
+  （并修 `TracerDefault` 用 `Baggage.empty()` 顶替 null 的缺陷）；`ModuleDiscovery` 跳过
+  匿名/synthetic 模块类、`HttpModule` 退役探测改用 dot 边界；`Ordering` 新增
+  `beforeIfPresent`/`afterIfPresent`（缺席的可选伴侣是配置而非错误）；`ScopedCache.get(key,
+  factory, onExit)` 新重载，容器删 JVM-global 旁表与类加载期钩子。
+- 三处私有 `ensureOpen()`/`checkOpen()` 统一为 `requireOpen()`（只统一词干，异常类型不变）；
+  `Orm.ensureInsertable` → `requireInsertable`（它只抛不补救）。**`require*` 一律拒绝、`ensure*`
+  一律幂等补救**，已写进 AGENTS.md。
+- `Sql` 两处形状修正：`where("id in ?", sub)` 裸拼嵌套 `Sql` 改为构建期拒绝（报错点名写成
+  `"(?)"`）；链式 `union` 左侧不再重复包裹（右侧保留，分组不丢）。
 
 ### Migration
 
-| 旧行为 | 新行为 | 影响 |
-|---|---|---|
-| `Container.create(X)` 跑 `@PostConstruct` | 不跑；只做构造注入 + 字段注入 | **签名不变**（`Container.create(Class)` 编译期无感），但依赖 `create` 跑 `@PostConstruct` 的代码会静默失去该回调。`@PostConstruct` 的典型内容（开连接、注册回调、起线程）本就无人配对 `@PreDestroy`——`create` 造出的实例不进服务缓存，`Shutdown` 不遍历它。**需要完整生命周期的类型请改为绑定**（`binder.bind(X.class).to(X.class)` + `container.get(X.class)`），受管路径两半齐全 |
-| `create` 跑 `@PostConstruct` 时无人记录"已初始化" | 单次 realize 作用域内按身份去重（`ThreadLocal`，退出即清） | 作用域刻意是**单次 realize** 而非容器生命周期：容器级强引用集合会让容器钉住每一个经 `create` 造出的对象，而那些对象按契约不归容器管。caller-owned 实例不被任何容器字段持有，有测试反射钉住 |
-
-无编译错误保护的另外十处行为变更：
+行为变更（无编译错误保护，务必对照）：
 
 | 旧行为 | 新行为 | 影响 |
 |---|---|---|
-| filter 的 `ctx.setMaxBodySize` 调整活到同一 keep-alive 连接上的下一个请求 | 每请求复位为服务端配置值 | **签名不变**，但依赖"抬高后长期生效"的 filter 会看到 413——这正是 `setMaxBodySize` javadoc 早已声明的「for this request only」。不想要 per-request 语义就别在 filter 里改它，改 `freeway.http.max-body-size`。承载复位的 `baseMaxBodySize` 在 `AbstractHttpContext`，初值由构造器给定（见下方形状变更），**复用 context 的适配器在自己的 `reset()` 里调 `resetMaxBodySize()` 即可**，不必自己实现 |
-| `PeerConnector.Wiring` 接受 `backoffMaxMs < backoffBaseMs` | 构造器拒绝 | 上限低于基准会让曲线夹到上限，dial 循环近乎空转。`withBackoff(60_000, 1_000)` 现在抛 `IllegalArgumentException`——**编译期无感**（`Wiring` 是 record，形状未变） |
-| 分支落在不同迭代域的 join 可 `load()`，运行末尾报 dead end | `load()` 即拒，点名节点与每个分支的域 | 图的结构未变，**加载期**多了一次校验。校验失败不会留下已注册的图（回滚后再抛），重试同 id 不会被"already loaded"拦下。所有分支同域（无循环上游，或全在同一个循环体内，含直接由循环节点喂入）、或 join 位于所有循环下游的写法不受影响；无 `$for` 的 LOOP 不算循环 |
-| `Sql.setColumn` 的列名只做 null 检查，裸拼接进语句 | 按名字校验（限定名逐段、裸/引号可组合、拒绝提前闭合） | 此前能用的**会开始抛 `IllegalArgumentException`**。接受面是三种方言引号约定的并集；方言特有的名字形态若不在其中，用该方言的引号显式带来。见上文 |
-| `Sql.setColumn` 把 `UNION`／`INSERT`／`UPDATE`／`DELETE` 形态的嵌套 `Sql` 渲染进列槽位 | 拒绝，仅接受纯 `SELECT`（`WITH` 查询仍可） | 此前渲染出语法无意义但**不报错**的语句，失败落到数据库、离调用点很远。现在构造点即抛，报错点名语句种类但不回显语句原文或绑定值 |
-| `LimitedInputStream.read(b,off,len)` 对非法参数返回 0 或 -1 | 抛 `IndexOutOfBoundsException` / `NullPointerException` | 此前把参数错误报成"body 结束"，调用方拿到 -1 会当成读完。框架内两个调用方都传合法参数；该类型是 `public` 且适配器按文档直接构造它 |
-| `GoawayFrame.parse` 原样保留 last-stream-id 的保留位（R） | 屏蔽（R 为 RFC 9113 §6.8 的保留位，接收方必须忽略），`writeTo` 随之写回已屏蔽的值 | **线上字节变化**。此前一个置了保留位的 GOAWAY 会被我们原样转发，把对端的协议违规再发一次；`Http2Connection` 只读 `errorCode`，当前无活路径受害 |
-| 方法参数上的注入注解在构造函数跑完后才被拒 | 构造函数之前即拒（`Container.create` 亦纳入） | 失败时机前移：懒 realize 的单例从"先跑完构造器副作用再报错"变成"第一次 `get()` 直接报"，不再为一个不会注入的类执行副作用 |
-| hook 先 `close()` 再抛异常时 `AppRuntime#state()` 报 `FAILED` | 保留 `close()` 落定的状态 | 关停已完成时不再报启动失败——此前状态与 `close()` 的"已关过"互相矛盾。`state()` 可观测 |
-| `MeshFrame.classify` 先判 `proto` 再判 `specversion` | 先判保留字段 `specversion` | 带 `proto` 扩展属性的合法第三方事件不再被当成 hello——而已准入会话上的 hello 是协议错误（服务端 1002／客户端 abort）。本框架自己的帧不受影响（hello 用 `proto`、事件用 `specversion`） |
+| `Container.create(X)` 跑 `@PostConstruct` | 不跑；只做构造注入 + 字段注入 | 签名不变，但依赖 `create` 跑 `@PostConstruct` 的代码会静默失去该回调。**需要完整生命周期的类型改为绑定**（`binder.bind(X.class).to(X.class)` + `container.get(X.class)`），受管路径两半齐全 |
+| filter 的 `ctx.setMaxBodySize` 调整活到同一 keep-alive 连接上的下一个请求 | 每请求复位为服务端配置值 | 依赖"抬高后长期生效"的 filter 会看到 413——这正是该 javadoc 早已声明的 "for this request only"。要改上限请改 `freeway.http.max-body-size`；复用 context 的适配器在自己的 `reset()` 里调 `resetMaxBodySize()` |
+| `PeerConnector.Wiring` 接受 `backoffMaxMs < backoffBaseMs` | 构造器拒绝 | 上限低于基准会让曲线夹到上限、dial 循环近乎空转。`withBackoff(60_000, 1_000)` 现在抛 `IllegalArgumentException`（`Wiring` 是 record，编译期无感） |
+| 分支落在不同迭代域的 join 可 `load()`，运行末尾报 dead end | `load()` 即拒，点名节点与每个分支的域 | 加载期多一次校验，失败不留已注册的图。所有分支同域（无循环上游，或全在同一个循环体内，含直接由循环节点喂入）、或 join 位于所有循环下游的写法不受影响；无 `$for` 的 LOOP 不算循环 |
+| `Sql.setColumn` 的列名只做 null 检查、裸拼接进语句 | 按名字校验（限定名逐段、裸/引号可组合、拒绝提前闭合） | 此前能用的**会开始抛 `IllegalArgumentException`**；接受面是三种方言引号约定的并集 |
+| `Sql.setColumn` 把 `UNION`／`INSERT`／`UPDATE`／`DELETE` 形态的嵌套 `Sql` 渲染进列槽位 | 拒绝，仅接受纯 `SELECT`（`WITH` 仍可） | 此前渲染出语法无意义但不报错的语句，失败落到数据库、离调用点很远；现在构造点即抛 |
+| `LimitedInputStream.read(b,off,len)` 对非法参数返回 0 或 -1 | 抛 `IndexOutOfBoundsException` / `NullPointerException` | 此前把参数错误报成"body 结束"。该类型是 `public` 且适配器按文档直接构造它 |
+| `GoawayFrame.parse` 原样保留 last-stream-id 的保留位 | 屏蔽（RFC 9113 §6.8 要求接收方忽略），`writeTo` 写回已屏蔽的值 | 线上字节变化；`Http2Connection` 只读 `errorCode`，当前无活路径受害 |
+| 方法参数上的注入注解在构造函数跑完后才被拒 | 构造函数之前即拒（`Container.create` 亦纳入） | 懒 realize 的单例从"先跑完构造器副作用再报错"变成"第一次 `get()` 直接报" |
+| hook 先 `close()` 再抛异常时 `AppRuntime#state()` 报 `FAILED` | 保留 `close()` 落定的状态 | 关停已完成时不再报启动失败，`state()` 可观测 |
+| `MeshFrame.classify` 先判 `proto` 再判 `specversion` | 先判保留字段 `specversion` | 带 `proto` 扩展属性的合法第三方事件不再被当成 hello；本框架自己的帧不受影响 |
 
-六处**面向发布的形状变更**（编译错误即迁移路径，仍列在此处以便检索）：
-
-| 旧 | 新 | 影响 |
-|---|---|---|
-| `AbstractHttpContext#setMaxBodySize(long)` 可被覆写 | `final` | 覆写过它的适配器编译失败。方法只写一个字段，覆写没有正当理由；改为 `final` 后"每请求复位"这条承诺才有一个不可绕过的实现点 |
-| `AbstractHttpContext` 的构造器为 `(codec, coercer)` 与 `(codec, coercer, correlationId)` | 各多一个 `maxBodySize` 参数 | 适配器的 context 编译失败——这是它该补的：配置的 body 上限只有 server 起来之后才知道，而 context 是在那时被造出来的，于是池也跟着挪到 `start()` 里建。`JettyHttpEngine`/`UndertowHttpEngine` 随之从每请求 `setMaxBodySize(config...)` 改为在 `reset()` 里 `resetMaxBodySize()`，同一个动作只剩一处 |
-| `FrameHeader` 的三个入口对超界长度静默截断 | 构造器 / `encode` / `writeTo` 统一抛 `IllegalArgumentException` | 该类型是 `public`。框架内无调用方能触发（发送路径由 `peerMaxFrameSize` 夹到 `MAX_FRAME_SIZE`），但按算出的长度自行构造 header 的适配器会从"写出错帧"变成"抛异常" |
-| `http.engine.http2.hpack.Huffman` / `StaticHeaderTable` 是 `public` | 包私有 | 二者是 HPACK 编解码的实现细节，包外无引用。按算出的长度自行构造 HPACK 表的代码会从"能编译"变成编译失败——而那本来就不该由外部做 |
-| `commons.bean.MethodHandleUtils` | `commons.bean.ReflectiveHandles` | 它管的不止 `MethodHandle`——字段访问器是 `VarHandle`、构造器句柄也是 `MethodHandle`，三者缓存方式一致，旧名把范围说窄了。避开 `MethodHandles` 是为了不和 `java.lang.invoke.MethodHandles` 混淆。纯重命名，方法与缓存不变 |
-| `http.internal.HttpUtils` 的 6 个 header 方法 | `http.internal.HttpHeaders` | 拆开：`isToken`（RFC 7230 tchar）、`mergeVary`、`headerValue`/`headerValues`、`httpDate`（RFC 7231）、`invalidHostValue` 都是 header 的线格式规则，`parseQueryParams` 是查询串，与 header 无关。`HttpUtils` 保留查询串解析。全部包私有，跨模块无引用 |
-| `http.engine.http2.BinUtils` | `http.engine.http2.Bytes` | 10 个方法分两组：大端整数读写（帧长、stream id、HPACK 字段都在用它）与字节拼接。`Utils` 掩盖了它有形状。纯重命名 |
-| `http.engine.ws.WebSocketUtils` | 方法移入 `WebSocketUpgrade.acceptKey` | 只有 1 个方法、1 个调用方，而 `Utils` 后缀最没有说服力。`Sec-WebSocket-Accept` 的派生（RFC 6455 §4.2.2）本就属于握手 |
-| `AppConfigDefaultTest` / `BootConfigTierTest` 在 `com.jujin.freeway.boot` | 在 `com.jujin.freeway.boot.internal`，与被测类同包 | 纯测试位置变更。它们此前从包外构造 `ConfigSources`，这也是为什么收窄可见性时该类型必须保持 `public`：`AppConfigDefault` 的 public 构造器以它为参数，而 `freeway-cloud` 在自己的测试里构造它——public 签名够到谁，那个类型就得对谁可见 |
-
-本轮同时**试过收窄但被事实驳回**的两处，记在这里是因为它们各自都是"可见性规则的例外"，
-而规则文件此前没写：
-
-- `boot.internal.ConfigSources` 保持 `public`。`AppConfigDefault` 的 public 构造器以它为参数，
-  而 `freeway-cloud` 自己的测试要构造一个（`CloudSymbolPrecedenceTest`）——一个 public 签名
-  够到的类型，就得对那个调用方可见。
-- `boot.internal.AppLogSource` 保持 `public`。它是 `META-INF/services` 里的
-  `LogConfigSource` provider，由 `java.base` 的 `ServiceLoader` 反射构造，类与无参构造器
-  都必须 public。收窄它会在任何一次日志初始化时炸掉，且栈里看不出是可见性问题。
-
-两条都写进了 AGENTS.md 的可见性规则；全仓按"包外无引用"筛出 72 个候选，其余 70 个是
-假阳性——**库自身的 API 没有仓内调用方是正常的，grep 单独回答不了这个问题**。
-
-三处私有方法 `ensureOpen()` / `checkOpen()` 统一为 `requireOpen()`（`PoolDefault`、`WebSocketSessionImpl`、
-`EventExecutorSupport` 的参数名）——三者是同一个 `if (closed) throw`，此前用了三种词干。**只统一词干，
-异常类型各自不变**（`SqlException` / `IOException` / `IllegalStateException`），所以对调用方零影响。
-
-`Orm.ensureInsertable` → `Orm.requireInsertable`（私有方法，零 API 影响）：它的方法体只有
-`throw new SqlException(...)`，而它自己的 javadoc 写的是 "Rejects an entity"——名字与文档
-直接矛盾。现在 **`require*` 一律是「拒绝」，`ensure*` 一律是「幂等补救」**，这个区分此前只存在
-于行为里、没人写下过，已写进 AGENTS.md 的 Naming 段。按新规则扫全仓，`ensure*` 里已无「只抛不补救」者。
-
-`freeway-db` 的两处 `Sql` 形状修正（都是 `Sql` 自己的问题，无编译错误保护）：
+面向发布的形状变更（编译错误即迁移路径）：
 
 | 旧 | 新 | 影响 |
 |---|---|---|
-| `where("id in ?", sub)` 把嵌套 `Sql` 裸拼进 fragment，渲染出 `id in SELECT …`，由驱动报错 | 构建期即拒，消息点名写成 `"(?)"` | **此前能用的写法现在抛 `SqlException`**。裸拼产出的语句读起来像合法 SQL、意思却是另一句（子查询自己的 `WHERE` 并进外层），而错误来自 JDBC、栈里指向别处——所以判据放在 `appendValue`（所有 fragment 方法共用的一处），不是散在各方法的文档里。`setColumn` 不受影响：它没有 fragment 让调用方写括号，渲染器自己加 |
-| 链式 `a.union(b).union(c)` 每层再包一次左括号 | 左侧不再重复包裹，右侧保留 | 纯形状。UNION 左结合，`(A ∪ B) ∪ C` 与 `A ∪ B ∪ C` 等价，此前只是文本逐层嵌套；右侧必须留括号（`A ∪ (B ∪ C)` 不等于 `A ∪ B ∪ C`），分组不丢。绑定顺序不变 |
+| `FreewayApp.run(String[])` 与树形入口（`Freeway.create(ModuleNode)`、`FreewayApp.run/create(ModuleNode…)`、`AppBuilder`、`Container.moduleTree()`） | 删除 | 迁移：`run(new String[0])` → `create().start()`；树形写法 → `new OrderModule(), CloudModule.class`；显式声明过 `AppBuilder` 的改为 `FreewayApp launcher = …`。单个 `String[]` 同时匹配两个 varargs，旧写法报"引用不明确"而非点名修法，故迁移写在此处 |
+| `AbstractHttpContext#setMaxBodySize(long)` 可被覆写 | `final` | 覆写过它的适配器编译失败；"每请求复位"这条承诺因此有一个不可绕过的实现点 |
+| `AbstractHttpContext` 构造器 `(codec, coercer)` / `(codec, coercer, correlationId)` | 各多一个 `maxBodySize` 参数 | 适配器的 context 编译失败——配置的上限只有 server 起来后才知，池随之挪到 `start()` 里建；两个引擎改为在 `reset()` 里 `resetMaxBodySize()` |
+| `FrameHeader` 三个入口对超界长度静默截断 | 统一抛 `IllegalArgumentException` | 该类型是 `public`；按算出的长度自行构造 header 的适配器从"写出错帧"变成"抛异常" |
+| `http.engine.http2.hpack.Huffman` / `StaticHeaderTable` 是 `public` | 包私有 | HPACK 实现细节，包外无引用 |
+| `commons.bean.MethodHandleUtils` | `commons.bean.ReflectiveHandles` | 它管的还有 `VarHandle` 字段访问器与构造器句柄，旧名把范围说窄了。纯重命名 |
+| `http.internal.HttpUtils` 的 6 个 header 方法 | `http.internal.HttpHeaders` | header 线格式规则与查询串解析分开；`HttpUtils` 保留查询串。全部包私有 |
+| `http.engine.http2.BinUtils` | `http.engine.http2.Bytes` | 大端整数读写与字节拼接两组，`Utils` 掩盖了它有形状。纯重命名 |
+| `http.engine.ws.WebSocketUtils` | 方法移入 `WebSocketUpgrade.acceptKey` | 只有 1 个方法、1 个调用方，且 `Sec-WebSocket-Accept` 派生本属握手 |
+| `AppConfigDefaultTest` / `BootConfigTierTest` 在 `com.jujin.freeway.boot` | 移到 `boot.internal`，与被测类同包 | 纯测试位置变更 |
 
-方向正过来：Schema 归开发、migration 归生产，`freeway.db.schema.mode` 三档替代布尔键。
+Schema 归开发、migration 归生产，`freeway.db.schema.mode` 三档替代布尔键：
 
 | 旧 API / 行为 | 新 API / 行为 |
 |---|---|
-| `freeway.db.schema.auto=true/false` | `freeway.db.schema.mode=auto/off`；生产再加一档 `validate`（迁移后比对实体与库，漂移即启动失败）。旧键删除且**值不生效**：**只设旧键时启动失败**，报错点名新键与 true→auto/false→off——旧键是生产唯一能表达"不要自动 DDL"的开关，静默落到默认 `auto` 等于把生产切到启动收敛；两者都设时新键生效、旧键值被忽略并 WARN；键表保留常量供词表静默 |
-| Schema 与 migration 启动期都跑（Schema 先） | `auto` 原序不变；`validate` 改为 migration 先、比对后——比对必须发生在迁移带库追平之后 |
-| `Schema.ensure` 内联检查+应用 | 检查半抽成 `inspect`：`ensure` 执行、`validate` 上报（`Schema.validate(db, …)` 返回漂移行）；日志/计数/主键保护错与原来逐字一致 |
+| `freeway.db.schema.auto=true/false` | `freeway.db.schema.mode=auto/off`，生产再加 `validate`（迁移后比对实体与库，漂移即启动失败）。旧键删除且值不生效：只设旧键时启动失败并点名新键与 true→auto/false→off |
+| Schema 与 migration 启动期都跑（Schema 先） | `auto` 原序不变；`validate` 改为 migration 先、比对后 |
+| `Schema.ensure` 内联检查+应用 | 检查半抽成 `inspect`：`ensure` 执行、`validate` 上报 |
 
-### Changed
-
-- **模块组合的公开词汇收敛为"模块 + 入口列表"：树类型 `ModuleNode` 移入 `ioc.internal`（包私有），
-  只做结构与校验，不再出现在公共 API 上**——不否定树的作用，而是把它放回该在的位置：
-  - 删除的树形入口：`Freeway.create(ModuleNode)`、`FreewayApp.run(ModuleNode)`、
-    `FreewayApp.run(String[], ModuleNode)`、`FreewayApp.create(ModuleNode)`、
-    `AppBuilder.add(ModuleNode...)`、`Container.moduleTree()`。公共面对树零暴露；迁移就是把
-    `ModuleNode.app("order-service", ModuleNode.of(new OrderModule()), ModuleNode.of(CloudModule.class))`
-    写成 `new OrderModule(), CloudModule.class`——类声明与实例声明在入口处直接混用，不再包装。
-  - 容器构造收进 `ContainerImpl`：`of(ModuleEx...)` / `of(Class...)` / `empty()`（`ioc.internal`
-    里唯一的公共类型仍是 `ContainerImpl`，`Freeway` 只是它的门面）。`ModuleNode` 保留并承担
-    结构 + 不变量（重复类、`@SubModule` 成环、pre-order）+ 启动日志 `render()`，只是不再由外部组装。
-  - 树上的命名入口（`ModuleNode.app("name", …)`）随公共 API 一起消失，默认名固定为 `application`；
-    要命名应用改走同批 Added 里的 `FreewayApp.name(...)` / `Freeway.create(String, ...)`。内部
-    `app(String)` 与 `app(String, Class...)` 两个重载一并删除——失去公共入口后它们只服务测试。
-  - 行为修复：boot 的 SPI 补齐此前借树的展开结果去重，入口扁平化后必须自己展开 `@SubModule`
-    （`ModuleDiscovery.declaredClasses`，注释指回 `ModuleNode.declaredSubModules`），否则"bundle 声明了
-    SPI 模块 + 自动发现开启"会落到 ioc 的重复类校验上启动失败；新增
-    `FreewayAppTest.submoduleOfABundleIsNotAddedTwiceByDiscovery` 钉住。
-  - 删除测试 `FreewayAppTest.aSecondApplicationRootIsRefused`：不再有"第二个应用根"这个概念。
-- **`AppBuilder` 消融进 `FreewayApp`：boot 的公开词汇从三个类型收敛为两个**——`FreewayApp` 既是入口
-  （`run(...)` / `create(...)`），也是"待启动的应用"本身：`create(...)` 返回它，链上的 `add` /
-  `args` / `config` / `autoDiscovery` / `classLoader` / `shutdownHook` 返回它，`start()` 返回
-  `AppRuntime`。调用点零迁移（`FreewayApp.create(...).autoDiscovery(false).start()` 原样编译），
-  变的只是类型：`AppBuilder` 删除，只有显式声明过该类型的调用方会看到编译错误（迁移为
-  `FreewayApp launcher = ...`）。语义不变：仍是**单次使用**（第二次 `start()` 报错，并发 start 仍只有一个
-  赢家），`autoDiscovery` / `shutdownHook` 仍默认开——这条守卫有回归测试钉住，所以本轮不动它。
-  顺带把 SPI 缺口填充抽成 `boot` 包的包私有 `ModuleDiscovery`（`FreewayApp` 的协作者），
-  `FreewayApp.start()` 只留链与启动编排。
-- **删除 `FreewayApp.run(String[])`——唯一一个"应用完全由 classpath 决定"的入口**：框架的头号设计规则是
-  "No classpath scanning"，SPI 发现的定位始终是"作者声明之后补空缺"，而这个重载把发现当成了组合本身；
-  它也是全部入口重载里唯一零文档、且唯一调用者并不需要该语义的一个（`HttpModuleEngineSelectionTest`
-  用它只是因为更短——它关心的是 SSL reloader，`new HttpModule()` 等价）。迁移一行：
-  `FreewayApp.run(new String[0])` → `FreewayApp.create().start()`（`create()` 的 args 默认就是空数组，
-  行为逐字等价）。旧写法现在会编译报"引用不明确"——单个 `String[]` 同时匹配 `run(String[], ModuleEx...)`
-  与 `run(String[], Class...)` 两个 varargs 形式，报错不会直接点出修法，所以迁移写在这里。只依赖
-  `META-INF/services` 的应用照旧可写 `run(args, DbModule.class, …)` 点名模块；
-  真有 SPI-only 应用出现、且链上表达力不够时再加回来（本项目不承诺兼容，加回成本是一次 commit）。
-- **入口梯子在内部只留一份：`ModuleNode` 的便利工厂收掉，`ContainerImpl` 成为唯一的"声明 → 结构"装配点**
-  ——删除 `ModuleNode.app()` / `app(Class...)` / `app(ModuleEx...)` / `app(String, ModuleEx...)` 与私有
-  `modules(Class[])`，`ModuleNode` 只留规范根工厂 `app(String, ModuleNode...)` 与 `of(ModuleEx)` /
-  `of(Class)`；`ContainerImpl` 用两个私有 `nodes(...)` 把声明列表走成节点。行为不变（校验仍全走
-  `normalize`，命名仍由 `rootName` 单一归属），测试 0 改写。判据说明：这一族是包私有/`ioc.internal` 类型，
-  外部无法消费，"仓内无调用者"在这里才等于死代码；公共 API 的零调用什么也不说明（ext 与应用才是消费者面）。
-  同一轮里 **`ContainerImpl.empty()` 保留**——它看着像 `of()` 的重复，实际是 arity-0 的消歧拼法：裸
-  `of()` 会在 `ModuleEx...` 与 `Class...` 之间歧义（删掉后构建实测报"对 of 的引用不明确"，已恢复并写明原因）。
+两处**收窄可见性被事实驳回**、已写进 AGENTS.md：`boot.internal.ConfigSources` 必须 `public`
+（`AppConfigDefault` 的 public 构造器以它为参数，`freeway-cloud` 的测试要构造它）、
+`boot.internal.AppLogSource` 必须 `public`（`META-INF/services` 的 provider，由 `ServiceLoader`
+反射构造）。判据是"public 签名够到谁、谁就得可见"，而非"仓内有无调用方"。
 
 ## [1.5.5] - 2026-09-24
 
