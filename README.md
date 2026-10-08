@@ -240,42 +240,27 @@ Boot turns a composed container into an application runtime:
 
 ```mermaid
 stateDiagram-v2
-    [*] --> CREATED
-
+    direction LR
     CREATED --> STARTING : start()
     CREATED --> STOPPING : close()
-
     STARTING --> RUNNING : hooks started
     STARTING --> FAILED : hook failure
-    STARTING --> STOPPING : close() on the starting thread
-
+    STARTING --> STOPPING : close() (same thread)
     RUNNING --> STOPPING : close()
-
     STOPPING --> STOPPED : drained
     STOPPING --> FAILED : stop error
-
     FAILED --> STOPPING : close()
-
-    STOPPED --> [*]
-
-    note right of STARTING
-        start() holds the runtime monitor:
-        a close() from another thread waits,
-        from the starting thread it unwinds.
-    end note
-
     classDef idle fill:#eceff1,stroke:#607d8b,color:#263238
     classDef live fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
     classDef ok fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20
     classDef bad fill:#ffebee,stroke:#c62828,color:#b71c1c
-
     class CREATED idle
     class STARTING,RUNNING,STOPPING live
     class STOPPED ok
     class FAILED bad
 ```
 
-`start()` runs RuntimeHooks in contribution order (supports `before/after` ordering). Any hook failure rolls back already-started hooks. `close()` stops hooks in reverse order, then closes the container. Failed stop produces `FAILED` state with suppressed exceptions.
+`start()` runs RuntimeHooks in contribution order (supports `before/after` ordering). Any hook failure rolls back already-started hooks. `close()` stops hooks in reverse order, then closes the container. Failed stop produces `FAILED` state with suppressed exceptions. A `close()` during `STARTING` unwinds the startup on the starting thread; from another thread it waits for `start()`, which holds the runtime monitor — waiting is the safe direction, since unwinding would leave the runtime briefly `STARTING` with its hooks half-run.
 
 Lifecycle events are published on the EventBus: `AppStartedEvent` after start, `AppStoppingEvent` before shutdown — modules like cache can subscribe to warmup/flush without implementing RuntimeHook.
 
