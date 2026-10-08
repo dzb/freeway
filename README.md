@@ -240,14 +240,39 @@ Boot turns a composed container into an application runtime:
 
 ```mermaid
 stateDiagram-v2
+    [*] --> CREATED
+
     CREATED --> STARTING : start()
     CREATED --> STOPPING : close()
-    STARTING --> RUNNING : ok
-    STARTING --> FAILED : error
+
+    STARTING --> RUNNING : hooks started
+    STARTING --> FAILED : hook failure
+    STARTING --> STOPPING : close() on the starting thread
+
     RUNNING --> STOPPING : close()
-    RUNNING --> FAILED : error
-    STOPPING --> STOPPED : ok
-    STOPPING --> FAILED : error
+
+    STOPPING --> STOPPED : drained
+    STOPPING --> FAILED : stop error
+
+    FAILED --> STOPPING : close()
+
+    STOPPED --> [*]
+
+    note right of STARTING
+        start() holds the runtime monitor:
+        a close() from another thread waits,
+        from the starting thread it unwinds.
+    end note
+
+    classDef idle fill:#eceff1,stroke:#607d8b,color:#263238
+    classDef live fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
+    classDef ok fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20
+    classDef bad fill:#ffebee,stroke:#c62828,color:#b71c1c
+
+    class CREATED idle
+    class STARTING,RUNNING,STOPPING live
+    class STOPPED ok
+    class FAILED bad
 ```
 
 `start()` runs RuntimeHooks in contribution order (supports `before/after` ordering). Any hook failure rolls back already-started hooks. `close()` stops hooks in reverse order, then closes the container. Failed stop produces `FAILED` state with suppressed exceptions.
