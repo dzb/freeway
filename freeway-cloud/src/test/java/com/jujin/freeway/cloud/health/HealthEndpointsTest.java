@@ -71,14 +71,31 @@ class HealthEndpointsTest {
     }
 
     @Test
-    void localRegistryContributorIsOmittedWhenAnExternalBackendIsPrimary() throws Exception {
+    void anExternalRegistryKeepsTheRegistryReadinessCheck() throws Exception {
+        // The state this contributor reports — registered / draining / heartbeat
+        // failing — belongs to RegistryRenewal and is updated by this module's
+        // hook whichever registry is bound. An external backend must not make
+        // /health/ready forget that it is deregistered or draining.
+        try (AppRuntime app = FreewayApp.create(new BareExternalRegistryModule(), new HttpModule())
+                .add(CloudModule.class).start()) {
+            HttpResponse<String> ready = get(app, "/health/ready");
+            assertEquals(200, ready.statusCode());
+            assertTrue(ready.body().contains("\"registry\""),
+                "the registry readiness check must survive an external registry binding: "
+                    + ready.body());
+            assertTrue(ready.body().contains("backend=external"), ready.body());
+        }
+    }
+
+    @Test
+    void anExternalContributorAddsToTheRegistryCheckRatherThanReplacingIt() throws Exception {
         try (AppRuntime app = FreewayApp.create(new ExternalRegistryModule(), new HttpModule()).add(CloudModule.class).start()) {
             HttpResponse<String> ready = get(app, "/health/ready");
             assertEquals(200, ready.statusCode());
             assertTrue(ready.body().contains("external-registry"),
                 "the external adapter's own readiness contributor must be present");
-            assertTrue(!ready.body().contains("\"registry\""),
-                "the stale local registry contributor must be omitted when an ext primary is active");
+            assertTrue(ready.body().contains("\"registry\""),
+                "core keeps reporting registration/drain state alongside it");
         }
     }
 
@@ -129,8 +146,17 @@ class HealthEndpointsTest {
 
     /** A stand-in for a future freeway-ext cloud adapter: primary bindings
      *  plus its own readiness contributor. */
+    /** A primary registry/discovery with no contributor of its own: core must still report. */
+    static class BareExternalRegistryModule extends ExternalRegistryModule {
+        @Override
+        public void bind(Binder b) {
+            b.bind(ServiceRegistry.class).to(container -> registry).primary();
+            b.bind(ServiceDiscovery.class).to(container -> discovery).primary();
+        }
+    }
+
     static class ExternalRegistryModule implements ModuleEx {
-        private final ServiceRegistry registry = new ServiceRegistry() {
+        final ServiceRegistry registry = new ServiceRegistry() {
             @Override
             public void register(ServiceInstance instance) {
             }
@@ -144,7 +170,7 @@ class HealthEndpointsTest {
             public void unregister(ServiceInstance instance) {
             }
         };
-        private final ServiceDiscovery discovery = new ServiceDiscovery() {
+        final ServiceDiscovery discovery = new ServiceDiscovery() {
             @Override
             public List<ServiceInstance> instances(String serviceId) {
                 return List.of();

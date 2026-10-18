@@ -8,6 +8,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Consumer;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.LongAdder;
@@ -61,9 +62,12 @@ public final class CloudEventBus {
     private final JsonCodec codec;
     /** Sealed at composition: the contribution store's snapshot is the table. */
     private final List<CloudEventSubscription> subscriptions;
+    /** Filled with the connector when the mesh is wired; inert before that. */
+    private volatile Consumer<List<String>> peersSink = peers -> { };
 
     // Each plane keeps its own books (no cross-plane merged view).
     private final LongAdder published = new LongAdder();
+    /** Frames handed to a connection's transport queue — the drain thread does the write. */
     private final LongAdder framesSent = new LongAdder();
     private final LongAdder sendFailures = new LongAdder();
     private final LongAdder inboundDelivered = new LongAdder();
@@ -74,6 +78,26 @@ public final class CloudEventBus {
         this.hub = Objects.requireNonNull(hub, "hub");
         this.codec = Objects.requireNonNull(codec, "codec");
         this.subscriptions = List.copyOf(subscriptions);
+    }
+
+    // ==================== peers ====================
+
+    /**
+     * Adds peer addresses discovered at runtime — the entry point a registry
+     * adapter uses when {@code freeway.cloud.event.peers} cannot know them at
+     * boot. The addresses are <em>added</em> (already-dialed endpoints are
+     * skipped, mirroring {@code PeerConnector.addPeers}): a vanished address is
+     * handled by the connector's own backoff, not by a removal call. Inert until
+     * the event module's hook wires the connector; calling it on an unwired mesh
+     * is a no-op, like publishing.
+     */
+    public void addPeers(List<String> peers) {
+        peersSink.accept(List.copyOf(peers));
+    }
+
+    /** Called by the event hook when the connector exists. */
+    void installPeerSink(Consumer<List<String>> sink) {
+        this.peersSink = Objects.requireNonNull(sink, "sink");
     }
 
     // ==================== publish ====================

@@ -58,7 +58,7 @@ import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
  * when the module is installed. An extension module replaces it by binding
  * its own {@link CloudHttpClient} implementation with {@code .primary()}.</p>
  */
-public final class CloudHttpClientDefault implements CloudHttpClient, AutoCloseable {
+public final class CloudHttpClientDefault implements CloudHttpClient {
 
     private static final Logger LOG =
         LoggerFactory.getLogger(CloudHttpClientDefault.class);

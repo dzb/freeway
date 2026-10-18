@@ -5,6 +5,42 @@ All notable changes to Freeway 2 will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **网格广播不再在发布线程上写 socket**（`freeway-cloud`）：`CloudEventBus` 曾逐连接同步发送，
+  一个停止读 socket 的 peer 会让发布线程（HTTP worker 或 `Defer` 提交线程）永久阻塞——设计
+  文档写的却是"慢 peer 不阻塞发布方"，方向正好相反。`PeerConnection` 现在每连接一个有界队列
+  （256 帧）+ 独立发送线程：队列满或写失败即关闭该连接（at-most-once 的既有失败模式），
+  发布线程从不等待 peer。
+- **注册中心停机不再被心跳"复活"**（`freeway-cloud`）：`RegistryLifecycleHook.stop()` 先置
+  `stopped`、再停心跳并 `awaitTermination`；此前一个已经过 `renew` 的心跳会在注销之后重新
+  `register`，把条目留到后端 TTL 过期。启动期注册失败也会补偿注销已注册的条目。
+- **外部 registry 不再让 `/health/ready` 丢掉注册状态**（`freeway-cloud`）：贡献者的 `active`
+  曾要求 discovery 与 registry 都还是 `@Local`，换 Consul 后整体失活，draining 与心跳失败不再
+  被报告。注册/续约/排空是 core 自己的状态（`RegistryRenewal` 由 hook 更新，与后端无关），现在
+  无论绑定哪个 registry 都报告；`instances=` 只在内置 store 时给出，外部后端报 `backend=external`。
+- **`event.enabled` 回到 Boolean 词表**（`freeway-cloud`）：曾用手写字符串再走
+  `SymbolSpec.activated`（只认 true/false），文档承诺的 yes/no/on/off/1/0 里最自然的 `off`
+  会让启动失败。改为 `SymbolSpec<Boolean>`，由容器 Coercer 解析。
+- **文档与代码相反的表述改回事实**：LB 已读 weight（§5.1/§8.2）、Consul 已在 ext 交付
+  （§8.1/guide/config）、`PeerHub` 的 `wire()` 在 HTTP 服务器**之后**、secret 文件按 size/mtime
+  轮换（不是"缓存到重启"）、网格广播走每连接队列；`EVENT_PATH_DEFAULT` 移出 `ConfigKeys`
+  （路由路径是 identity string，不是配置键）。
+
+### Added
+
+- **`CloudEventBus.addPeers(List<String>)`**（`freeway-cloud`）：把文档承诺的 "discovery-fed
+  peers" 变成可达入口——注册中心适配器发现地址后调用它，网格补拨新端点（已连接的跳过）。
+  此前 `PeerConnector` 是包私有且 `addPeers` 无调用者，文档说的接缝并不存在。
+
+### Changed
+
+- **`CloudHttpClient extends AutoCloseable`**（`freeway-cloud`）：生命周期进入角色接口（与
+  `Pool`/`Database`/`HttpServerHandle` 一致）；此前只靠默认实现的 `close()`，外部 `.primary()`
+  替换会静默丢掉 in-flight 结算。
+
 ## [1.5.6] - 2026-10-08
 
 ### Removed

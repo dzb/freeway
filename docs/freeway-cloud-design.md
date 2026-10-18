@@ -252,9 +252,10 @@ public record Health(boolean live, boolean ready, Instant lastSeen) {
   延迟），注册中心适配器答自己的传播窗口（Nacos/K8s endpoints 通常几秒），
   不必每个部署各写一遍；显式时长优先，负值启动失败。
 - 静态第三方服务（PostgreSQL/Redis 等）由配置给定地址，**不走 discovery**。
-- `LoadBalancerDefault` 是跨虚拟线程安全的 round-robin。zone/weight/canary
-  目前只是 metadata：默认策略**不读**它们（§8.2），自定义策略 bind 一个
-  primary 实现即可（接口是 `@FunctionalInterface`）。
+- `LoadBalancerDefault` 是跨虚拟线程安全的**加权**轮询：每次选择读
+  `ServiceInstance.weight()`（缺省 1），权重和按调用序取模。zone/canary
+  仍只是 metadata，自定义策略 bind 一个 primary 实现即可（接口是
+  `@FunctionalInterface`）。
 
 ### 5.2 跨进程调用 rpc
 
@@ -391,8 +392,10 @@ host+port；同一 origin 只保留一条连接，规则是**字典序小的一�
 
 **出站管道**：`CloudEventBus.publish(topic, payload[, subject])`（Defer 感知：
 事务内缓冲，提交后才出境，回滚即弃）→ 按 peer 声明的订阅前缀过滤（filter-then-
-translate：无人感兴趣就不序列化）→ 逐连接发送。发送失败即丢弃该帧并触发重拨；
-**没有背压**（发布线程直接扇出，慢 peer 不阻塞发布方）。
+translate：无人感兴趣就不序列化）→ 逐连接**入队**。每连接一个 256 帧的有界队列 +
+自己的发送线程：发布线程从不等待 peer（一次阻塞写就能挂死 HTTP/Defer 线程），
+队列满或写失败即丢弃该连接并重拨；**没有流量背压**（没有对发布方的反压，代价是
+丢连接/丢帧而不是变慢）。
 
 **入站管道**：帧解析（CloudEvents 1.0，`fwchannel`/`fworigin` 扩展属性）→
 origin 自环抑制 → 拦截器链 → 门面订阅表匹配。订阅声明的 `Class` 即入站白名单：
@@ -663,7 +666,7 @@ API**，遵循 `Database`/`Pool` 模式，并发交给虚拟线程。
 
 | 能力 | 接缝 | 最小收口动作 |
 |---|---|---|
-| 注册 / 发现后端（Nacos、Consul、K8s endpoints） | `ServiceRegistry` + `ServiceDiscovery` | 一个适配器模块 + 真实后端测试；`renew` 已返回 boolean，自愈契约现成 |
+| 注册 / 发现后端（Nacos、K8s endpoints；**Consul 已在 ext 交付**） | `ServiceRegistry` + `ServiceDiscovery` | 一个适配器模块 + 真实后端测试；`renew` 已返回 boolean，自愈契约现成 |
 | 密钥后端（Vault、KMS） | `SecretStore` | 适配器自理租约/TTL（SPI 无 `reload()`），文件轮换语义已定 |
 | 对象存储后端（S3 兼容） | `ObjectStorage` | 版本能力与版本寻址的读/删一起排期，不要只交一半 |
 | 指标导出（OTel/Prometheus push） | 不装 `CloudObserveModule`，primary 绑定 `Metrics` + 自备导出路由 | 顺带把 §8.2 的标签维度一起设计 |
@@ -676,8 +679,8 @@ API**，遵循 `Database`/`Pool` 模式，并发交给虚拟线程。
 |---|---|---|
 | 指标维度（labels）+ 按服务归因 | 现在 4 条无标签序列，一个失败没法回答"哪个服务" | `Metrics` 加一个可选的 tags 参数（不破坏现有调用面），先给 `cloud.rpc.*` 打 `service` 标签 |
 | retry budget | 只按调用重试，重试风暴在依赖大面积失败时反而加压 | `Retryer` 增加按服务的令牌预算，超额直接失败而不是继续退避 |
-| zone / weight / canary 默认策略 | metadata 已有，但默认 round-robin 完全不读，"标了没用" | `LoadBalancerDefault` 在 metadata 存在时优先按 zone/weight，无 metadata 时保持 round-robin |
-| 网格出站背压 + 网格指标 | 目前发布线程直接扇出：慢 peer 不阻塞发布方，代价是丢帧无声 | 每连接有界队列 + 丢弃计数指标；与上一项共用标签机制 |
+| zone / canary 默认策略 | weight 已被 `LoadBalancerDefault` 读取；zone/canary 仍只是 metadata，"标了没用" | 在 metadata 存在时优先按 zone，无 metadata 时保持加权轮询 |
+| 网格丢弃计数指标 | 每连接有界队列 + 独立发送线程已落地（发布线程不再阻塞）；队列满/写失败的丢弃仍无声 | 把 `sendFailures`/队满丢弃暴露成网格指标；与上一项共用标签机制 |
 | 网格应用层心跳 | 半开连接只能靠 TCP/WS 行为与 send 失败发现，被 NAT/LB 静默丢弃时不及时 | 可选的 `event.keepalive` 间隔键（默认关）＋ ping/pong 帧与失联判定；键名在设计里已预留 |
 | readiness 发布到注册表 + startup probe | `Health.starting()` 已存在却没人发布：注册即"就绪"对外是假话，慢启动 pod 会被打 | SPI 加一个就绪位写入（或扩展 `register` 的可选就绪态），注册 hook 先发 starting、就绪后再翻转；同时补 startup probe 语义 |
 | 出站证书轮换 | `SecretStore` 能轮换，但 TLS 材料只在启动时读一次——证书到期只能重启 | `TransportSecurityDefault` 复用密钥文件的 size/mtime 监测，重建 `SSLContext` |

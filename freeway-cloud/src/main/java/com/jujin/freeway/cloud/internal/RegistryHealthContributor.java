@@ -1,6 +1,5 @@
 package com.jujin.freeway.cloud.internal;
 
-import com.jujin.freeway.cloud.discovery.ServiceDiscovery;
 import com.jujin.freeway.cloud.discovery.ServiceRegistry;
 import com.jujin.freeway.cloud.health.CloudHealthContributor;
 import com.jujin.freeway.cloud.health.HealthResult;
@@ -9,34 +8,36 @@ import com.jujin.freeway.cloud.health.HealthResult;
  * Readiness for the registry: reports what {@link RegistryRenewal} observed
  * rather than assuming registration worked.
  *
- * <p>Active whenever the built-in registry is in use. The verdict is
- * per-instance state, decided in {@link #check()} rather than at construction:
- * this contributor is built before the registry hook runs, so it cannot know
- * yet whether this boot registers anything. Unhealthy only after
+ * <p><b>Always active.</b> The state it reports — {@code draining}, heartbeat
+ * failures, registration — is owned by {@link RegistryRenewal} and updated by
+ * this module's {@code RegistryLifecycleHook} whichever {@code ServiceRegistry}
+ * is bound, local or external (the Consul adapter included). Deactivating on an
+ * external binding used to silently drop the registry check from
+ * {@code /health/ready}, which is the opposite of failing loudly: readiness must
+ * keep answering "not registered / draining / heartbeat failing" no matter who
+ * backs the registry. An adapter may add its own connectivity check next to this
+ * one; it does not replace it.</p>
+ *
+ * <p>The verdict is per-instance state, decided in {@link #check()} rather than
+ * at construction: this contributor is built before the registry hook runs, so
+ * it cannot know yet whether this boot registers anything. Unhealthy only after
  * {@link RegistryRenewal#UNHEALTHY_AFTER} consecutive failed heartbeats, so a
  * single blip does not pull the pod out of rotation; an instance that never
  * registered reports healthy with {@code instances=0} instead of a vacuous
- * all-clear.</p>
- *
- * <p>External-backend connectivity is contributed by a custom registry
- * adapter bound primary instead (freeway-ext ships no cloud adapters yet).
- * Once either discovery or registry runs on an external adapter, that role's
- * local implementation is no longer selected, so this contributor deactivates
- * itself and leaves readiness to the adapter's own
- * {@link CloudHealthContributor}.</p>
+ * all-clear (the count is only meaningful for the built-in store, so an external
+ * backend reports {@code backend=external} instead).</p>
  */
 public final class RegistryHealthContributor implements CloudHealthContributor {
 
     private final RegistryStore store;
     private final RegistryRenewal renewal;
-    private final boolean active;
+    private final boolean localStore;
 
     public RegistryHealthContributor(RegistryStore store, ActiveBindingProbe probe,
                                      RegistryRenewal renewal) {
         this.store = store;
         this.renewal = renewal;
-        this.active = probe.isLocal(ServiceDiscovery.class)
-            && probe.isLocal(ServiceRegistry.class);
+        this.localStore = probe.isLocal(ServiceRegistry.class);
     }
 
     @Override
@@ -46,7 +47,7 @@ public final class RegistryHealthContributor implements CloudHealthContributor {
 
     @Override
     public boolean isActive() {
-        return active;
+        return true;
     }
 
     @Override
@@ -63,6 +64,8 @@ public final class RegistryHealthContributor implements CloudHealthContributor {
             return HealthResult.unhealthy("heartbeat failed " + renewal.consecutiveFailures()
                 + " times in a row");
         }
-        return new HealthResult(true, "instances=" + store.instanceCount());
+        return new HealthResult(true, localStore
+            ? "instances=" + store.instanceCount()
+            : "backend=external");
     }
 }

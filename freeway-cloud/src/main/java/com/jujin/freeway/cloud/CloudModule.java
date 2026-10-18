@@ -92,7 +92,7 @@ public final class CloudModule implements ModuleEx {
         /** Static mesh endpoints to dial (host:port, see {@code PeerAddress}).
          *  Presence alone activates the mesh (unless {@code event.enabled=false}
          *  explicitly suppresses it); discovery-fed peers are additive via
-         *  {@code PeerConnector.setPeers}. */
+         *  {@code CloudEventBus.addPeers}. */
         public static final String EVENT_PEERS          = "freeway.cloud.event.peers";
         /** Shared secret the mesh handshake must present; blank = no peer auth.
          *  Every node of a multi-node mesh must set the same value. */
@@ -261,7 +261,6 @@ public final class CloudModule implements ModuleEx {
         public static final String RPC_TLS_TRUST_STORE_PASSWORD_DEFAULT = "";
 
         // ── Advanced: mesh transport, reachable only once the mesh exists ─────
-        public static final String EVENT_PATH_DEFAULT   = "/cloud/event";
 
         // Shared by the CloudEventLifecycleHook specs and PeerConnector's
         // library fallback — one value per timeout.

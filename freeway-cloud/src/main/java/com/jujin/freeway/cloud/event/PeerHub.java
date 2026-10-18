@@ -23,9 +23,10 @@ import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
  * ({@code /cloud/event}) + the inbound dispatch pipeline.
  *
  * <p>Lifecycle: constructed by {@link CloudEventModule} at bind time,
- * {@link #wire(Wiring)} runs from a RuntimeHook ordered before
- * {@code freeway.http.server}, so the hub is fully wired before the server
- * can accept a single connection.</p>
+ * {@link #wire(Wiring)} runs from a RuntimeHook ordered <em>after</em>
+ * {@code freeway.http.server}: the mesh origin is the node identity, which
+ * needs the port the node actually serves on. A peer that dials during that
+ * short window is closed with 1013 and reconnects on its backoff.</p>
  *
  * <p>Connection state is the fact; the registry view (peers map) is its
  * projection — this class only tracks connections and never dials.</p>

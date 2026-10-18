@@ -3,6 +3,7 @@ package com.jujin.freeway.cloud.event;
 import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
 import com.jujin.freeway.cloud.CloudModule;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -120,6 +121,29 @@ class CloudEventBusTest extends CloudMeshTest {
         assertTrue(atB.isEmpty(), "a local fact must stay a local fact");
         assertEquals(0, nodeA.get(CloudEventBus.class).stats().published(),
             "the cloud plane was never handed this publish");
+    }
+
+    @Test
+    void discoveredPeersReachTheConnector() {
+        // The docs promise "no static peers: a discovery backend feeds them".
+        // That only exists if the bus can hand addresses to the connector.
+        PeerHub hub = new PeerHub();
+        CloudEventBus mesh = new CloudEventBus(hub, new JsonCodecDefault(), List.of());
+        List<List<String>> fed = new java.util.ArrayList<>();
+        mesh.installPeerSink(fed::add);
+
+        mesh.addPeers(List.of("10.0.0.1:8080", "10.0.0.2:8080"));
+
+        assertEquals(List.of(List.of("10.0.0.1:8080", "10.0.0.2:8080")), fed,
+            "a registry adapter feeds peers through the bus, not by reaching into the connector");
+    }
+
+    @Test
+    void addPeersOnAnUnwiredMeshIsInert() {
+        CloudEventBus mesh = new CloudEventBus(new PeerHub(), new JsonCodecDefault(), List.of());
+        assertDoesNotThrow(() -> mesh.addPeers(List.of("10.0.0.1:8080")),
+            "an unwired mesh has no connector to feed — the call must be a no-op");
+        assertEquals(0, mesh.stats().framesSent());
     }
 
     @Test

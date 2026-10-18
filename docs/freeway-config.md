@@ -478,7 +478,7 @@ CLI 参数（`--freeway.config.file=...`）同样无效——启动时会打 WAR
 | 类别 | 例子 | 作用 |
 |---|---|---|
 | **选择键** | `.primary()` 绑定、`@Local` 标记、适配器模块本身 | **真正决定用哪个实现**：容器解析时主绑定胜出，本地默认让位 |
-| **声明键** | `freeway.cloud.discovery.type` / `registry.type` / `secret.type` / `storage.type` | **只表达意图**："我期望用 Nacos / Consul / S3 / Vault"。框架**不用它选择实现**（没有类名反射加载，也没有 classpath 扫描），它由适配器自己消费，并在"声明了外部后端、本地实现却仍是活跃绑定"时触发一次启动告警（`BackendTypeGuard`），避免把声明当成生效 |
+| **声明键** | `freeway.cloud.discovery.type` / `registry.type` / `secret.type` / `storage.type` | **只表达意图**："我期望用 Nacos / Consul / S3 / Vault"。框架**不用它选择实现**（没有类名反射加载，也没有 classpath 扫描），适配器**可以**读它做校验/告警（Consul 适配器把它当纯意图声明，不参与选择），并在"声明了外部后端、本地实现却仍是活跃绑定"时触发一次启动告警（`BackendTypeGuard`），避免把声明当成生效 |
 
 所以：想换后端，写适配器模块并 `.primary()`；`*.type` 是给人和适配器看的
 声明与自检，写错（或没装适配器）不会静默生效，而是启动告警一次。
@@ -502,8 +502,8 @@ CLI 参数（`--freeway.config.file=...`）同样无效——启动时会打 WAR
 
 | 键 | 档 | 类型 | 默认值 | 必填 | 说明 |
 |----|------|------|--------|------|------|
-| `freeway.cloud.discovery.type` | 声明 | String | *(空)* | 否 | 发现后端类型。空（或 `local`）= 内置进程内注册表；外部后端（Nacos 等）由适配器 `.primary()` 接入（freeway-ext 未交付）——配了外部值而本地实现仍生效时启动告警一次 |
-| `freeway.cloud.registry.type` | 声明 | String | *(空)* | 否 | 注册后端类型。同上（空/`local` = 进程内注册表） |
+| `freeway.cloud.discovery.type` | 声明 | String | *(空)* | 否 | 发现后端类型。空（或 `local`）= 内置进程内注册表；外部后端由适配器 `.primary()` 接入（Consul 已在 freeway-ext 交付；Nacos 等未交付）——配了外部值而本地实现仍生效时启动告警一次 |
+| `freeway.cloud.registry.type` | 声明 | String | *(空)* | 否 | 注册后端类型。同上（空/`local` = 进程内注册表；Consul 已在 freeway-ext 交付） |
 | `freeway.cloud.registry.service-id` | 调优·哨兵 | String | *(空)* | 否 | 注册的逻辑服务名。空 = 回退 `freeway.app.name`（再回退 `freeway-app`） |
 | `freeway.app.name` | 调优·哨兵 | String | `freeway-app` | 否 | 服务名的通用回退键，cloud 注册时读取；注意 JVM `-D app.name`（无 `freeway.` 前缀）是另一回事——它只决定默认日志文件名 |
 | `freeway.cloud.registry.service-host` | 姿态·auto | String | `auto` | 否 | 注册地址主机名。`auto` = 绑定地址若是具体地址就用它（服务器只在那里监听）；绑定 `0.0.0.0`/`::` 时优先 `POD_IP`、否则首个可路由本地地址，都没有才回落绑定地址并告警。多网卡主机请点名 |

@@ -19,9 +19,9 @@ import org.junit.jupiter.api.Test;
 /**
  * Presence-driven activation of the event mesh (design principle: explicit
  * wins, presence activates, default stays off): configured peers alone start
- * the dialing side; an explicit {@code event.enabled=false} is the kill
- * switch; nothing set keeps the module inert; an invalid explicit value fails
- * startup naming the key.
+ * the dialing side; an explicit {@code event.enabled=false} (or any word the
+ * container's Boolean coercer accepts) is the kill switch; nothing set keeps
+ * the module inert; an invalid explicit value fails startup naming the key.
  */
 class CloudEventMeshActivationTest extends CloudMeshTest {
 
@@ -50,6 +50,17 @@ class CloudEventMeshActivationTest extends CloudMeshTest {
                     sink.set(p);
                     latch.countDown();
                 }));
+    }
+
+    @Test
+    void offIsTheKillSwitchNotAnInvalidValue() throws Exception {
+        // The key is documented as a Boolean and every other Boolean key goes
+        // through the container's coercer; `off` used to fail startup because a
+        // hand-rolled string parser accepted only true/false.
+        System.setProperty(ConfigKeys.EVENT_ENABLED, "off");
+        nodeA = FreewayApp.run(new String[0], new HttpModule(), new CloudEventModule());
+        assertFalse(nodeA.get(PeerHub.class).wired(),
+            "event.enabled=off must read as false, not as a parse error");
     }
 
     @Test

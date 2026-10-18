@@ -13,8 +13,23 @@ package com.jujin.freeway.cloud.rpc;
  * <p>{@link CloudHttpClientDefault} is the framework default; extension
  * modules replace it by binding their own implementation with
  * {@code .primary()}.</p>
+ *
+ * <p><b>Replacement must keep the lifecycle.</b> {@link #close()} is part of
+ * the role, not of the default: the container closes a managed
+ * {@link AutoCloseable} instance, so an implementation bound without
+ * {@code close()} would silently lose the in-flight settlement that shutdown
+ * depends on (the default waits out {@code rpc.shutdown-grace} before failing
+ * unfinished calls).</p>
  */
-public interface CloudHttpClient {
+public interface CloudHttpClient extends AutoCloseable {
+
+    /**
+     * Releases the client's resources; idempotent, and a no-op on a client
+     * that never left its process. Implementations must settle or fail any
+     * call still in flight rather than dropping it.
+     */
+    @Override
+    void close();
 
     /** Calls {@code serviceId}'s selected instance at {@code request.path()}. */
     CloudResponse call(String serviceId, CloudRequest request) throws CloudException;

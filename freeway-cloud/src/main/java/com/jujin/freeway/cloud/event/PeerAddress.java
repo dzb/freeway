@@ -69,7 +69,7 @@ record PeerAddress(String host, int port) {
     /** {@code scheme://host:port/cloud/event}, bracketing an IPv6 host. */
     URI toUri(String scheme) {
         String hostPart = host.indexOf(':') >= 0 ? "[" + host + "]" : host;
-        return URI.create(scheme + "://" + hostPart + ":" + port + ConfigKeys.EVENT_PATH_DEFAULT);
+        return URI.create(scheme + "://" + hostPart + ":" + port + CloudEventModule.EVENT_PATH);
     }
 
     @Override

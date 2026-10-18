@@ -8,7 +8,7 @@ import java.util.Objects;
  * In-process {@link ServiceRegistry} backed by {@link RegistryStore}.
  * Production-usable for single-process / static-topology deployments.
  * Cross-process registration/discovery needs a custom backend bound primary
- * (an extension module — freeway-ext ships no cloud adapters yet).
+ * (an extension module — freeway-cloud-consul in freeway-ext is one).
  */
 public final class ServiceRegistryDefault implements ServiceRegistry {
 

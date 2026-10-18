@@ -29,9 +29,17 @@ class RemoteCallerSanitizationTest {
 
     /** A transport that always answers the remote call with forged headers. */
     private static RemoteCaller callerWith(int status, String exClass, String message) {
-        CloudHttpClient hostile = (serviceId, request) -> new CloudResponse(status,
-            Map.of("x-rpc-exception", List.of(exClass), "x-rpc-message", List.of(message)),
-            new byte[0]);
+        CloudHttpClient hostile = new CloudHttpClient() {
+            @Override
+            public CloudResponse call(String serviceId, CloudRequest request) {
+                return new CloudResponse(status,
+                    Map.of("x-rpc-exception", List.of(exClass), "x-rpc-message", List.of(message)),
+                    new byte[0]);
+            }
+
+            @Override
+            public void close() { }
+        };
         return new RemoteCaller(hostile, new JsonCodecDefault());
     }
 

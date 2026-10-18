@@ -35,13 +35,20 @@ import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
  * unset with no peers leaves the mesh unwired, {@code peers} below wire it;
  * {@code false} is a kill switch that suppresses even a configured peer list),
  * {@code peers} (host:port list; optional when a discovery backend feeds
- * {@code setPeers}), {@code token} (mesh handshake token). Inbound interest
+ * {@code addPeers}), {@code token} (mesh handshake token). Inbound interest
  * is no longer configuration: it is the {@link CloudEventSubscription}
  * contributions, which simultaneously drive the hello pull-prefixes, the
  * inbound gate and delivery.</p>
  */
 @Marker(Builtin.class)
 public final class CloudEventModule implements ModuleEx {
+
+    /**
+     * The mesh endpoint path. A route path is an identity string, not a
+     * configuration key: it lives here with the route that serves it and stays
+     * out of {@code ConfigKeys} (which is the key vocabulary only).
+     */
+    public static final String EVENT_PATH = "/cloud/event";
 
     @Override
     public void bind(Binder binder) {
@@ -59,7 +66,7 @@ public final class CloudEventModule implements ModuleEx {
 
         binder.contribute(WebSocketRoute.class)
             .add("freeway.cloud.event", WebSocketRoute.of(
-                ConfigKeys.EVENT_PATH_DEFAULT, hub));
+                EVENT_PATH, hub));
 
         binder.contribute(RuntimeHook.class)
             .add(CloudHooks.EVENT, new CloudEventLifecycleHook(hub))

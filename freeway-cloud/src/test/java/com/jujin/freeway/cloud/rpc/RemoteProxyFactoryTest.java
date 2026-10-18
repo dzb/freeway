@@ -47,9 +47,15 @@ class RemoteProxyFactoryTest {
         // CloudRequest, so a stub client that captures request.idempotent()
         // pins the whole chain without a server.
         List<Boolean> seen = new ArrayList<>();
-        CloudHttpClient recording = (serviceId, request) -> {
-            seen.add(request.idempotent());
-            return ok();
+        CloudHttpClient recording = new CloudHttpClient() {
+            @Override
+            public CloudResponse call(String serviceId, CloudRequest request) {
+                seen.add(request.idempotent());
+                return ok();
+            }
+
+            @Override
+            public void close() { }
         };
         RemoteCaller caller = new RemoteCaller(recording, new JsonCodecDefault());
 
@@ -71,7 +77,15 @@ class RemoteProxyFactoryTest {
 
     /** A transport that answers {@code "ok"} for every call. */
     private static CloudHttpClient stubClient() {
-        return (serviceId, request) -> ok();
+        return new CloudHttpClient() {
+            @Override
+            public CloudResponse call(String serviceId, CloudRequest request) {
+                return ok();
+            }
+
+            @Override
+            public void close() { }
+        };
     }
 
     private static CloudResponse ok() {

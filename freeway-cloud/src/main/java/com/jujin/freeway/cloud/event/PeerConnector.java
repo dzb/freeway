@@ -25,7 +25,7 @@ import com.jujin.freeway.cloud.resilience.Backoff;
  *
  * <p>Peers resolve from a static list (zero-dependency start) — the discovery
  * backend path is additive and left to the caller to feed via
- * {@link #setPeers(List)} when a registry backend is installed.</p>
+ * {@link #addPeers(List)} when a registry backend is installed.</p>
  */
 final class PeerConnector implements AutoCloseable {
 
@@ -85,7 +85,7 @@ final class PeerConnector implements AutoCloseable {
     private volatile boolean closed;
 
     /**
-     * Peers arrive through {@link #start(List)} or {@link #setPeers(List)} —
+     * Peers arrive through {@link #start(List)} or {@link #addPeers(List)} —
      * the configured ones from the lifecycle hook, the discovered ones from an
      * adapter. There is no separate constructor-supplied set: it would be a
      * second way to feed the same thing, and production never used it.
@@ -195,8 +195,8 @@ final class PeerConnector implements AutoCloseable {
     /** Dials the given peers (virtual threads; failures back off). */
     public synchronized void start(List<String> peers) {
         if (started) {
-            // late peers are handled by setPeers — no double dial
-            setPeers(peers);
+            // late peers are handled by addPeers — no double dial
+            addPeers(peers);
             return;
         }
         started = true;
@@ -214,7 +214,7 @@ final class PeerConnector implements AutoCloseable {
      *  the {@code started} check and the {@code start()} snapshot cannot
      *  interleave — otherwise a peer fed between the two could be dialed by
      *  neither and silently lost. */
-    public synchronized void setPeers(List<String> peers) {
+    public synchronized void addPeers(List<String> peers) {
         for (PeerAddress peer : peers.stream().map(PeerAddress::parse).toList()) {
             boolean known = backoffByPeer.containsKey(peer);
             if (!known && started) {

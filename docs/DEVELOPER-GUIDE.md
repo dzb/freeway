@@ -1941,7 +1941,8 @@ Hot-reloading a watched config file changes what the symbol chain resolves from
 then on, not what an already-constructed client, registry declaration or
 propagator captured — a changed `freeway.cloud.rpc.request-timeout` needs a
 restart to take effect (per-call values passed to `RemoteCaller`/`RemoteProxyFactory`
-are the exception, and the secret store caches its file until restart). Read a
+are the exception; the secret store rereads its file when its size or mtime
+changes, throttled to once a second). Read a
 value at its point of use only when it is genuinely meant to be live.
 
 ---
@@ -2078,8 +2079,8 @@ freeway.cloud.event.token=mesh-secret         # blank = no peer auth (warned); M
 
 - `peers` — nodes to dial; a non-empty list **is the activation** (the dialing
   side never needs `event.enabled`). An external registry backend can feed
-  these dynamically instead (via `PeerConnector.setPeers`; needs a discovery
-  adapter — an ext concern, none is shipped today). The endpoint rides the
+  these dynamically instead (via `CloudEventBus.addPeers`; needs a discovery
+  adapter — an ext concern; `freeway-cloud-consul` ships one). The endpoint rides the
   existing HTTP server at `/cloud/event`. IPv6 literals work bracketed
   (`[::1]:8080`) or bare.
 - `token` — shared secret every peer must present in the hello frame; compared

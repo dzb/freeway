@@ -195,7 +195,7 @@ class PeerHubHandshakeStateTest {
             CompletableFuture<Void> opened = new CompletableFuture<>();
             WebSocket socket = HttpClient.newHttpClient().newWebSocketBuilder()
                 .buildAsync(URI.create("ws://127.0.0.1:" + port
-                        + ConfigKeys.EVENT_PATH_DEFAULT),
+                        + CloudEventModule.EVENT_PATH),
                     new WebSocket.Listener() {
                         @Override
                         public void onOpen(WebSocket webSocket) {
@@ -247,7 +247,7 @@ class PeerHubHandshakeStateTest {
         public void bind(Binder binder) {
             binder.contribute(WebSocketRoute.class)
                 .add("fake-event", WebSocketRoute.of(
-                    ConfigKeys.EVENT_PATH_DEFAULT, server.endpoint));
+                    CloudEventModule.EVENT_PATH, server.endpoint));
         }
     }
 }

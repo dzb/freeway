@@ -16,6 +16,8 @@ import com.jujin.freeway.ioc.Freeway;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.Test;
 
@@ -92,6 +94,55 @@ class RegistryRenewalTest {
             } finally {
                 hook.stop(container);
             }
+        }
+    }
+
+    @Test
+    void aHeartbeatRacingStopDoesNotReviveTheDeregisteredEntry() throws Exception {
+        // The real interleaving: the heartbeat is inside renew() when stop()
+        // runs. stop() deregisters; the heartbeat resumes, learns the entry is
+        // gone and must NOT register it again — the revived entry outlives the
+        // process until the backend's lease expires.
+        List<ServiceInstance> registrations = new CopyOnWriteArrayList<>();
+        List<ServiceInstance> unregistered = new CopyOnWriteArrayList<>();
+        CountDownLatch inRenew = new CountDownLatch(1);
+        CountDownLatch releaseRenew = new CountDownLatch(1);
+        ServiceRegistry registry = new ServiceRegistry() {
+            @Override public void register(ServiceInstance instance) { registrations.add(instance); }
+
+            @Override public boolean renew(String serviceId, String instanceId) {
+                inRenew.countDown();
+                try {
+                    releaseRenew.await(5, TimeUnit.SECONDS);
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                }
+                return false;   // the registry no longer holds the entry
+            }
+
+            @Override public void unregister(ServiceInstance instance) { unregistered.add(instance); }
+        };
+        RegistryRenewal renewal = new RegistryRenewal();
+        try (Container container = Freeway.create(binder -> {
+            binder.bind(ServiceRegistry.class).to(c -> registry);
+            binder.contribute(ServiceDeclaration.class).add("test", (ServiceDeclaration) c -> INSTANCE);
+        })) {
+            RegistryLifecycleHook hook = new RegistryLifecycleHook(renewal, Duration.ofHours(1));
+            hook.start(container);
+
+            Thread heartbeat = Thread.ofVirtual().start(hook::heartbeat);
+            assertTrue(inRenew.await(5, TimeUnit.SECONDS), "the heartbeat reached renew()");
+            Thread stopper = Thread.ofVirtual().start(() -> hook.stop(container));
+            assertTrue(await(() -> unregistered.size() == 1), "stop() deregistered the entry");
+
+            releaseRenew.countDown();
+            heartbeat.join(5_000);
+            stopper.join(5_000);
+            assertFalse(heartbeat.isAlive(), "the racing heartbeat must finish before asserting");
+
+            assertEquals(1, registrations.size(),
+                "the heartbeat that was inside renew() during stop() must not re-register: "
+                    + registrations.size() + " registrations");
         }
     }
 

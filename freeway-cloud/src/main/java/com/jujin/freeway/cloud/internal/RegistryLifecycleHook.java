@@ -55,6 +55,13 @@ public final class RegistryLifecycleHook implements RuntimeHook {
     private final List<ServiceInstance> registered = new CopyOnWriteArrayList<>();
     private volatile ScheduledExecutorService scheduler;
     private volatile ServiceRegistry registryRef;
+    /**
+     * Set before the heartbeat is stopped in {@link #stop()}. A heartbeat that
+     * already passed {@code renew} must not re-register afterwards: the
+     * deregistration it would undo happens in the same shutdown, and a revived
+     * entry outlives the process until the backend's lease expires.
+     */
+    private volatile boolean stopped;
 
     public RegistryLifecycleHook(RegistryRenewal renewal) {
         this(renewal, RENEW_INTERVAL);
@@ -70,18 +77,35 @@ public final class RegistryLifecycleHook implements RuntimeHook {
     public void start(Container container) throws Exception {
         ServiceRegistry registry = container.get(ServiceRegistry.class);
         registryRef = registry;
+        stopped = false;
         SymbolSource symbols = container.get(SymbolSource.class);
         shutdownDrain = resolveDrain(symbols.resolve(SHUTDOWN_DRAIN_RAW), registry, symbols);
-        for (ServiceDeclaration declaration : container.extension(ServiceDeclaration.class).all()) {
-            ServiceInstance instance = declaration.resolve(container);
-            if (instance == null) {
-                continue; // declaration not applicable this boot
+        try {
+            for (ServiceDeclaration declaration : container.extension(ServiceDeclaration.class).all()) {
+                ServiceInstance instance = declaration.resolve(container);
+                if (instance == null) {
+                    continue; // declaration not applicable this boot
+                }
+                registry.register(instance);
+                registered.add(instance);
+                LOG.info("Registered service '{}' instance '{}' at {}", instance.serviceId(),
+                    instance.instanceId(), instance.endpoint());
             }
-            registry.register(instance);
-            registered.add(instance);
-            LOG.info("Registered service '{}' instance '{}' at {}", instance.serviceId(),
-                instance.instanceId(), instance.endpoint());
+        } catch (RuntimeException ex) {
+            // A failed registration must not leave the entries already applied:
+            // this boot is failing, so no runtime will ever run stop() for them.
+            for (ServiceInstance applied : registered) {
+                try {
+                    registry.unregister(applied);
+                } catch (RuntimeException cleanup) {
+                    LOG.warn("Unregister failed while compensating a failed startup: {}",
+                        cleanup.getMessage());
+                }
+            }
+            registered.clear();
+            throw ex;
         }
+
         if (!registered.isEmpty()) {
             renewal.track();
                 long intervalMillis = renewInterval.toMillis();
@@ -131,7 +155,16 @@ public final class RegistryLifecycleHook implements RuntimeHook {
      * afterwards would be a second, weaker opinion, and for an adapter
      * backend a second network round trip on every interval.
      */
-    private void heartbeat() {
+    /**
+     * One heartbeat pass. Package-private (not private) so the stop/heartbeat
+     * interleaving can be exercised without a scheduler: the test blocks inside
+     * {@code renew} while {@code stop()} deregisters, which is exactly the race
+     * the {@code stopped} flag exists for.
+     */
+    void heartbeat() {
+        if (stopped) {
+            return;
+        }
         ServiceRegistry registry = registryRef;
         if (registry == null) {
             return;
@@ -151,6 +184,11 @@ public final class RegistryLifecycleHook implements RuntimeHook {
                 continue;
             }
             healthy = false;
+            if (stopped) {
+                // A deregistration is in flight (stop() set the flag before it
+                // stopped the heartbeat) — re-registering now would undo it.
+                continue;
+            }
             try {
                 registry.register(instance);
                 LOG.warn("Registration for {} instance {} was gone — re-registered",
@@ -188,9 +226,18 @@ public final class RegistryLifecycleHook implements RuntimeHook {
 
     @Override
     public void stop(Container container) {
+        // Set before touching the scheduler: a heartbeat already inside renew()
+        // must see it and skip the re-registration that would undo the
+        // deregistration below.
+        stopped = true;
         ScheduledExecutorService s = scheduler;
         if (s != null) {
             s.shutdownNow();
+            try {
+                s.awaitTermination(2, TimeUnit.SECONDS);
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+            }
             scheduler = null;
         }
         // Signal first, then wait: readiness turns unhealthy and the entry

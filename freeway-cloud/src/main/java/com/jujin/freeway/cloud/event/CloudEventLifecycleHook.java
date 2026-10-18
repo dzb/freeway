@@ -33,8 +33,14 @@ final class CloudEventLifecycleHook implements RuntimeHook {
     /** The explicit form of the master switch, kept raw so "unset" (blank)
      *  is distinguishable from an explicit {@code false} — the presence rule
      *  applies only to the unset case. */
-    private static final SymbolSpec<String> EVENT_ENABLED_EXPLICIT = SymbolSpec.of(
-        ConfigKeys.EVENT_ENABLED, String.class, "", Function.identity());
+    /**
+     * Presence-driven Boolean, not a hand-rolled string: the key's documented
+     * vocabulary is the container Coercer's (true/false, yes/no, on/off, 1/0),
+     * and a second parser here made {@code event.enabled=off} — the most
+     * natural kill-switch spelling — fail startup.
+     */
+    private static final SymbolSpec<Boolean> EVENT_ENABLED_EXPLICIT = SymbolSpec.of(
+        ConfigKeys.EVENT_ENABLED, Boolean.class, null);
 
     private static final SymbolSpec<String> TOKEN = SymbolSpec.of(
         ConfigKeys.EVENT_TOKEN, String.class, "", Function.identity());
@@ -117,6 +123,7 @@ final class CloudEventLifecycleHook implements RuntimeHook {
                 .withHandshakeTimeout(Duration.ofMillis(symbols.resolve(HANDSHAKE_TIMEOUT_MS)))
                 .withBackoff(symbols.resolve(BACKOFF_BASE_MS), symbols.resolve(BACKOFF_MAX_MS))
                 .withSslContext(security == null ? null : security.sslContext()));
+        container.get(CloudEventBus.class).installPeerSink(connector::addPeers);
         connector.start(peers);
     }
 
@@ -157,8 +164,8 @@ final class CloudEventLifecycleHook implements RuntimeHook {
         }
     }
 
-    private static boolean meshOn(String enabledRaw, List<String> peers) {
-        return SymbolSpec.activated(ConfigKeys.EVENT_ENABLED, enabledRaw, !peers.isEmpty());
+    private static boolean meshOn(Boolean enabled, List<String> peers) {
+        return enabled != null ? enabled : !peers.isEmpty();
     }
 
     @Override
