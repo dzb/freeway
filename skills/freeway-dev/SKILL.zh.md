@@ -1,6 +1,6 @@
 ---
 name: freeway-dev
-description: 基于 Freeway 框架构建 Java 应用。当用户提到 Freeway、FreewayApp、ModuleEx、SubModule、IoC 容器、DbModule、HttpModule、AppRuntime、路由、ORM、EventBus、Defer、ScopedCache、HealthCheck、HealthFilter、PooledConnection、PostgresDialect、SchemaEntity、freeway-ext 等框架相关术语时触发。涵盖模块编写、依赖注入、HTTP API、数据库操作、事务、事件总线、类型转换、延迟执行、验证、连接池、数据库方言、Schema 迁移等所有方面。同时也适用于回答 Freeway API 用法、项目结构、最佳实践和代码生成类问题。
+description: 基于 Freeway 框架构建 Java 应用。当用户提到 Freeway、FreewayApp、ModuleEx、SubModule、IoC 容器、DbModule、HttpModule、AppRuntime、路由、ORM、EventBus、Defer、ScopedCache、HealthCheck、HealthFilter、PooledConnection、PostgresDialect、SchemaEntity、freeway-ext、CloudModule、ServiceDiscovery、RegistryFleetModule、RemoteCaller、RemoteProxyFactory、RpcExport、CloudEventBus、事件网格、服务注册发现、微服务 等框架相关术语时触发。涵盖模块编写、依赖注入、HTTP API、数据库操作、事务、事件总线、类型转换、延迟执行、验证、连接池、数据库方言、Schema 迁移等所有方面。同时也适用于回答 Freeway API 用法、项目结构、最佳实践和代码生成类问题。
 ---
 
 # Freeway 开发技能
@@ -19,6 +19,9 @@ freeway-http        HTTP/WebSocket：路由、过滤器、静态文件、multipa
   └ 外部引擎          Undertow / Jetty → 见 freeway-ext
 freeway-db          JDBC：ORM、连接池、事务、SQL 构建器、迁移
   └ 外部连接池        HikariCP → 见 freeway-ext
+freeway-cloud       云原生：服务注册与发现、远程调用(RPC)、事件网格、健康、可观测、弹性、密钥、对象存储
+  ├ 注册节点          RegistryServerModule —— 可独立部署的注册中心（HttpModule + CloudDiscoveryModule + 它）
+  └ 节点舰队客户端    RegistryFleetModule —— 把一组注册节点绑定为注册发现后端（写入扇出、读取并集）
 
 第三方库适配器（freeway-http-undertow, freeway-http-jetty,
 freeway-db-hikari, freeway-mq-kafka）在
@@ -1158,6 +1161,68 @@ PoolConfig config = PoolConfig.defaults("jdbc:h2:mem:test;DB_CLOSE_DELAY=-1", "s
 Database db = Database.create(config);
 Schema.ensure(db, TestEntity.class);
 ```
+
+## Cloud（freeway-cloud）—— 服务注册发现、RPC、事件网格
+
+单机与云原生是同一套代码的两种放置方式：`CloudModule` 是 8 个子模块（上下文传播、密钥、
+**注册发现**、RPC、可观测、弹性、健康、对象存储）的 bundle，放置即全部安装；每个子模块
+也是普通模块，要子集就直接放。`CloudEventModule` 刻意独立——它开自己的监听并主动拨号，
+由应用显式放置。
+
+### 服务注册与发现：三种后端，一套接口
+
+| 后端 | 放置 | 基础设施 |
+|---|---|---|
+| 进程内（默认） | `CloudModule` 或 `CloudDiscoveryModule` | 无 |
+| freeway 注册节点 | `CloudModule` + `RegistryFleetModule` | 自部署 1~N 个注册节点 |
+| Consul | `CloudModule` + ext `ConsulModule` | Consul 集群 |
+
+注册节点 = 普通 freeway 应用：`new HttpModule(), new CloudDiscoveryModule(),
+new RegistryServerModule()`，键 `freeway.cloud.registry.node-token` 设共享密钥。
+客户端配 `freeway.cloud.registry-node.nodes`（节点列表）与 `.token`：
+写扇出到全部节点、读取并集、心跳 404 就地重灌——任一节点存活即整队可用。
+注册（启动）、心跳（10s）、注销（停机）、readiness 全部自动，业务代码零注册逻辑。
+
+### 远程调用：两个切点
+
+```java
+// 提供方：导出声明
+binder.bind(UserHandlers.class);
+binder.contribute(RpcExport.class).add(RpcExport.of("user", UserHandlers.class));
+
+// 消费方：类型化客户端
+binder.bind(UserApi.class).to(container -> RemoteProxyFactory
+    .of(container.get(RemoteCaller.class))
+    .serviceId("user-service")     // 发现 id
+    .mapping("user")
+    .build(UserApi.class));
+```
+
+业务代码恒为 `@Inject UserApi`——本地还是远程只是组合根的决定。错误两分：连接拒绝可重放；
+超时/5xx 仅幂等操作重放（`@Idempotent` 声明）；远端异常不可重放。重复导出、导出未绑定类型、
+handler 重载——三类错误启动即失败。
+
+### 事件网格：显式跨进程广播
+
+```properties
+freeway.cloud.event.peers=10.0.0.11:8080        # 非空即激活（或 enabled=true）
+freeway.cloud.event.discovery-feed-ms=10000     # 同伴来自注册发现（整份替换）
+freeway.cloud.event.token=mesh-secret           # 生产必配，全节点一致
+```
+
+发布 `mesh.publish("order.created", payload)`（Defer 感知：事务内缓冲、回滚即弃）；
+接收即白名单 `contribute(CloudEventSubscription.class).add("orders",
+CloudEventSubscription.of("order.", OrderCreated.class, handler))`——topic 不匹配的帧
+不反序列化即弃。at-most-once、无重投；持久有序用 Kafka 平面。本地 EventBus 不受影响；
+远程事实要进本地总线在 handler 里显式镜像。
+
+### 语义要点
+
+- Cloud 键在组件构建时读一次（例外：单次调用预算、密钥文件 size/mtime 重读）；
+- 停机有序：注册 hook 先摘除并 drain（`registry.shutdown-drain=auto` 由后端回答窗口），
+  HTTP 服务后停，出站调用有 `rpc.shutdown-grace`（5s）收尾，网格 peer 收 1001；
+- 完整指南见 `docs/freeway-cloud.md`，设计取舍见 `docs/freeway-cloud-design.md`，
+  全部键见 `docs/freeway-config.md`。
 
 ## 设计约定
 
