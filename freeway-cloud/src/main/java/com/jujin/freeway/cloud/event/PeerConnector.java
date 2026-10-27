@@ -3,9 +3,11 @@ package com.jujin.freeway.cloud.event;
 import java.net.http.HttpClient;
 import java.net.http.WebSocket;
 import java.time.Duration;
+import java.util.LinkedHashSet;
 import java.util.Objects;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -23,9 +25,12 @@ import com.jujin.freeway.cloud.resilience.Backoff;
  * ({@code ws://host:port/cloud/event}), performs the hello handshake, and
  * keeps connections alive with exponential-backoff reconnects.
  *
- * <p>Peers resolve from a static list (zero-dependency start) — the discovery
- * backend path is additive and left to the caller to feed via
- * {@link #addPeers(List)} when a registry backend is installed.</p>
+ * <p>Peers come from two sources and the dialed set is their union: the
+ * <em>configured</em> list ({@code freeway.cloud.event.peers}, fixed for the
+ * connector's life) and the <em>discovered</em> list a registry adapter
+ * replaces wholesale via {@link #replaceDiscoveredPeers(List)}. They are two
+ * facts rather than one because a discovery backend that reports nothing must
+ * not cancel a static list, and because only the discovered half can shrink.</p>
  */
 final class PeerConnector implements AutoCloseable {
 
@@ -64,12 +69,23 @@ final class PeerConnector implements AutoCloseable {
 
     private final HttpClient http;
     private final PeerHub hub;
-    private final Map<PeerAddress, AtomicInteger> backoffByPeer = new ConcurrentHashMap<>();
+    /** Peers the application configured: wanted for the connector's whole life. */
+    private final Set<PeerAddress> configured = new LinkedHashSet<>();
+    /** Peers a discovery backend currently reports: replaced wholesale, so an
+     *  address missing from the next snapshot is a peer that left. */
+    private final Set<PeerAddress> discovered = new LinkedHashSet<>();
+    /**
+     * The dial roster, derived from the two sources above: one entry per peer,
+     * and the entry <em>is</em> the membership — a peer is dialed for exactly as
+     * long as it has one, so removal is a single {@code remove}. The three
+     * questions that used to live in two collections (is this peer wanted, how
+     * many times has it failed, which thread may I interrupt?) sit in the entry
+     * and cannot disagree.
+     */
+    private final Map<PeerAddress, Dialer> dialers = new ConcurrentHashMap<>();
     /** Open client sessions, so {@link #close()} can abort their sockets. */
     private final java.util.Set<ClientSessionHandler> sessions =
         ConcurrentHashMap.newKeySet();
-    /** Dial/retry threads, so {@link #close()} can interrupt parked backoff. */
-    private final java.util.Set<Thread> dialers = ConcurrentHashMap.newKeySet();
     /** Arms the per-connection handshake watchdogs. */
     private final ScheduledExecutorService watchdog = Executors.newSingleThreadScheduledExecutor(
         Thread.ofVirtual().name("cloud-event-handshake-", 0).factory());
@@ -85,12 +101,25 @@ final class PeerConnector implements AutoCloseable {
     private volatile boolean closed;
 
     /**
-     * Peers arrive through {@link #start(List)} or {@link #addPeers(List)} —
-     * the configured ones from the lifecycle hook, the discovered ones from an
-     * adapter. There is no separate constructor-supplied set: it would be a
-     * second way to feed the same thing, and production never used it.
-     * Networking values come from the {@code freeway.cloud.event.*} config via
-     * {@link ConfigKeys}.
+     * One peer's dial state. The backoff counter outlives a connection — a peer
+     * that keeps failing must keep waiting longer — so it lives with the roster
+     * entry rather than in the session, and the live loop's thread lives beside
+     * it so removal can interrupt exactly the loop it means to.
+     */
+    private static final class Dialer {
+        private final AtomicInteger backoff = new AtomicInteger();
+        /** One dial/retry loop per peer; a second spawn is a no-op. */
+        private final AtomicBoolean running = new AtomicBoolean();
+        private volatile Thread thread;
+    }
+
+    /**
+     * Peers arrive through {@link #start(List)} (the configured set, from the
+     * lifecycle hook) or {@link #replaceDiscoveredPeers(List)} (the discovered
+     * set, from an adapter). There is no separate constructor-supplied set: it
+     * would be a second way to feed the same thing, and production never used
+     * it. Networking values come from the {@code freeway.cloud.event.*} config
+     * via {@link ConfigKeys}.
      */
     public PeerConnector(PeerHub hub, Wiring wiring) {
         this.hub = Objects.requireNonNull(hub, "hub");
@@ -192,38 +221,99 @@ final class PeerConnector implements AutoCloseable {
         return builder.build();
     }
 
-    /** Dials the given peers (virtual threads; failures back off). */
+    /** Records the configured peers and starts dialing everything wanted. */
     public synchronized void start(List<String> peers) {
-        if (started) {
-            // late peers are handled by addPeers — no double dial
-            addPeers(peers);
-            return;
-        }
+        configured.addAll(parse(peers));
         started = true;
-        var all = new java.util.LinkedHashMap<PeerAddress, Boolean>();
-        for (String p : peers) all.put(PeerAddress.parse(p), true);
-        for (PeerAddress k : backoffByPeer.keySet()) all.put(k, true);
-        for (PeerAddress peer : all.keySet()) {
-            spawnDial(peer);
+        sync();
+    }
+
+    /**
+     * Replaces the discovery-fed peer set wholesale — the entry point a
+     * registry adapter uses when {@code freeway.cloud.event.peers} cannot know
+     * the addresses at boot.
+     *
+     * <p>A snapshot, not a delta: an address missing from {@code peers} is a peer
+     * this node should stop dialing, so its dial loop is interrupted and its live
+     * outbound session closed. (An inbound connection from the same node is left
+     * alone — the roster says whom to dial, and an admitted peer already passed
+     * the handshake.) Configured peers are untouched: the two sources are separate
+     * facts and the dialed set is their union, so a discovery backend reporting
+     * nothing cannot cancel a static list. Synchronized on the same monitor as
+     * {@link #start(List)} so the boot list and a snapshot cannot interleave, which
+     * is how a peer used to be lost by neither side dialing it.</p>
+     */
+    public synchronized void replaceDiscoveredPeers(List<String> peers) {
+        discovered.clear();
+        discovered.addAll(parse(peers));
+        sync();
+    }
+
+    /** Brings the dial roster in line with what is wanted: dial what is new,
+     *  leave what is already dialed alone (re-spawning it would reset its
+     *  backoff), and drop what is no longer wanted. Callers hold this
+     *  connector's monitor. */
+    private void sync() {
+        if (!started || closed) {
+            return; // start() runs the first sync; nothing dials after close()
+        }
+        Set<PeerAddress> wanted = new LinkedHashSet<>(configured);
+        wanted.addAll(discovered);
+        for (PeerAddress known : List.copyOf(dialers.keySet())) {
+            if (!wanted.contains(known)) {
+                drop(known);
+            }
+        }
+        for (PeerAddress want : wanted) {
+            if (!dialers.containsKey(want)) {
+                spawnDial(want);
+            }
         }
     }
 
-    /** Feeds additional peers (e.g. discovered via an external registry).
-     *  Safe before or after {@link #start()}: already-dialed endpoints are
-     *  skipped. Synchronized on the same monitor as {@link #start(List)} so
-     *  the {@code started} check and the {@code start()} snapshot cannot
-     *  interleave — otherwise a peer fed between the two could be dialed by
-     *  neither and silently lost. */
-    public synchronized void addPeers(List<String> peers) {
-        for (PeerAddress peer : peers.stream().map(PeerAddress::parse).toList()) {
-            boolean known = backoffByPeer.containsKey(peer);
-            if (!known && started) {
-                spawnDial(peer);
-            } else if (!known) {
-                // not started yet — start() will pick it up from the map
-                backoffByPeer.put(peer, new AtomicInteger(0));
+    /** Removes one peer from the roster: its dial loop is interrupted and its
+     *  live outbound session closed gracefully, so {@code handleDisconnect}
+     *  unregisters it from the hub. The entry goes first — that is what stops the
+     *  disconnect's {@link #reconnect} from dialing it straight back.
+     *
+     * <p>Bounded: at most one close frame per removed peer, each waiting at most
+     * {@code CLOSE_FRAME_TIMEOUT_MS}, and this runs on the monitor — a snapshot
+     * that removes many peers costs that many short waits, not an unbounded one.</p> */
+    private void drop(PeerAddress peer) {
+        Dialer dialer = dialers.remove(peer);
+        if (dialer == null) {
+            return;
+        }
+        Thread thread = dialer.thread;
+        if (thread != null) {
+            thread.interrupt();
+        }
+        for (ClientSessionHandler session : sessions) {
+            if (session.peer.equals(peer)) {
+                session.closeGracefully();
             }
         }
+        LOG.info("Peer {} left the mesh — no longer dialed", peer);
+    }
+
+    /** Re-dials a lost peer, unless it left the roster in the meantime — a
+     *  removal closes the session, which lands here through
+     *  {@code handleDisconnect}, and re-dialing would undo the removal. */
+    private synchronized void reconnect(PeerAddress peer) {
+        if (closed || !dialers.containsKey(peer)) {
+            return;
+        }
+        spawnDial(peer);
+    }
+
+    private static List<PeerAddress> parse(List<String> peers) {
+        return Objects.requireNonNull(peers, "peers").stream().map(PeerAddress::parse).toList();
+    }
+
+    /** True while this peer is still wanted and its loop is the current one:
+     *  removal drops the entry, which is how a running loop learns it is over. */
+    private boolean stillDialed(PeerAddress peer, Dialer dialer) {
+        return !closed && dialers.get(peer) == dialer;
     }
 
     /**
@@ -235,10 +325,9 @@ final class PeerConnector implements AutoCloseable {
      * upgrade says nothing about mesh health, and resetting here was what let
      * two token-mismatched peers re-dial each other at full speed forever.
      */
-    private void dialLoop(PeerAddress peer) {
-        AtomicInteger backoff = backoffByPeer.computeIfAbsent(peer,
-            k -> new AtomicInteger(0));
-        while (!closed) {
+    private void dialLoop(PeerAddress peer, Dialer dialer) {
+        AtomicInteger backoff = dialer.backoff;
+        while (stillDialed(peer, dialer)) {
             long sleep = backoffSleepMs(backoff.get());
             if (sleep > 0) {
                 LOG.debug("Peer {} re-dial in {}ms (backoff)", peer, sleep);
@@ -253,7 +342,7 @@ final class PeerConnector implements AutoCloseable {
                 connect(peer, backoff).get();
                 return; // connection lifecycle now owned by the session listener
             } catch (Exception e) {
-                if (closed) {
+                if (!stillDialed(peer, dialer)) {
                     return;
                 }
                 backoff.incrementAndGet();
@@ -293,21 +382,28 @@ final class PeerConnector implements AutoCloseable {
      *  count driving the next dial's backoff. A completed mesh handshake
      *  resets it; a socket open no longer does. */
     int backoffAttempts(PeerAddress peer) {
-        AtomicInteger count = backoffByPeer.get(peer);
-        return count == null ? 0 : count.get();
+        Dialer dialer = dialers.get(peer);
+        return dialer == null ? 0 : dialer.backoff.get();
     }
 
-    /** Starts a dial/retry thread and tracks it for interruptible shutdown. */
+    /** Starts a dial/retry loop for the peer unless one is already live. The
+     *  roster entry outlives the loop (a peer keeps its backoff across
+     *  reconnects), so the loop's own lifetime is tracked separately. Callers
+     *  hold this connector's monitor. */
     private void spawnDial(PeerAddress peer) {
-        Thread dialer = Thread.ofVirtual().unstarted(() -> {
+        Dialer dialer = dialers.computeIfAbsent(peer, k -> new Dialer());
+        if (!dialer.running.compareAndSet(false, true)) {
+            return; // a dial loop is already live for this peer
+        }
+        Thread thread = Thread.ofVirtual().unstarted(() -> {
             try {
-                dialLoop(peer);
+                dialLoop(peer, dialer);
             } finally {
-                dialers.remove(Thread.currentThread());
+                dialer.running.set(false);
             }
         });
-        dialers.add(dialer);
-        dialer.start();
+        dialer.thread = thread;
+        thread.start();
     }
 
     /** One dial: build the WebSocket; the listener takes over after onOpen. */
@@ -337,8 +433,11 @@ final class PeerConnector implements AutoCloseable {
         sessions.clear();
         // A dialer parked in Thread.sleep(backoff) must not hold shutdown for
         // up to BACKOFF_MAX_MS.
-        for (Thread dialer : dialers) {
-            dialer.interrupt();
+        for (Dialer dialer : dialers.values()) {
+            Thread thread = dialer.thread;
+            if (thread != null) {
+                thread.interrupt();
+            }
         }
         dialers.clear();
         watchdog.shutdownNow();
@@ -511,7 +610,8 @@ final class PeerConnector implements AutoCloseable {
                 // duplicate-resolution twin) — not by who invoked close():
                 // the plane's send-failure drop unregisters first and expects
                 // the connector to dial again.
-                this::abort);
+                this::abort,
+                hub.droppedFrameSink());
             // Ack accepted — from here on frames are CE, and a second hello
             // is rejected by the state machine in onText. The mesh handshake
             // completing is the health signal the backoff keys on: clear it
@@ -616,7 +716,7 @@ final class PeerConnector implements AutoCloseable {
 
         private void scheduleReconnect() {
             if (!closed && reconnectScheduled.compareAndSet(false, true)) {
-                spawnDial(peer);
+                PeerConnector.this.reconnect(peer);
             }
         }
     }

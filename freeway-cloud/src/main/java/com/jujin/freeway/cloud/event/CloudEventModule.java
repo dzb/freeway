@@ -34,8 +34,9 @@ import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
  * <p>Config ({@code freeway.cloud.event.*}): {@code enabled} (presence-driven —
  * unset with no peers leaves the mesh unwired, {@code peers} below wire it;
  * {@code false} is a kill switch that suppresses even a configured peer list),
- * {@code peers} (host:port list; optional when a discovery backend feeds
- * {@code addPeers}), {@code token} (mesh handshake token). Inbound interest
+ * {@code peers} (host:port list; optional when {@code discovery-feed-ms} makes
+ * the module poll the bound {@code ServiceDiscovery} for peers instead),
+ * {@code token} (mesh handshake token). Inbound interest
  * is no longer configuration: it is the {@link CloudEventSubscription}
  * contributions, which simultaneously drive the hello pull-prefixes, the
  * inbound gate and delivery.</p>

@@ -16,6 +16,7 @@ import org.slf4j.LoggerFactory;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.LongConsumer;
 import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
 
 /**
@@ -301,14 +302,7 @@ public final class PeerHub implements WebSocketEndpoint {
             String remoteOrigin = admission.origin();
             List<String> remoteSubs = admission.subscriptions();
             connection = new PeerConnection(remoteOrigin, remoteSubs,
-                json -> {
-                    try {
-                        session.sendText(json);
-                        return true;
-                    } catch (Exception e) {
-                        return false;
-                    }
-                },
+                new SessionSender(session),
                 false,
                 () -> {
                     try {
@@ -316,7 +310,8 @@ public final class PeerHub implements WebSocketEndpoint {
                     } catch (Exception ignored) {
                         // already closed
                     }
-                });
+                },
+                droppedFrameSink());
             // Admission passed — from here on frames are CE, and a second
             // hello is rejected by the state machine in onText.
             handshaken = true;
@@ -346,6 +341,44 @@ public final class PeerHub implements WebSocketEndpoint {
         @Override
         public void onError(Throwable error) {
             LOG.debug("Peer session error", error);
+        }
+    }
+
+    /**
+     * Where this hub's connections report frames they accepted but never wrote —
+     * a refused batch, or whatever was still queued at close. The broadcast plane
+     * owns the counter; before wiring there is nowhere to report, which loses a
+     * count and never invents one.
+     */
+    LongConsumer droppedFrameSink() {
+        CloudEventBus f = facade;
+        return f == null ? frames -> { } : f::framesDroppedInTransit;
+    }
+
+    /**
+     * The inbound leg's transport: one frame, or a batch under one write lock
+     * and one flush (the engine's batched send). Every failure is reported as a
+     * failed send, never thrown — the connection's drain closes on it.
+     */
+    private record SessionSender(WebSocketSession session) implements PeerConnection.Sender {
+        @Override
+        public boolean send(String json) {
+            try {
+                session.sendText(json);
+                return true;
+            } catch (Exception e) {
+                return false;
+            }
+        }
+
+        @Override
+        public boolean sendBatch(List<String> frames) {
+            try {
+                session.sendTextBatch(frames);
+                return true;
+            } catch (Exception e) {
+                return false;
+            }
         }
     }
 

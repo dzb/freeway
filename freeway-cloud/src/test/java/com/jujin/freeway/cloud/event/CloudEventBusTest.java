@@ -103,7 +103,7 @@ class CloudEventBusTest extends CloudMeshTest {
         nodeA.get(CloudEventBus.class).publish("user.created", "spam");
         Thread.sleep(700);
         assertTrue(atB.isEmpty(), "unsubscribed topic must be filtered at the sender");
-        assertEquals(0, nodeA.get(CloudEventBus.class).stats().framesSent(),
+        assertEquals(0, nodeA.get(CloudEventBus.class).stats().framesQueued(),
             "filter-then-translate: no interested peer means no serialization, no send");
     }
 
@@ -130,20 +130,40 @@ class CloudEventBusTest extends CloudMeshTest {
         PeerHub hub = new PeerHub();
         CloudEventBus mesh = new CloudEventBus(hub, new JsonCodecDefault(), List.of());
         List<List<String>> fed = new java.util.ArrayList<>();
-        mesh.installPeerSink(fed::add);
+        mesh.installDiscoveredPeersSink(fed::add);
 
-        mesh.addPeers(List.of("10.0.0.1:8080", "10.0.0.2:8080"));
+        mesh.replaceDiscoveredPeers(List.of("10.0.0.1:8080", "10.0.0.2:8080"));
+        mesh.replaceDiscoveredPeers(List.of("10.0.0.1:8080"));
 
-        assertEquals(List.of(List.of("10.0.0.1:8080", "10.0.0.2:8080")), fed,
-            "a registry adapter feeds peers through the bus, not by reaching into the connector");
+        assertEquals(List.of("10.0.0.1:8080", "10.0.0.2:8080"), fed.get(0),
+            "the first snapshot is handed over whole");
+        assertEquals(List.of("10.0.0.1:8080"), fed.get(1),
+            "every snapshot is handed over whole — the connector diffs it, the bus does not");
+        assertEquals(2, fed.size(), "one call per snapshot; the bus adds no state of its own");
     }
 
     @Test
-    void addPeersOnAnUnwiredMeshIsInert() {
+    void anEmptySnapshotIsHandedOverNotEmptyIgnored() {
+        // "no discovered peers" is a fact the connector must act on (stop
+        // dialing what is gone), so the bus may not treat an empty list as
+        // "nothing to do" and skip the call.
         CloudEventBus mesh = new CloudEventBus(new PeerHub(), new JsonCodecDefault(), List.of());
-        assertDoesNotThrow(() -> mesh.addPeers(List.of("10.0.0.1:8080")),
+        List<List<String>> fed = new java.util.ArrayList<>();
+        mesh.installDiscoveredPeersSink(fed::add);
+
+        mesh.replaceDiscoveredPeers(List.of("10.0.0.1:8080"));
+        mesh.replaceDiscoveredPeers(List.of());
+
+        assertEquals(2, fed.size(), "both snapshots must reach the connector");
+        assertEquals(List.of(), fed.get(1), "an empty snapshot must reach the connector");
+    }
+
+    @Test
+    void replaceDiscoveredPeersOnAnUnwiredMeshIsInert() {
+        CloudEventBus mesh = new CloudEventBus(new PeerHub(), new JsonCodecDefault(), List.of());
+        assertDoesNotThrow(() -> mesh.replaceDiscoveredPeers(List.of("10.0.0.1:8080")),
             "an unwired mesh has no connector to feed — the call must be a no-op");
-        assertEquals(0, mesh.stats().framesSent());
+        assertEquals(0, mesh.stats().framesQueued());
     }
 
     @Test
@@ -204,7 +224,7 @@ class CloudEventBusTest extends CloudMeshTest {
         var mesh = nodeA.get(CloudEventBus.class);
         // Publish against an unwired mesh: a counted, debug-logged no-op.
         mesh.publish("greet.hello", "bob");
-        assertEquals(0, nodeA.get(CloudEventBus.class).stats().framesSent());
+        assertEquals(0, nodeA.get(CloudEventBus.class).stats().framesQueued());
         assertFalse(nodeA.get(PeerHub.class).wired(),
             "disabled CloudEventModule must not wire the mesh hub");
     }

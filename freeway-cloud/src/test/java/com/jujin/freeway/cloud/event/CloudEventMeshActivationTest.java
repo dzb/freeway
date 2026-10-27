@@ -136,6 +136,31 @@ class CloudEventMeshActivationTest extends CloudMeshTest {
             "the failure must show the offending value: " + rootMessage(failure));
     }
 
+    @Test
+    void anInvalidDiscoveryFeedIntervalFailsStartupNamingTheKey() {
+        System.setProperty(ConfigKeys.EVENT_ENABLED, "true");
+        System.setProperty(ConfigKeys.EVENT_DISCOVERY_FEED_MS, "0");
+        IllegalStateException failure = assertThrows(IllegalStateException.class, () ->
+            FreewayApp.run(new String[0], new HttpModule(), new CloudEventModule()));
+        assertTrue(rootMessage(failure).contains(ConfigKeys.EVENT_DISCOVERY_FEED_MS),
+            "the failure must name the key: " + rootMessage(failure));
+        assertTrue(rootMessage(failure).contains("must be positive"),
+            "the failure must show the offending value: " + rootMessage(failure));
+    }
+
+    @Test
+    void aDiscoveryFeedWithoutADiscoveryFailsStartupInsteadOfSilentlyDoingNothing() {
+        // The feed key promises a self-configuring mesh; with no discovery bound
+        // that promise can never be kept, and a quiet no-op would leave a mesh
+        // that looks fed but never dials.
+        System.setProperty(ConfigKeys.EVENT_ENABLED, "true");
+        System.setProperty(ConfigKeys.EVENT_DISCOVERY_FEED_MS, "100");
+        IllegalStateException failure = assertThrows(IllegalStateException.class, () ->
+            FreewayApp.run(new String[0], new HttpModule(), new CloudEventModule()));
+        assertTrue(rootMessage(failure).contains("ServiceDiscovery"),
+            "the failure must say what is missing: " + rootMessage(failure));
+    }
+
     // ==================== harness ====================
     private static long awaitSeconds() {
         return 5;

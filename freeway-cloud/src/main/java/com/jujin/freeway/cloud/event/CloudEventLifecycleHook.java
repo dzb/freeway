@@ -2,8 +2,10 @@ package com.jujin.freeway.cloud.event;
 
 import com.jujin.freeway.cloud.rpc.TransportSecurity;
 
+import com.jujin.freeway.cloud.discovery.ServiceDiscovery;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.cloud.internal.HttpServiceDeclaration;
+import com.jujin.freeway.ioc.MissingBindingException;
 import com.jujin.freeway.ioc.symbol.SymbolSpec;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.ioc.Container;
@@ -58,9 +60,14 @@ final class CloudEventLifecycleHook implements RuntimeHook {
     private static final SymbolSpec<Long> BACKOFF_MAX_MS =
         SymbolSpec.of(ConfigKeys.EVENT_BACKOFF_MAX_MS, Long.class,
             ConfigKeys.EVENT_BACKOFF_MAX_MS_DEFAULT, Long::parseLong);
+    /** Presence-driven: unset means the mesh is never fed from discovery; a
+     *  value is the poll interval in milliseconds. */
+    private static final SymbolSpec<Long> EVENT_DISCOVERY_FEED_MS =
+        SymbolSpec.of(ConfigKeys.EVENT_DISCOVERY_FEED_MS, Long.class, null, Long::parseLong);
 
     private final PeerHub hub;
     private volatile PeerConnector connector;
+    private volatile DiscoveryPeerFeeder peerFeeder;
 
     CloudEventLifecycleHook(PeerHub hub) {
         this.hub = hub;
@@ -123,8 +130,45 @@ final class CloudEventLifecycleHook implements RuntimeHook {
                 .withHandshakeTimeout(Duration.ofMillis(symbols.resolve(HANDSHAKE_TIMEOUT_MS)))
                 .withBackoff(symbols.resolve(BACKOFF_BASE_MS), symbols.resolve(BACKOFF_MAX_MS))
                 .withSslContext(security == null ? null : security.sslContext()));
-        container.get(CloudEventBus.class).installPeerSink(connector::addPeers);
+        container.get(CloudEventBus.class).installDiscoveredPeersSink(
+            connector::replaceDiscoveredPeers);
         connector.start(peers);
+        startDiscoveryFeed(container, symbols, self);
+    }
+
+    /**
+     * Discovery-fed peers: while the feed interval is set, the bound discovery
+     * is polled for instances of this node's own service and the mesh's
+     * discovered set is replaced with what it finds — this is how a mesh
+     * self-configures once a registry backs it, with no static peer list.
+     *
+     * <p>Failing loudly, not skipping: a set interval that no discovery can
+     * answer is a configuration that can never do what it says, and a silent
+     * no-op would leave a mesh that looks self-configuring but never dials.</p>
+     */
+    private void startDiscoveryFeed(Container container, SymbolSource symbols,
+                                    ServiceInstance self) {
+        Long feedMillis = symbols.resolve(EVENT_DISCOVERY_FEED_MS);
+        if (feedMillis == null) {
+            return;
+        }
+        if (feedMillis <= 0) {
+            throw new IllegalArgumentException(ConfigKeys.EVENT_DISCOVERY_FEED_MS
+                + " must be positive: " + feedMillis);
+        }
+        ServiceDiscovery discovery;
+        try {
+            discovery = container.get(ServiceDiscovery.class);
+        } catch (MissingBindingException e) {
+            throw new IllegalStateException(ConfigKeys.EVENT_DISCOVERY_FEED_MS
+                + " is set but no ServiceDiscovery is bound — install CloudModule (or a"
+                + " discovery adapter) so the mesh has a registry to ask", e);
+        }
+        peerFeeder = new DiscoveryPeerFeeder(discovery, self.serviceId(), self.instanceId(),
+            container.get(CloudEventBus.class)::replaceDiscoveredPeers, feedMillis);
+        peerFeeder.start();
+        LOG.info("Mesh peers fed from discovery: service '{}' every {}ms",
+            self.serviceId(), feedMillis);
     }
 
     /**
@@ -170,6 +214,11 @@ final class CloudEventLifecycleHook implements RuntimeHook {
 
     @Override
     public void stop(Container container) {
+        // Stop feeding first: no new discovered set while the dialer goes down.
+        if (peerFeeder != null) {
+            peerFeeder.close();
+            peerFeeder = null;
+        }
         // Release the dialer: the connector's HttpClient and retry threads
         // must not outlive the app.
         if (connector != null) {

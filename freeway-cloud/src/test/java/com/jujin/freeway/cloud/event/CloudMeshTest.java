@@ -27,6 +27,7 @@ abstract class CloudMeshTest {
         System.clearProperty(HttpModule.ConfigKeys.SERVER_PORT);
         System.clearProperty(CloudModule.ConfigKeys.EVENT_PEERS);
         System.clearProperty(CloudModule.ConfigKeys.EVENT_ENABLED);
+        System.clearProperty(CloudModule.ConfigKeys.EVENT_DISCOVERY_FEED_MS);
     }
 
     /**

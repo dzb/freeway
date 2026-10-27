@@ -91,9 +91,16 @@ public final class CloudModule implements ModuleEx {
         // ── Decision keys: a multi-node mesh needs both ─────────
         /** Static mesh endpoints to dial (host:port, see {@code PeerAddress}).
          *  Presence alone activates the mesh (unless {@code event.enabled=false}
-         *  explicitly suppresses it); discovery-fed peers are additive via
-         *  {@code CloudEventBus.addPeers}. */
+         *  explicitly suppresses it); discovery-fed peers are a second, replaceable
+         *  set, polled from {@code ServiceDiscovery} while
+         *  {@code discovery-feed-ms} is set. */
         public static final String EVENT_PEERS          = "freeway.cloud.event.peers";
+        /** Poll interval (ms) for the discovery-fed mesh: while set, the event module
+         *  periodically asks the bound {@code ServiceDiscovery} for instances of this
+         *  node's own service and replaces the mesh's discovered peer set with what
+         *  it finds (this node excluded). Unset = off; a value below 1 fails startup.
+         *  Static {@code event.peers} are a separate set and survive an empty round. */
+        public static final String EVENT_DISCOVERY_FEED_MS = "freeway.cloud.event.discovery-feed-ms";
         /** Shared secret the mesh handshake must present; blank = no peer auth.
          *  Every node of a multi-node mesh must set the same value. */
         public static final String EVENT_TOKEN      = "freeway.cloud.event.token";
@@ -190,6 +197,14 @@ public final class CloudModule implements ModuleEx {
         /** Window used when {@link #REGISTRY_SHUTDOWN_DRAIN} is unset and the
          *  registry answers nothing: the in-process default. */
         public static final Duration REGISTRY_SHUTDOWN_DRAIN_DEFAULT = Duration.ZERO;
+        /** Shared secret every writer of the registry HTTP surface must present
+         *  in the {@code X-Registry-Token} header (see
+         *  {@code RegistryServerModule.TOKEN_HEADER}; the fleet client
+         *  {@code RegistryFleetModule} sends it from
+         *  {@code freeway.cloud.registry-node.token}). Blank = the surface is
+         *  open — the development posture; a node reachable beyond localhost
+         *  should set this. */
+        public static final String REGISTRY_NODE_TOKEN = "freeway.cloud.registry.node-token";
 
         // ── Advanced: timeouts (NOT governed by resilience — they always apply) ──
         // Listed first because they are the one pair in this block that

@@ -1,11 +1,14 @@
 package com.jujin.freeway.cloud.event;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.LongConsumer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * One live peer connection: the remote node's identity, its declared
@@ -24,14 +27,44 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * thread; a full queue, or a failed write noticed by the drain thread, closes
  * the connection — the at-most-once plane's existing "drop and detach" answer.
  * Queue-full is reported to the caller as a failed send, so the publisher
- * unregisters and counts the drop exactly as before, without waiting.</p>
+ * unregisters and counts the drop exactly as before, without waiting. The
+ * drain takes a whole batch per pass ({@link Sender#sendBatch}), so the
+ * transport pays one flush per batch rather than one per frame. Every frame
+ * this connection accepts is accounted exactly once: written, or reported to
+ * {@code onFramesDropped} — by the drain when the transport refuses a batch, at
+ * close for whatever was still queued.</p>
  */
 public final class PeerConnection {
+
+    private static final Logger LOG = LoggerFactory.getLogger(PeerConnection.class);
 
     /** Outbound frame transport; returns false when the send failed. */
     public interface Sender {
         boolean send(String json);
+
+        /**
+         * One batch, in order. The default loops {@link #send}; a transport
+         * that can flush once per batch (the framework engine's
+         * {@code sendTextBatch}) overrides it and pays one syscall instead of
+         * one per frame.
+         */
+        default boolean sendBatch(List<String> frames) {
+            for (String frame : frames) {
+                if (!send(frame)) {
+                    return false;
+                }
+            }
+            return true;
+        }
     }
+
+    /**
+     * Frames handed to the transport in one batch. Batching is where the per-frame
+     * syscall goes away (the engine writes a batch under one lock and flushes
+     * once); the cap bounds how long one batch can keep the loop from noticing
+     * {@code close()}.
+     */
+    static final int BATCH_FRAMES = 64;
 
     /**
      * Frames buffered for a peer that is slow to read. Beyond this the
@@ -46,17 +79,32 @@ public final class PeerConnection {
     private final Sender sender;
     private final boolean outbound;
     private final Runnable closer;
+    /**
+     * Where this connection reports frames it accepted but never wrote — a batch
+     * the transport refused, or whatever was still queued when the connection
+     * closed. The counter lives in the broadcast plane; a connection that never
+     * got a sink (tests, a mesh not yet wired) reports nowhere, which is a lost
+     * count, never a wrong one.
+     */
+    private final LongConsumer onFramesDropped;
     private final BlockingQueue<String> pending = new ArrayBlockingQueue<>(MAX_QUEUED_FRAMES);
     private final AtomicBoolean closed = new AtomicBoolean();
     private volatile Thread senderThread;
 
+    /** Callers without mesh metrics — tests and standalone use. */
     public PeerConnection(String remoteOrigin, List<String> remotePrefixes, Sender sender,
                           boolean outbound, Runnable closer) {
+        this(remoteOrigin, remotePrefixes, sender, outbound, closer, frames -> { });
+    }
+
+    public PeerConnection(String remoteOrigin, List<String> remotePrefixes, Sender sender,
+                          boolean outbound, Runnable closer, LongConsumer onFramesDropped) {
         this.remoteOrigin = Objects.requireNonNull(remoteOrigin, "remoteOrigin");
         this.remotePrefixes = List.copyOf(remotePrefixes);
         this.sender = Objects.requireNonNull(sender, "sender");
         this.outbound = outbound;
         this.closer = Objects.requireNonNull(closer, "closer");
+        this.onFramesDropped = Objects.requireNonNull(onFramesDropped, "onFramesDropped");
     }
 
     public String remoteOrigin() {
@@ -71,10 +119,16 @@ public final class PeerConnection {
     /** Stops the sender thread and closes the underlying transport, exactly once. */
     public void close() {
         if (closed.compareAndSet(false, true)) {
-            Thread worker = senderThread;
+            Thread worker;
+            // Read under the same monitor that publishes it. A read outside the
+            // lock could see null and leave the drain thread parked in take()
+            // forever, which is why this used to poll on a 200 ms timeout.
+            synchronized (this) {
+                worker = senderThread;
+            }
             if (worker != null && worker != Thread.currentThread()) {
-                // Ends an idle poll; a write blocked on a stalled peer ends
-                // when the socket is closed just below.
+                // Ends the blocking take(); a write blocked on a stalled peer
+                // ends when the socket is closed just below.
                 worker.interrupt();
             }
             closer.run();
@@ -87,63 +141,103 @@ public final class PeerConnection {
     }
 
     /**
-     * Hands one wire frame to the connection's sender thread. Returns false
-     * when the connection is closed or the queue is full — never waits on the
-     * peer, so the publisher's thread cannot be held by a stalled reader.
+     * Hands one wire frame to the connection's sender thread. Returns false when
+     * the frame was not taken — the connection is closed or the queue is full —
+     * and never waits on the peer, so the publisher's thread cannot be held by a
+     * stalled reader.
+     *
+     * <p>Responsibility for a frame changes hands at {@code true}: from there the
+     * connection owns it, and if it is never written (a refused batch, a close)
+     * that is counted once, by the drain thread. A false return means the
+     * publisher still owns the frame and counts the loss itself.</p>
      */
     boolean send(String json) {
         if (closed.get()) {
             return false;
         }
-        startSenderThread();
-        if (!pending.offer(json)) {
+        // The drain thread is what makes an accepted frame accountable — it is
+        // the one that reports what never got written. No thread, no acceptance.
+        if (!startSenderThread()) {
             return false;
         }
-        // close() may have won between the check above and the offer: the drain
-        // thread exits on `closed` and this frame is never sent, so report the
-        // failure the caller's drop accounting expects.
-        return !closed.get();
+        return pending.offer(json);
     }
 
-    private void startSenderThread() {
+    /** Starts the drain thread unless one exists; false when the connection
+     *  closed first, so the frame must not be accepted unowned. */
+    private boolean startSenderThread() {
         if (senderThread != null) {
-            return;
+            return true;
         }
         synchronized (this) {
-            if (senderThread == null && !closed.get()) {
-                senderThread = Thread.ofVirtual()
-                    .name("cloud-mesh-send-" + remoteOrigin)
-                    .start(this::drain);
+            if (senderThread != null) {
+                return true;
             }
+            if (closed.get()) {
+                return false;
+            }
+            senderThread = Thread.ofVirtual()
+                .name("cloud-mesh-send-" + remoteOrigin)
+                .start(this::drain);
+            return true;
         }
     }
 
-    /** Drains the queue on this connection's own thread; a failed write closes it. */
+    /** Drains the queue on this connection's own thread; a failed write closes it.
+     *  Whatever is still queued when the thread ends is reported as dropped — after
+     *  it, nothing will ever write again, and while it runs no one else takes from
+     *  the queue, so the count is exact. */
     private void drain() {
-        while (!closed.get()) {
-            String json;
-            try {
-                json = pending.poll(200, TimeUnit.MILLISECONDS);
-            } catch (InterruptedException ex) {
-                Thread.currentThread().interrupt();
-                return;
+        try {
+            while (!closed.get()) {
+                List<String> batch = new ArrayList<>(BATCH_FRAMES);
+                try {
+                    // take() first: draining an empty queue would spin, and the
+                    // interrupt in close() is what ends this wait.
+                    batch.add(pending.take());
+                    pending.drainTo(batch, BATCH_FRAMES - 1);
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+                boolean sent;
+                try {
+                    sent = sender.sendBatch(batch);
+                } catch (RuntimeException ex) {
+                    sent = false;
+                }
+                if (!sent) {
+                    onFramesDropped.accept(batch.size());
+                    LOG.warn("Send to peer {} failed for {} queued frame(s) — dropping the connection",
+                        remoteOrigin, batch.size());
+                    // Close: the server's read loop (inbound) or the connector's
+                    // (outbound) unregisters the connection from the hub.
+                    close();
+                    return;
+                }
             }
-            if (json == null) {
-                continue;
-            }
-            boolean sent;
-            try {
-                sent = sender.send(json);
-            } catch (RuntimeException ex) {
-                sent = false;
-            }
-            if (!sent) {
-                // Close: the server's read loop (inbound) or the connector's
-                // (outbound) unregisters the connection from the hub.
-                close();
-                return;
-            }
+        } finally {
+            // close() itself is called from here on the failure path; the CAS in
+            // close() makes that re-entry a no-op, so once is still once.
+            reportStranded();
         }
+    }
+
+    /** Reports what this connection accepted but never wrote: whatever the queue
+     *  still holds when the drain thread ends. */
+    private void reportStranded() {
+        List<String> stranded = new ArrayList<>(pending.size());
+        pending.drainTo(stranded);
+        if (!stranded.isEmpty()) {
+            onFramesDropped.accept(stranded.size());
+            LOG.debug("Peer {} dropped with {} queued frame(s) unwritten",
+                remoteOrigin, stranded.size());
+        }
+    }
+
+    /** Package-visible for the shutdown test: what close() has to stop. */
+    Thread senderThread() {
+        return senderThread;
     }
 
     /**

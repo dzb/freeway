@@ -28,9 +28,12 @@ import org.slf4j.LoggerFactory;
  * arrives here by module loading: the two planes are separate decisions.</p>
  *
  * <p><b>Delivery semantics:</b> at-most-once, best-effort volatile fabric.
- * A failed send is logged, counted and the connection dropped (reconnect is
- * the connector's job); the frame is not retried and not queued. A throwing
- * handler is isolated from the others. Publishing inside a {@code Defer}
+ * A frame handed to a connection is written by that connection's own thread from
+ * a bounded queue, so a stalled peer cannot hold the publisher; a frame the
+ * publisher <em>cannot</em> hand over (queue full, connection already closed) is
+ * logged, counted and the connection dropped — reconnect is the connector's job,
+ * and nothing is retried. A throwing handler is isolated from the others.
+ * Publishing inside a {@code Defer}
  * scope (e.g. a DB transaction) buffers the publish until the scope
  * commits — a rollback discards it, so an uncommitted fact never leaves the
  * JVM. Ordering across the mesh is not promised; per-key ordering is a
@@ -63,12 +66,16 @@ public final class CloudEventBus {
     /** Sealed at composition: the contribution store's snapshot is the table. */
     private final List<CloudEventSubscription> subscriptions;
     /** Filled with the connector when the mesh is wired; inert before that. */
-    private volatile Consumer<List<String>> peersSink = peers -> { };
+    private volatile Consumer<List<String>> discoveredPeersSink = peers -> { };
 
     // Each plane keeps its own books (no cross-plane merged view).
     private final LongAdder published = new LongAdder();
-    /** Frames handed to a connection's transport queue — the drain thread does the write. */
-    private final LongAdder framesSent = new LongAdder();
+    /** Frames accepted by a peer connection — its transport thread owns them now. */
+    private final LongAdder framesQueued = new LongAdder();
+    /** Accepted frames that never left this node: a refused batch, or whatever a
+     *  closing connection still had queued. Reported by the connections. */
+    private final LongAdder framesDropped = new LongAdder();
+    /** Publish-time refusals — each one also drops the connection. */
     private final LongAdder sendFailures = new LongAdder();
     private final LongAdder inboundDelivered = new LongAdder();
     private final LongAdder droppedLegacy = new LongAdder();
@@ -83,21 +90,24 @@ public final class CloudEventBus {
     // ==================== peers ====================
 
     /**
-     * Adds peer addresses discovered at runtime — the entry point a registry
-     * adapter uses when {@code freeway.cloud.event.peers} cannot know them at
-     * boot. The addresses are <em>added</em> (already-dialed endpoints are
-     * skipped, mirroring {@code PeerConnector.addPeers}): a vanished address is
-     * handled by the connector's own backoff, not by a removal call. Inert until
-     * the event module's hook wires the connector; calling it on an unwired mesh
-     * is a no-op, like publishing.
+     * Replaces the peer addresses discovered at runtime — the entry point a
+     * registry adapter uses when {@code freeway.cloud.event.peers} cannot know
+     * them at boot.
+     *
+     * <p>A snapshot: the addresses handed over become the whole discovered set,
+     * so an endpoint left out of it is a node this one should stop dialing — its
+     * dial loop and live outbound connection are torn down. Configured peers are
+     * unaffected, the dialed set being the union of the two, so an empty snapshot
+     * removes only what discovery added. Inert until the event module's hook wires
+     * the connector; calling it on an unwired mesh is a no-op, like publishing.</p>
      */
-    public void addPeers(List<String> peers) {
-        peersSink.accept(List.copyOf(peers));
+    public void replaceDiscoveredPeers(List<String> peers) {
+        discoveredPeersSink.accept(List.copyOf(peers));
     }
 
     /** Called by the event hook when the connector exists. */
-    void installPeerSink(Consumer<List<String>> sink) {
-        this.peersSink = Objects.requireNonNull(sink, "sink");
+    void installDiscoveredPeersSink(Consumer<List<String>> sink) {
+        this.discoveredPeersSink = Objects.requireNonNull(sink, "sink");
     }
 
     // ==================== publish ====================
@@ -169,15 +179,19 @@ public final class CloudEventBus {
         }
         for (PeerConnection peer : targets) {
             if (peer.send(json)) {
-                framesSent.increment();
+                framesQueued.increment();
             } else {
+                // The frame was never taken; the connection's own accounting
+                // covers everything it had accepted before it failed.
+                framesDropped.increment();
                 sendFailures.increment();
                 LOG.warn("Send to peer {} failed — dropping connection", peer.remoteOrigin());
                 hub.unregister(peer);
                 // Unregistering only detaches the route; the socket stays
                 // open and keeps pushing inbound events we no longer trust
                 // with outbound traffic. Close it (idempotent) so the
-                // connection state converges.
+                // connection state converges — and so whatever is still in
+                // its queue is reported as dropped, exactly once.
                 peer.close();
             }
         }
@@ -267,15 +281,25 @@ public final class CloudEventBus {
      * Immutable snapshot of this plane's counters.
      *
      * @param published            publish calls flushed (post-commit or immediate)
-     * @param framesSent           frames written to at least one peer connection
-     * @param sendFailures         failed sends (isolated, connection dropped, frame lost)
+     * @param framesQueued         frames accepted by a peer connection — its transport
+     *                             thread owns them now; not confirmed on the wire (the
+     *                             plane is at-most-once and reports no ack)
+     * @param framesDropped        accepted frames that never left this node: a batch the
+     *                             transport refused, or whatever a closing connection
+     *                             still had queued. Together with {@code framesQueued}
+     *                             this bounds the sender side: queued − dropped is what
+     *                             may still be in flight or written
+     * @param sendFailures         publish-time refusals — each one also drops the
+     *                             connection, so its remaining queued frames move into
+     *                             {@code framesDropped}
      * @param inboundDelivered     successful handler invocations (one per matching subscription)
      * @param droppedLegacy        in-flight CLASS-channel frames dropped by reason (rollout observability)
      * @param droppedNoSubscriber  topic frames matching no subscription (normal gating)
      */
     public record CloudEventStats(
         long published,
-        long framesSent,
+        long framesQueued,
+        long framesDropped,
         long sendFailures,
         long inboundDelivered,
         long droppedLegacy,
@@ -284,7 +308,16 @@ public final class CloudEventBus {
 
     public CloudEventStats stats() {
         return new CloudEventStats(
-            published.sum(), framesSent.sum(), sendFailures.sum(),
+            published.sum(), framesQueued.sum(), framesDropped.sum(), sendFailures.sum(),
             inboundDelivered.sum(), droppedLegacy.sum(), droppedNoSubscriber.sum());
+    }
+
+    /**
+     * Receives what a peer connection accepted but never wrote — a batch its
+     * transport refused, or whatever was still queued when it closed. Called from
+     * that connection's threads.
+     */
+    void framesDroppedInTransit(long frames) {
+        framesDropped.add(frames);
     }
 }
