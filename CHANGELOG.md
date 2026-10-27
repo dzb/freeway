@@ -31,15 +31,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **`CloudEventBus.addPeers(List<String>)`**（`freeway-cloud`）：把文档承诺的 "discovery-fed
-  peers" 变成可达入口——注册中心适配器发现地址后调用它，网格补拨新端点（已连接的跳过）。
-  此前 `PeerConnector` 是包私有且 `addPeers` 无调用者，文档说的接缝并不存在。
+- **freeway 自家注册后端成形：节点 + `RegistryFleetModule` 客户端**（`freeway-cloud`）：
+  `RegistryServerModule` 的 HTTP 面此前明文无鉴权、也没有任何 freeway 客户端会写它——"独立注册
+  节点"只有半截。现在两端齐了，都在 freeway-cloud 内：节点可设共享密钥（非空时写入方必须带
+  `X-Registry-Token` 头，读写都查——readiness 表被别人写满同样是攻击面）；`RegistryFleetModule`
+  把一**组**注册节点绑定为 `ServiceRegistry`/`ServiceDiscovery`（键 `freeway.cloud.registry-node.*`）：
+  写入扇出到节点列表、发现取各节点回答的并集、404 心跳就地重灌（重灌的是本进程注册过的实例，
+  不是猜测的端点）、任一节点存活即整队可用。节点 = `HttpModule + CloudDiscoveryModule +
+  RegistryServerModule` 的普通 freeway 应用（组装约十行，见该模块 javadoc）。端到端测试：一个节点
+  + 两个互不相识的服务经 wire 注册/发现 + `discovery-feed-ms` 喂成网格；错 token 的注册启动期即
+  响亮失败。第三方后端（Consul 等）仍在 ext，同一 seam 切换即换。
+- **`CloudEventBus.replaceDiscoveredPeers(List<String>)`**（`freeway-cloud`）：把文档承诺的
+  "discovery-fed peers" 变成可达入口——注册中心适配器每轮把发现到的地址**整份**送进来，
+  网格据此对齐拨号名单：新地址补拨，**不在快照里的地址中断重拨并优雅断开**。此前该接缝
+  并不存在（`PeerConnector` 包私有、无调用者）。静态 `peers` 与发现地址是两个事实，拨号
+  集合取并集：空快照只撤销发现来的那部分，不会取消静态列表。
+- **发现喂数的网格：`freeway.cloud.event.discovery-feed-ms`**（`freeway-cloud`）：设了即开——
+  事件模块按间隔向绑定的 `ServiceDiscovery` 查询本服务实例，整份交给
+  `CloudEventBus.replaceDiscoveredPeers`（本节点排除）：新实例被拨通、离开目录的被断开并停止
+  重拨，一次查询失败保留原集合。此前修好的 `replaceDiscoveredPeers` 接缝没有任何调用者——
+  "discovery-fed mesh"只是文档里的一句话；现在任意 discovery 后端（含 ext 的 Consul 适配器）
+  绑上即得自配置网格。静态 `peers` 与发现集合仍是并集，空轮询不取消静态列表。键设了却没有
+  discovery 可问 = 启动失败并点名（静默 no-op 会留下一个看起来自配置、实际永不拨号的 mesh）；
+  间隔 < 1 同样启动失败。
+- **拨号名单收敛为一个 `Map<PeerAddress, Dialer>`**（`freeway-cloud`）："这个 peer 还要
+  不要""失败了几次""该中断哪个线程"曾分居两个集合，而第三个（`Set<Thread>`）没有 key，
+  移除一个 peer 在结构上无从下手——只增不减会让消失的节点被**永久重拨**（封顶 30s 一次，
+  直到进程退出），`backoffByPeer` 也随之无界增长。现在条目本身就是名单，移除是一次
+  `remove`；重连路径以条目为准，所以移除后的 `handleDisconnect` 不会把它拨回来。
 
 ### Changed
 
 - **`CloudHttpClient extends AutoCloseable`**（`freeway-cloud`）：生命周期进入角色接口（与
   `Pool`/`Database`/`HttpServerHandle` 一致）；此前只靠默认实现的 `close()`，外部 `.primary()`
   替换会静默丢掉 in-flight 结算。
+- **网格发送线程不再轮询，且按批写**（`freeway-cloud`）：`PeerConnection.close()` 现在在发布
+  `senderThread` 的同一把锁里读它，于是 `poll(200ms)` 的兜底超时可以删掉——阻塞 `take()` 不多占
+  线程，也不再有空闲连接每秒 5 次的唤醒（200 个 peer 就是每秒 1000 次）。drain 改为 `take()` +
+  `drainTo` 取一批交给 `Sender.sendBatch`：入站腿走引擎已有的 `sendTextBatch`（一次 writeLock、
+  一次 flush），不再每帧一次 write+flush——那个接口此前**没有任何生产调用者**。
+- **`CloudHealthContributor.isActive()` 删除**（`freeway-cloud`）：外部 backend 保留注册状态正是
+  本轮修的 bug，此后唯一实现恒返回 true，`ReadyHandler` 里那个过滤分支成为死代码。留着它的代价
+  不是几行代码，而是接口 javadoc 还在教下一个适配器"用活跃度把自己摘掉"——正是把 readiness 变瞎
+  的那个做法（ext 里无任何实现，`ConsulModule` 中"deactivates itself"的说法一并改回事实）。
+- **网格的丢帧被计数了，`framesSent` 改名 `framesQueued`**（`freeway-cloud`）：旧名承诺的是
+  "已写到 peer"，实际计的是"入队成功"——批量之后一批写失败整批丢，却全记成已发送。现在每个被
+  连接接受的帧恰好计一次：入了队是 `framesQueued`，没离开本节点是 **`framesDropped`**（传输拒绝
+  的那批 + 关闭时仍在队列里的残留，由连接自己报告，绝不双计）；`queued − dropped` 就是"可能还在
+  飞或已写出"的上界。配套地，**drain 侧的写失败现在有 `LOG.warn`**——此前发布侧拒绝有日志、
+  drain 侧拒绝无声，同一个失败两条腿只有一条会响。`CloudEventStats` 的字段形状变了：仍依赖
+  `framesSent()` 的代码编译期即报错，重命名即迁移。
 
 ## [1.5.6] - 2026-10-08
 

@@ -395,7 +395,8 @@ host+port；同一 origin 只保留一条连接，规则是**字典序小的一�
 translate：无人感兴趣就不序列化）→ 逐连接**入队**。每连接一个 256 帧的有界队列 +
 自己的发送线程：发布线程从不等待 peer（一次阻塞写就能挂死 HTTP/Defer 线程），
 队列满或写失败即丢弃该连接并重拨；**没有流量背压**（没有对发布方的反压，代价是
-丢连接/丢帧而不是变慢）。
+丢连接/丢帧而不是变慢）。发送线程每次取一批（≤64 帧）交给传输，入站腿走引擎的
+`sendTextBatch`——一次 writeLock、一次 flush，不是每帧一次。
 
 **入站管道**：帧解析（CloudEvents 1.0，`fwchannel`/`fworigin` 扩展属性）→
 origin 自环抑制 → 拦截器链 → 门面订阅表匹配。订阅声明的 `Class` 即入站白名单：
@@ -411,8 +412,17 @@ CLASS 帧照解析、按 channel 弃投并计数（`stats().droppedLegacy()`）�
 进门面订阅表，mesh 本身 at-most-once 无重投，kafka 的 at-least-once 幂等归消费者
 业务键。共享 id、去重窗口与 `dedup.*` 键整体删除；跨平面相关性不是框架职责。
 
+**拨号名单有两个来源**：`freeway.cloud.event.peers`（静态，连接器整个生命周期不变）与
+**发现快照**——`freeway.cloud.event.discovery-feed-ms` 设了即开：事件模块按间隔向绑定的
+`ServiceDiscovery` 查询本服务实例，整份送进 `CloudEventBus.replaceDiscoveredPeers`（本节点
+被排除；一次查询失败保留原集合，不能把一次故障读成“全员离场”），实际拨的集合是二者并集。
+快照里缺了的地址 = 离开网格的节点：中断它的拨号循环、优雅断开已连上的出站会话，并从名单里
+删掉——**重连路径以名单为准**，所以断开本身不会把它拨回来。两个事实分开而不是合并，是因为
+发现后端“什么都没发现”不能取消静态列表，而只有发现来的那一半才允许收缩。
+
 **装配与关停**：`CloudEventModule` 显式安装；`freeway.cloud.event.enabled`
-显式 true/false 优先，未设时"配了 peers"即为开启，什么都不设则模块保持
+显式值优先（Boolean 词表，由容器 Coercer 解析：true/false、yes/no、on/off、1/0），
+未设时"配了 peers"即为开启，什么都不设则模块保持
 惰性（装模块本身不产生副作用）。停机时停拨号器再关连接，出站连接发
 `1001 going away`，并留出极短的关帧窗口，不让容器关闭等一个已经走掉的 peer。
 
@@ -666,7 +676,7 @@ API**，遵循 `Database`/`Pool` 模式，并发交给虚拟线程。
 
 | 能力 | 接缝 | 最小收口动作 |
 |---|---|---|
-| 注册 / 发现后端（Nacos、K8s endpoints；**Consul 已在 ext 交付**） | `ServiceRegistry` + `ServiceDiscovery` | 一个适配器模块 + 真实后端测试；`renew` 已返回 boolean，自愈契约现成 |
+| 注册 / 发现后端（Nacos、K8s endpoints 由 ext 适配；**freeway 自家后端已在本体交付**：节点 = `RegistryServerModule` 组合，客户端 = `RegistryFleetModule`，写入扇出/发现并集，零第三方依赖；**Consul 在 ext**） | `ServiceRegistry` + `ServiceDiscovery` | 一个适配器模块 + 真实后端测试；`renew` 已返回 boolean，自愈契约现成 |
 | 密钥后端（Vault、KMS） | `SecretStore` | 适配器自理租约/TTL（SPI 无 `reload()`），文件轮换语义已定 |
 | 对象存储后端（S3 兼容） | `ObjectStorage` | 版本能力与版本寻址的读/删一起排期，不要只交一半 |
 | 指标导出（OTel/Prometheus push） | 不装 `CloudObserveModule`，primary 绑定 `Metrics` + 自备导出路由 | 顺带把 §8.2 的标签维度一起设计 |

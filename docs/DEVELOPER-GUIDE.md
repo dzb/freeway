@@ -727,7 +727,7 @@ binder.contribute(EventSubscriber.class)
 **Planes are separate:** the bus never leaves the process — whether a fact
 crosses a boundary is decided at the call site, not by which modules are
 loaded. Cross-JVM broadcast is the cloud plane (see
-[CloudEventBus](#cloudeventbus-freeway-cloudevent)); durable, per-key ordered
+[CloudEventBus](freeway-cloud.md)); durable, per-key ordered
 streams are the Kafka plane (see [Kafka](#kafka-freeway-mq-kafka)). A fact
 that must live on two planes is published on both, deliberately.
 
@@ -1843,312 +1843,34 @@ twice, deliberately.
 
 ## Cloud (`freeway-cloud`)
 
-**Placing the bundle in the tree is the integration.** `CloudModule` is the
-cloud bundle: the class declares the standard modules with `@SubModule`
-(context propagation, secrets, discovery, remote invocation, observability,
-resilience, health and object storage), and placing it places them. The event
-the event fabric is added explicitly (`new CloudEventModule()`) because it
-opens a network listener of its own — and it is entered explicitly too
-(`@Inject CloudEventBus`, subscription contributions), never by module
-loading alone. Everything else below wires itself without further application
-code — and since a submodule is an ordinary module, taking a subset is placing
-the modules you want:
+**Placing the bundle in the tree is the integration.** `CloudModule` declares the
+eight standard modules with `@SubModule` (context propagation, secrets,
+discovery, remote invocation, observability, resilience, health, object
+storage); each of them is an ordinary module, so a subset is placed directly —
+and the event fabric is added explicitly (`CloudEventModule`) because it opens
+a network listener of its own. Applications touch the cloud in three tiers:
+**ambient** (install the module — self-registration, `/health/live`,
+`/health/ready`, `/metrics`, metrics/tracing/resilience/propagation on every
+outbound call), **declarative** (`RpcExport`, `CloudEventSubscription`,
+`CloudHealthContributor` — what this service offers), and **consumption**
+(`@Inject ServiceDiscovery` / `RemoteCaller` / `CloudEventBus` / `Metrics` /
+`SecretStore` / `ObjectStorage` — what it uses).
 
-```java
-FreewayApp.run(
-    new OrderModule(),
-    CloudModule.class);                               // the whole bundle
+**Service registration & discovery ships with three backends behind one seam:**
+the in-process store (the default — a single node needs nothing), the
+freeway-native fleet (`RegistryFleetModule` pointing at deployable registry
+nodes — each an ordinary freeway application running `RegistryServerModule`;
+writes fan out to every node, reads union the answers), and third-party ext
+adapters (Consul). Switching is swapping the module and its keys; application
+code never changes. The event mesh feeds itself from whichever backend is bound
+(`freeway.cloud.event.discovery-feed-ms`).
 
-FreewayApp.run(
-    new OrderModule(),
-    new CloudRpcModule());                            // just the client
-```
-
-**Three ways an application touches the module:**
-
-| Tier | What the application writes | What it covers |
-|------|-----------------------------|----------------|
-| **Ambient** | nothing — just install the module | the instance registers itself in discovery after the HTTP server starts (renewed by a heartbeat, deregistered before shutdown), `GET /health/live`, `/health/ready` and `/metrics` are served, and every outbound call carries metrics, tracing, resilience and propagated context |
-| **Declarative** | data contributions: `binder.bind(Handlers.class)` + `contribute(RpcExport.class)`, `contribute(EventSubscriber.class)` (local) / `contribute(CloudEventSubscription.class)` (fabric), `contribute(CloudHealthContributor.class)` | what this service offers the rest of the system |
-| **Consumption** | `@Inject ServiceDiscovery` / `ObjectStorage` / `SecretStore` / `Metrics` / `Tracer` / …, and `binder.bind(Api.class).to(...)` | what this service uses from others |
-
-**The two cut points of a distributed call** — the only places where "we are
-more than one process" appears in application code:
-
-```java
-// Provider: this mapping is served here.
-binder.bind(UserHandlers.class);
-binder.contribute(RpcExport.class).add(RpcExport.of("user", UserHandlers.class));
-
-// Consumer: this interface is implemented elsewhere.
-binder.bind(UserApi.class).to(container -> RemoteProxyFactory
-    .of(container.get(RemoteCaller.class))
-    .serviceId("user-service")            // discovery id of the serving service
-    .mapping("user")                      // the exported call-topic prefix
-    .build(UserApi.class));
-```
-
-Business code writes `@Inject UserApi` in both shapes — the composition root is
-the only file that knows which one it is (see *Remote invocation* below).
-
-**Capability index** — what to write, and where the rest is documented:
-
-| Capability | Application side | Keys / notes |
-|------------|------------------|--------------|
-| Discovery / registry | nothing (self-registration); `@Inject ServiceDiscovery` to resolve instances, `ServiceRegistry.register(ServiceInstance.of(...))` for a static peer, `.primary()` for an external backend | `freeway.cloud.registry.*` |
-| Load balancing | default round-robin; replace the strategy with `.primary()` | `ServiceInstance.weight()/zone()/version()/isCanary()` are the inputs such a strategy reads |
-| Remote invocation (outbound) | `RemoteProxyFactory` for a typed client, `RemoteCaller.invoke(...)` for a direct call, `CloudHttpClient` for plain HTTP against a peer that is not a Freeway RPC provider | `freeway.cloud.rpc.*` |
-| Export (inbound) | an `RpcExport` declaration | see *Remote invocation* |
-| Event fabric | add `CloudEventModule`; `@Inject CloudEventBus` to publish across nodes, `contribute(CloudEventSubscription.class)` to receive | `freeway.cloud.event.*` |
-| Observability | `@Inject Metrics` (counters/timers/gauges), `@Inject Tracer` (`start(name)`), `@Inject MetricsSnapshot` for a scrape-ready view. Every application request runs inside a server span and its logs carry that span's `traceId`; `traceparent` + `tracestate` propagate in both directions; probes and `/metrics` are not traced | `GET /metrics` |
-| Resilience | the defaults bind and the RPC client uses them; `@Inject Retryer` / `CircuitBreaker` / `RateLimiter`, or `.primary()` to replace one | `freeway.cloud.rpc.resilience=auto\|off` and the fine-grained keys |
-| Health | `contribute(CloudHealthContributor.class)` for a readiness check of your own dependency. The built-in registry check reports what the heartbeat verified — `ServiceRegistry.renew` answers whether the entry is still held, and a lost one is re-registered — so readiness is not a constant; on shutdown it reports `draining` while `freeway.cloud.registry.shutdown-drain` (default `auto`, answered by the registry) keeps the process serving | `GET /health/live`, `GET /health/ready` (plus the HTTP module's `/healthz`) |
-| Context propagation | `InvocationContext.current()` reads baggage/principal/trace; nothing to wire | inbound filter + outbound header injection |
-| Secrets | `@Inject SecretStore`; secrets are also symbol-resolvable, so `@Symbol("db.password")` finds them. The file is re-read when it changes (rotation without a restart; unreadable files keep the previous values) | `freeway.cloud.secret.*` (system properties only) |
-| Object storage | `@Inject ObjectStorage`; `ObjectStoredEvent` / `ObjectDeletedEvent` are published on the bus | `freeway.cloud.storage.*` |
-
-Every capability has an in-process default (local registry, env/file secrets,
-filesystem storage, built-in metrics registry) so a single-node deployment
-needs no backend at all; an external one arrives as an adapter that binds
-`.primary()` — see [freeway-ext](https://github.com/dzb/freeway-ext). The full
-key list is in [freeway-config.md](freeway-config.md); the design rationale is
-in [freeway-cloud-design.md](freeway-cloud-design.md).
-
-**`freeway.cloud.*.type` declares intent; it does not choose an implementation.**
-The framework never loads a class by name (no classpath scanning, no reflection
-by configuration), so the selector is the binding: an adapter binds the role
-with `.primary()` and the built-in default steps aside. The `type` key is the
-human- and adapter-readable declaration of which backend is expected; when it
-names something other than the built-in and no adapter took over, the local
-provider warns once at startup instead of letting a declaration look like it
-took effect (`BackendTypeGuard`).
-
-**Shutdown is ordered, and it is meant to be.** The registry hook stops before
-the HTTP server: it marks readiness `draining` and deregisters first, then waits
-`freeway.cloud.registry.shutdown-drain` so a load balancer that still holds this
-endpoint can react, and only then does the server stop accepting. Its default is
-`auto`: the bound registry answers the window it needs
-(`ServiceRegistry.drainWindow()`) — zero for the in-process registry, a few
-seconds for a Nacos or Kubernetes-endpoints adapter — so a deployment does not
-have to know its backend's number; an explicit duration still wins. Outbound calls already in flight are given
-`freeway.cloud.rpc.shutdown-grace` (default `5s`) to finish instead of being
-failed — an idle process closes immediately, so the wait is only paid when there
-is something to drain. Event-mesh peers receive a `1001 going away` close frame
-rather than a reset.
-
-**Cloud keys are read once, when the component that owns them is built.**
-Hot-reloading a watched config file changes what the symbol chain resolves from
-then on, not what an already-constructed client, registry declaration or
-propagator captured — a changed `freeway.cloud.rpc.request-timeout` needs a
-restart to take effect (per-call values passed to `RemoteCaller`/`RemoteProxyFactory`
-are the exception; the secret store rereads its file when its size or mtime
-changes, throttled to once a second). Read a
-value at its point of use only when it is genuinely meant to be live.
-
----
-
-## Remote invocation (`freeway-cloud.rpc`)
-
-Cross-process method calls: a provider declares which mappings may be called
-from outside, a consumer binds a typed client to that mapping. Dispatch rides
-`CloudHttpClient`, so discovery, load balancing, retry, circuit breaking and
-propagation all apply.
-
-**The same interface serves both shapes.** Business code always says
-`@Inject UserApi`; whether the implementation is in this process or behind
-HTTP is a composition decision:
-
-```java
-// monolith: the local implementation
-binder.bind(UserApi.class).to(UserApiImpl.class);
-
-// split out: the typed remote client
-binder.bind(UserApi.class).to(container -> RemoteProxyFactory
-    .of(container.get(RemoteCaller.class))
-    .serviceId("user-service")      // discovery id of the serving service
-    .mapping("user")                // call-topic prefix the provider exported
-    .build(UserApi.class));
-```
-
-Call sites do not change between the two; only the composition root does. That
-is also why the interface can be shared without the two modules depending on
-each other.
-
-**Server side — declare the export:**
-
-```java
-public final class UserRpcModule implements ModuleEx {
-    @Override
-    public void bind(Binder binder) {
-        binder.bind(UserHandlers.class);          // container-managed: injected, lifecycle, resolvable
-        binder.contribute(RpcExport.class)
-            .add(RpcExport.of("user", UserHandlers.class));   // the whole export declaration
-    }
-}
-```
-
-**An export is a declaration, not a wiring job.** `RpcExport.of(mapping, type)`
-names what may be called and who serves it; the framework resolves the handler
-from the container and serves one wildcard route, `POST /rpc/{mapping}/{method}`.
-The endpoint invokes the container's handler directly — there is no registry in
-between that could disagree with what was declared.
-
-Only declared mappings are reachable: an undeclared mapping is rejected before
-any handler is consulted, and several mappings live side by side without adding
-a route. The mapping name is validated when you export it (`[A-Za-z0-9_.]`), and
-arguments travel as a positional JSON array. Add `.propagateMessages()` to a
-declaration to forward the handler's exception message (the class always
-crosses; the message is free text and stays local by default).
-
-Three wiring mistakes fail startup instead of answering 404 (or the wrong
-shape) later: exporting one mapping twice, exporting a type that is not bound
-(the message names the missing `binder.bind(...)`), and a handler with
-overloaded methods — positional arguments cannot tell overloads apart.
-
-**Consumer side — direct call or typed client:**
-
-```java
-@Inject RemoteCaller caller;   // framework-bound: CloudHttpClient + JsonCodec assembled for you
-
-// 1. direct call
-Greeting g = caller.invoke("user-service", "user", "greet", List.of("bob"), Greeting.class);
-
-// 2. typed client, bound once at the composition root (see above);
-//    a per-call budget is available here too:
-UserApi api = RemoteProxyFactory.of(caller)
-    .serviceId("user-service").mapping("user")
-    .timeout(Duration.ofSeconds(5))          // end-to-end, retries included
-    .build(UserApi.class);
-```
-
-**Absent or unreachable capabilities fail loudly.** "The service is not
-deployed" is a composition decision (bind a default implementation, or do not
-call it); once a call is made, `CloudException.noInstance(serviceId)` says the
-address does not resolve — there is no silent fallback to a default value.
-
-**Error model — two classes, two instincts:**
-
-| Failure | Thrown as | Replay? |
-|---------|-----------|---------|
-| Connect refused / connect timeout | `CloudException`, `retryable()==true`, `outcomeUnknown()==false` | yes — the request never left this process |
-| Timeout, mid-flight I/O, 5xx | `CloudException`, `retryable()==true`, `outcomeUnknown()==true` | **only for idempotent operations** — the peer may have applied the request |
-| Remote handler threw | `CloudException` (4xx) with `RemoteInvocationException` as cause | **no** — deterministic |
-
-A retryable failure passes two gates before the Retryer is consulted: the
-failure category and idempotency. Plain `CloudHttpClient` requests derive
-idempotency from the verb (GET/PUT/DELETE/OPTIONS/HEAD/TRACE replay; POST/PATCH
-do not) and can override it with `CloudRequest.idempotentWith(true)`. Remote
-calls travel as POST, so mark consumer interface methods — or the whole
-interface — with `@Idempotent` when their remote handlers replay safely:
-
-```java
-public interface UserApi {
-    @Idempotent Greeting greet(String name);   // pure query — safe to replay
-    Account open(String name);                 // must not replay: ambiguous
-}                                              // outcomes fail fast instead
-```
-
-Remote exceptions are rebuilt by class name and message only; the original
-type is not reconstructed (it may not exist on the caller's classpath).
-Cross-process calls are **outside any local transaction** — post-commit side
-effects belong on the EventBus (Defer buffering), not on RPC.
-
----
-
-## CloudEventBus (`freeway-cloud.event`)
-
-The cloud-native broadcast plane: publish and receive CloudEvents 1.0 frames
-over a WebSocket mesh — **explicitly**. The in-process `EventBus` stays
-in-process; loading this module changes nothing about local publishes. A fact
-crosses a process boundary only where the code says so, on this plane.
-
-```java
-FreewayApp.run(new String[0],
-    new AppModule(), new HttpModule(), new CloudEventModule());
-```
-
-Config (`freeway.cloud.event.*`) — presence-driven activation:
-
-```properties
-# Static peers: presence alone activates the mesh — no enabled needed.
-freeway.cloud.event.peers=10.0.0.11:8080,10.0.0.12:8080
-# freeway.cloud.event.enabled=true            # discovery-fed mesh without static peers
-# freeway.cloud.event.enabled=false           # kill switch — suppresses even configured peers
-freeway.cloud.event.token=mesh-secret         # blank = no peer auth (warned); MUST be set in production
-```
-
-- `peers` — nodes to dial; a non-empty list **is the activation** (the dialing
-  side never needs `event.enabled`). An external registry backend can feed
-  these dynamically instead (via `CloudEventBus.addPeers`; needs a discovery
-  adapter — an ext concern; `freeway-cloud-consul` ships one). The endpoint rides the
-  existing HTTP server at `/cloud/event`. IPv6 literals work bracketed
-  (`[::1]:8080`) or bare.
-- `token` — shared secret every peer must present in the hello frame; compared
-  constant-time. Blank (default) disables peer auth — any host that can reach
-  the endpoint may connect. **Multi-node production deployments must set it**:
-  identical value on every node (a mismatch closes with WS `1008`), injected
-  via `FREEWAY_CLOUD_EVENT_TOKEN` rather than committed to a file, rotated
-  with a rolling restart.
-
-Interest is not configuration: it is the subscription contributions below —
-one declaration drives the hello pull-prefixes, the inbound gate, and delivery.
-
-**Publishing crosses the boundary — by name.** The routing key is a topic
-string chosen at the call site; Java class names never go on the wire:
-
-```java
-@Inject CloudEventBus mesh;
-
-mesh.publish("order.created", new OrderCreated("order-42"));
-mesh.publish("metrics.tick", report, "tenant-7");   // optional subject (ordering hint)
-```
-
-`publish` is Defer-aware: inside a transaction the frame is buffered until
-commit; a rollback discards it — an uncommitted fact never leaves the JVM.
-
-**Receiving declares a type — and that declaration is the allowlist:**
-
-```java
-binder.contribute(CloudEventSubscription.class)
-      .add("orders",
-          CloudEventSubscription.of("order.", OrderCreated.class, this::handle));
-```
-
-A frame whose topic matches no subscription is dropped **without
-deserialization** — no undeclared class is ever materialized, and nothing
-reaches `Class.forName`. There is deliberately no runtime `subscribe`: interest
-a peer cannot see at handshake is interest that cannot be honored.
-
-**Local + remote, mirrored on purpose.** A plane never feeds another — remote
-facts are remote facts, not local ones. When a remote fact should also be a
-local one, mirror it in the handler:
-
-```java
-CloudEventSubscription.of("order.", OrderCreated.class, event -> bus.publish(event))
-```
-
-**Who receives what:** a node gets a frame only if *its own* declared
-subscriptions include a matching prefix — there is no other filter, and no
-silent second knob to forget. Deployment checklist per node: module placed +
-(peers or `enabled=true`) + subscriptions declared + `token` set. Missing any
-one is a silent partition, not an error; `stats().droppedNoSubscriber()` and
-`framesSent()` make the sender side observable after the fact.
-
-**Delivery semantics:** at-most-once, real-time. A peer offline during a
-publish misses that event (no replay queue) — for durable, per-key ordered
-delivery use the Kafka plane (`freeway-mq-kafka`).
-
-**Error model:** inbound frames run through contributed interceptors
-(`contribute(CloudEventInterceptor.class)`) for audit, tenant checks and
-custom filtering. Frames nobody subscribed to are dropped, not errors. A
-throwing handler is isolated and counted.
-
-**Duplicates are gone as a concept.** Each plane holds its own facts; there is
-no cross-transport copy of one publish to correlate, so the mesh never
-redelivers and the old shared-id/dedup window machinery retired with the
-bridge. Legacy in-flight frames from pre-teardown nodes (class-channel)
-still decode — and are dropped by reason, counted in
-`stats().droppedLegacy()`: upgrade mesh fleets together, not half at a time.
+**The full cloud development guide — backend deployment and semantics, remote
+invocation with its error/idempotency model, the event mesh, health and
+readiness, observability, secrets, storage, key-read timing and shutdown
+ordering — lives in [freeway-cloud.md](freeway-cloud.md).** Design rationale:
+[freeway-cloud-design.md](freeway-cloud-design.md). Every key:
+[freeway-config.md](freeway-config.md).
 
 ---
 

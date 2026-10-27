@@ -1,6 +1,9 @@
 # Freeway / Solon / Spring 设计对比
 
 > 排除了"功能全不全"、"生态大不大"、"用的人多不多"——只谈设计本身。
+>
+> 本文回答"**设计得怎么样**"，是长青的设计评论。工程维度的选型评估（含 Quarkus/Micronaut、
+> 引擎与性能、Agent 友好性）见 [FRAMEWORK-COMPARISON.md](FRAMEWORK-COMPARISON.md)。
 
 ---
 

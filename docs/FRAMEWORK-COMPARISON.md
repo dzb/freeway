@@ -1,5 +1,9 @@
 # Java 四框架横向对比报告（2026 年 9 月）
 
+> 本文回答"**该选谁**"——工程维度的选型评估（概念密度、仪式感、引擎、性能、生态、Agent
+> 友好性）。**设计哲学的深度评论**（抽象结构、减法意识、语言现代化、决策透明度，对比对象
+> 为 Spring/Solon/Freeway）见 [freeway-framework-design-comparison.md](freeway-framework-design-comparison.md)。
+
 **对比对象**：Spring Boot 4.x / Quarkus 3.x / Micronaut 4.x-5.x / Freeway 1.5.x
 
 **评估标准**：心智负担、概念数量、仪式感消除、复杂性真实去向、所见即所得程度
