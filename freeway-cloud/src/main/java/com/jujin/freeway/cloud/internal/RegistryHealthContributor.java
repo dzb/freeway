@@ -8,15 +8,13 @@ import com.jujin.freeway.cloud.health.HealthResult;
  * Readiness for the registry: reports what {@link RegistryRenewal} observed
  * rather than assuming registration worked.
  *
- * <p><b>Always active.</b> The state it reports — {@code draining}, heartbeat
- * failures, registration — is owned by {@link RegistryRenewal} and updated by
- * this module's {@code RegistryLifecycleHook} whichever {@code ServiceRegistry}
- * is bound, local or external (the Consul adapter included). Deactivating on an
- * external binding used to silently drop the registry check from
- * {@code /health/ready}, which is the opposite of failing loudly: readiness must
- * keep answering "not registered / draining / heartbeat failing" no matter who
- * backs the registry. An adapter may add its own connectivity check next to this
- * one; it does not replace it.</p>
+ * <p>What it reports — {@code draining}, heartbeat failures, registration — is
+ * this module's own state, updated by {@code RegistryLifecycleHook} whichever
+ * {@code ServiceRegistry} is bound, local or external (the Consul adapter
+ * included). That is why the check does not depend on the backend being @Local:
+ * readiness has to keep answering "not registered / draining / heartbeat
+ * failing" no matter who backs the registry. An adapter may add a connectivity
+ * check of its own next to this one; it does not stand in for it.</p>
  *
  * <p>The verdict is per-instance state, decided in {@link #check()} rather than
  * at construction: this contributor is built before the registry hook runs, so
@@ -43,11 +41,6 @@ public final class RegistryHealthContributor implements CloudHealthContributor {
     @Override
     public String name() {
         return "registry";
-    }
-
-    @Override
-    public boolean isActive() {
-        return true;
     }
 
     @Override

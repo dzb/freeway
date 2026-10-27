@@ -5,7 +5,6 @@ import com.jujin.freeway.cloud.health.HealthResult;
 import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.route.RouteHandler;
 
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -46,18 +45,13 @@ public final class ReadyHandler implements RouteHandler {
      */
     public ReadyHandler(List<CloudHealthContributor> contributors) {
         Set<String> names = new HashSet<>();
-        List<CloudHealthContributor> active = new ArrayList<>(contributors.size());
         for (CloudHealthContributor contributor : contributors) {
-            if (!contributor.isActive()) {
-                continue; // replaced by an extension binding — no stale local probe
-            }
             if (!names.add(contributor.name())) {
                 throw new IllegalStateException(
                     "Duplicate CloudHealthContributor name '" + contributor.name() + "'");
             }
-            active.add(contributor);
         }
-        this.contributors = List.copyOf(active);
+        this.contributors = List.copyOf(contributors);
     }
 
     @Override
