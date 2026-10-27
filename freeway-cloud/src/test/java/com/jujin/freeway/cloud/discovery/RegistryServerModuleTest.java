@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
+import com.jujin.freeway.cloud.CloudModule;
 import com.jujin.freeway.http.HttpModule;
 import com.jujin.freeway.http.HttpModule.ConfigKeys;
 import java.net.URI;
@@ -96,6 +97,48 @@ class RegistryServerModuleTest {
                     uri(app, "/registry/services/svc/instances/ghost/renew"))
                 .POST(HttpRequest.BodyPublishers.ofString("")));
             assertTrue(renew.statusCode() == 404, "renew must 404 for an unknown instance");
+        }
+    }
+
+    @Test
+    void a_set_token_rejects_writers_without_the_header() throws Exception {
+        System.setProperty(CloudModule.ConfigKeys.REGISTRY_NODE_TOKEN, "s3cret");
+        try (AppRuntime app = FreewayApp.create(
+                new HttpModule(), new CloudDiscoveryModule(), new RegistryServerModule()).start()) {
+            HttpResponse<String> bare = http(app, HttpRequest.newBuilder(
+                    uri(app, "/registry/services/svc/instances"))
+                .POST(HttpRequest.BodyPublishers.ofString(INSTANCE)));
+            assertTrue(bare.statusCode() == 401,
+                "a write without the token must be refused, got " + bare.statusCode());
+
+            HttpResponse<String> peek = http(app, HttpRequest.newBuilder(
+                    uri(app, "/registry/services/svc/instances")).GET());
+            assertTrue(peek.statusCode() == 401,
+                "reads are writes to the attacker's map too — a set token guards them as well");
+        } finally {
+            System.clearProperty(CloudModule.ConfigKeys.REGISTRY_NODE_TOKEN);
+        }
+    }
+
+    @Test
+    void the_matching_token_passes_and_a_wrong_one_does_not() throws Exception {
+        System.setProperty(CloudModule.ConfigKeys.REGISTRY_NODE_TOKEN, "s3cret");
+        try (AppRuntime app = FreewayApp.create(
+                new HttpModule(), new CloudDiscoveryModule(), new RegistryServerModule()).start()) {
+            HttpResponse<String> wrong = http(app, HttpRequest.newBuilder(
+                    uri(app, "/registry/services/svc/instances"))
+                .header(RegistryServerModule.TOKEN_HEADER, "nope")
+                .POST(HttpRequest.BodyPublishers.ofString(INSTANCE)));
+            assertTrue(wrong.statusCode() == 401, "a wrong token must not write, got " + wrong.statusCode());
+
+            HttpResponse<String> right = http(app, HttpRequest.newBuilder(
+                    uri(app, "/registry/services/svc/instances"))
+                .header(RegistryServerModule.TOKEN_HEADER, "s3cret")
+                .POST(HttpRequest.BodyPublishers.ofString(INSTANCE)));
+            assertTrue(right.statusCode() == 200,
+                "the matching token writes, got " + right.statusCode());
+        } finally {
+            System.clearProperty(CloudModule.ConfigKeys.REGISTRY_NODE_TOKEN);
         }
     }
 }
