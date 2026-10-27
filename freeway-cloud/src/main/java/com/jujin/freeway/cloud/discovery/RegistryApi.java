@@ -4,6 +4,9 @@ import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.route.RouteHandler;
 
+import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
+import com.jujin.freeway.ioc.symbol.SymbolSource;
+import com.jujin.freeway.ioc.symbol.SymbolSpec;
 import java.io.IOException;
 import java.util.Map;
 import java.util.Objects;
@@ -19,18 +22,31 @@ import java.util.Optional;
  */
 public final class RegistryApi implements RouteHandler {
 
+    private static final SymbolSpec<String> NODE_TOKEN =
+        SymbolSpec.of(ConfigKeys.REGISTRY_NODE_TOKEN, String.class, "");
+
     private final ServiceRegistry registry;
     private final ServiceDiscovery discovery;
     private final JsonCodec codec;
+    private final String token;
 
-    public RegistryApi(ServiceRegistry registry, ServiceDiscovery discovery, JsonCodec codec) {
+    public RegistryApi(ServiceRegistry registry, ServiceDiscovery discovery, JsonCodec codec,
+                       SymbolSource symbols) {
         this.registry = Objects.requireNonNull(registry, "registry");
         this.discovery = Objects.requireNonNull(discovery, "discovery");
         this.codec = Objects.requireNonNull(codec, "codec");
+        this.token = symbols.resolve(NODE_TOKEN);
     }
 
     @Override
     public void handle(HttpContext ctx) throws IOException {
+        if (!token.isBlank() && !token.equals(ctx.header(RegistryServerModule.TOKEN_HEADER).orElse(""))) {
+            // A shared-secret check, not an identity system: the node is
+            // reachable inside a trusted network, and the token keeps an
+            // accidental writer from registering into it.
+            ctx.send(401, "");
+            return;
+        }
         String method = ctx.method();
         String serviceId = ctx.pathVar("serviceId").orElse(null);
         String instanceId = ctx.pathVar("instanceId").orElse(null);

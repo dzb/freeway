@@ -33,6 +33,9 @@ public final class RegistryServerModule implements ModuleEx {
     public static final String UNREGISTER = "/registry/services/{serviceId}/instances/{instanceId}";
     /** List live instances: GET …/instances. */
     public static final String DISCOVER = "/registry/services/{serviceId}/instances";
+    /** Header a writer must present when {@code freeway.cloud.registry.node-token}
+     *  is set; the fleet client ({@code RegistryFleetModule}) sends the same header. */
+    public static final String TOKEN_HEADER = "X-Registry-Token";
 
     @Override
     public void bind(Binder b) {

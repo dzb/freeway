@@ -64,8 +64,10 @@ public final class CloudDiscoveryModule implements ModuleEx {
             .add("freeway.cloud.declaration.http", new HttpServiceDeclaration());
         // Readiness contributor for /health/ready — belongs here, not in the
         // health module: it probes the registry store, so standalone health
-        // installs (without discovery) stay dependency-free. It deactivates
-        // when an extension adapter replaces the local bindings.
+        // installs (without discovery) stay dependency-free. It stays active
+        // whichever registry is bound (an extension adapter's own contributor
+        // adds to it rather than replacing it): registration, renewal and
+        // draining are this module's state, not the backend's.
         b.contribute(CloudHealthContributor.class).add(RegistryHealthContributor.class);
         b.contribute(RuntimeHook.class)
             .add(CloudHooks.DISCOVERY, new DiscoveryConnectionHook())
