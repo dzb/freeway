@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.jujin.freeway.cloud.discovery.Endpoint;
+import com.jujin.freeway.cloud.discovery.RegistryServerModule;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
@@ -134,6 +135,46 @@ class RegistryNodeClientTest {
             "the re-assertion is the instance the client registered, not a guess");
     }
 
+    @Test
+    void every_request_announces_the_protocol() throws Exception {
+        StubNode node = stub();
+        RegistryNodeClient client = client(node);
+
+        client.register(instance("i1"));
+
+        assertEquals(String.valueOf(RegistryServerModule.PROTO), node.lastProto,
+            "the client declares its protocol so a newer node can answer 426, not 404");
+    }
+
+    @Test
+    void a_node_that_answers_426_is_a_readable_failure() throws Exception {
+        StubNode newer = stub();
+        newer.forcedStatus = 426;
+        RegistryNodeClient client = client(newer);
+
+        IllegalStateException failure =
+            org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class,
+                () -> client.register(instance("i1")));
+        assertTrue(failure.getMessage().contains("no registry node accepted")
+                || failure.getMessage().contains("protocol"),
+            "an unsupported protocol must surface, not read as 'refused': "
+                + failure.getMessage());
+    }
+
+    @Test
+    void a_refused_credential_fails_the_registration_loudly() throws Exception {
+        StubNode guarded = stub();
+        guarded.forcedStatus = 401;   // the node requires a token this client does not have
+        RegistryNodeClient client = client(guarded);
+
+        IllegalStateException failure =
+            org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class,
+                () -> client.register(instance("i1")));
+        assertTrue(failure.getMessage().contains("no registry node accepted"),
+            "a refused write must not look like a successful registration: "
+                + failure.getMessage());
+    }
+
     /** A minimal stand-in for a registry node's HTTP surface. */
     private static final class StubNode {
 
@@ -141,27 +182,35 @@ class RegistryNodeClientTest {
         private final int port;
         private final List<ServiceInstance> registrations = new CopyOnWriteArrayList<>();
         private volatile String lastToken = "";
+        private volatile String lastProto = "";
         private volatile String instancesBody = "[]";
         private volatile int renewStatus = 200;
+        /** 0 = honour the request; otherwise answer every call with this status. */
+        private volatile int forcedStatus = 0;
 
         private StubNode() throws IOException {
             server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
             server.createContext(
                 "/",
                 exchange -> {
-                    lastToken = exchange.getRequestHeaders().getFirst("X-Registry-Token");
+                    lastToken = exchange.getRequestHeaders()
+                        .getFirst(RegistryServerModule.TOKEN_HEADER);
+                    lastProto = exchange.getRequestHeaders()
+                        .getFirst(RegistryServerModule.PROTO_HEADER);
                     String path = exchange.getRequestURI().getPath();
                     byte[] body = exchange.getRequestBody().readAllBytes();
-                    int status = 404;
+                    int status = forcedStatus == 0 ? 404 : forcedStatus;
                     String response = "";
-                    if ("POST".equals(exchange.getRequestMethod()) && path.matches(".*/instances")) {
+                    boolean forced = forcedStatus != 0;
+                    if (!forced && "POST".equals(exchange.getRequestMethod())
+                            && path.matches(".*/instances")) {
                         status = 200;
                         // The server-side parse: the body must be a real instance.
                         registrations.add(parse(body));
                         response = new String(body, StandardCharsets.UTF_8);
-                    } else if (path.endsWith("/renew")) {
+                    } else if (!forced && path.endsWith("/renew")) {
                         status = renewStatus;
-                    } else if ("GET".equals(exchange.getRequestMethod())) {
+                    } else if (!forced && "GET".equals(exchange.getRequestMethod())) {
                         status = 200;
                         response = instancesBody;
                     }

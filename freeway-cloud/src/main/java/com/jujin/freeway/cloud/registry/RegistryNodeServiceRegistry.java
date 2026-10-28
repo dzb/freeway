@@ -29,6 +29,11 @@ final class RegistryNodeServiceRegistry implements ServiceRegistry {
     }
 
     @Override
+    public void markReady(ServiceInstance instance, boolean ready) {
+        client.markReady(instance, ready);
+    }
+
+    @Override
     public void unregister(ServiceInstance instance) {
         client.unregister(instance);
     }

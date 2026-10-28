@@ -62,6 +62,9 @@ public final class RegistryLifecycleHook implements RuntimeHook {
      * entry outlives the process until the backend's lease expires.
      */
     private volatile boolean stopped;
+    /** Held out of rotation until the contributed checks pass; null when there
+     *  are none (an ordinary fast-starting service is ready as registered). */
+    private volatile ReadinessGate readinessGate;
 
     public RegistryLifecycleHook(RegistryRenewal renewal) {
         this(renewal, RENEW_INTERVAL);
@@ -107,6 +110,10 @@ public final class RegistryLifecycleHook implements RuntimeHook {
         }
 
         if (!registered.isEmpty()) {
+            readinessGate = ReadinessGate.arm(container, registryRef, registered);
+            if (readinessGate != null) {
+                readinessGate.start();
+            }
             renewal.track();
                 long intervalMillis = renewInterval.toMillis();
             scheduler = Executors.newSingleThreadScheduledExecutor(
@@ -230,6 +237,11 @@ public final class RegistryLifecycleHook implements RuntimeHook {
         // must see it and skip the re-registration that would undo the
         // deregistration below.
         stopped = true;
+        ReadinessGate gate = readinessGate;
+        if (gate != null) {
+            gate.close();
+            readinessGate = null;
+        }
         ScheduledExecutorService s = scheduler;
         if (s != null) {
             s.shutdownNow();

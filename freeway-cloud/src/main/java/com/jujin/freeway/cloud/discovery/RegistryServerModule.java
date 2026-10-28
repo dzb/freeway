@@ -33,9 +33,25 @@ public final class RegistryServerModule implements ModuleEx {
     public static final String UNREGISTER = "/registry/services/{serviceId}/instances/{instanceId}";
     /** List live instances: GET …/instances. */
     public static final String DISCOVER = "/registry/services/{serviceId}/instances";
-    /** Header a writer must present when {@code freeway.cloud.registry.node-token}
+    /** Publish readiness: POST …/instances/{instanceId}/ready (body or
+     *  {@code ?ready=}), so a warming instance becomes discoverable at the
+     *  moment it is ready rather than at the next heartbeat. */
+    public static final String READY =
+        "/registry/services/{serviceId}/instances/{instanceId}/ready";
+    /** Header a writer must present when {@code freeway.cloud.registry.token}
      *  is set; the fleet client ({@code RegistryFleetModule}) sends the same header. */
     public static final String TOKEN_HEADER = "X-Registry-Token";
+    /** Wire protocol of this surface. A server must keep accepting older
+     *  protocols; a client refuses an unannounced one instead of guessing. */
+    public static final int PROTO = 1;
+    /** Client-declared protocol; echoed on every response, and an unsupported
+     *  value is refused with {@code 426 Upgrade Required} rather than a 404 the
+     *  caller would have to decode. */
+    public static final String PROTO_HEADER = "X-Registry-Proto";
+    /** Self-description: protocol, routes and auth posture. Deliberately open
+     *  (no token): a client must be able to learn what it is talking to before
+     *  it has credentials. */
+    public static final String INDEX = "/registry";
 
     @Override
     public void bind(Binder b) {
@@ -47,5 +63,9 @@ public final class RegistryServerModule implements ModuleEx {
             Route.delete(UNREGISTER, RegistryApi.class));
         b.contribute(Route.class).add("freeway.cloud.registry.discover",
             Route.get(DISCOVER, RegistryApi.class));
+        b.contribute(Route.class).add("freeway.cloud.registry.ready",
+            Route.post(READY, RegistryApi.class));
+        b.contribute(Route.class).add("freeway.cloud.registry.index",
+            Route.get(INDEX, RegistryIndexHandler.class));
     }
 }

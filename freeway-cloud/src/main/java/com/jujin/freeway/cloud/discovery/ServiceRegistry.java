@@ -28,6 +28,22 @@ public interface ServiceRegistry {
     void unregister(ServiceInstance instance);
 
     /**
+     * Publishes this instance's readiness, so a slow-starting process is not
+     * discoverable before it can serve. Discovery only returns live
+     * <em>and ready</em> instances ({@link ServiceDiscovery#instances}), so an
+     * implementation that cannot express readiness leaves the seam promising
+     * more than it delivers — the reason this method exists at all.
+     *
+     * <p>The default is a no-op for adapters whose backend owns readiness
+     * itself (Consul's TTL/health checks answer it), and for any adapter not
+     * yet migrated. Backends without that concept — the in-process store and
+     * the registry fleet client (`RegistryFleetModule`) — implement it.</p>
+     *
+     * @param ready {@code false} marks the instance as starting/warming
+     */
+    default void markReady(ServiceInstance instance, boolean ready) { }
+
+    /**
      * How long this registry needs after an {@link #unregister unregister} for
      * the removal to reach the consumers that route to the instance — the
      * window {@code freeway.cloud.registry.shutdown-drain=auto} waits out

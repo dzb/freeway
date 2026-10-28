@@ -36,14 +36,57 @@ public final class RegistryStore {
         void touch() {
             health = new Health(health.live(), health.ready(), Instant.now());
         }
+
+        /** Fresh heartbeat, with the readiness the caller just observed. */
+        void markSeen(boolean ready) {
+            health = new Health(true, ready, Instant.now());
+        }
     }
 
+    /** Registers as live and ready — the shape every caller without a
+     *  readiness signal uses. */
     public void register(ServiceInstance instance) {
+        register(instance, Health.up());
+    }
+
+    /** Registers with the caller's probe state: a slow-starting instance is
+     *  {@link Health#starting()}, which discovery filters out until it flips. */
+    public void register(ServiceInstance instance, Health health) {
         var instances = byService.computeIfAbsent(instance.serviceId(), k -> new ConcurrentHashMap<>());
-        instances.put(instance.instanceId(), new Entry(instance, Health.up()));
+        instances.put(instance.instanceId(), new Entry(instance, health));
     }
 
     /** @return false when this store no longer holds the instance (evicted or never seen) */
+    /** Heartbeat that also asserts readiness — the readiness bit rides the
+     *  heartbeat so a flipping instance costs no extra round trip. */
+    public boolean renew(String serviceId, String instanceId, boolean ready) {
+        var instances = byService.get(serviceId);
+        if (instances == null) {
+            return false;
+        }
+        Entry entry = instances.get(instanceId);
+        if (entry == null) {
+            return false;
+        }
+        entry.markSeen(ready);
+        return true;
+    }
+
+    /** Flips the readiness bit in place; keeps the heartbeat clock running.
+     *  @return false when the store does not hold the instance */
+    public boolean markReady(String serviceId, String instanceId, boolean ready) {
+        var instances = byService.get(serviceId);
+        if (instances == null) {
+            return false;
+        }
+        Entry entry = instances.get(instanceId);
+        if (entry == null) {
+            return false;
+        }
+        entry.markSeen(ready);
+        return true;
+    }
+
     public boolean renew(String serviceId, String instanceId) {
         var instances = byService.get(serviceId);
         if (instances == null) {
@@ -64,6 +107,22 @@ public final class RegistryStore {
         }
         instances.remove(instance.instanceId());
         evictServiceMapIfEmpty(instance.serviceId());
+    }
+
+    /**
+     * Removes by id, without the readiness filter {@link #liveReady} applies:
+     * an instance that is still starting must be deregisterable, or a process
+     * that fails before it is ready leaves an entry behind until eviction.
+     *
+     * @return false when the store does not hold the instance
+     */
+    public boolean unregister(String serviceId, String instanceId) {
+        var instances = byService.get(serviceId);
+        if (instances == null || instances.remove(instanceId) == null) {
+            return false;
+        }
+        evictServiceMapIfEmpty(serviceId);
+        return true;
     }
 
     /** Total registered instances across all services (readiness reporting). */

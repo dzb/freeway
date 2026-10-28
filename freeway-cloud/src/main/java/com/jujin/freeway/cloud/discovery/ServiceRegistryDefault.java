@@ -29,6 +29,11 @@ public final class ServiceRegistryDefault implements ServiceRegistry {
     }
 
     @Override
+    public void markReady(ServiceInstance instance, boolean ready) {
+        store.markReady(instance.serviceId(), instance.instanceId(), ready);
+    }
+
+    @Override
     public void unregister(ServiceInstance instance) {
         store.unregister(instance);
     }

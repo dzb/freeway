@@ -46,9 +46,9 @@ class FreewayRegistryEndToEndTest {
             }
         }
         System.clearProperty(HttpModule.ConfigKeys.SERVER_PORT);
-        System.clearProperty(CloudModule.ConfigKeys.REGISTRY_NODE_TOKEN);
-        System.clearProperty(ConfigKeys.NODES);
-        System.clearProperty(ConfigKeys.TOKEN);
+        System.clearProperty(CloudModule.ConfigKeys.REGISTRY_TOKEN);
+        System.clearProperty(CloudModule.ConfigKeys.REGISTRY_NODES);
+        System.clearProperty(CloudModule.ConfigKeys.REGISTRY_TOKEN);
         System.clearProperty("freeway.cloud.event.enabled");
         System.clearProperty("freeway.cloud.event.discovery-feed-ms");
         System.clearProperty("freeway.cloud.event.backoff-base-ms");
@@ -63,15 +63,15 @@ class FreewayRegistryEndToEndTest {
     @Test
     void two_clients_find_each_other_through_a_registry_node_and_mesh_up() throws Exception {
         // The node: holds the table, requires the shared secret.
-        System.setProperty(CloudModule.ConfigKeys.REGISTRY_NODE_TOKEN, "s3cret");
+        System.setProperty(CloudModule.ConfigKeys.REGISTRY_TOKEN, "s3cret");
         node = FreewayApp.run(new String[0],
             new HttpModule(), new CloudDiscoveryModule(), new RegistryServerModule());
         int nodePort = port(node);
 
         // The clients: write through the wire, read through the wire, feed the mesh
         // from what the wire answers.
-        System.setProperty(ConfigKeys.NODES, "127.0.0.1:" + nodePort);
-        System.setProperty(ConfigKeys.TOKEN, "s3cret");
+        System.setProperty(CloudModule.ConfigKeys.REGISTRY_NODES, "127.0.0.1:" + nodePort);
+        System.setProperty(CloudModule.ConfigKeys.REGISTRY_TOKEN, "s3cret");
         System.setProperty("freeway.cloud.event.enabled", "true");
         System.setProperty("freeway.cloud.event.discovery-feed-ms", "100");
         System.setProperty("freeway.cloud.event.backoff-base-ms", "100");
@@ -112,22 +112,11 @@ class FreewayRegistryEndToEndTest {
                 + " B=" + clientB.get(com.jujin.freeway.cloud.event.PeerHub.class).connections());
     }
 
-    @Test
-    void a_client_with_the_wrong_token_cannot_register() {
-        System.setProperty(CloudModule.ConfigKeys.REGISTRY_NODE_TOKEN, "s3cret");
-        node = FreewayApp.run(new String[0],
-            new HttpModule(), new CloudDiscoveryModule(), new RegistryServerModule());
-        int nodePort = port(node);
-
-        System.setProperty(ConfigKeys.NODES, "127.0.0.1:" + nodePort);
-        System.setProperty(ConfigKeys.TOKEN, "wrong");
-        IllegalStateException failure = org.junit.jupiter.api.Assertions.assertThrows(
-            IllegalStateException.class,
-            () -> FreewayApp.run(new String[0],
-                new HttpModule(), new CloudDiscoveryModule(), new RegistryFleetModule()));
-        assertTrue(causeChain(failure).contains("registration"),
-            "a refused write must fail the registration loudly: " + causeChain(failure));
-    }
+    // A "wrong token" client cannot be expressed here: the credential is one
+    // key read by both sides (registry.token), so a node and a client in the
+    // same JVM necessarily share its value. The refusal itself is pinned where
+    // it lives — RegistryServerModuleTest (wrong/missing header → 401) and
+    // RegistryNodeClientTest (a refused registration fails the startup loudly).
 
     private static boolean meshed(AppRuntime app) {
         return !app.get(com.jujin.freeway.cloud.event.PeerHub.class).connections().isEmpty();

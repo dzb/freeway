@@ -4,6 +4,7 @@ import com.jujin.freeway.commons.json.JsonArray;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.commons.json.JsonCodecDefault;
 import com.jujin.freeway.commons.json.JsonUtils;
+import com.jujin.freeway.cloud.discovery.RegistryServerModule;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import java.io.IOException;
 import java.net.URI;
@@ -12,8 +13,6 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -36,7 +35,7 @@ import org.slf4j.LoggerFactory;
  * node is repopulated by the very next heartbeat of every instance instead of
  * waiting for a full failure cycle.</p>
  */
-public final class RegistryNodeClient implements AutoCloseable {
+final class RegistryNodeClient implements AutoCloseable {
 
     private static final Logger LOG = LoggerFactory.getLogger(RegistryNodeClient.class);
 
@@ -47,8 +46,11 @@ public final class RegistryNodeClient implements AutoCloseable {
      *  since the heartbeat only carries the ids. One instance per process is the
      *  shape the core lifecycle hook drives. */
     private volatile ServiceInstance registered;
+    /** Readiness this client last published; carried on every heartbeat so a
+     *  restarted node learns it without a second call. */
+    private volatile boolean ready = true;
 
-    public RegistryNodeClient(RegistryNodes nodes) {
+    RegistryNodeClient(RegistryNodes nodes) {
         this.nodes = Objects.requireNonNull(nodes, "nodes");
         this.http =
             HttpClient.newBuilder().connectTimeout(nodes.timeout()).build();
@@ -84,6 +86,27 @@ public final class RegistryNodeClient implements AutoCloseable {
      * re-registered on the spot. Answers {@code true} while any node holds the
      * instance — the caller's lost-lease self-healing keys on exactly that.
      */
+    /**
+     * Publishes readiness. Best-effort and immediate: the explicit route makes a
+     * warming instance discoverable the moment it is ready; a node that predates
+     * the route answers 404 and the bit still rides the next heartbeat, so the
+     * cost of an older node is a delay, not a divergence.
+     */
+    public void markReady(ServiceInstance instance, boolean ready) {
+        this.ready = ready;
+        for (URI node : nodes.addresses()) {
+            try {
+                exchange(node, "POST",
+                    "/registry/services/" + segment(instance.serviceId())
+                        + "/instances/" + segment(instance.instanceId()) + "/ready",
+                    "{\"ready\":" + ready + "}");
+            } catch (Exception e) {
+                LOG.debug("Registry node {} unreachable for a readiness publish: {}",
+                    node, e.getMessage());
+            }
+        }
+    }
+
     public boolean renew(String serviceId, String instanceId) {
         boolean aliveSomewhere = false;
         for (URI node : nodes.addresses()) {
@@ -92,7 +115,7 @@ public final class RegistryNodeClient implements AutoCloseable {
                     "POST",
                     "/registry/services/" + segment(serviceId)
                         + "/instances/" + segment(instanceId) + "/renew",
-                    "");
+                    "{\"ready\":" + ready + "}");
                 if (response.statusCode() == 200) {
                     aliveSomewhere = true;
                 } else if (response.statusCode() == 404 && registered != null) {
@@ -173,15 +196,26 @@ public final class RegistryNodeClient implements AutoCloseable {
         HttpRequest.Builder request = HttpRequest.newBuilder()
             .uri(node.resolve(path))
             .timeout(nodes.timeout())
-            .header("Content-Type", "application/json");
+            .header("Content-Type", "application/json")
+            .header(RegistryServerModule.PROTO_HEADER,
+                String.valueOf(RegistryServerModule.PROTO));
         if (!nodes.token().isBlank()) {
-            request.header("X-Registry-Token", nodes.token());
+            request.header(RegistryServerModule.TOKEN_HEADER, nodes.token());
         }
         request.method(method,
             body.isEmpty()
                 ? HttpRequest.BodyPublishers.noBody()
                 : HttpRequest.BodyPublishers.ofString(body));
-        return http.send(request.build(), HttpResponse.BodyHandlers.ofString());
+        HttpResponse<String> response = http.send(request.build(),
+            HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() == 426) {
+            // The node announced a protocol this client does not speak. Say so
+            // once, with both numbers, instead of letting it read as "refused".
+            throw new IllegalStateException("registry node " + node
+                + " speaks protocol " + response.body() + " but this client speaks "
+                + RegistryServerModule.PROTO + " — upgrade the client");
+        }
+        return response;
     }
 
     private static String segment(String raw) {

@@ -101,8 +101,99 @@ class RegistryServerModuleTest {
     }
 
     @Test
+    void a_starting_instance_can_still_be_deregistered() throws Exception {
+        // Regression: the delete path used to resolve the instance through the
+        // discovery view, which hides not-ready instances — so a process that
+        // failed while warming could not remove its own entry and it lingered
+        // until eviction.
+        try (AppRuntime app = FreewayApp.create(
+                new HttpModule(), new CloudDiscoveryModule(), new RegistryServerModule()).start()) {
+            http(app, HttpRequest.newBuilder(uri(app, "/registry/services/svc/instances"))
+                .POST(HttpRequest.BodyPublishers.ofString(INSTANCE)));
+
+            HttpResponse<String> warming = http(app, HttpRequest.newBuilder(
+                    uri(app, "/registry/services/svc/instances/i1/ready?ready=false"))
+                .POST(HttpRequest.BodyPublishers.ofString("")));
+            assertTrue(warming.statusCode() == 200, "the instance can be marked warming");
+
+            HttpResponse<String> del = http(app, HttpRequest.newBuilder(
+                    uri(app, "/registry/services/svc/instances/i1")).DELETE());
+            assertTrue(del.statusCode() == 200,
+                "a not-ready instance must still be removable, got " + del.statusCode());
+        }
+    }
+
+    @Test
+    void the_index_describes_the_protocol_before_any_credential() throws Exception {
+        System.setProperty(CloudModule.ConfigKeys.REGISTRY_TOKEN, "s3cret");
+        try (AppRuntime app = FreewayApp.create(
+                new HttpModule(), new CloudDiscoveryModule(), new RegistryServerModule()).start()) {
+            HttpResponse<String> index = http(app, HttpRequest.newBuilder(
+                uri(app, RegistryServerModule.INDEX)).GET());
+            assertTrue(index.statusCode() == 200,
+                "the self-description must be readable without the token, got " + index.statusCode());
+            assertTrue(index.body().contains("\"proto\":" + RegistryServerModule.PROTO),
+                "the index must announce the protocol: " + index.body());
+            assertTrue(index.body().contains("discover"),
+                "and the routes it serves: " + index.body());
+            assertTrue(String.valueOf(RegistryServerModule.PROTO).equals(
+                    index.headers().firstValue(RegistryServerModule.PROTO_HEADER).orElse("")),
+                "responses echo the protocol, got header "
+                    + index.headers().map());
+        } finally {
+            System.clearProperty(CloudModule.ConfigKeys.REGISTRY_TOKEN);
+        }
+    }
+
+    @Test
+    void an_unsupported_protocol_is_refused_with_426_not_404() throws Exception {
+        try (AppRuntime app = FreewayApp.create(
+                new HttpModule(), new CloudDiscoveryModule(), new RegistryServerModule()).start()) {
+            HttpResponse<String> newer = http(app, HttpRequest.newBuilder(
+                    uri(app, "/registry/services/svc/instances"))
+                .header(RegistryServerModule.PROTO_HEADER, "99")
+                .POST(HttpRequest.BodyPublishers.ofString(INSTANCE)));
+            assertTrue(newer.statusCode() == 426,
+                "a newer protocol must be a version answer, not a routing answer, got "
+                    + newer.statusCode());
+            assertTrue(newer.body().contains("99"), "and it must say what was refused: " + newer.body());
+        }
+    }
+
+    @Test
+    void the_previous_token_is_accepted_during_rotation() throws Exception {
+        System.setProperty(CloudModule.ConfigKeys.REGISTRY_TOKEN, "new-secret");
+        System.setProperty(CloudModule.ConfigKeys.REGISTRY_TOKEN_PREVIOUS, "old-secret");
+        try (AppRuntime app = FreewayApp.create(
+                new HttpModule(), new CloudDiscoveryModule(), new RegistryServerModule()).start()) {
+            HttpResponse<String> old = http(app, HttpRequest.newBuilder(
+                    uri(app, "/registry/services/svc/instances"))
+                .header(RegistryServerModule.TOKEN_HEADER, "old-secret")
+                .POST(HttpRequest.BodyPublishers.ofString(INSTANCE)));
+            assertTrue(old.statusCode() == 200,
+                "the token being retired must still write during the window, got " + old.statusCode());
+
+            HttpResponse<String> current = http(app, HttpRequest.newBuilder(
+                    uri(app, "/registry/services/svc/instances"))
+                .header(RegistryServerModule.TOKEN_HEADER, "new-secret")
+                .POST(HttpRequest.BodyPublishers.ofString(INSTANCE)));
+            assertTrue(current.statusCode() == 200, "the new token writes too");
+
+            HttpResponse<String> stranger = http(app, HttpRequest.newBuilder(
+                    uri(app, "/registry/services/svc/instances"))
+                .header(RegistryServerModule.TOKEN_HEADER, "neither")
+                .POST(HttpRequest.BodyPublishers.ofString(INSTANCE)));
+            assertTrue(stranger.statusCode() == 401,
+                "two live secrets is a window, not an open door, got " + stranger.statusCode());
+        } finally {
+            System.clearProperty(CloudModule.ConfigKeys.REGISTRY_TOKEN);
+            System.clearProperty(CloudModule.ConfigKeys.REGISTRY_TOKEN_PREVIOUS);
+        }
+    }
+
+    @Test
     void a_set_token_rejects_writers_without_the_header() throws Exception {
-        System.setProperty(CloudModule.ConfigKeys.REGISTRY_NODE_TOKEN, "s3cret");
+        System.setProperty(CloudModule.ConfigKeys.REGISTRY_TOKEN, "s3cret");
         try (AppRuntime app = FreewayApp.create(
                 new HttpModule(), new CloudDiscoveryModule(), new RegistryServerModule()).start()) {
             HttpResponse<String> bare = http(app, HttpRequest.newBuilder(
@@ -116,13 +207,13 @@ class RegistryServerModuleTest {
             assertTrue(peek.statusCode() == 401,
                 "reads are writes to the attacker's map too — a set token guards them as well");
         } finally {
-            System.clearProperty(CloudModule.ConfigKeys.REGISTRY_NODE_TOKEN);
+            System.clearProperty(CloudModule.ConfigKeys.REGISTRY_TOKEN);
         }
     }
 
     @Test
     void the_matching_token_passes_and_a_wrong_one_does_not() throws Exception {
-        System.setProperty(CloudModule.ConfigKeys.REGISTRY_NODE_TOKEN, "s3cret");
+        System.setProperty(CloudModule.ConfigKeys.REGISTRY_TOKEN, "s3cret");
         try (AppRuntime app = FreewayApp.create(
                 new HttpModule(), new CloudDiscoveryModule(), new RegistryServerModule()).start()) {
             HttpResponse<String> wrong = http(app, HttpRequest.newBuilder(
@@ -138,7 +229,7 @@ class RegistryServerModuleTest {
             assertTrue(right.statusCode() == 200,
                 "the matching token writes, got " + right.statusCode());
         } finally {
-            System.clearProperty(CloudModule.ConfigKeys.REGISTRY_NODE_TOKEN);
+            System.clearProperty(CloudModule.ConfigKeys.REGISTRY_TOKEN);
         }
     }
 }

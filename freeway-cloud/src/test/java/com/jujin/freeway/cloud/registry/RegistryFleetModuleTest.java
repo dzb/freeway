@@ -29,8 +29,8 @@ class RegistryFleetModuleTest {
     @AfterEach
     void clearProperties() {
         System.clearProperty(HttpModule.ConfigKeys.SERVER_PORT);
-        System.clearProperty(ConfigKeys.NODES);
-        System.clearProperty(ConfigKeys.TOKEN);
+        System.clearProperty(CloudModule.ConfigKeys.REGISTRY_NODES);
+        System.clearProperty(CloudModule.ConfigKeys.REGISTRY_TOKEN);
     }
 
     @Test
@@ -39,7 +39,7 @@ class RegistryFleetModuleTest {
         // No CloudDiscoveryModule here: its lifecycle hook would register through
         // the fleet at startup, and no node is listening in this test. The
         // assertion is about the bindings, not the lifecycle.
-        System.setProperty(ConfigKeys.NODES, "127.0.0.1:1");
+        System.setProperty(CloudModule.ConfigKeys.REGISTRY_NODES, "127.0.0.1:1");
         try (AppRuntime app = FreewayApp.create(new RegistryFleetModule()).start()) {
             // The container proxies the service behind its interface, so the shape
             // is asserted through the resolved fleet, and the behavior (an
@@ -58,7 +58,7 @@ class RegistryFleetModuleTest {
         IllegalStateException failure = org.junit.jupiter.api.Assertions.assertThrows(
             IllegalStateException.class,
             () -> FreewayApp.create(new RegistryFleetModule(), new CloudDiscoveryModule()).start());
-        assertTrue(causeChain(failure).contains(ConfigKeys.NODES),
+        assertTrue(causeChain(failure).contains(CloudModule.ConfigKeys.REGISTRY_NODES),
             "the failure must name the key: " + causeChain(failure));
     }
 
@@ -67,7 +67,7 @@ class RegistryFleetModuleTest {
     @Test
     void a_bound_app_registers_through_the_fleet() {
         System.setProperty(HttpModule.ConfigKeys.SERVER_PORT, "0");
-        System.setProperty(ConfigKeys.NODES, "127.0.0.1:1"); // unreachable: writes fail loudly at startup
+        System.setProperty(CloudModule.ConfigKeys.REGISTRY_NODES, "127.0.0.1:1"); // unreachable: writes fail loudly at startup
         IllegalStateException failure = org.junit.jupiter.api.Assertions.assertThrows(
             IllegalStateException.class,
             () -> FreewayApp.create(

@@ -101,6 +101,11 @@ public final class CloudModule implements ModuleEx {
          *  it finds (this node excluded). Unset = off; a value below 1 fails startup.
          *  Static {@code event.peers} are a separate set and survive an empty round. */
         public static final String EVENT_DISCOVERY_FEED_MS = "freeway.cloud.event.discovery-feed-ms";
+        /** Keepalive probe interval (ms) for mesh connections: each tick pings
+         *  the peer and requires the pong before the next tick, catching
+         *  half-open links a NAT/LB drops silently. Unset = off (TCP keepalive
+         *  and send failures are the only signals then). */
+        public static final String EVENT_KEEPALIVE_MS = "freeway.cloud.event.keepalive-ms";
         /** Shared secret the mesh handshake must present; blank = no peer auth.
          *  Every node of a multi-node mesh must set the same value. */
         public static final String EVENT_TOKEN      = "freeway.cloud.event.token";
@@ -197,14 +202,36 @@ public final class CloudModule implements ModuleEx {
         /** Window used when {@link #REGISTRY_SHUTDOWN_DRAIN} is unset and the
          *  registry answers nothing: the in-process default. */
         public static final Duration REGISTRY_SHUTDOWN_DRAIN_DEFAULT = Duration.ZERO;
-        /** Shared secret every writer of the registry HTTP surface must present
-         *  in the {@code X-Registry-Token} header (see
-         *  {@code RegistryServerModule.TOKEN_HEADER}; the fleet client
-         *  {@code RegistryFleetModule} sends it from
-         *  {@code freeway.cloud.registry-node.token}). Blank = the surface is
-         *  open — the development posture; a node reachable beyond localhost
-         *  should set this. */
-        public static final String REGISTRY_NODE_TOKEN = "freeway.cloud.registry.node-token";
+        /** Registry shared secret, one key for both sides — a node requires it
+         *  and a client presents it, so the two values must match (the same
+         *  shape as {@link #EVENT_TOKEN}). Blank = no credential: an open
+         *  surface on a node, no header from a client. A node reachable beyond
+         *  localhost should set it. */
+        public static final String REGISTRY_TOKEN = "freeway.cloud.registry.token";
+        /** The token being retired: a node accepts it alongside
+         *  {@link #REGISTRY_TOKEN} so credentials can rotate without stopping.
+         *  Rotation: move the current value here, put the new one in
+         *  {@code registry.token}, roll the writers over, clear this. Accepted
+         *  by a node only — a client never sends it. Blank = no grace window. */
+        public static final String REGISTRY_TOKEN_PREVIOUS =
+            "freeway.cloud.registry.token-previous";
+        /** Registry node addresses to dial ({@code host:port} or a full URL),
+         *  comma-separated — the native backend's own wiring. */
+        public static final String REGISTRY_NODES = "freeway.cloud.registry.nodes";
+        /** Connect/request timeout for one node exchange, in milliseconds. */
+        public static final String REGISTRY_TIMEOUT_MS = "freeway.cloud.registry.timeout-ms";
+        public static final long REGISTRY_TIMEOUT_MS_DEFAULT = 3000;
+        /** How long a discovery answer may be reused before the backend is
+         *  asked again (a caching discovery implementation's own policy). Five
+         *  seconds is half the 10s heartbeat: the cache never lags a whole
+         *  heartbeat, and it sits far inside the 30s eviction window. Zero
+         *  disables caching (every call asks). Per-service overrides spell
+         *  {@code freeway.cloud.registry.cache-ttl.<serviceId>}. */
+        public static final String REGISTRY_CACHE_TTL = "freeway.cloud.registry.cache-ttl";
+        public static final Duration REGISTRY_CACHE_TTL_DEFAULT = Duration.ofSeconds(5);
+        /** Prefix of the per-service overrides; the family is admitted as a
+         *  prefix vocabulary because its names cannot be listed. */
+        public static final String REGISTRY_CACHE_TTL_PREFIX = "freeway.cloud.registry.cache-ttl.";
 
         // ── Advanced: timeouts (NOT governed by resilience — they always apply) ──
         // Listed first because they are the one pair in this block that
@@ -268,6 +295,13 @@ public final class CloudModule implements ModuleEx {
         // ── Advanced: RPC client trust (mTLS only, empty = plaintext) ────────
         public static final String RPC_TLS_TRUST_STORE        = "freeway.cloud.rpc.tls.trust-store";
         public static final String RPC_TLS_TRUST_STORE_PASSWORD = "freeway.cloud.rpc.tls.trust-store-password";
+        /** How often rotated outbound TLS material may be picked up (unset/0 =
+         *  resolved once, a rotated keystore needs a restart). Set it for
+         *  short-lived certificates: the key/trust managers re-read the files
+         *  per handshake instead of the context being rebuilt, because the JDK
+         *  {@code HttpClient} captures its context at construction. */
+        public static final String RPC_TLS_RELOAD_INTERVAL = "freeway.cloud.rpc.tls.reload-interval";
+        public static final Duration RPC_TLS_RELOAD_INTERVAL_DEFAULT = Duration.ZERO;
         // Blank-string defaults: unset TLS keys mean plaintext development
         // (CloudRpcModule resolves TransportSecurity.NONE when the key store is blank).
         public static final String RPC_TLS_KEY_STORE_DEFAULT = "";
