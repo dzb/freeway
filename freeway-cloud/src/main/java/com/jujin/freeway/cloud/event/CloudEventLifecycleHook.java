@@ -3,6 +3,7 @@ package com.jujin.freeway.cloud.event;
 import com.jujin.freeway.cloud.rpc.TransportSecurity;
 
 import com.jujin.freeway.cloud.discovery.ServiceDiscovery;
+import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.cloud.internal.HttpServiceDeclaration;
 import com.jujin.freeway.ioc.MissingBindingException;
@@ -64,6 +65,9 @@ final class CloudEventLifecycleHook implements RuntimeHook {
      *  value is the poll interval in milliseconds. */
     private static final SymbolSpec<Long> EVENT_DISCOVERY_FEED_MS =
         SymbolSpec.of(ConfigKeys.EVENT_DISCOVERY_FEED_MS, Long.class, null, Long::parseLong);
+    /** Presence-driven: unset leaves keepalive off. */
+    private static final SymbolSpec<Long> EVENT_KEEPALIVE_MS =
+        SymbolSpec.of(ConfigKeys.EVENT_KEEPALIVE_MS, Long.class, null, Long::parseLong);
 
     private final PeerHub hub;
     private volatile PeerConnector connector;
@@ -76,8 +80,10 @@ final class CloudEventLifecycleHook implements RuntimeHook {
     @Override
     public void start(Container container) {
         var symbols = container.get(SymbolSource.class);
+        registerMeshMetrics(container);
 
         List<String> peers = symbols.resolve(PEERS);
+        long keepaliveMs = keepaliveMs(symbols);   // one fact, read once
         if (!meshOn(symbols.resolve(EVENT_ENABLED_EXPLICIT), peers)) {
             LOG.info("CloudEventBus not wired — dial peers with {}=<host:port,...> "
                     + "or set {}=true (discovery-fed mesh)",
@@ -100,7 +106,8 @@ final class CloudEventLifecycleHook implements RuntimeHook {
             container.get(JsonCodec.class),
             self.serviceId(),
             self.instanceId(),
-            symbols.resolve(TOKEN)));
+            symbols.resolve(TOKEN),
+            keepaliveMs));
 
         // Contributions are resolved lazily at lookup — safe even when the
         // contribution view was built at bind time.
@@ -129,11 +136,53 @@ final class CloudEventLifecycleHook implements RuntimeHook {
                 .withScheme(wsScheme)
                 .withHandshakeTimeout(Duration.ofMillis(symbols.resolve(HANDSHAKE_TIMEOUT_MS)))
                 .withBackoff(symbols.resolve(BACKOFF_BASE_MS), symbols.resolve(BACKOFF_MAX_MS))
-                .withSslContext(security == null ? null : security.sslContext()));
+                .withSslContext(security == null ? null : security.sslContext())
+                .withKeepalive(keepaliveMs));
         container.get(CloudEventBus.class).installDiscoveredPeersSink(
             connector::replaceDiscoveredPeers);
         connector.start(peers);
         startDiscoveryFeed(container, symbols, self);
+    }
+
+    /** Validated keepalive interval; 0 when unset (off). Negative fails startup. */
+    private static long keepaliveMs(SymbolSource symbols) {
+        Long configured = symbols.resolve(EVENT_KEEPALIVE_MS);
+        if (configured == null) {
+            return 0;
+        }
+        if (configured <= 0) {
+            throw new IllegalArgumentException(ConfigKeys.EVENT_KEEPALIVE_MS
+                + " must be positive: " + configured);
+        }
+        return configured;
+    }
+
+    /**
+     * Publishes the plane's counters as gauges when an observability module is
+     * installed. Registered whether or not the mesh is wired: the counters
+     * exist from composition, and a series that appears only after the mesh
+     * turns on would make a dashboard read "no data" for a node that simply has
+     * no peers — the one case where a zero is the answer.
+     *
+     * <p>Names follow the plane's existing vocabulary ({@code cloud.rpc.*} at
+     * {@code ResiliencePolicy}) — the raw name is what an operator searches for
+     * and what a replacement backend keys on.</p>
+     */
+    private void registerMeshMetrics(Container container) {
+        Metrics metrics = optional(container, Metrics.class);
+        if (metrics == null) {
+            return;
+        }
+        CloudEventBus bus = container.get(CloudEventBus.class);
+        metrics.gauge("cloud.event.published", () -> bus.stats().published());
+        metrics.gauge("cloud.event.frames_queued", () -> bus.stats().framesQueued());
+        metrics.gauge("cloud.event.frames_dropped", () -> bus.stats().framesDropped());
+        metrics.gauge("cloud.event.send_failures", () -> bus.stats().sendFailures());
+        metrics.gauge("cloud.event.inbound_delivered", () -> bus.stats().inboundDelivered());
+        metrics.gauge("cloud.event.dropped_legacy", () -> bus.stats().droppedLegacy());
+        metrics.gauge("cloud.event.dropped_no_subscriber",
+            () -> bus.stats().droppedNoSubscriber());
+        metrics.gauge("cloud.event.peers", () -> hub.connections().size());
     }
 
     /**
@@ -225,6 +274,7 @@ final class CloudEventLifecycleHook implements RuntimeHook {
             connector.close();
             connector = null;
         }
+        hub.shutdown();
     }
 
 }

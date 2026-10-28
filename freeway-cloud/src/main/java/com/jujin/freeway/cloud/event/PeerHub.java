@@ -45,6 +45,10 @@ public final class PeerHub implements WebSocketEndpoint {
     private static final Logger LOG = LoggerFactory.getLogger(PeerHub.class);
 
     private final Map<String, PeerConnection> peers = new ConcurrentHashMap<>();
+    /** Keepalive probe interval for inbound sessions; 0 = off (see Wiring). */
+    private volatile long keepaliveMs;
+    /** Drives the inbound keepalive probes; created at wiring, released on stop. */
+    private volatile java.util.concurrent.ScheduledExecutorService scheduler;
     /** Contributed at hook time, read per inbound frame on WS threads —
      *  copy-on-write keeps add-after-wire safe without external locking. */
     private final List<CloudEventInterceptor> interceptors = new CopyOnWriteArrayList<>();
@@ -65,14 +69,16 @@ public final class PeerHub implements WebSocketEndpoint {
      * @param codec      JSON codec for frames and acks
      * @param serviceId  logical service id (envelope source)
      * @param instanceId this node's mesh identity; blank derives one
-     * @param token      mesh handshake token (blank = peer auth off)
+     * @param token       mesh handshake token (blank = peer auth off)
+     * @param keepaliveMs ping interval for half-open detection; 0 = off
      */
     record Wiring(
         CloudEventBus facade,
         JsonCodec codec,
         String serviceId,
         String instanceId,
-        String token
+        String token,
+        long keepaliveMs
     ) {}
 
     /** RuntimeHook-time wiring: resolves builtins and config-derived state. */
@@ -82,6 +88,9 @@ public final class PeerHub implements WebSocketEndpoint {
         this.serviceId = w.serviceId();
         this.origin = Objects.requireNonNull(w.instanceId(), "instanceId");
         this.token = w.token() == null ? "" : w.token();
+        this.keepaliveMs = Math.max(0, w.keepaliveMs());
+        this.scheduler = java.util.concurrent.Executors.newSingleThreadScheduledExecutor(
+            Thread.ofVirtual().name("cloud-mesh-keepalive-", 0).factory());
         this.wired = true;
         LOG.info("CloudEventBus wired: origin={} subscriptions={}", origin, facade.prefixes());
         warnWhenUnauthenticated();
@@ -169,6 +178,15 @@ public final class PeerHub implements WebSocketEndpoint {
     }
 
     /** Removes a peer connection if it is still the registered one (disconnect). */
+    /** Releases the keepalive scheduler; the sessions themselves are closed by their own handlers. */
+    void shutdown() {
+        java.util.concurrent.ScheduledExecutorService current = scheduler;
+        if (current != null) {
+            current.shutdownNow();
+            scheduler = null;
+        }
+    }
+
     void unregister(PeerConnection connection) {
         peers.remove(connection.remoteOrigin(), connection);
     }
@@ -244,8 +262,12 @@ public final class PeerHub implements WebSocketEndpoint {
      * is one-shot per session: a second hello is a protocol error too.
      */
     private final class ServerSessionHandler implements WebSocketListener {
+        private static final String PING_PAYLOAD = "fw-keepalive";
+
         private final WebSocketSession session;
         private volatile PeerConnection connection;
+        /** Armed once the hello passed; off when keepalive is unconfigured. */
+        private volatile MeshKeepalive keepalive;
         /** Set once the hello passed admission; gates every later frame. */
         private volatile boolean handshaken;
 
@@ -290,6 +312,49 @@ public final class PeerHub implements WebSocketEndpoint {
             }
         }
 
+        /**
+         * Half-open detection for this inbound session: the mesh owns the
+         * policy, the transport only carries the probe (see
+         * {@link MeshKeepalive}).
+         */
+        private void armKeepalive() {
+            long interval = keepaliveMs;
+            if (interval <= 0) {
+                return;
+            }
+            MeshKeepalive probe = new MeshKeepalive(scheduler,
+                payload -> {
+                    try {
+                        session.ping(payload.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                        return true;
+                    } catch (Exception e) {
+                        return false;
+                    }
+                },
+                () -> {
+                    LOG.warn("Peer stopped answering keepalive — closing (inbound)");
+                    try {
+                        session.close(1013, "keepalive timeout");
+                    } catch (Exception ignored) {
+                        // the socket is already unusable
+                    }
+                    if (connection != null) {
+                        unregister(connection);
+                    }
+                },
+                interval, PING_PAYLOAD);
+            keepalive = probe;
+            probe.start();
+        }
+
+        @Override
+        public void onPong(byte[] payload) {
+            MeshKeepalive probe = keepalive;
+            if (probe != null) {
+                probe.pongReceived();
+            }
+        }
+
         private void handshake(com.jujin.freeway.commons.json.JsonObject frame) throws java.io.IOException {
             HelloAdmission admission = validateHello(frame, token);
             if (!admission.accepted()) {
@@ -326,11 +391,17 @@ public final class PeerHub implements WebSocketEndpoint {
             ack.put("origin", origin);
             ack.put("subscribe", subscriptions());
             session.sendText(codec.toJson(ack));
+            armKeepalive();
             LOG.info("Peer connected: {} (subscriptions={})", remoteOrigin, remoteSubs);
         }
 
         @Override
         public void onClose(int code, String reason, boolean remote) throws java.io.IOException {
+            MeshKeepalive probe = keepalive;
+            if (probe != null) {
+                probe.close();
+                keepalive = null;
+            }
             if (connection != null) {
                 unregister(connection);
                 LOG.info("Peer disconnected: {} (code={}, remote={})",

@@ -46,7 +46,7 @@ class EventTraceTest {
         CloudEventBus mesh = new CloudEventBus(hub, new JsonCodecDefault(), List.of(
             CloudEventSubscription.of("greet.", String.class,
                 p -> seen.set(InvocationContext.current()))));
-        hub.wire(new PeerHub.Wiring(mesh, new JsonCodecDefault(), "svc", "inst-1", ""));
+        hub.wire(new PeerHub.Wiring(mesh, new JsonCodecDefault(), "svc", "inst-1", "", 0));
         return hub;
     }
 

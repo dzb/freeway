@@ -103,7 +103,17 @@ public final class WebSocketReadLoop {
                     }
                     case Ping -> session.writeFrame(
                         new WebSocketFrame(OpCode.Pong, true, frame.payload()));
-                    case Pong -> { /* no-op */ }
+                    case Pong -> {
+                        // The answer to a ping this side sent. The payload
+                        // echoes the ping's, so the listener can pair them;
+                        // liveness policy (how long to wait) stays with the
+                        // connection owner.
+                        try {
+                            listener.onPong(frame.payload());
+                        } catch (Exception e) {
+                            LOG.trace("Listener onPong failed: {}", e.getMessage());
+                        }
+                    }
                     case Close -> {
                         session.writeFrame(new WebSocketFrame(OpCode.Close, true,
                             frame.payload()));

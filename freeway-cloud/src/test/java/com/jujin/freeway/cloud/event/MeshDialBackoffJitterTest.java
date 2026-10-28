@@ -32,7 +32,7 @@ class MeshDialBackoffJitterTest {
 
     private static PeerConnector connector() {
         var wiring = new PeerConnector.Wiring(
-            Duration.ofMillis(50), "ws", Duration.ofMillis(50), BASE, MAX, null);
+            Duration.ofMillis(50), "ws", Duration.ofMillis(50), BASE, MAX, null, 0);
         return new PeerConnector(new PeerHub(), wiring);
     }
 

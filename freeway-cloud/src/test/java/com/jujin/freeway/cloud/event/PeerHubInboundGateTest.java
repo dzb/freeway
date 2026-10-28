@@ -41,7 +41,7 @@ class PeerHubInboundGateTest {
     private static Rig rigSubs(List<CloudEventSubscription> subs, List<Object> inbound) {
         PeerHub hub = new PeerHub();
         CloudEventBus mesh = new CloudEventBus(hub, new JsonCodecDefault(), subs);
-        hub.wire(new PeerHub.Wiring(mesh, new JsonCodecDefault(), "svc", "inst-1", ""));
+        hub.wire(new PeerHub.Wiring(mesh, new JsonCodecDefault(), "svc", "inst-1", "", 0));
         return new Rig(hub, mesh, inbound);
     }
 
@@ -74,7 +74,7 @@ class PeerHubInboundGateTest {
             List.of(CloudEventSubscription.of("greet.", Probed.class, p -> {}));
         PeerHub hub = new PeerHub();
         CloudEventBus mesh = new CloudEventBus(hub, new JsonCodecDefault(), subs);
-        hub.wire(new PeerHub.Wiring(mesh, new JsonCodecDefault(), "svc", "inst-1", ""));
+        hub.wire(new PeerHub.Wiring(mesh, new JsonCodecDefault(), "svc", "inst-1", "", 0));
 
         hub.receive(new CloudEventEnvelope.Parsed("id-1", "freeway://svc", "other.topic",
             null, "peer-a", CloudEventEnvelope.Channel.TOPIC, "{}", null, null));
@@ -116,7 +116,7 @@ class PeerHubInboundGateTest {
         PeerHub smallerHub = new PeerHub();
         smallerHub.wire(new PeerHub.Wiring(
             new CloudEventBus(smallerHub, new JsonCodecDefault(), List.of()),
-            new JsonCodecDefault(), "svc", "a-node", ""));
+            new JsonCodecDefault(), "svc", "a-node", "", 0));
 
         java.util.concurrent.atomic.AtomicBoolean outboundClosed = new java.util.concurrent.atomic.AtomicBoolean();
         java.util.concurrent.atomic.AtomicBoolean inboundClosed = new java.util.concurrent.atomic.AtomicBoolean();
@@ -137,7 +137,7 @@ class PeerHubInboundGateTest {
         PeerHub largerHub = new PeerHub();
         largerHub.wire(new PeerHub.Wiring(
             new CloudEventBus(largerHub, new JsonCodecDefault(), List.of()),
-            new JsonCodecDefault(), "svc", "z-node", ""));
+            new JsonCodecDefault(), "svc", "z-node", "", 0));
         java.util.concurrent.atomic.AtomicBoolean largerOutboundClosed = new java.util.concurrent.atomic.AtomicBoolean();
         java.util.concurrent.atomic.AtomicBoolean largerInboundClosed = new java.util.concurrent.atomic.AtomicBoolean();
         PeerConnection largerOutbound = new PeerConnection("a-node", List.of(),

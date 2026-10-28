@@ -27,6 +27,20 @@ public interface WebSocketListener {
      */
     default void onClose(int code, String reason, boolean remote) throws Exception {}
 
+    /**
+     * Called when a pong frame arrives — the answer to a
+     * {@link WebSocketSession#ping(byte[]) ping} this side sent.
+     *
+     * <p>The engine answers inbound pings itself, so a listener only sees the
+     * pong for a ping <em>it</em> issued: the callback exists for liveness
+     * checks (send a ping, require the pong within a budget), which the
+     * transport cannot decide for the application — how long is "too long" is
+     * the connection owner's policy, not the frame layer's.</p>
+     *
+     * @param payload the pong payload, echoing the ping's
+     */
+    default void onPong(byte[] payload) {}
+
     /** Called when an error occurs on the WebSocket connection. */
     default void onError(Throwable error) {}
 }

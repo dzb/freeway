@@ -97,6 +97,8 @@ final class PeerConnector implements AutoCloseable {
     private final Duration handshakeTimeout;
     private final long backoffBaseMs;
     private final long backoffMaxMs;
+    /** Keepalive probe interval for dialed sessions; 0 = off. */
+    private final long keepaliveMs;
     private volatile boolean started;
     private volatile boolean closed;
 
@@ -108,8 +110,16 @@ final class PeerConnector implements AutoCloseable {
      */
     private static final class Dialer {
         private final AtomicInteger backoff = new AtomicInteger();
-        /** One dial/retry loop per peer; a second spawn is a no-op. */
+        /** One dial/retry loop per peer. */
         private final AtomicBoolean running = new AtomicBoolean();
+        /**
+         * A dial asked for while a loop was live. The window is real: a session
+         * can be aborted from its own callbacks (a pre-ack frame, a write
+         * failure) before the loop's {@code connect().get()} returns, and
+         * dropping that request would leave the peer with no loop and no
+         * scheduled reconnect — it would never be dialed again.
+         */
+        private final AtomicBoolean pending = new AtomicBoolean();
         private volatile Thread thread;
     }
 
@@ -129,6 +139,7 @@ final class PeerConnector implements AutoCloseable {
         this.handshakeTimeout = wiring.handshakeTimeout();
         this.backoffBaseMs = wiring.backoffBaseMs();
         this.backoffMaxMs = wiring.backoffMaxMs();
+        this.keepaliveMs = wiring.keepaliveMs();
         this.http = newClient(wiring.connectTimeout(), wiring.sslContext());
     }
 
@@ -150,7 +161,8 @@ final class PeerConnector implements AutoCloseable {
         Duration handshakeTimeout,
         long backoffBaseMs,
         long backoffMaxMs,
-        javax.net.ssl.SSLContext sslContext
+        javax.net.ssl.SSLContext sslContext,
+        long keepaliveMs
     ) {
         public Wiring {
             connectTimeout = connectTimeout == null ? CONNECT_TIMEOUT : connectTimeout;
@@ -158,6 +170,7 @@ final class PeerConnector implements AutoCloseable {
             handshakeTimeout = handshakeTimeout == null ? HANDSHAKE_TIMEOUT : handshakeTimeout;
             backoffBaseMs = backoffBaseMs <= 0 ? BACKOFF_BASE_MS : backoffBaseMs;
             backoffMaxMs = backoffMaxMs <= 0 ? BACKOFF_MAX_MS : backoffMaxMs;
+            keepaliveMs = Math.max(0, keepaliveMs);
             // A cap below the base is not a cap: the curve clamps every attempt
             // to it, so the dial loop waits a millisecond and re-dials — the
             // opposite of what the pair was meant to say, and quietly so.
@@ -174,34 +187,40 @@ final class PeerConnector implements AutoCloseable {
         /** Production defaults from the config keys, no outbound TLS material. */
         public static Wiring defaults() {
             return new Wiring(CONNECT_TIMEOUT, "ws", HANDSHAKE_TIMEOUT,
-                BACKOFF_BASE_MS, BACKOFF_MAX_MS, null);
+                BACKOFF_BASE_MS, BACKOFF_MAX_MS, null, 0);
         }
 
         public Wiring withConnectTimeout(Duration connectTimeout) {
             return new Wiring(connectTimeout, scheme, handshakeTimeout, backoffBaseMs,
-                backoffMaxMs, sslContext);
+                backoffMaxMs, sslContext, keepaliveMs);
         }
 
         /** {@code ws} or {@code wss}; blank falls back to {@code ws}. */
         public Wiring withScheme(String scheme) {
             return new Wiring(connectTimeout, scheme, handshakeTimeout, backoffBaseMs,
-                backoffMaxMs, sslContext);
+                backoffMaxMs, sslContext, keepaliveMs);
         }
 
         public Wiring withHandshakeTimeout(Duration handshakeTimeout) {
             return new Wiring(connectTimeout, scheme, handshakeTimeout, backoffBaseMs,
-                backoffMaxMs, sslContext);
+                backoffMaxMs, sslContext, keepaliveMs);
         }
 
         public Wiring withBackoff(long backoffBaseMs, long backoffMaxMs) {
             return new Wiring(connectTimeout, scheme, handshakeTimeout, backoffBaseMs,
-                backoffMaxMs, sslContext);
+                backoffMaxMs, sslContext, keepaliveMs);
+        }
+
+        /** Half-open detection interval for dialed sessions; 0 = off. */
+        public Wiring withKeepalive(long keepaliveMs) {
+            return new Wiring(connectTimeout, scheme, handshakeTimeout, backoffBaseMs,
+                backoffMaxMs, sslContext, keepaliveMs);
         }
 
         /** Outbound TLS material shared with the RPC client; null = JDK default. */
         public Wiring withSslContext(javax.net.ssl.SSLContext sslContext) {
             return new Wiring(connectTimeout, scheme, handshakeTimeout, backoffBaseMs,
-                backoffMaxMs, sslContext);
+                backoffMaxMs, sslContext, keepaliveMs);
         }
     }
 
@@ -393,13 +412,20 @@ final class PeerConnector implements AutoCloseable {
     private void spawnDial(PeerAddress peer) {
         Dialer dialer = dialers.computeIfAbsent(peer, k -> new Dialer());
         if (!dialer.running.compareAndSet(false, true)) {
-            return; // a dial loop is already live for this peer
+            // A loop is live — but it may already be on its way out (its
+            // session can be aborted from a callback before connect() returns),
+            // so the request is remembered and picked up when it ends.
+            dialer.pending.set(true);
+            return;
         }
         Thread thread = Thread.ofVirtual().unstarted(() -> {
             try {
                 dialLoop(peer, dialer);
             } finally {
                 dialer.running.set(false);
+                if (dialer.pending.getAndSet(false)) {
+                    reconnect(peer);   // roster-checked: a removed peer stays gone
+                }
             }
         });
         dialer.thread = thread;
@@ -459,6 +485,8 @@ final class PeerConnector implements AutoCloseable {
         private volatile WebSocket ws;
         private volatile ScheduledFuture<?> handshakeTimer;
         private volatile PeerConnection connection;
+        /** Half-open detection for this dialed session; off when unconfigured. */
+        private volatile MeshKeepalive keepalive;
         /** Set once the peer's ack passed — gates CE frames (client-leg
          *  mirror of the server's hello-first state machine): hub.receive is
          *  only for admitted peers, and hello is one-shot per session. */
@@ -617,12 +645,53 @@ final class PeerConnector implements AutoCloseable {
             // completing is the health signal the backoff keys on: clear it
             // only here, not at socket open.
             handshaken = true;
+            armKeepalive();
             backoff.set(0);
             hub.register(connection);
             if (connection.isClosed()) {
                 return; // duplicate resolution closed this outbound connection
             }
             LOG.info("Connected to peer: {} (subscriptions={})", remoteOrigin, remoteSubs);
+        }
+
+        @Override
+        public java.util.concurrent.CompletionStage<?> onPong(
+                WebSocket webSocket, java.nio.ByteBuffer message) {
+            MeshKeepalive probe = keepalive;
+            if (probe != null) {
+                probe.pongReceived();
+            }
+            webSocket.request(1);
+            return null;
+        }
+
+        /**
+         * Arms the keepalive probe for this dialed session (see
+         * {@link MeshKeepalive}): the mesh owns the policy, the JDK client is
+         * only asked to send the ping.
+         */
+        private void armKeepalive() {
+            long interval = keepaliveMs;
+            if (interval <= 0) {
+                return;
+            }
+            MeshKeepalive probe = new MeshKeepalive(watchdog,
+                payload -> {
+                    WebSocket socket = ws;
+                    if (socket == null) {
+                        return false;
+                    }
+                    socket.sendPing(java.nio.ByteBuffer.wrap(
+                        payload.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+                    return true;
+                },
+                () -> {
+                    LOG.warn("Peer {} stopped answering keepalive — reconnecting", peer);
+                    abort();
+                },
+                interval, "fw-keepalive");
+            keepalive = probe;
+            probe.start();
         }
 
         @Override
@@ -639,6 +708,11 @@ final class PeerConnector implements AutoCloseable {
 
         private void handleDisconnect(String cause) {
             cancelHandshakeTimer();
+            MeshKeepalive probe = keepalive;
+            if (probe != null) {
+                probe.close();
+                keepalive = null;
+            }
             sessions.remove(this);
             if (connection != null) {
                 hub.unregister(connection);
