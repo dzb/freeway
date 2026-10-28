@@ -1,15 +1,12 @@
 package com.jujin.freeway.cloud.rpc;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.GeneralSecurityException;
-import java.security.KeyStore;
+import java.time.Duration;
 
-import javax.net.ssl.KeyManagerFactory;
+import javax.net.ssl.KeyManager;
 import javax.net.ssl.SSLContext;
-import javax.net.ssl.TrustManagerFactory;
+import javax.net.ssl.TrustManager;
 
 /**
  * Default {@link TransportSecurity}: builds an {@link SSLContext} from a
@@ -40,52 +37,52 @@ public final class TransportSecurityDefault implements TransportSecurity {
         Path keyStorePath, String keyStorePassword,
         Path trustStorePath, String trustStorePassword
     ) {
-        try {
-            KeyStore keyStore = load(keyStorePath, keyStorePassword);
-            KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
-            kmf.init(keyStore, passwordChars(keyStorePassword));
+        return fromKeyStore(keyStorePath, keyStorePassword, trustStorePath, trustStorePassword,
+            Duration.ZERO);
+    }
 
-            TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
-            if (trustStorePath != null) {
-                tmf.init(load(trustStorePath, trustStorePassword));
-            } else {
-                tmf.init((KeyStore) null); // JDK default trust anchors
+    /**
+     * @param reloadInterval how often rotated material may be picked up; zero
+     *     keeps the resolved-once behaviour (a rotated keystore needs a restart).
+     *     A positive interval swaps the key/trust managers for delegates that
+     *     re-read the files per handshake — see {@link RotatingTlsMaterial} for
+     *     why the context itself cannot be replaced outbound.
+     */
+    public static TransportSecurityDefault fromKeyStore(
+        Path keyStorePath, String keyStorePassword,
+        Path trustStorePath, String trustStorePassword,
+        Duration reloadInterval
+    ) {
+        RotatingTlsMaterial rotating = new RotatingTlsMaterial(
+            keyStorePath, keyStorePassword, trustStorePath, trustStorePassword, reloadInterval);
+        if (rotating.rotating()) {
+            try {
+                SSLContext context = SSLContext.getInstance("TLS");
+                context.init(new KeyManager[] {new ReloadingKeyManager(rotating)},
+                    new TrustManager[] {new ReloadingTrustManager(rotating)}, null);
+                return new TransportSecurityDefault(context);
+            } catch (GeneralSecurityException e) {
+                throw new IllegalArgumentException(
+                    "Failed to build TLS context from " + keyStorePath, e);
             }
+        }
+        return staticContext(rotating.current(), keyStorePath);
+    }
 
+    private static TransportSecurityDefault staticContext(
+            RotatingTlsMaterial.Material material, Path keyStorePath) {
+        try {
             SSLContext context = SSLContext.getInstance("TLS");
-            context.init(kmf.getKeyManagers(), tmf.getTrustManagers(), null);
+            context.init(material.keyManagers(), material.trustManagers(), null);
             return new TransportSecurityDefault(context);
-        } catch (GeneralSecurityException | IOException e) {
-            throw new IllegalArgumentException("Failed to build TLS context from " + keyStorePath, e);
+        } catch (GeneralSecurityException e) {
+            throw new IllegalArgumentException(
+                "Failed to build TLS context from " + keyStorePath, e);
         }
     }
 
     @Override
     public SSLContext sslContext() {
         return sslContext;
-    }
-
-    private static KeyStore load(Path path, String password) throws GeneralSecurityException, IOException {
-        // The javadoc promises PKCS12/JKS. A JKS file throws while being parsed
-        // as PKCS12, so retry as JKS before giving up rather than only ever
-        // accepting one format.
-        KeyStore store = KeyStore.getInstance("PKCS12");
-        try (InputStream in = Files.newInputStream(path)) {
-            store.load(in, passwordChars(password));
-            return store;
-        } catch (IOException pkcs12Failed) {
-            KeyStore jks = KeyStore.getInstance("JKS");
-            try (InputStream in = Files.newInputStream(path)) {
-                jks.load(in, passwordChars(password));
-                return jks;
-            } catch (IOException jksFailed) {
-                jksFailed.addSuppressed(pkcs12Failed);
-                throw jksFailed;
-            }
-        }
-    }
-
-    private static char[] passwordChars(String password) {
-        return password == null ? new char[0] : password.toCharArray();
     }
 }

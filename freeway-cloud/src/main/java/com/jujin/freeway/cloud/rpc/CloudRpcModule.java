@@ -75,6 +75,11 @@ public final class CloudRpcModule implements ModuleEx {
     private static final SymbolSpec<String> TLS_TRUST_STORE_PASSWORD = SymbolSpec.of(
         ConfigKeys.RPC_TLS_TRUST_STORE_PASSWORD, String.class,
         ConfigKeys.RPC_TLS_TRUST_STORE_PASSWORD_DEFAULT, Function.identity());
+    /** Presence-driven, like the inbound side's reload key: unset keeps the
+     *  resolved-once behaviour. */
+    private static final SymbolSpec<Duration> TLS_RELOAD_INTERVAL = SymbolSpec.of(
+        ConfigKeys.RPC_TLS_RELOAD_INTERVAL, Duration.class,
+        ConfigKeys.RPC_TLS_RELOAD_INTERVAL_DEFAULT);
 
     @Override
     public void bind(Binder b) {
@@ -88,9 +93,11 @@ public final class CloudRpcModule implements ModuleEx {
                 String keyPassword = symbols.resolve(TLS_KEY_STORE_PASSWORD);
                 String trustStore = symbols.resolve(TLS_TRUST_STORE);
                 String trustPassword = symbols.resolve(TLS_TRUST_STORE_PASSWORD);
+                Duration reload = symbols.resolve(TLS_RELOAD_INTERVAL);
                 return TransportSecurityDefault.fromKeyStore(
                     Path.of(keyStore), keyPassword,
-                    trustStore.isBlank() ? null : Path.of(trustStore), trustPassword);
+                    trustStore.isBlank() ? null : Path.of(trustStore), trustPassword,
+                    reload);
             })
             .marker(Local.class)   // the file-backed default an ext mTLS source replaces
             ;
