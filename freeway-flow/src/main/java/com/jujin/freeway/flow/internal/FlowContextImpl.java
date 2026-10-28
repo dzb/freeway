@@ -3,6 +3,7 @@ package com.jujin.freeway.flow.internal;
 import com.jujin.freeway.commons.json.JsonObject;
 import com.jujin.freeway.commons.json.JsonUtils;
 import com.jujin.freeway.flow.FlowContext;
+import com.jujin.freeway.flow.FlowContext.Branch;
 import com.jujin.freeway.flow.FlowEventBus;
 import com.jujin.freeway.flow.FlowException;
 
@@ -25,9 +26,11 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>Branch isolation: {@link #beginBranch()} pushes a thread-local write
  * buffer. While a PARALLEL branch runs, every write lands in the buffer and
  * every read sees buffer-then-parent — so branches cannot race on the same
- * key the way they raced before isolation existed. The returned merger folds
- * the buffer into the parent and fails on a genuine write-write conflict
- * (this branch wrote a key whose parent value moved since its first write).
+ * key the way they raced before isolation existed. Committing the returned
+ * scope folds the buffer into the parent and fails on a genuine write-write
+ * conflict (this branch wrote a key whose parent value moved since its first
+ * write); closing it without a commit discards the buffer, including when the
+ * branch threw.
  * {@code join: "shared"} skips the buffer entirely — the opt-out for graphs
  * that share deliberately.</p>
  *
@@ -115,11 +118,51 @@ public final class FlowContextImpl implements FlowContext {
     }
 
     @Override
-    public Runnable beginBranch() {
+    public Branch beginBranch() {
         Deque<Layer> stack = layers.get();
         Layer layer = new Layer();
         stack.push(layer);
-        return () -> mergeLayer(layer, stack);
+        return new LayerScope(layer, stack);
+    }
+
+    /**
+     * One branch's handle to its layer. Commit folds it; close discards it
+     * unless it was committed — so the caller chooses between the two by
+     * structure (try-with-resources), not by remembering a cleanup call. The
+     * discard removes the layer by identity, which keeps the parent stack
+     * intact however deeply a failure unwound nested branches.
+     */
+    private final class LayerScope implements Branch {
+        private final Layer layer;
+        private final Deque<Layer> stack;
+        private boolean settled;
+
+        private LayerScope(Layer layer, Deque<Layer> stack) {
+            this.layer = layer;
+            this.stack = stack;
+        }
+
+        @Override
+        public void commit() {
+            if (settled) {
+                throw new IllegalStateException(
+                    "Branch scope already closed — a commit after the scope "
+                        + "ended would fold a layer that is no longer open");
+            }
+            mergeLayer(layer, stack);
+            settled = true;
+        }
+
+        @Override
+        public void close() {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            synchronized (mergeLock) {
+                stack.removeFirstOccurrence(layer);
+            }
+        }
     }
 
     /** Effective value: innermost layer that touched the key wins, then the root. */

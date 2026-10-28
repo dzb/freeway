@@ -30,7 +30,8 @@ import com.jujin.freeway.http.HttpServerConfig;
 import com.jujin.freeway.http.HttpServer;
 import com.jujin.freeway.http.HttpPipeline;
 import com.jujin.freeway.http.TestHttp;
-import com.jujin.freeway.http.filter.AccessLogFilter;
+import com.jujin.freeway.http.event.AccessLog;
+import com.jujin.freeway.http.event.HttpExchangeEvent;
 import com.jujin.freeway.http.filter.HttpFilter;
 import com.jujin.freeway.http.route.Route;
 import com.jujin.freeway.http.route.RouteHandler;
@@ -202,11 +203,16 @@ class HttpServerFeatureTest {
     void accessLogWritesOneLinePerRequest() throws Exception {
         ByteArrayOutputStream logBytes = new ByteArrayOutputStream();
         PrintStream log = new PrintStream(logBytes, true, StandardCharsets.UTF_8);
+        AccessLog accessLog = new AccessLog(log);
         int port = freePort();
         var server = HttpServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(port), HttpPipeline.of(Route.get("/ok", ctx -> ctx.send(200, "ok")))
-                .withFilter(new AccessLogFilter(log))
-                );
+            TestServerConfig.loopback(port),
+            HttpPipeline.of(Route.get("/ok", ctx -> ctx.send(200, "ok"))),
+            event -> {
+                if (event instanceof HttpExchangeEvent exchange) {
+                    accessLog.accept(exchange);
+                }
+            });
         server.start();
         try {
             HttpClient client = HttpClient.newBuilder()
@@ -236,13 +242,17 @@ class HttpServerFeatureTest {
     void accessLogRecordsMappedStatusOnHandlerException() throws Exception {
         ByteArrayOutputStream logBytes = new ByteArrayOutputStream();
         PrintStream log = new PrintStream(logBytes, true, StandardCharsets.UTF_8);
+        AccessLog accessLog = new AccessLog(log);
         int port = freePort();
         var server = HttpServer.create(TestHttp.engine(),
             TestServerConfig.loopback(port),
             HttpPipeline.of(Route.get("/boom",
-                    ctx -> { throw new IllegalStateException("boom"); }))
-                .withFilter(new AccessLogFilter(log))
-                );
+                    ctx -> { throw new IllegalStateException("boom"); })),
+            event -> {
+                if (event instanceof HttpExchangeEvent exchange) {
+                    accessLog.accept(exchange);
+                }
+            });
         server.start();
         try {
             HttpClient client = HttpClient.newBuilder()

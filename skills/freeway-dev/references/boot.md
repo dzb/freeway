@@ -18,7 +18,6 @@ Examples below are minimal snippets. They omit imports and app-specific domain t
 ## Runtime Contract
 
 - `AppRuntime` extends `AutoCloseable`
-- `AppRuntime.container()`
 - `AppRuntime.config()`
 - `AppRuntime.state()`
 - `AppRuntime.get(Class)`

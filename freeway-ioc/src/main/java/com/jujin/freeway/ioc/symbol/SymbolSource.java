@@ -62,14 +62,17 @@ public interface SymbolSource {
      * there is no install step, and a contribution is visible the moment it
      * is declared.
      *
-     * <p><b>A primary replacement must take the same view itself.</b> Its
-     * factory receives the container, so the pattern is:
+     * <p><b>A primary replacement must take the same view itself, and the
+     * coercer with it.</b> Its factory receives the container, so the pattern
+     * is:
      * {@code binder.bind(SymbolSource.class).to(c ->
-     * new MySource(c.extension(SymbolProvider.class)))} — hand over the
-     * {@code Extension} itself, not an {@code all()} snapshot: the view must
-     * be re-read on every lookup. A replacement that ignores the view serves
-     * only its own tiers — boot's cascade silently disappears and surfaces
-     * much later as "my config file is ignored".
+     * new MySource(c.extension(SymbolProvider.class), c.get(Coercer.class)))} —
+     * hand over the {@code Extension} itself, not an {@code all()} snapshot:
+     * the view must be re-read on every lookup, and the coercer is what lets
+     * the replacement type the same specs the chain did (a replacement that
+     * skips it serves only raw strings). A replacement that ignores the view
+     * serves only its own tiers — boot's cascade silently disappears and
+     * surfaces much later as "my config file is ignored".
      *
      * @param coercer    parses coercer-backed specs; the container passes its own
      * @param contributed the live contributed view, re-read on every lookup
@@ -129,12 +132,19 @@ public interface SymbolSource {
      * String pw = symbols.resolve(DB_PASSWORD);
      * }</pre>
      *
+     * <p><b>Typing is part of the seam, so there is deliberately no default
+     * implementation.</b> A default cannot type a coercer-backed spec without
+     * a coercer ({@link SymbolSpec#parse(String)} throws for the
+     * {@code of(key, type, default)} form), and one that guessed a coercer
+     * would serve values the container's rules never produced. An
+     * implementation parses through the {@link Coercer} it was assembled
+     * with — {@link #of} does — and a hand-written chain gets the container's
+     * from {@code container.get(Coercer.class)} in the factory that builds it.
+     *
      * @param spec the typed key ({@link SymbolSpec} — key name, type, default, parser)
      * @return the parsed value (the spec's default when the symbol is absent)
      */
-    default <T> T resolve(SymbolSpec<T> spec) {
-        return spec.parse(resolve(spec.key(), null));
-    }
+    <T> T resolve(SymbolSpec<T> spec);
 
     /**
      * Recursively expands {@code ${...}} references in the input string.

@@ -51,7 +51,7 @@ class EventBusAsyncCarrierTest {
     void publishAsyncCapturesOnSubmittingThreadAndRunsOnExecutor() throws Exception {
         RecordingCarrier carrier = new RecordingCarrier();
         try (Container container = containerWith(carrier)) {
-            EventBus bus = new EventBus(container);
+            EventBus bus = EventBus.create(container);
             List<String> log = new ArrayList<>();
             bus.subscribe(String.class, log::add);
 
@@ -75,7 +75,7 @@ class EventBusAsyncCarrierTest {
     void publishOrderedCapturesOnSubmittingThreadAndRunsOnExecutor() throws Exception {
         RecordingCarrier carrier = new RecordingCarrier();
         try (Container container = containerWith(carrier)) {
-            EventBus bus = new EventBus(container);
+            EventBus bus = EventBus.create(container);
             List<String> log = new ArrayList<>();
             bus.subscribe(String.class, log::add);
 
@@ -99,7 +99,7 @@ class EventBusAsyncCarrierTest {
         // No AsyncCarrier binding: EventBus must fall back to the identity
         // function (work -> work) — dispatch stays bare but unbroken.
         try (Container container = Freeway.create()) {
-            EventBus bus = new EventBus(container);
+            EventBus bus = EventBus.create(container);
             List<String> log = new ArrayList<>();
             bus.subscribe(String.class, log::add);
 
@@ -125,7 +125,7 @@ class EventBusAsyncCarrierTest {
             binder.bind(AsyncCarrier.class).id("first").to(c -> new RecordingCarrier());
             binder.bind(AsyncCarrier.class).id("second").to(c -> new RecordingCarrier());
         })) {
-            assertThrows(AmbiguousBindingException.class, () -> new EventBus(container),
+            assertThrows(AmbiguousBindingException.class, () -> EventBus.create(container),
                 "isActiveBinding must raise AmbiguousBindingException, not fall back to identity");
         }
     }

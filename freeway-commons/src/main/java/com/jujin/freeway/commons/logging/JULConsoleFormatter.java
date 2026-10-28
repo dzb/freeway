@@ -18,11 +18,11 @@ public final class JULConsoleFormatter extends Formatter {
     private final JULLogFormatterSupport.FormatConfig config;
 
     public JULConsoleFormatter() {
-        this(detectColor(), detectShowMDC());
+        this(detectColor(), JULLogFormatterSupport.showMdc());
     }
 
     JULConsoleFormatter(boolean useColor) {
-        this(useColor, detectShowMDC());
+        this(useColor, JULLogFormatterSupport.showMdc());
     }
 
     JULConsoleFormatter(boolean useColor, boolean showMDC) {
@@ -61,15 +61,4 @@ public final class JULConsoleFormatter extends Formatter {
         return System.console() != null;
     }
 
-    /**
-     * Detects whether MDC context should be displayed.
-     * Controlled by -Dfreeway.log.mdc=true|false (default: true)
-     */
-    private static boolean detectShowMDC() {
-        String override = JULEnhancer.sysOrEnv(LogKeys.MDC);
-        if (override != null) {
-            return !"false".equalsIgnoreCase(override) && !"0".equals(override);
-        }
-        return true; // enabled by default
-    }
 }

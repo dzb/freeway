@@ -1,29 +1,24 @@
 package com.jujin.freeway.http;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
+import java.util.Map;
 
 /**
- * Shared error responses for the common failure paths (route miss and
- * unhandled exceptions). Keeps the body, Content-Type, and status in one
- * place so the dispatcher, protocol sessions, and static-file fallback do
- * not drift.
+ * Shared error responses for the common failure paths (route miss, a
+ * method that is not allowed, and an unhandled exception).
+ *
+ * <p><b>One body shape for every error.</b> These used to be
+ * {@code text/plain} while the exception mapper's 400/413/415 were JSON, so a
+ * client could not parse errors uniformly. All error responses are now JSON
+ * objects with an {@code error} key; the 405 additionally carries the
+ * RFC 9110 {@code Allow} header, which is what explains the rejection.</p>
  */
 public final class ErrorResponses {
-
-    private static final byte[] NOT_FOUND =
-        "Not Found".getBytes(StandardCharsets.UTF_8);
-    private static final byte[] METHOD_NOT_ALLOWED =
-        "Method Not Allowed".getBytes(StandardCharsets.UTF_8);
-    private static final byte[] INTERNAL_ERROR =
-        "Internal Server Error".getBytes(StandardCharsets.UTF_8);
 
     private ErrorResponses() {}
 
     public static void notFound(HttpResponse response) throws IOException {
-        response.setStatus(HttpStatus.NOT_FOUND)
-            .setHeader("Content-Type", MediaTypes.TEXT_PLAIN_UTF8)
-            .output(NOT_FOUND);
+        response.sendJson(HttpStatus.NOT_FOUND, Map.of("error", "Not Found"));
     }
 
     /**
@@ -34,15 +29,13 @@ public final class ErrorResponses {
      */
     public static void methodNotAllowed(HttpResponse response, String allow)
             throws IOException {
-        response.setStatus(HttpStatus.METHOD_NOT_ALLOWED)
-            .setHeader("Content-Type", MediaTypes.TEXT_PLAIN_UTF8)
-            .setHeader("Allow", allow)
-            .output(METHOD_NOT_ALLOWED);
+        response.setHeader("Allow", allow)
+            .sendJson(HttpStatus.METHOD_NOT_ALLOWED,
+                Map.of("error", "Method Not Allowed", "allow", allow));
     }
 
     public static void internalError(HttpResponse response) throws IOException {
-        response.setStatus(HttpStatus.INTERNAL_ERROR)
-            .setHeader("Content-Type", MediaTypes.TEXT_PLAIN_UTF8)
-            .output(INTERNAL_ERROR);
+        response.sendJson(HttpStatus.INTERNAL_ERROR,
+            Map.of("error", "Internal Server Error"));
     }
 }

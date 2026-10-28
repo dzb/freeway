@@ -316,6 +316,29 @@ public final class JULFileHandler extends StreamHandler {
         super.close();
     }
 
+    /**
+     * Waits until every compression task queued so far has finished.
+     *
+     * <p>The compressor is a single thread, so a no-op submitted now runs
+     * after all earlier rotations' archives. Package-visible for tests:
+     * {@code @TempDir} cleanup otherwise races a compressor that is still
+     * writing, which fails the test after it already passed. Deliberately not
+     * called from {@link #close()} — close runs during shutdown, and waiting
+     * there would trade a fast shutdown for best-effort archives; the shutdown
+     * hook only stops accepting new work.</p>
+     */
+    static void awaitCompression() {
+        try {
+            COMPRESSOR.submit(() -> { }).get(10, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (java.util.concurrent.ExecutionException
+                | java.util.concurrent.TimeoutException e) {
+            // Compression is best-effort; a failed task is reported by
+            // compressFile itself, and a timeout must not fail the caller.
+        }
+    }
+
     private Thread startFlusher() {
         if (flushIntervalMs <= 0) {
             return null;

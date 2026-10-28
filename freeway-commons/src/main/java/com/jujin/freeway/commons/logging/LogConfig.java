@@ -18,6 +18,12 @@ public final class LogConfig {
     /** The namespace every logging key lives under. */
     public static final String PREFIX = LogKeys.PREFIX;
 
+    /** Keys read at class-load time from {@code -D}/environment only; a
+     *  config-file declaration cannot take effect, and boot says so. */
+    public static Set<String> classLoadKeys() {
+        return LogKeys.classLoadKeys();
+    }
+
     /** The per-file family's prefix ({@code freeway.log.file.}): the dynamic
      *  half of {@link #PREFIX}, admitted by boot as unlistable. */
     public static final String FILE_PREFIX = LogKeys.FILE_PREFIX;

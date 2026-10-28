@@ -2,6 +2,7 @@ package com.jujin.freeway.flow;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.function.BiConsumer;
 import java.util.Map;
 
 /**
@@ -44,6 +45,21 @@ public interface FlowEngine {
      */
     static FlowEngine create(Map<String, FlowDriver> drivers, List<FlowInterceptor> interceptors) {
         return new FlowEngineDefault(drivers, interceptors);
+    }
+
+    /**
+     * Creates an engine whose evaluations also forward every
+     * {@link FlowContext#eventBus()} publish to {@code eventSink}, in addition
+     * to the evaluation's own subscribers. This is the core's exit: it knows
+     * nothing about a container, so the container face ({@code FlowModule})
+     * supplies a sink that publishes on the application's {@code EventBus}
+     * under {@code "flow." + topic}. A standalone engine passes nothing and
+     * keeps events inside the execution.
+     */
+    static FlowEngine create(Map<String, FlowDriver> drivers,
+            List<FlowInterceptor> interceptors,
+            BiConsumer<String, Object> eventSink) {
+        return new FlowEngineDefault(drivers, interceptors, eventSink);
     }
 
     // --- driver ---

@@ -28,8 +28,106 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   （§8.1/guide/config）、`PeerHub` 的 `wire()` 在 HTTP 服务器**之后**、secret 文件按 size/mtime
   轮换（不是"缓存到重启"）、网格广播走每连接队列；`EVENT_PATH_DEFAULT` 移出 `ConfigKeys`
   （路由路径是 identity string，不是配置键）。
+- **失败分支不再把写层留在执行线程上**（`freeway-flow`）：`runBranch` 把"提交"绑在 `walk`
+  正常返回上，异常分支既没提交也没丢弃——`Layer` 留在 `FlowContextImpl` 的 `ThreadLocal` 栈里。
+  同一 `FlowContext` 在重试中复用时，下一轮写入合并进废弃层而不是 root，父层读不到（静默丢写）；
+  而 javadoc 写的是 "discarded with it"。提交/丢弃改由 `FlowContext.Branch` 作用域决定（见
+  Changed）。`stop()` 的分支原本就正常返回并提交，与文档里 "stopped or contributed nothing" 的
+  半句相反——文档按实现改。
+- **HTTP/2 上 cloud 的 W3C trace 不再丢失**（`freeway-http`）：h1 解析时把入站头名小写，h2 保留
+  首字母大写（`Traceparent`），而 cloud 的 `PropagationFilter` 把 `ctx.headers()` 摊成大小写敏感的
+  map 再取 `traceparent`——HTTP/2 上整条链路静默断掉。`Headers.copyOf` 现在是唯一的归一化点
+  （见 Changed）。
+- **`bind(Concrete)` 不再丢弃类级标注**（`freeway-ioc`）：`bind(X)` 不带 `.to(...)` 时
+  `@Primary` / `@NotThreadSafe` / `@Marker` 全被静默丢掉，而 `.to(X)` 会提取——同一个绑定两种
+  写法两个 marker 集，`@NotThreadSafe` 的单例拒绝因此可被一行改写绕过。
+- **`PARALLEL` 出边的 `when` 在构建期拒绝**（`freeway-flow`）：fork 永不求值边条件，原先它能
+  通过编译、通过 `GraphSpec` 的表达式校验，运行期被静默忽略。
+- **flow 的构建结果与节点声明顺序无关**（`freeway-flow`）：新增种子化的随机图探针
+  （`FlowDeclarationOrderTest`，100 个图 × 两种声明顺序），把"同一张逻辑图换一种声明顺序
+  仍得到同一判定"钉成不变量；每三张图带一个故意缺陷（重复边、环、未解析目标），拒绝路径也
+  覆盖。探针顺带发现并修掉一处：环检测的起点按节点声明顺序选，同一张图的报错会在环上换一个
+  起点——现在按节点 id 排序选根，报错与声明顺序无关。
+- **配置热重载不再漏掉 OVERFLOW 批次**（`freeway-boot`）：`WatchService` 在事件被平台丢弃时给出
+  `OVERFLOW`，其 `context()` 为 `null`，旧判定"这批事件碰了哪个文件"因此永远答否——不重载、
+  也不打日志，而事件被丢弃的时刻（批量写入、IDE 保存风暴）正是热重载最该工作的时刻。现在
+  OVERFLOW 直接触发一次重载：重读几个小文件的代价，远小于配置静默过期。
+- **级联合并顺序改为从 `SymbolProvider.TIER_*` 推导**（`freeway-boot`）：profile 选择用的叠加
+  列表此前是手写的 `List.of(properties, json, filesystemBase, environment, cli)`，与符号链的
+  层级顺序是两个来源；现在按层级常量排序（数值越小优先级越高，`overlay` 后者胜，故按降序排列），
+  同一层内部仍按 properties → json → 工作目录的声明顺序（稳定排序保留）。
+- **`boot.internal.ConfigLoaderImpl` 改名 `ConfigCascade`**（`freeway-boot`，包内）：它是一个纯
+  静态工具——无实例、无接口、无绑定、不可替换，`Impl` 后缀在本仓只被许可给"容器内部装配"或
+  "同角色并存的每属主实现"，两者都不适用。编译错误即迁移（包内类，无公开面）。README 的依赖
+  片段旁注明 `groupId` 保留 `com.jujin8`、包名是 `com.jujin` 的理由：改任一个都是破坏，写清
+  比留给读者猜好。
+- **`freeway.log.*` 设了却不生效的通道，启动时点名**（`freeway-boot`）：日志在容器存在之前
+  配置自己，只读 `-D`、环境变量和类路径配置文件；CLI 参数（`--freeway.log.level=DEBUG`）与
+  工作目录覆盖文件里的日志键仍会进入符号链，于是"配置看起来生效、logger 仍是默认值"，且没有
+  任何提示。现在启动时逐键 WARN：键、值、来源，以及可用的三条通道。`freeway.log.color` /
+  `freeway.log.mdc` / `freeway.log.mdc.priority` / `freeway.log.caller-info` 是类加载期读取的，
+  写进任何文件都无效——文件来源同样被点名。热重载新增的键只报一次。
+- **访问日志改用事件观察者，删除 `AccessLogFilter`**（`freeway-http`）：过滤器自己计一次时，且
+  CORS（-100）/健康检查（-50）短路时根本收不到请求，"每个请求一行"不成立；服务端早已在链外
+  计时并发布 `HttpExchangeEvent`。现在 `freeway.http.access-log.enabled` 让 `HttpModule` 在事件
+  出口写行（预检、探针也各一行），`HttpExchangeEvent` 增加 `remoteAddress`/`userAgent` 两个分量。
+  自定义目的地不再替换过滤器：关掉键，贡献自己的
+  `EventSubscriber.of(HttpExchangeEvent.class, …)`。**公开类型删除**：`AccessLogFilter` 不再存在，
+  编译错误即迁移。
+- **`setPathVars` 现在是"替换"而不是"合并"**（`freeway-http`）：方法只 `putAll`，清空是引擎
+  `reset()` 的义务——复用 context 的适配器/测试替身漏了清空，上一个请求的 tenant/id 会残留到
+  下一个匹配。名字说 set，行为就该是 set。
+- **`freeway.log.mdc=false` 现在也关掉文件行里的 MDC**（`freeway-commons`）：开关此前只被 console
+  formatter 读取，`JULFileFormatter` 把 `showMDC` 写死 `true`——设了键的人控制台干净、落盘文件里
+  仍有 traceId。两个 formatter 现在读同一处（`JULLogFormatterSupport.showMdc`），文件 formatter 的
+  `FormatConfig` 改为随实例构造（静态快照会冻结第一次的答案）。
+- **HTTP/2 丢掉未读请求体时不再无限排空**（`freeway-http`）：响应已发出而请求体没读完时
+  （401/404/413），`DataIn.close()` 原来在流线程上循环读到 EOF——不经限额、没有时限，慢上传可以
+  一直占住流与虚拟线程。现在是 linger close：最多吞 64 KiB、最多等 500 ms，超界即
+  `RST_STREAM(NO_ERROR)` 丢弃剩余上传；完整读完的请求照旧复用连接。
+- **flow 的深图不再爆栈**（`freeway-flow`）：join 域的嵌套深度用记忆化递归计算，声明顺序不是
+  拓扑序时 50 000 节点的链在 `GraphSpec.create()` 里 `StackOverflowError`。改成 Kahn 顺序的一次
+  遍历；`FlowDeepGraphTest` 用 50 000 节点钉住。
+- **文档与实现相反的几处改回事实**：db 手册的默认表/列名是 snake_case（不是"类名小写/字段名"），
+  `Sql` 的报错改点名现存方法（`setColumn`/`setExpression`，旧 `set(...)` 早被删除）、`$1` 不再号称
+  会被改写成 `?`；`bodyAsJson` 与 `BodyHandler` 不再被说成等价（后者跑 `BeanValidator`）；
+  `Binding.primary()` 的 `@throws` 移到真正报错的解析入口；`AppState.STOPPING` 不再声称
+  registry 已答 503；访问日志写明"到达过滤器链的请求"；`docs/freeway-config.md` 同一节里
+  "工作目录参与/不参与日志侧"的矛盾按实现收敛；`docs/ARCHITECTURE.md` 的任务词表从 `#graph`
+  改为 `#graphId`（同文件七行前就是它），skill 里的 `#graphId` 与 `AppRuntime.container()`
+  （已删除的方法）一并修正；`BeanPlan.of` 不再声称结果被缓存。
 
 ### Added
+
+- **`Sql` 的后续子句改为字段，渲染顺序由语句结构决定**（`freeway-db`）：`ORDER BY`/`GROUP BY`/
+  `HAVING`/`LIMIT`/`OFFSET`/`RETURNING`/`ON CONFLICT` 此前拼在同一个 `tail` 字符串里，顺序 =
+  调用顺序，能力判定读 `tail.contains(...)`。现在每个子句一个字段，按 SQL 顺序渲染，因此：
+  `limit(5).orderBy("id")` 不再报错（渲染为 `ORDER BY id LIMIT 5`）；重复子句（两个 `LIMIT`、
+  两个 `RETURNING`、两个 `HAVING`）在构造期拒绝，而不是拼出两段非法 SQL；`HAVING` 的绑定值
+  单独存放，即使先于 `WHERE` 声明也按 WHERE→HAVING 的顺序绑定（旧的调用顺序会静默错位）。
+  `OFFSET` 仍要求有 `LIMIT`（MySQL 没有单独的 OFFSET 语法）。规范调用顺序下 SQL 文本逐字不变。
+- **`ON CONFLICT` 的动作必须跟在它的目标后面**（`freeway-db`）：`doNothing()`/`doUpdateSet(...)`
+  此前只检查"是 INSERT"，单独调用会渲染出 `INSERT … VALUES (…) DO NOTHING`——语法不合法，数据库
+  在远离调用点的地方报错。现在没有 `onConflict(...)` 时在构造期拒绝，消息点名先调什么；第二个
+  `ON CONFLICT` 也被拒绝。
+- **`OwnedTransaction`**（`freeway-db`，包内）：`DatabaseImpl.transaction` 与 `BatchQueryImpl.execute`
+  曾各写一遍"借连接 → autoCommit 关 → 提交/回滚 → 恢复 → 释放"，包括"恢复失败就销毁连接"的守卫。
+  现在两处共用同一个生命周期对象；批处理绑在外层事务时仍只借用连接、不提交。
+- **flow 的事件出口**（`freeway-flow`）：`FlowEngine.create(drivers, interceptors, BiConsumer<String,Object>)`
+  给核心一个可选的 sink；`FlowModule` 装上桥，把每次 `context.eventBus().publish(topic, payload)`
+  以 `"flow." + topic` 转发到应用 `EventBus`。此前 flow 的执行域总线不可桥接——想观察 flow 的应用
+  只能给每个 context 挂拦截器，而同仓的 http 早已用 `Consumer<Object> eventSink` 解决同一问题。
+  本地订阅者仍先收到（执行域是它自己的听众，sink 是应用的）；sink 抛异常与本地订阅者一样被隔离。
+  `FlowEngine.create()`（无容器）保持 local-only。
+- **`Sql.on(String, Object...)`**（`freeway-db`）：`ON` 曾是唯一没有参数通道的条件位，动态 JOIN
+  谓词只能拼字符串（注入面）；`?` 不进 `args()`，`db.query(...)` 因此报"参数太少"。ON 文本在
+  WHERE 之前，所以它的绑定值也排在 WHERE 值之前，与两个调用的先后无关。
+- **API 文档一致性检查**（`freeway-boot` 测试）：README、`AGENTS.md` 与 `skills/` 里反引号中的
+  `Type.member(` 必须在对应模块的 `src/main` 里真的存在。配置表早有同类检查
+  （`ConfigDocsConsistencyTest`），prose 侧没有——`AppRuntime.container()` 在方法删除之后还留在
+  skill 里好几个版本。历史文档（RELEASE-NOTES、历次 audit）是当时的记录，不扫。
+- **CI**（仓库根）：两条 job——核心 `mvn verify`、仓内消费者 `mvn -Pdemos verify`。后者是
+  "编译错误即迁移路径"第一次有执行者。
 
 - **发现结果的缓存（实现内部，默认 5s）**（`freeway-cloud`）：`ServiceRegistry`/`ServiceDiscovery`
   的 fleet 的发现实现用框架提供的 `CachingServiceDiscovery` 包了一层——TTL + 单飞刷新 + 失败保旧 + 按服务覆盖。
@@ -115,6 +213,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   飞或已写出"的上界。配套地，**drain 侧的写失败现在有 `LOG.warn`**——此前发布侧拒绝有日志、
   drain 侧拒绝无声，同一个失败两条腿只有一条会响。`CloudEventStats` 的字段形状变了：仍依赖
   `framesSent()` 的代码编译期即报错，重命名即迁移。
+- **`FlowContext.beginBranch()` 返回 `FlowContext.Branch`**（`freeway-flow`）：原来的
+  `Runnable` 只能提交、不能丢弃，失败路径无从清理。现在 `commit()` 合并、关闭作用域丢弃，
+  `try (var branch = ctx.beginBranch()) { … branch.commit(); }` 是唯一写法——两条路径都由形状
+  决定。`beginBranch()` 是 `@hidden` 引擎内部 API，编译器即迁移路径。
+- **join 迭代域校验移入图构建期**（`freeway-flow`）：`rejectUnsatisfiableJoin` 原来只在
+  `FlowEngine.load()` 调用，`eval(GraphSpec)` 与 `eval(Graph, …)` 不经过它——`load` 会拒绝的图
+  可以用 `eval` 跑起来，收尾只报 `dead end`，把配置错误说成丢分支。校验现在跟在 `Graph`
+  构造里（`JoinDomains`），一张不可计数的图**建不出来**；`load` 只负责注册，`JoinMarkerAtomicityTest`
+  随之把断言从 load 移到 build。
+- **`SymbolSource.resolve(SymbolSpec)` 不再是接口默认方法**（`freeway-ioc`）：默认实现没有
+  `Coercer`，而 `SymbolSpec.parse(raw)` 在无 per-key parser 时直接抛——按 `AGENTS.md` 认可的
+  写法手写的替换实现在第一个 `Duration`/`Integer` 类 spec 上就崩。类型化现在是 seam 的一部分：
+  `SymbolSource.of(...)` 已带 coercer，手写替换在工厂里取 `c.get(Coercer.class)`；
+  `AGENTS.md` 与 `SymbolSourceReplacementTest` 同步（后者新增了一条 parser-less spec 的断言）。
+- **入站请求头名统一小写**（`freeway-http`）：`RequestView.headers()` 现在声明键为小写，
+  `Headers.copyOf` 在 context 边界一次归一分（h1 本来如此，h2 不再保留大写）。按小写键取值的
+  应用代码在两条协议上一致；按原样例取值的代码会读不到——grep `headers().get(` 即迁移。
+- **`ExchangeMetaDefault` 改名 `ExchangeMetaImpl`**（`freeway-http`）：它由
+  `AbstractHttpContext`/`AbstractWebSocketSession` 直接 `new`，没有任何解析点，`.primary()`
+  替换无效——按命名规则它是引擎内部构件。`AGENTS.md` 的 `XDefault` 例子清单同步移除它。
+- **SPI 发现的模块会打一行 INFO**（`freeway-boot`）：组合的来源是"声明的模块 + classpath 上的
+  `META-INF/services`"，启动树里两者同形；`ModuleDiscovery` 现在点名发现的类。`ARCHITECTURE.md`
+  与 `AGENTS.md` 写明两个来源、顺序（声明优先、按类去重）、默认值与 opt-out。
+- **demo 跟随核心版本**（`demo/`）：依赖改为 `${freeway.version}` = `1.5.7-SNAPSHOT`，根 POM 增加
+  `-Pdemos` 剖面，让这三个仓内消费者随 reactor 一起编译——"编译错误即迁移路径"需要有人去撞。
+- **无体响应的 `Content-Length` 规则上移**（`freeway-http`）：规则原先只写在 HTTP/1.1 的 writer 里，
+  于是 handler 给 204 设的 `Content-Length` 在 h2 上照发。现在 `ResponseFraming.suppressesHeader`
+  是唯一判定，两个 writer 都问它（RFC 9110 §8.6）。
+- **注册面的自述与版本接纳**（`freeway-cloud`）：`/registry` 的路由清单改为从 `bind` 用的同一张
+  `SURFACE` 表派生——此前它手抄四条，漏了 `ready` 与自身；`X-Registry-Proto` 从"等值"改为
+  "接受更旧的协议"（文档的承诺），非数字仍答 426。
+- **`GraphSpec.normalize()` 的缓存变真**（`freeway-flow`）：`bfsOrder` + 每个 setter 的
+  `invalidate()` 原来从不命中（`toMap()` 每次都全量重算），javadoc 却写"后续调用是 no-op"。
+  现在已规范化的 spec 直接返回；`touch()` 的失效因此是承重的。
+- **错误响应统一为 JSON**（`freeway-http`）：404/405/500 由 `ErrorResponses` 以 `text/plain` 写出，
+  而 400/413/415 由 `ErrorHandler` 以 JSON 写出——同一个服务器的错误体两种形状，客户端无法统一
+  解析，404 甚至没有结构化原因。现在两者都走 `sendJson`（`{"error": …}`，405 继续带 `Allow`）。
+  **面向客户端的响应体变更**：按纯文本解析 404/405/500 的代码需要跟着改。
+- **JSON 标量 getter 与 `Coercer` 用同一套规则**（`freeway-commons`）：`JsonObject.getBoolean`
+  曾只认 `true`/`false`，而 `coerce` 认 `yes/on/1`；`getInt("1.5")` 抛而 `coerce` 得 `1`——同一段
+  JSON 两条读法两个答案。getter 现在委托同一个内置 `Coercer`，自定义 `CoerceRule` 仍只在
+  `JsonCodec` 路径生效（树节点没有容器）。**语义放宽**：依赖 getter 抛错发现脏数据的代码会改为
+  接受。
+- **`EventBus` 不再持有 `Container`**（`freeway-ioc`）：公开构造函数改为收三样能力
+  （`Metrics`、封存后的 `EventSubscriber` 列表、可选 `AsyncCarrier`），装配点用
+  `EventBus.create(container)` 取一次即放手。**构造函数签名变更**：直接 `new EventBus(container)`
+  的代码改为 `EventBus.create(container)`（容器内建与测试已同步）。
+- **入站请求头的上限只有一个数**（`freeway-http`）：HTTP/1.1 头块固定 8 KiB、HTTP/2 头块/字段表
+  固定 64 KiB，同一请求按协议有不同边界。新增 `freeway.http.server.max-header-bytes`（默认
+  16 KiB），h1 parser 与 h2 的块上限/解码上限/SETTINGS 通告共用它。
+- **cloud 的 readiness 是一次写入**（`freeway-cloud`）：`ServiceRegistry` 新增
+  `register(instance, Health)`（默认委托旧方法）；生命周期钩子在知道"会装就绪门"时直接以
+  `Health.starting()` 注册，不再先注册为就绪、再标记未就绪。fleet 客户端用
+  `POST …/instances?ready=false` 表达同一件事，节点端识别该查询参数。`ReadinessGate` 在启动即
+  全健康时补一次 `markReady(true)`（因为实例已按 starting 注册）。
+- **丢租约的自愈只有一处**（`freeway-cloud`）：fleet 客户端不再在 `renew` 里偷偷重注册并返回
+  `true`；它只回答"还在不在"（任一节点 404 即 false），由生命周期钩子重新注册——那一次写本来
+  就扇出到所有节点，同时让失败指标与 WARN 恢复可见。重注册携带当前 readiness（还没翻就绪的
+  实例不会以 ready 回来）。
+- **两个 `internal` 角色的可见性收口**（`freeway-flow`/`freeway-http`）：`ExecState`（执行记账，
+  唯一读者是同包 `FlowEvaluation` 的包私有字段）；`SslContexts` 一度被一并收窄，但 `freeway-ext`
+的 Undertow 适配器用它构建 `SSLContext`——干净构建失败后回滚为 public
+  降为包私有。`AGENTS.md` 的判据是"另一个包必须装配或替换它才公共"，这两个都不是。
 
 ## [1.5.6] - 2026-10-08
 

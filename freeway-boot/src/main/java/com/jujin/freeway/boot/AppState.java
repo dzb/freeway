@@ -21,7 +21,8 @@ public enum AppState {
     STARTING,
     /** Serving; {@code start()} is a no-op and {@code isRunning()} is true. */
     RUNNING,
-    /** Drain window: the registry already answers 503 and shutdown hooks run. */
+    /** Drain window: runtime hooks are stopping (a listening server may still
+     *  answer while its hook drains); {@link #STOPPED} is the terminal state. */
     STOPPING,
     /** Closed, successfully or after an unwind. */
     STOPPED,

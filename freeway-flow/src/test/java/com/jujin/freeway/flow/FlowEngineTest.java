@@ -1942,15 +1942,40 @@ class FlowEngineTest {
         FlowContextImpl ctx = new FlowContextImpl();
         ctx.put("base", "1");
 
-        Runnable merge = ctx.beginBranch();
+        FlowContext.Branch merge = ctx.beginBranch();
         ctx.put("k", "A");
         ctx.remove("base");
         assertEquals("A", ctx.get("k"), "a branch reads back its own write");
         assertNull(ctx.get("base"), "a branch-local remove shadows the parent");
 
-        merge.run();
+        merge.commit();
         assertEquals("A", ctx.get("k"), "clean merge lands the write in the parent");
         assertNull(ctx.get("base"), "clean merge lands the clear too");
+    }
+
+    @Test
+    void aFailedBranchDiscardsItsLayerInsteadOfLeavingItOnTheThread() {
+        // The failure this pins: a branch that threw used to leave its layer
+        // pushed on the thread-local stack, so the NEXT branch on the same
+        // thread merged its writes into the abandoned layer instead of the
+        // parent — the parent could not read them. Retrying a flow on the same
+        // thread is exactly when that happens.
+        FlowContextImpl ctx = new FlowContextImpl();
+        try (FlowContext.Branch failed = ctx.beginBranch()) {
+            ctx.put("abandoned", "v");
+            throw new IllegalStateException("branch failed");
+        } catch (IllegalStateException expected) {
+            // the branch failed; its buffer must not survive it
+        }
+
+        try (FlowContext.Branch retry = ctx.beginBranch()) {
+            ctx.put("after-retry", "visible");
+            retry.commit();
+        }
+
+        assertEquals("visible", ctx.get("after-retry"),
+            "the retry's write must reach the parent, not an abandoned layer");
+        assertNull(ctx.get("abandoned"), "the failed branch's write must be discarded");
     }
 
     @Test
@@ -1959,12 +1984,12 @@ class FlowEngineTest {
         // out-of-order merge would fold an inner layer over a live outer
         // branch and is refused loudly instead.
         FlowContextImpl ctx = new FlowContextImpl();
-        Runnable outer = ctx.beginBranch();
-        Runnable inner = ctx.beginBranch();
-        assertThrows(IllegalStateException.class, outer::run);
+        FlowContext.Branch outer = ctx.beginBranch();
+        FlowContext.Branch inner = ctx.beginBranch();
+        assertThrows(IllegalStateException.class, outer::commit);
         assertDoesNotThrow(() -> {
-            inner.run();
-            outer.run();
+            inner.commit();
+            outer.commit();
         });
     }
 
@@ -2011,7 +2036,7 @@ class FlowEngineTest {
         FlowContextImpl ctx = new FlowContextImpl();
         ctx.put("base", "1");
 
-        Runnable merge = ctx.beginBranch();
+        FlowContext.Branch merge = ctx.beginBranch();
         ctx.put("own", "w");
         assertEquals("w", ctx.get("own"), "a branch reads back its own write");
         assertEquals("1", ctx.get("base"), "parent values are readable");
@@ -2027,17 +2052,17 @@ class FlowEngineTest {
         FlowContextImpl ctx = new FlowContextImpl();
         ctx.put("base", "1");
 
-        Runnable merge = ctx.beginBranch();
+        FlowContext.Branch merge = ctx.beginBranch();
         ctx.put("k", "A");
         // Parent changed under the branch's feet: the value the branch based
         // its write on (null) moved before merge — conflict.
         ctx.stopped(false);
-        merge.run();
+        merge.commit();
         assertEquals("A", ctx.get("k"), "clean merge lands in the parent");
 
-        Runnable second = ctx.beginBranch();
+        FlowContext.Branch second = ctx.beginBranch();
         ctx.put("base", "2"); // write outside the branch (root thread continues)
-        second.run();
+        second.commit();
         assertEquals("2", ctx.get("base"));
     }
 }

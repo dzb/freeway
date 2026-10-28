@@ -23,7 +23,7 @@ class EventBusOrderedDeferredTest {
     @Test
     void publishOrderedDispatchesInSubmissionOrder() throws Exception {
         List<Integer> log = new ArrayList<>();
-        EventBus bus = new EventBus(Freeway.create());
+        EventBus bus = EventBus.create(Freeway.create());
         bus.subscribe(Integer.class, log::add);
 
         for (int i = 0; i < 50; i++) {
@@ -40,7 +40,7 @@ class EventBusOrderedDeferredTest {
     @Test
     void publishOrderedInsideDeferScopeKeepsOrder() throws Exception {
         List<Integer> log = new ArrayList<>();
-        EventBus bus = new EventBus(Freeway.create());
+        EventBus bus = EventBus.create(Freeway.create());
         bus.subscribe(Integer.class, log::add);
 
         Defer.within(() -> {
@@ -62,7 +62,7 @@ class EventBusOrderedDeferredTest {
         // The ordered channel carries the topic payload form too — the
         // transaction-outbox use case often routes on a topic string.
         List<Object> log = new ArrayList<>();
-        EventBus bus = new EventBus(Freeway.create());
+        EventBus bus = EventBus.create(Freeway.create());
         bus.subscribe("ordered.topic", log::add);
 
         Defer.within(() -> {
@@ -84,7 +84,7 @@ class EventBusOrderedDeferredTest {
             binder -> binder.contribute(EventSubscriber.class)
                 .add(EventSubscriber.of(PostCreatedEvent.class, e -> log.add("event")))
         );
-        EventBus bus = new EventBus(container);
+        EventBus bus = EventBus.create(container);
 
         Defer.within(() -> {
             bus.publish(new PostCreatedEvent(new Post("x")));
@@ -101,7 +101,7 @@ class EventBusOrderedDeferredTest {
             binder -> binder.contribute(EventSubscriber.class)
                 .add(EventSubscriber.of(PostCreatedEvent.class, e -> log.add("event")))
         );
-        EventBus bus = new EventBus(container);
+        EventBus bus = EventBus.create(container);
 
         assertThrows(RuntimeException.class, () -> {
             Defer.within(() -> {
@@ -123,7 +123,7 @@ class EventBusOrderedDeferredTest {
             binder -> binder.contribute(EventSubscriber.class)
                 .add(EventSubscriber.of(PostCreatedEvent.class, e -> log.add("event")))
         );
-        EventBus bus = new EventBus(container);
+        EventBus bus = EventBus.create(container);
 
         Defer.within(() -> {
             bus.publish(new PostCreatedEvent(new Post("x")));
@@ -139,7 +139,7 @@ class EventBusOrderedDeferredTest {
     void zeroSubscriberDeferredEventAfterCloseDoesNotThrow() {
         // Regression: the zero-subscriber DeadEvent publish during a post-close
         // drain hit requireOpen() and threw inside DeferScope.drain().
-        EventBus bus = new EventBus(Freeway.create());
+        EventBus bus = EventBus.create(Freeway.create());
 
         assertDoesNotThrow(() -> Defer.within(() -> {
             bus.publish(new PostCreatedEvent(new Post("x")));
@@ -154,7 +154,7 @@ class EventBusOrderedDeferredTest {
         // a post-close drain; executor() hits requireOpen() and threw, so
         // DeferScope.drain logged a spurious WARN. Must be a silent no-op, like
         // the sync path (dispatchEvent checks closed).
-        EventBus bus = new EventBus(Freeway.create());
+        EventBus bus = EventBus.create(Freeway.create());
 
         assertDoesNotThrow(() -> Defer.within(() -> {
             bus.publishAsync(new PostCreatedEvent(new Post("x")));
@@ -165,7 +165,7 @@ class EventBusOrderedDeferredTest {
 
     @Test
     void deferredAsyncTopicPublishAfterCloseIsSilentNoOp() {
-        EventBus bus = new EventBus(Freeway.create());
+        EventBus bus = EventBus.create(Freeway.create());
 
         assertDoesNotThrow(() -> Defer.within(() -> {
             bus.publishAsync("topic", "payload");
@@ -176,7 +176,7 @@ class EventBusOrderedDeferredTest {
 
     @Test
     void deferredOrderedPublishAfterCloseIsSilentNoOp() {
-        EventBus bus = new EventBus(Freeway.create());
+        EventBus bus = EventBus.create(Freeway.create());
 
         assertDoesNotThrow(() -> Defer.within(() -> {
             bus.publishOrdered(new PostCreatedEvent(new Post("x")));
@@ -195,7 +195,7 @@ class EventBusOrderedDeferredTest {
             binder -> binder.contribute(EventSubscriber.class)
                 .add(EventSubscriber.of(PostCreatedEvent.class, e -> log.add("event")))
         );
-        EventBus bus = new EventBus(container);
+        EventBus bus = EventBus.create(container);
 
         Defer.within(() -> {
             bus.publishAsync(new PostCreatedEvent(new Post("x")));
@@ -210,7 +210,7 @@ class EventBusOrderedDeferredTest {
     @Test
     void stringTopicPublishInsideDeferScopeIsDeferred() {
         List<String> log = new ArrayList<>();
-        EventBus bus = new EventBus(Freeway.create());
+        EventBus bus = EventBus.create(Freeway.create());
         bus.subscribe("topic", p -> log.add((String) p));
 
         Defer.within(() -> {
@@ -228,7 +228,7 @@ class EventBusOrderedDeferredTest {
             binder -> binder.contribute(EventSubscriber.class)
                 .add(EventSubscriber.of(PostCreatedEvent.class, e -> log.add("event")))
         );
-        EventBus bus = new EventBus(container);
+        EventBus bus = EventBus.create(container);
 
         bus.publish(new PostCreatedEvent(new Post("x")));
 
@@ -305,7 +305,7 @@ class EventBusOrderedDeferredTest {
             binder -> binder.contribute(EventSubscriber.class)
                 .add(EventSubscriber.of(DeadEvent.class, e -> log.add("dead")))
         );
-        EventBus bus = new EventBus(container);
+        EventBus bus = EventBus.create(container);
 
         Defer.within(() -> {
             // Publish an event with zero subscribers — DeadEvent should fire immediately

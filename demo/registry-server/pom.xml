@@ -10,6 +10,10 @@
     <packaging>jar</packaging>
 
     <properties>
+        <!-- Follows the core version; bump this one line with a release.
+             Build from the repository root with -Pdemos so the reactor
+             resolves it without an install step. -->
+        <freeway.version>1.5.7-SNAPSHOT</freeway.version>
         <maven.compiler.source>25</maven.compiler.source>
         <maven.compiler.target>25</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -19,22 +23,33 @@
         <dependency>
             <groupId>com.jujin8.freeway</groupId>
             <artifactId>freeway-boot</artifactId>
-            <version>1.5.6</version>
+            <version>${freeway.version}</version>
         </dependency>
         <dependency>
             <groupId>com.jujin8.freeway</groupId>
             <artifactId>freeway-http</artifactId>
-            <version>1.5.6</version>
+            <version>${freeway.version}</version>
         </dependency>
         <dependency>
             <groupId>com.jujin8.freeway</groupId>
             <artifactId>freeway-cloud</artifactId>
-            <version>1.5.6</version>
+            <version>${freeway.version}</version>
         </dependency>
     </dependencies>
 
     <build>
         <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.5.2</version>
+                <configuration>
+                    <!-- Same convention as the core build: test JVMs run
+                         inside target/ so log files never land on the module
+                         root. -->
+                    <workingDirectory>${project.build.directory}/test-work</workingDirectory>
+                </configuration>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>

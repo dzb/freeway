@@ -25,14 +25,14 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class ConfigLoaderImplTest {
+class ConfigCascadeTest {
 
     @TempDir
     Path dir;
 
     @Test
     void loadsEverySourceSeparatelyAndFoldsTheFilesBaseline() {
-        ConfigSources sources = ConfigLoaderImpl.loadLayers(
+        ConfigSources sources = ConfigCascade.loadLayers(
             Thread.currentThread().getContextClassLoader(),
             "--freeway.profile=dev",
             "--app.name=Overridden",
@@ -62,7 +62,7 @@ class ConfigLoaderImplTest {
 
     @Test
     void autoPrefixesSimpleCliKeysWithFreewayNamespace() {
-        Map<String, String> args = ConfigLoaderImpl.parseArgs(
+        Map<String, String> args = ConfigCascade.parseArgs(
             "--profile=dev",
             "--verbose",
             "--app.name=Overridden",
@@ -85,7 +85,7 @@ class ConfigLoaderImplTest {
 
     @Test
     void explicitFreewayPrefixStillWorks() {
-        Map<String, String> args = ConfigLoaderImpl.parseArgs(
+        Map<String, String> args = ConfigCascade.parseArgs(
             "--freeway.profile=dev"
         );
 
@@ -95,7 +95,7 @@ class ConfigLoaderImplTest {
 
     @Test
     void parsesNegativeNumberValues() {
-        Map<String, String> args = ConfigLoaderImpl.parseArgs(
+        Map<String, String> args = ConfigCascade.parseArgs(
             "--offset=-1",
             "--port", "-1",
             "--ratio", "-2.5"
@@ -111,7 +111,7 @@ class ConfigLoaderImplTest {
     void rejectsNullArgument() {
         IllegalArgumentException ex = assertThrows(
             IllegalArgumentException.class,
-            () -> ConfigLoaderImpl.parseArgs(new String[]{"--ok=1", null}));
+            () -> ConfigCascade.parseArgs(new String[]{"--ok=1", null}));
         assertTrue(ex.getMessage().contains("must not be null"),
             "got: " + ex.getMessage());
     }
@@ -120,7 +120,7 @@ class ConfigLoaderImplTest {
     void rejectsBareDoubleDash() {
         IllegalArgumentException ex = assertThrows(
             IllegalArgumentException.class,
-            () -> ConfigLoaderImpl.parseArgs("--"));
+            () -> ConfigCascade.parseArgs("--"));
         assertTrue(ex.getMessage().contains("--"),
             "the error must name the offending argument, got: " + ex.getMessage());
         assertTrue(ex.getMessage().contains("must not be empty"),
@@ -131,7 +131,7 @@ class ConfigLoaderImplTest {
     void rejectsDoubleDashWithEmptyKey() {
         IllegalArgumentException ex = assertThrows(
             IllegalArgumentException.class,
-            () -> ConfigLoaderImpl.parseArgs("--=x"));
+            () -> ConfigCascade.parseArgs("--=x"));
         assertTrue(ex.getMessage().contains("--=x"),
             "the error must name the offending argument, got: " + ex.getMessage());
     }
@@ -140,7 +140,7 @@ class ConfigLoaderImplTest {
     void rejectsBarePropertyStyleDashD() {
         IllegalArgumentException ex = assertThrows(
             IllegalArgumentException.class,
-            () -> ConfigLoaderImpl.parseArgs("-D"));
+            () -> ConfigCascade.parseArgs("-D"));
         assertTrue(ex.getMessage().contains("-D"),
             "the error must name the offending argument, got: " + ex.getMessage());
     }
@@ -149,7 +149,7 @@ class ConfigLoaderImplTest {
     void rejectsKeyContainingEqualsSign() {
         IllegalArgumentException ex = assertThrows(
             IllegalArgumentException.class,
-            () -> ConfigLoaderImpl.parseArgs("-D=x"));
+            () -> ConfigCascade.parseArgs("-D=x"));
         assertTrue(ex.getMessage().contains("-D=x"),
             "the error must name the offending argument, got: " + ex.getMessage());
         assertTrue(ex.getMessage().contains("must not contain '='"),
@@ -159,7 +159,7 @@ class ConfigLoaderImplTest {
     @Test
     void equalsInValueIsAllowed() {
         // '=' inside the VALUE (after the first '=') is legitimate.
-        Map<String, String> args = ConfigLoaderImpl.parseArgs(
+        Map<String, String> args = ConfigCascade.parseArgs(
             "--app.url=http://h/p?a=b&c=d");
 
         assertEquals("http://h/p?a=b&c=d", args.get("app.url"));
@@ -170,7 +170,7 @@ class ConfigLoaderImplTest {
     void misspelledFlagBecomesHarmlessUnknownKey() {
         // A typo like --profle=dev must not silently activate the wrong
         // profile; it stays an unknown (harmless) key — frozen behavior.
-        Map<String, String> args = ConfigLoaderImpl.parseArgs("--profle=dev");
+        Map<String, String> args = ConfigCascade.parseArgs("--profle=dev");
 
         assertEquals("dev", args.get("freeway.profle"));
         assertFalse(args.containsKey("freeway.profile"));
@@ -181,7 +181,7 @@ class ConfigLoaderImplTest {
     void positionalArgumentsAreWarnedAndIgnored() {
         // Positional args are not config — they must not crash the parse,
         // but they must no longer be silently swallowed without a trace.
-        Map<String, String> args = ConfigLoaderImpl.parseArgs(
+        Map<String, String> args = ConfigCascade.parseArgs(
             "positional", "--ok=1", "another");
 
         assertEquals("1", args.get("freeway.ok"));
@@ -190,7 +190,7 @@ class ConfigLoaderImplTest {
 
     @Test
     void followingFlagTurnsKeyIntoBoolean() {
-        Map<String, String> args = ConfigLoaderImpl.parseArgs(
+        Map<String, String> args = ConfigCascade.parseArgs(
             "--port", "--verbose"
         );
 
@@ -202,7 +202,7 @@ class ConfigLoaderImplTest {
     @Test
     void rejectsOversizedPropertiesResource() {
         IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
-            ConfigLoaderImpl.loadLayers(new OversizedPropertiesLoader()));
+            ConfigCascade.loadLayers(new OversizedPropertiesLoader()));
 
         assertTrue(ex.getMessage().contains("Unable to load application.properties"));
         assertTrue(ex.getCause().getMessage().contains("exceeds"));
@@ -211,7 +211,7 @@ class ConfigLoaderImplTest {
     @Test
     void rejectsOversizedJsonResource() {
         IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
-            ConfigLoaderImpl.loadLayers(new OversizedJsonLoader()));
+            ConfigCascade.loadLayers(new OversizedJsonLoader()));
 
         assertTrue(ex.getMessage().contains("Unable to load application.json"));
         // The read cap is the direct cause — no intermediate wrapper.
@@ -222,7 +222,7 @@ class ConfigLoaderImplTest {
     @Test
     void emptyJsonResourceIsTreatedAsNoConfig() {
         ConfigSources sources =
-            ConfigLoaderImpl.loadLayers(new MultiContentLoader("application.json", ""));
+            ConfigCascade.loadLayers(new MultiContentLoader("application.json", ""));
 
         assertEquals("Freeway Boot", sources.files().get("app.name"),
             "the properties layer must still load normally");
@@ -233,7 +233,7 @@ class ConfigLoaderImplTest {
     @Test
     void blankJsonResourceIsTreatedAsNoConfig() {
         ConfigSources sources =
-            ConfigLoaderImpl.loadLayers(new MultiContentLoader(
+            ConfigCascade.loadLayers(new MultiContentLoader(
                 "application.json", "  \n\t \r\n  "));
 
         assertEquals("Freeway Boot", merged(sources).get("app.name"),
@@ -243,7 +243,7 @@ class ConfigLoaderImplTest {
     @Test
     void malformedJsonResourceStillFails() {
         IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
-            ConfigLoaderImpl.loadLayers(new MultiContentLoader(
+            ConfigCascade.loadLayers(new MultiContentLoader(
                 "application.json", "{\"bad\": ")));
 
         assertTrue(ex.getMessage().contains("Unable to load application.json"),
@@ -252,7 +252,7 @@ class ConfigLoaderImplTest {
 
     @Test
     void propertyStyleAndShortFlagsFollowPrefixingRules() {
-        Map<String, String> args = ConfigLoaderImpl.parseArgs(
+        Map<String, String> args = ConfigCascade.parseArgs(
             "-Dverbose",
             "-p", "dev",
             "-Dserver.port=9090"
@@ -266,7 +266,7 @@ class ConfigLoaderImplTest {
 
     @Test
     void nonNumericNegativeArgumentIsNotConsumedAsValue() {
-        Map<String, String> args = ConfigLoaderImpl.parseArgs(
+        Map<String, String> args = ConfigCascade.parseArgs(
             "--port", "-1x"
         );
 
@@ -278,7 +278,7 @@ class ConfigLoaderImplTest {
     @Test
     void rejectsProfileNamesThatCanAddressOtherResources() {
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
-            ConfigLoaderImpl.loadLayers(ConfigLoaderImplTest.class.getClassLoader(), "--freeway.profile=../secret"));
+            ConfigCascade.loadLayers(ConfigCascadeTest.class.getClassLoader(), "--freeway.profile=../secret"));
 
         assertTrue(ex.getMessage().contains("Invalid freeway.profile value"));
     }
@@ -287,14 +287,14 @@ class ConfigLoaderImplTest {
     void envVarNamesConvertToFreewayConfigKeys() {
         // Default FREEWAY_ prefix maps into the freeway.* namespace.
         assertEquals("freeway.server.port",
-            ConfigLoaderImpl.convertEnvKey("FREEWAY_SERVER_PORT", "FREEWAY_", true));
+            ConfigCascade.convertEnvKey("FREEWAY_SERVER_PORT", "FREEWAY_", true));
         assertEquals("freeway.log.level",
-            ConfigLoaderImpl.convertEnvKey("FREEWAY_LOG_LEVEL", "FREEWAY_", true));
+            ConfigCascade.convertEnvKey("FREEWAY_LOG_LEVEL", "FREEWAY_", true));
         assertEquals("freeway.db.url",
-            ConfigLoaderImpl.convertEnvKey("FREEWAY_DB_URL", "FREEWAY_", true));
+            ConfigCascade.convertEnvKey("FREEWAY_DB_URL", "FREEWAY_", true));
         // Underscores inside a key segment become dots.
         assertEquals("freeway.log.file.max.size",
-            ConfigLoaderImpl.convertEnvKey("FREEWAY_LOG_FILE_MAX_SIZE", "FREEWAY_", true));
+            ConfigCascade.convertEnvKey("FREEWAY_LOG_FILE_MAX_SIZE", "FREEWAY_", true));
     }
 
     @Test
@@ -305,16 +305,16 @@ class ConfigLoaderImplTest {
         // freeway.http.port) and its own keys directly (APP_SERVER_PORT →
         // server.port).
         assertEquals("server.port",
-            ConfigLoaderImpl.convertEnvKey("APP_SERVER_PORT", "APP_", false));
+            ConfigCascade.convertEnvKey("APP_SERVER_PORT", "APP_", false));
         assertEquals("name",
-            ConfigLoaderImpl.convertEnvKey("APP_NAME", "APP_", false),
+            ConfigCascade.convertEnvKey("APP_NAME", "APP_", false),
             "passthrough strips only the prefix — no namespace inference");
         assertEquals("freeway.http.port",
-            ConfigLoaderImpl.convertEnvKey("APP_FREEWAY_HTTP_PORT", "APP_", false),
+            ConfigCascade.convertEnvKey("APP_FREEWAY_HTTP_PORT", "APP_", false),
             "freeway.* keys remain reachable under a custom prefix");
         // The freeway.* namespace is bound to the FREEWAY_ prefix itself.
         assertEquals("freeway.server.port",
-            ConfigLoaderImpl.convertEnvKey("APP_SERVER_PORT", "APP_", true),
+            ConfigCascade.convertEnvKey("APP_SERVER_PORT", "APP_", true),
             "namespace choice is explicit, not inferred from the prefix");
     }
 
@@ -325,15 +325,15 @@ class ConfigLoaderImplTest {
         // carried through verbatim. Folding '-' to '.' would merge two
         // distinct keys ('key-store-password' vs 'key.store.password').
         assertEquals("freeway.http.ssl.key-store-password",
-            ConfigLoaderImpl.convertEnvKey(
+            ConfigCascade.convertEnvKey(
                 "FREEWAY_HTTP_SSL_KEY-STORE-PASSWORD", "FREEWAY_", true));
         assertEquals("freeway.log.file.max-size",
-            ConfigLoaderImpl.convertEnvKey("FREEWAY_LOG_FILE_MAX-SIZE", "FREEWAY_", true),
+            ConfigCascade.convertEnvKey("FREEWAY_LOG_FILE_MAX-SIZE", "FREEWAY_", true),
             "the dashed key is reachable only through its exact env spelling");
         // The underscore spelling can therefore only produce dot segments: it
         // addresses a DIFFERENT key, it does not alias the hyphenated one.
         assertEquals("freeway.http.ssl.key.store.password",
-            ConfigLoaderImpl.convertEnvKey(
+            ConfigCascade.convertEnvKey(
                 "FREEWAY_HTTP_SSL_KEY_STORE_PASSWORD", "FREEWAY_", true));
     }
 
@@ -344,7 +344,7 @@ class ConfigLoaderImplTest {
         // and ignores FREEWAY_*.
         System.setProperty("freeway.env.prefix", "APP_");
         try {
-            Map<String, String> mapped = ConfigLoaderImpl.loadEnvironment(
+            Map<String, String> mapped = ConfigCascade.loadEnvironment(
                 Map.of("APP_X", "1", "FREEWAY_Y", "2", "OTHER", "3"));
             assertEquals(Map.of("x", "1"), mapped,
                 "with -Dfreeway.env.prefix=APP_ only APP_* vars map, in passthrough namespace");
@@ -358,7 +358,7 @@ class ConfigLoaderImplTest {
         // No -Dfreeway.env.prefix: the mapping uses FREEWAY_ regardless of
         // anything else — APP_* vars are ignored, FREEWAY_* map into the
         // freeway.* namespace.
-        Map<String, String> mapped = ConfigLoaderImpl.loadEnvironment(
+        Map<String, String> mapped = ConfigCascade.loadEnvironment(
             Map.of("APP_X", "1", "FREEWAY_Y", "2"));
         assertEquals(Map.of("freeway.y", "2"), mapped);
     }
@@ -371,7 +371,7 @@ class ConfigLoaderImplTest {
         ClassLoader loader = new MultiContentLoader(
             "application.properties", "freeway.env.prefix=APP_\n");
         ConfigSources sources =
-            ConfigLoaderImpl.loadLayers(loader);
+            ConfigCascade.loadLayers(loader);
 
         assertEquals("APP_", merged(sources).get("freeway.env.prefix"),
             "the file value is a normal config key");
@@ -383,7 +383,7 @@ class ConfigLoaderImplTest {
 
     @Test
     void multipleProfilesParseInOrder() {
-        ConfigSources sources = ConfigLoaderImpl.loadLayers(
+        ConfigSources sources = ConfigCascade.loadLayers(
             Thread.currentThread().getContextClassLoader(),
             "--freeway.profile=dev,prod"
         );
@@ -412,7 +412,7 @@ class ConfigLoaderImplTest {
         // Activation via the base properties layer (no CLI override): without
         // the fix the profile layer's "prod" outranks base "dev" in merged().
         ConfigSources sources =
-            ConfigLoaderImpl.loadLayers(loader);
+            ConfigCascade.loadLayers(loader);
         assertEquals(List.of("dev"), sources.profiles());
         assertEquals("dev", merged(sources).get("freeway.profile"),
             "merged() must report the base-layer activation value, not the profile layer's");
@@ -424,7 +424,7 @@ class ConfigLoaderImplTest {
 
         // Activation via CLI --profile=dev: profiles() and the resolved
         // freeway.profile value must agree.
-        AppConfig config = ConfigLoaderImpl.load(loader, "--profile=dev");
+        AppConfig config = ConfigCascade.load(loader, "--profile=dev");
         assertEquals(List.of("dev"), config.profiles());
         assertEquals("dev", value(config, "freeway.profile"),
             "the resolved freeway.profile must agree with config().profiles()");
@@ -432,7 +432,7 @@ class ConfigLoaderImplTest {
 
     @Test
     void jsonOutranksPropertiesInTheClasspathBaseline() {
-        ConfigSources sources = ConfigLoaderImpl.loadLayers(new MultiContentLoader(
+        ConfigSources sources = ConfigCascade.loadLayers(new MultiContentLoader(
             "application.properties", "app.name=from-properties\n",
             "application.json", "{\"app.name\": \"from-json\"}"));
 
@@ -447,7 +447,7 @@ class ConfigLoaderImplTest {
         // the profile order: application-dev.json beats
         // application-prod.properties. Pinned because the rule is otherwise
         // invisible (and was undocumented).
-        ConfigSources sources = ConfigLoaderImpl.loadLayers(new MultiContentLoader(
+        ConfigSources sources = ConfigCascade.loadLayers(new MultiContentLoader(
             "application.properties", "freeway.profile=dev,prod\n",
             "application-dev.json", "{\"app.name\": \"from-dev-json\"}",
             "application-prod.properties", "app.name=from-prod-properties\n"));
@@ -467,7 +467,7 @@ class ConfigLoaderImplTest {
             " extra.properties , second.properties ");
         try {
             List<AppConfigDefault.OverrideFile> overrides =
-                ConfigLoaderImpl.overrideFiles(List.of("dev", "prod")).files();
+                ConfigCascade.overrideFiles(List.of("dev", "prod")).files();
             List<String> names = overrides.stream()
                 .map(file -> file.path().getFileName().toString())
                 .toList();
@@ -503,8 +503,8 @@ class ConfigLoaderImplTest {
         AppConfig[] loaded = new AppConfig[1];
         List<String> warnings;
         try {
-            warnings = captureWarnings(() -> loaded[0] = ConfigLoaderImpl.load(
-                ConfigLoaderImplTest.class.getClassLoader(),
+            warnings = captureWarnings(() -> loaded[0] = ConfigCascade.load(
+                ConfigCascadeTest.class.getClassLoader(),
                 "--freeway.config.file=" + ignored));
         } finally {
             System.clearProperty("freeway.config.file");
@@ -525,6 +525,54 @@ class ConfigLoaderImplTest {
     }
 
     @Test
+    void aLogKeyOnTheCommandLineIsNamedAsHavingNoEffect() {
+        // Logging configures itself before the container exists and never reads
+        // the CLI tier: without the notice the key resolves in the symbol chain
+        // while every logger stays on its default.
+        List<String> warnings = captureWarnings(() ->
+            ConfigCascade.load(ConfigCascadeTest.class.getClassLoader(),
+                "--freeway.log.level=DEBUG").close());
+
+        assertTrue(
+            warnings.stream().anyMatch(warning ->
+                warning.contains("freeway.log.level")
+                    && warning.contains("DEBUG")
+                    && warning.contains("command-line arguments")
+                    && warning.contains("no effect")),
+            "a log key on the command line must be named as inert, got: " + warnings);
+    }
+
+    @Test
+    void aClassLoadOnlyLogKeyInAClasspathFileIsNamed() {
+        // color/mdc/mdc.priority/caller-info are read before any file is
+        // parsed; even the classpath config files cannot supply them.
+        ClassLoader loader = new MultiContentLoader(
+            "application.properties", "freeway.log.color=false\n");
+        List<String> warnings = captureWarnings(() ->
+            ConfigCascade.load(loader).close());
+
+        assertTrue(
+            warnings.stream().anyMatch(warning ->
+                warning.contains("freeway.log.color")
+                    && warning.contains("class-load")),
+            "a class-load-only key in a config file must be named, got: " + warnings);
+    }
+
+    @Test
+    void aLogKeyLoggingCanReadFromTheClasspathIsNotNamed() {
+        // The same tier that is dead for the CLI is the one JULEnhancer reads
+        // through AppLogSource — so a plain level key there must stay silent.
+        ClassLoader loader = new MultiContentLoader(
+            "application.properties", "freeway.log.level=DEBUG\n");
+        List<String> warnings = captureWarnings(() ->
+            ConfigCascade.load(loader).close());
+
+        assertFalse(
+            warnings.stream().anyMatch(warning -> warning.contains("freeway.log.level")),
+            "the classpath baseline is a channel logging reads, got: " + warnings);
+    }
+
+    @Test
     void bootstrapOnlyKeyInAnExtraFileIsNamedInAWarning() throws IOException {
         // The freeway.config.file extras are the other file channel that never
         // participates in bootstrap resolution — the file is named in the
@@ -535,7 +583,7 @@ class ConfigLoaderImplTest {
         List<String> warnings;
         try {
             warnings = captureWarnings(() ->
-                ConfigLoaderImpl.load(ConfigLoaderImplTest.class.getClassLoader())
+                ConfigCascade.load(ConfigCascadeTest.class.getClassLoader())
                     .close());
         } finally {
             System.clearProperty("freeway.config.file");
@@ -576,7 +624,11 @@ class ConfigLoaderImplTest {
      * JUL-backed, so the messages arrive as JUL records.
      */
     private static List<String> captureWarnings(Runnable action) {
-        Logger logger = Logger.getLogger(ConfigLoaderImpl.class.getName());
+        // Two owners speak here: the loader's own bootstrap-key notices and
+        // LogKeyNotices for log keys declared where logging cannot read them.
+        List<Logger> loggers = List.of(
+            Logger.getLogger(ConfigCascade.class.getName()),
+            Logger.getLogger(LogKeyNotices.class.getName()));
         List<String> messages = new ArrayList<>();
         Handler handler = new Handler() {
             @Override
@@ -595,14 +647,19 @@ class ConfigLoaderImplTest {
             public void close() {
             }
         };
-        boolean parentHandlers = logger.getUseParentHandlers();
-        logger.setUseParentHandlers(false);
-        logger.addHandler(handler);
+        List<Boolean> parentHandlers = new ArrayList<>(loggers.size());
+        for (Logger logger : loggers) {
+            parentHandlers.add(logger.getUseParentHandlers());
+            logger.setUseParentHandlers(false);
+            logger.addHandler(handler);
+        }
         try {
             action.run();
         } finally {
-            logger.removeHandler(handler);
-            logger.setUseParentHandlers(parentHandlers);
+            for (int i = 0; i < loggers.size(); i++) {
+                loggers.get(i).removeHandler(handler);
+                loggers.get(i).setUseParentHandlers(parentHandlers.get(i));
+            }
         }
         return messages;
     }

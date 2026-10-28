@@ -38,7 +38,10 @@ public final class Http2ResponseWriter implements HttpResponseWriter {
         for (var entry : ctx.responseHeaderEntries()) {
             String lower = entry.getKey().toLowerCase(Locale.ROOT);
             if (FORBIDDEN_RESPONSE_HEADERS.contains(lower)
-                    || connectionTokens.contains(lower)) {
+                    || connectionTokens.contains(lower)
+                    // Same rule as HTTP/1.1 (ResponseFraming): a bodyless
+                    // response must not carry Content-Length (RFC 9110 §8.6).
+                    || ResponseFraming.suppressesHeader(lower, ctx.allowsResponseBody())) {
                 continue;
             }
             stream.responseHeaders

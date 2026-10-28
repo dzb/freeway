@@ -448,6 +448,13 @@ public class GraphSpec {
      * subgraphs. Idempotent — subsequent calls are no-ops.</p>
      */
     GraphSpec normalize() {
+        // A settled graph is already normalized: every node/link mutator calls
+        // touch(), which clears bfsOrder, so the cache is what makes
+        // "subsequent calls are no-ops" true — and what makes the
+        // invalidate/touch pairs load-bearing rather than dead weight.
+        if (bfsOrder != null) {
+            return this;
+        }
         // 0. Explicit entry must exist — fail with the dedicated message
         //    before entry-candidate resolution.
         validateEntry();
@@ -533,6 +540,21 @@ public class GraphSpec {
         for (LinkSpec link : links) {
             validateCondition(link.when, link.whenHandler,
                 "Link '" + link.from + "' -> '" + link.to + "' when");
+            // A PARALLEL fork runs every branch and never evaluates a link
+            // condition, so a `when` on a fork's edge would compile and then be
+            // ignored at run time — a guard that silently does nothing. The
+            // condition belongs on a downstream EXCLUSIVE gateway (or must be
+            // dropped); refuse it here, where the author can still see why.
+            if (nodes.get(link.from).type == NodeType.PARALLEL
+                    && ((link.when != null && !link.when.isEmpty())
+                        || link.whenHandler != null)) {
+                throw new IllegalStateException(
+                    "PARALLEL node '" + link.from + "' in graph '" + id
+                        + "' has a conditional outgoing link to '" + link.to
+                        + "' — a fork runs every branch and never evaluates 'when', so "
+                        + "the condition would be ignored. Move the decision to a "
+                        + "downstream EXCLUSIVE node, or drop the condition.");
+            }
         }
 
         // 2. Validate entry — v3 requires exactly one entry point.
@@ -605,7 +627,10 @@ public class GraphSpec {
         Map<String, Integer> state = new LinkedHashMap<>();
         Deque<String> path = new ArrayDeque<>();
         Deque<java.util.Iterator<LinkSpec>> cursors = new ArrayDeque<>();
-        for (String root : nodes.keySet()) {
+        // Roots in id order, not declaration order: the message reports which
+        // cycle was found and where it starts, and the same logical graph must
+        // report the same one however its nodes happened to be declared.
+        for (String root : nodes.keySet().stream().sorted().toList()) {
             if (state.getOrDefault(root, 0) == 2) {
                 continue;
             }

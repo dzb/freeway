@@ -84,6 +84,15 @@ class HttpServerConfigTest {
     }
 
     @Test
+    void theHeaderLimitIsOneConfiguredNumber() {
+        assertEquals(16 * 1024, HttpServerConfig.DEFAULT_MAX_HEADER_BYTES);
+        assertEquals(HttpServerConfig.DEFAULT_MAX_HEADER_BYTES,
+            HttpServerConfig.defaults().maxHeaderBytes());
+        assertThrows(IllegalArgumentException.class,
+            () -> HttpServerConfig.defaults().withMaxHeaderBytes(0));
+    }
+
+    @Test
     void canonicalConstructorAndDefaultsAgreeOnEveryComponent() {
         // The canonical constructor stays the one that names everything; the
         // factory is just the documented default of each component.
@@ -92,7 +101,8 @@ class HttpServerConfigTest {
             HttpServerConfig.DEFAULT_BACKLOG, HttpServerConfig.DEFAULT_SHUTDOWN_GRACE,
             HttpServerConfig.DEFAULT_MAX_BODY_SIZE, HttpServerConfig.DEFAULT_READ_TIMEOUT,
             HttpServerConfig.DEFAULT_MAX_CONNECTIONS, HttpServerConfig.DEFAULT_WRITE_TIMEOUT,
-            HttpServerConfig.CompressionConfig.DEFAULT, 0, 0);
+            HttpServerConfig.CompressionConfig.DEFAULT, 0, 0,
+            HttpServerConfig.DEFAULT_MAX_HEADER_BYTES);
 
         assertEquals(canonical, HttpServerConfig.defaults());
         assertSame(HttpServerConfig.CompressionConfig.DEFAULT,

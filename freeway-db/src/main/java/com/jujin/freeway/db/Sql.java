@@ -3,6 +3,7 @@ package com.jujin.freeway.db;
 import com.jujin.freeway.db.dialect.Dialect;
 import com.jujin.freeway.db.util.SqlTextParser;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Objects;
@@ -45,7 +46,80 @@ public final class Sql {
 
     private final String head;
     private final List<Condition> conditions;
-    private final String tail;
+    /**
+     * The clauses that follow the statement body, one field each and rendered
+     * in SQL order.
+     *
+     * <p>They used to be one {@code tail} string appended in call order. That
+     * made three separate things go wrong: capability checks read the text
+     * ({@code tail.contains("RETURNING")}), a call made out of order emitted
+     * invalid SQL, and "already declared" was unknowable — two LIMITs rendered
+     * two LIMITs. A field is the fact; the renderer owns the order.</p>
+     */
+    private record Clauses(
+        String groupBy,
+        String having,
+        String orderBy,
+        Integer limit,
+        Integer offset,
+        String conflictTarget,
+        String conflictAction,
+        String returning
+    ) {
+        static final Clauses NONE =
+            new Clauses(null, null, null, null, null, null, null, null);
+
+        Clauses withGroupBy(String value) {
+            return new Clauses(value, having, orderBy, limit, offset,
+                conflictTarget, conflictAction, returning);
+        }
+
+        Clauses withHaving(String value) {
+            return new Clauses(groupBy, value, orderBy, limit, offset,
+                conflictTarget, conflictAction, returning);
+        }
+
+        Clauses withOrderBy(String value) {
+            return new Clauses(groupBy, having, value, limit, offset,
+                conflictTarget, conflictAction, returning);
+        }
+
+        Clauses withLimit(Integer value) {
+            return new Clauses(groupBy, having, orderBy, value, offset,
+                conflictTarget, conflictAction, returning);
+        }
+
+        Clauses withOffset(Integer value) {
+            return new Clauses(groupBy, having, orderBy, limit, value,
+                conflictTarget, conflictAction, returning);
+        }
+
+        Clauses withConflictTarget(String value) {
+            return new Clauses(groupBy, having, orderBy, limit, offset,
+                value, conflictAction, returning);
+        }
+
+        Clauses withConflictAction(String value) {
+            return new Clauses(groupBy, having, orderBy, limit, offset,
+                conflictTarget, value, returning);
+        }
+
+        Clauses withReturning(String value) {
+            return new Clauses(groupBy, having, orderBy, limit, offset,
+                conflictTarget, conflictAction, value);
+        }
+
+        boolean isEmpty() {
+            return this.equals(NONE);
+        }
+    }
+
+    private final Clauses clauses;
+    /** HAVING's bind values. Kept apart from {@link #args} (WHERE's) so the
+     *  statement's parameter order is the SQL order, not the call order: a
+     *  HAVING declared before WHERE must still bind after it. */
+    private final Object[] havingArgs;
+
     private final Object[] args;
     /** The compound keyword in force ({@code UNION} / {@code UNION ALL}), or null. */
     private final String compoundQuery;
@@ -69,53 +143,65 @@ public final class Sql {
     private final String dmlTable;
     private final List<String> dmlTargets;
     private final List<Object> dmlValues;
+    /**
+     * Bind values of JOIN {@code ON} fragments, in head order. They live apart
+     * from {@code args} (the WHERE conditions) because the ON text is always
+     * before the WHERE text, and {@link #args()} is defined as "ordered by
+     * {@code ?} position" — one list cannot answer both when the calls
+     * interleave.
+     */
+    private final List<Object> headArgs;
 
     private Sql(
         String head,
         List<Condition> conditions,
-        String tail,
+        Clauses clauses,
         Object[] args,
+        Object[] havingArgs,
         String compoundQuery,
         List<Cte> ctes,
         String dmlTable,
         List<String> dmlTargets,
-        List<Object> dmlValues
+        List<Object> dmlValues,
+        List<Object> headArgs
     ) {
         this.head = head;
         this.conditions = conditions;
-        this.tail = tail;
+        this.clauses = clauses;
+        this.havingArgs = havingArgs;
         this.args = args;
         this.compoundQuery = compoundQuery;
         this.ctes = ctes;
         this.dmlTable = dmlTable;
         this.dmlTargets = dmlTargets;
         this.dmlValues = dmlValues;
+        this.headArgs = List.copyOf(headArgs);
     }
 
     // ====================== static factories ======================
 
     /** SELECT:{@code Sql.select("id, name").from("users").where(...)} */
     public static Sql select(String columns) {
-        return new Sql("SELECT " + columns, List.of(), "", new Object[0],
-            null, List.of(), null, List.of(), List.of());
+        return new Sql("SELECT " + columns, List.of(), Clauses.NONE, new Object[0], new Object[0],
+            null, List.of(), null, List.of(), List.of(), List.of());
     }
 
     /** UPDATE:{@code Sql.update("users").setExpression("name = ?", v).where("id = ?", id)} */
     public static Sql update(String tableName) {
-        return new Sql("UPDATE " + tableName, List.of(), "", new Object[0],
-            null, List.of(), tableName, List.of(), List.of());
+        return new Sql("UPDATE " + tableName, List.of(), Clauses.NONE, new Object[0], new Object[0],
+            null, List.of(), tableName, List.of(), List.of(), List.of());
     }
 
     /** INSERT:{@code Sql.insert("users").setColumn("name", v).setColumn("status", v)} */
     public static Sql insert(String tableName) {
-        return new Sql(null, List.of(), "", new Object[0],
-            null, List.of(), tableName, List.of(), List.of());
+        return new Sql(null, List.of(), Clauses.NONE, new Object[0], new Object[0],
+            null, List.of(), tableName, List.of(), List.of(), List.of());
     }
 
     /** DELETE:{@code Sql.delete("users").where("id = ?", id)} */
     public static Sql delete(String tableName) {
-        return new Sql("DELETE FROM " + tableName, List.of(), "", new Object[0],
-            null, List.of(), null, List.of(), List.of());
+        return new Sql("DELETE FROM " + tableName, List.of(), Clauses.NONE, new Object[0], new Object[0],
+            null, List.of(), null, List.of(), List.of(), List.of());
     }
 
     public Sql with(String name, Sql query) {
@@ -131,9 +217,9 @@ public final class Sql {
         }
         List<Cte> newCtes = new ArrayList<>(ctes);
         newCtes.add(new Cte(trimmed, columns, query));
-        return new Sql(head, conditions, tail, args,
+        return new Sql(head, conditions, clauses, args, havingArgs,
             compoundQuery, newCtes,
-            dmlTable, dmlTargets, dmlValues);
+            dmlTable, dmlTargets, dmlValues, headArgs);
     }
 
     // ====================== FROM / JOIN ======================
@@ -163,9 +249,23 @@ public final class Sql {
     }
 
     public Sql on(String expr) {
+        return on(expr, new Object[0]);
+    }
+
+    /**
+     * {@code JOIN … ON expr} with bind values, exactly as {@link #where} binds
+     * them: the placeholders are numbered in {@link #args()} at their textual
+     * position — ON text precedes WHERE text, so a value passed here is bound
+     * before any WHERE value regardless of the order the two calls were made.
+     */
+    public Sql on(String expr, Object... values) {
         requireSimpleSelect("ON");
         requirePendingJoin("ON");
-        return withHead(head + " ON " + expr);
+        NormalizedFragment parsed = normalizeArgs(expr, values);
+        List<Object> merged = new ArrayList<>(headArgs.size() + parsed.args().length);
+        merged.addAll(headArgs);
+        Collections.addAll(merged, parsed.args());
+        return withHead(head + " ON " + parsed.expr(), merged);
     }
 
     // ====================== WHERE conditions ======================
@@ -220,11 +320,11 @@ public final class Sql {
         newConds.add(new Condition(connector, parsed.expr()));
 
         return new Sql(
-            head, newConds, tail,
-            concat(args, parsed.args()),
+            head, newConds, clauses,
+            concat(args, parsed.args()), havingArgs,
             compoundQuery,
             ctes,
-            dmlTable, dmlTargets, dmlValues);
+            dmlTable, dmlTargets, dmlValues, headArgs);
     }
 
     private Sql addGroupedCondition(String connector, Consumer<Group> builder) {
@@ -253,29 +353,31 @@ public final class Sql {
     public Sql orderBy(String clause) {
         requireSelectable("ORDER BY");
         requireNoPendingJoin("ORDER BY");
-        requireBeforeLimit("ORDER BY");
-        return withTail(" ORDER BY " + clause);
+        Objects.requireNonNull(clause, "clause");
+        if (clauses.orderBy() != null) {
+            throw new IllegalStateException("ORDER BY is already declared");
+        }
+        return withClauses(clauses.withOrderBy(clause));
     }
 
     public Sql groupBy(String columns) {
         requireSimpleSelect("GROUP BY");
         requireNoPendingJoin("GROUP BY");
-        requireBeforeLimit("GROUP BY");
-        return withTail(" GROUP BY " + columns);
+        Objects.requireNonNull(columns, "columns");
+        if (clauses.groupBy() != null) {
+            throw new IllegalStateException("GROUP BY is already declared");
+        }
+        return withClauses(clauses.withGroupBy(columns));
     }
 
     public Sql having(String expr, Object... values) {
         requireSimpleSelect("HAVING");
         requireNoPendingJoin("HAVING");
-        requireBeforeLimit("HAVING");
+        requireNoHaving();
         NormalizedFragment parsed = normalizeArgs(expr, values);
 
-        String t = tail.isEmpty() ? " HAVING " : tail + " HAVING ";
-        return new Sql(head, conditions, t + parsed.expr(),
-            concat(args, parsed.args()),
-            compoundQuery,
-            ctes,
-            dmlTable, dmlTargets, dmlValues);
+        return withClausesAndArgs(clauses.withHaving(parsed.expr()),
+            args, concat(havingArgs, parsed.args()));
     }
 
     public Sql havingGroup(Consumer<Group> builder) {
@@ -288,12 +390,9 @@ public final class Sql {
             throw new IllegalStateException("Group must contain at least one condition");
         }
 
-        String t = tail.isEmpty() ? " HAVING " : tail + " HAVING ";
-        return new Sql(head, conditions, t + group.sql(),
-            concat(args, group.args()),
-            compoundQuery,
-            ctes,
-            dmlTable, dmlTargets, dmlValues);
+        requireNoHaving();
+        return withClausesAndArgs(clauses.withHaving(group.sql()),
+            args, concat(havingArgs, group.args()));
     }
 
     // ====================== LIMIT / OFFSET ======================
@@ -302,22 +401,25 @@ public final class Sql {
         requireSelectable("LIMIT");
         requireNoPendingJoin("LIMIT");
         if (n < 0) throw new IllegalArgumentException("LIMIT must be >= 0, got " + n);
-        if (tail.contains(" OFFSET ")) {
-            throw new IllegalStateException("LIMIT must be called before OFFSET");
+        if (clauses.limit() != null) {
+            throw new IllegalStateException("LIMIT is already declared");
         }
-        return withTail(" LIMIT " + n);
+        return withClauses(clauses.withLimit(n));
     }
 
     public Sql offset(int n) {
         requireSelectable("OFFSET");
         requireNoPendingJoin("OFFSET");
         if (n < 0) throw new IllegalArgumentException("OFFSET must be >= 0, got " + n);
-        if (!tail.contains(" LIMIT ")) {
+        if (clauses.limit() == null) {
             throw new IllegalStateException(
-                "OFFSET requires a preceding LIMIT — bare OFFSET is invalid SQL on MySQL and SQLite"
+                "OFFSET requires a LIMIT — bare OFFSET is invalid SQL on MySQL and SQLite"
             );
         }
-        return withTail(" OFFSET " + n);
+        if (clauses.offset() != null) {
+            throw new IllegalStateException("OFFSET is already declared");
+        }
+        return withClauses(clauses.withOffset(n));
     }
 
     public Sql union(Sql other) {
@@ -345,27 +447,68 @@ public final class Sql {
             throw new IllegalStateException("RETURNING is only supported for INSERT/UPDATE/DELETE");
         }
         requireNoPendingJoin("RETURNING");
-        return withTail(" RETURNING " + columns);
+        if (clauses.returning() != null) {
+            throw new IllegalStateException("RETURNING is already declared");
+        }
+        return withClauses(clauses.withReturning(columns));
     }
 
     /** INSERT ... ON CONFLICT (...)。 */
     public Sql onConflict(String targetColumns) {
         requireInsert("ON CONFLICT");
         Objects.requireNonNull(targetColumns, "targetColumns");
-        return withTail(" ON CONFLICT (" + targetColumns + ")");
+        if (clauses.conflictTarget() != null || clauses.conflictAction() != null) {
+            throw new IllegalStateException(
+                "ON CONFLICT is already declared — an INSERT has one conflict clause");
+        }
+        return withClauses(clauses.withConflictTarget(targetColumns));
     }
 
-    /** INSERT ... DO NOTHING。 */
+    /**
+     * INSERT ... ON CONFLICT (…) DO NOTHING.
+     *
+     * <p>The action needs its {@code ON CONFLICT} target first: emitted alone it
+     * reads {@code INSERT … VALUES (…) DO NOTHING} — syntactically invalid, and
+     * rejected by the database far from the call that made it. The builder says
+     * so at the call instead.</p>
+     */
     public Sql doNothing() {
         requireInsert("DO NOTHING");
-        return withTail(" DO NOTHING");
+        requireConflictTarget("DO NOTHING");
+        requireNoConflictAction("DO NOTHING");
+        return withClauses(clauses.withConflictAction("DO NOTHING"));
     }
 
-    /** INSERT ... DO UPDATE SET ...。 */
+    /** INSERT ... ON CONFLICT (…) DO UPDATE SET ...。 */
     public Sql doUpdateSet(String assignments) {
         requireInsert("DO UPDATE SET");
+        requireConflictTarget("DO UPDATE SET");
+        requireNoConflictAction("DO UPDATE SET");
         Objects.requireNonNull(assignments, "assignments");
-        return withTail(" DO UPDATE SET " + assignments);
+        return withClauses(clauses.withConflictAction("DO UPDATE SET " + assignments));
+    }
+
+    /** The action needs the clause it acts on: an action without a target is invalid SQL. */
+    private void requireConflictTarget(String action) {
+        if (clauses.conflictTarget() == null) {
+            throw new IllegalStateException(
+                action + " needs a conflict target — call onConflict(\"columns\") first; "
+                    + "without it the statement has no ON CONFLICT clause to act on");
+        }
+    }
+
+    /** One action per conflict clause: DO NOTHING and DO UPDATE SET are alternatives. */
+    private void requireNoConflictAction(String action) {
+        if (clauses.conflictAction() != null) {
+            throw new IllegalStateException(
+                action + " is already declared — DO NOTHING and DO UPDATE SET are alternatives");
+        }
+    }
+
+    private void requireNoHaving() {
+        if (clauses.having() != null) {
+            throw new IllegalStateException("HAVING is already declared");
+        }
     }
 
     // ====================== SET (UPDATE / INSERT) ======================
@@ -426,8 +569,8 @@ public final class Sql {
         } else {
             newValues.add(value);
         }
-        return new Sql(head, conditions, tail, args,
-            compoundQuery, ctes, dmlTable, newTargets, newValues);
+        return new Sql(head, conditions, clauses, args, havingArgs,
+            compoundQuery, ctes, dmlTable, newTargets, newValues, headArgs);
     }
 
     /**
@@ -610,7 +753,9 @@ public final class Sql {
      * ({@code Sql.update("users").setExpression("name = ?", name)}).
      *
      * <p>UPDATE-only; placeholders are normalized like everywhere else
-     * ({@code ?}, {@code :name} and {@code $1} all become {@code ?}).</p>
+     * ({@code ?} stays, {@code :name} becomes {@code ?}; a PostgreSQL-style
+     * {@code $1} is left verbatim — it is positional syntax of the database, not
+     * one of this builder's parameters).</p>
      *
      * <p>A fragment is raw SQL you have written, so you own the grouping: a
      * {@link Sql} value must arrive through parentheses —
@@ -636,8 +781,8 @@ public final class Sql {
         List<Object> newValues = new ArrayList<>(dmlValues);
         appendArgs(newValues, parsed.args());
 
-        return new Sql(head, conditions, tail, args,
-            compoundQuery, ctes, dmlTable, newTargets, newValues);
+        return new Sql(head, conditions, clauses, args, havingArgs,
+            compoundQuery, ctes, dmlTable, newTargets, newValues, headArgs);
     }
 
     // ====================== output ======================
@@ -656,11 +801,11 @@ public final class Sql {
     public String sql(Dialect dialect) {
         Objects.requireNonNull(dialect, "dialect");
         String result = sql();
-        if (tail.contains("RETURNING") && !dialect.supportsReturning()) {
+        if (clauses.returning() != null && !dialect.supportsReturning()) {
             throw new SqlException(
                 "Dialect '" + dialect.dialectId() + "' does not support RETURNING");
         }
-        if (tail.contains("ON CONFLICT") && !dialect.supportsOnConflict()) {
+        if (clauses.conflictTarget() != null && !dialect.supportsOnConflict()) {
             throw new SqlException(
                 "Dialect '" + dialect.dialectId() + "' does not support ON CONFLICT; use upsertClause() or raw SQL");
         }
@@ -672,18 +817,19 @@ public final class Sql {
         if (isInsert()) {
             if (dmlTargets.isEmpty()) {
                 throw new SqlException(
-                    "INSERT requires at least one column — call set(\"column\", value) before building"
+                    "INSERT requires at least one column — call setColumn(\"column\", value) before building"
                 );
             }
             var cols = String.join(", ", dmlTargets);
             var placeholders = renderInsertValues(dmlValues);
-            return withClause + "INSERT INTO " + dmlTable + " (" + cols + ") VALUES (" + placeholders + ")" + tail;
+            return withClause + "INSERT INTO " + dmlTable + " (" + cols + ") VALUES ("
+                + placeholders + ")" + renderClauses();
         }
         if (isUpdate() && dmlTargets.isEmpty()) {
             // Emitting "UPDATE t WHERE ..." without SET would silently touch
             // every matching row on dialects that tolerate the omission.
             throw new SqlException(
-                "UPDATE requires at least one SET clause — call set(\"col = ?\", value) before building"
+                "UPDATE requires at least one SET clause — call setExpression(\"col = ?\", value) before building"
             );
         }
         var sb = new StringBuilder(head);
@@ -698,9 +844,7 @@ public final class Sql {
             sb.append(renderConditions(conditions));
         }
 
-        if (!tail.isEmpty()) {
-            sb.append(tail);
-        }
+        sb.append(renderClauses());
         return withClause + sb;
     }
 
@@ -710,12 +854,17 @@ public final class Sql {
      */
     public Object[] args() {
         Object[] cteArgs = cteArgs();
+        Object[] headBound = headArgs.toArray();
         if (isInsert()) {
-            return concat(cteArgs, flattened(dmlValues));
+            return concat(cteArgs, concat(headBound, flattened(dmlValues)));
         }
-        // UPDATE binds SET values before WHERE values; SELECT/DELETE carry no
-        // SET values — concat's empty short-circuit covers that case.
-        return concat(cteArgs, concat(flattened(dmlValues), args));
+        // Head (JOIN … ON) binds before the statement body; UPDATE binds SET
+        // values before WHERE values; SELECT/DELETE carry no SET values. HAVING
+        // binds after WHERE — the rendered order — even when it was declared
+        // first.
+        return concat(cteArgs,
+            concat(headBound,
+                concat(flattened(dmlValues), concat(args, havingArgs))));
     }
 
     /**
@@ -813,15 +962,58 @@ public final class Sql {
     }
 
     private Sql withHead(String newHead) {
-        return new Sql(newHead, conditions, tail, args,
-            compoundQuery, ctes,
-            dmlTable, dmlTargets, dmlValues);
+        return withHead(newHead, headArgs);
     }
 
-    private Sql withTail(String newTail) {
-        return new Sql(head, conditions, tail + newTail, args,
+    private Sql withHead(String newHead, List<Object> newHeadArgs) {
+        return new Sql(newHead, conditions, clauses, args, havingArgs,
             compoundQuery, ctes,
-            dmlTable, dmlTargets, dmlValues);
+            dmlTable, dmlTargets, dmlValues, newHeadArgs);
+    }
+
+    private Sql withClauses(Clauses newClauses) {
+        return withClausesAndArgs(newClauses, args, havingArgs);
+    }
+
+    private Sql withClausesAndArgs(Clauses newClauses, Object[] newArgs,
+            Object[] newHavingArgs) {
+        return new Sql(head, conditions, newClauses, newArgs, newHavingArgs,
+            compoundQuery, ctes,
+            dmlTable, dmlTargets, dmlValues, headArgs);
+    }
+
+    /**
+     * The clauses after the statement body, in SQL order — not in the order the
+     * caller happened to declare them. Fields that were never set render
+     * nothing, so an INSERT has no GROUP BY slot to get wrong.
+     */
+    private String renderClauses() {
+        StringBuilder out = new StringBuilder();
+        if (clauses.groupBy() != null) {
+            out.append(" GROUP BY ").append(clauses.groupBy());
+        }
+        if (clauses.having() != null) {
+            out.append(" HAVING ").append(clauses.having());
+        }
+        if (clauses.orderBy() != null) {
+            out.append(" ORDER BY ").append(clauses.orderBy());
+        }
+        if (clauses.limit() != null) {
+            out.append(" LIMIT ").append(clauses.limit());
+        }
+        if (clauses.offset() != null) {
+            out.append(" OFFSET ").append(clauses.offset());
+        }
+        if (clauses.conflictTarget() != null) {
+            out.append(" ON CONFLICT (").append(clauses.conflictTarget()).append(')');
+        }
+        if (clauses.conflictAction() != null) {
+            out.append(' ').append(clauses.conflictAction());
+        }
+        if (clauses.returning() != null) {
+            out.append(" RETURNING ").append(clauses.returning());
+        }
+        return out.toString();
     }
 
     private String renderWithClause() {
@@ -866,7 +1058,7 @@ public final class Sql {
         if (!other.isSelectable()) {
             throw new IllegalStateException(operator + " requires a SELECT query");
         }
-        if (!other.tail.isEmpty()) {
+        if (!other.clauses.isEmpty()) {
             throw new IllegalStateException(operator + " requires the right query to finish before ORDER BY/LIMIT/OFFSET");
         }
 
@@ -879,8 +1071,11 @@ public final class Sql {
         String combined = (compoundQuery == null ? "(" + sql() + ")" : sql())
             + " " + operator + " (" + other.sql() + ")";
         Object[] combinedArgs = concat(args(), other.args());
-        return new Sql(combined, List.of(), "", combinedArgs,
-            operator, List.of(), null, List.of(), List.of());
+        // The combined text already contains both sides' ON clauses and
+        // combinedArgs already holds every bind, so a head list here would
+        // bind them twice.
+        return new Sql(combined, List.of(), Clauses.NONE, combinedArgs, new Object[0],
+            operator, List.of(), null, List.of(), List.of(), List.of());
     }
 
     private void requireSimpleSelect(String operation) {
@@ -896,7 +1091,7 @@ public final class Sql {
     }
 
     private void requireNoOuterTail(String operation) {
-        if (!tail.isEmpty()) {
+        if (!clauses.isEmpty()) {
             throw new IllegalStateException(operation + " must be called before ORDER BY/LIMIT/OFFSET");
         }
     }
@@ -932,15 +1127,6 @@ public final class Sql {
     private void requireNoPendingJoin(String operation) {
         if (hasPendingJoin()) {
             throw new IllegalStateException(operation + " cannot be called before JOIN is completed with ON");
-        }
-    }
-
-    /** ORDER BY / GROUP BY / HAVING must be emitted before LIMIT/OFFSET. */
-    private void requireBeforeLimit(String operation) {
-        if (tail.contains(" LIMIT ") || tail.contains(" OFFSET ")) {
-            throw new IllegalStateException(
-                operation + " must be called before LIMIT/OFFSET"
-            );
         }
     }
 

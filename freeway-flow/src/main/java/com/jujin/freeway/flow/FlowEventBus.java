@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 /**
@@ -19,6 +20,15 @@ import java.util.function.Consumer;
  *   <li>Topic-level publish/unsubscribe capability is kept to support notification, replay and debugging within the same flow execution.</li>
  * </ul>
  * This avoids introducing a global message surface while preserving the original in-flow event model.</p>
+ *
+ * <p><b>Forwarding is the module's exit.</b> The bus is the execution-scoped
+ * mechanism; a container-free engine has nobody to hand events to, so the sink
+ * is optional and defaults to none. {@code FlowModule} installs one that
+ * publishes each event on the application's {@code EventBus} under
+ * {@code "flow." + topic}, which is how an application subscribes once for
+ * every evaluation instead of attaching an interceptor to each context. The
+ * local subscribers still run first: they are the evaluation's own audience,
+ * the sink is the application's.</p>
  */
 public class FlowEventBus {
 
@@ -27,21 +37,48 @@ public class FlowEventBus {
     private final Map<String, List<Subscription>> topicSubs = new ConcurrentHashMap<>();
 
     /**
-     * Publishes an event to the given topic
+     * The module-level exit, or {@code null} when the engine has none (the
+     * standalone {@code FlowEngine.create()} case). Set once per evaluation
+     * by the engine that runs it.
+     */
+    private volatile BiConsumer<String, Object> sink;
+
+    /**
+     * Publishes an event to the given topic: the evaluation's own subscribers
+     * first, then the engine's sink (when one is installed).
      */
     public void publish(String topic, Object event) {
         List<Subscription> subs = topicSubs.get(topic);
-        if (subs == null) return;
-
-        for (Subscription sub : subs) {
-            try {
-                sub.handler.accept(event);
-            } catch (Exception e) {
-                // Isolation is deliberate, but the stack trace is essential
-                // for diagnosing where the subscriber failed.
-                LOG.warn("Subscriber failed for topic '{}'", topic, e);
+        if (subs != null) {
+            for (Subscription sub : subs) {
+                try {
+                    sub.handler.accept(event);
+                } catch (Exception e) {
+                    // Isolation is deliberate, but the stack trace is essential
+                    // for diagnosing where the subscriber failed.
+                    LOG.warn("Subscriber failed for topic '{}'", topic, e);
+                }
             }
         }
+        BiConsumer<String, Object> forward = sink;
+        if (forward != null) {
+            try {
+                forward.accept(topic, event);
+            } catch (Exception e) {
+                // The same isolation as a local subscriber: a broken bridge
+                // must not fail the run that published the event.
+                LOG.warn("Flow event sink failed for topic '{}'", topic, e);
+            }
+        }
+    }
+
+    /**
+     * Installs the engine's sink (or clears it with {@code null}). Called by
+     * the engine at the start of a top-level evaluation; the sink outlives
+     * the evaluation because the context is reused by design.
+     */
+    void forwardTo(BiConsumer<String, Object> sink) {
+        this.sink = sink;
     }
 
     /**

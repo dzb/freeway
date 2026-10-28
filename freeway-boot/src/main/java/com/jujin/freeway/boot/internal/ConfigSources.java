@@ -6,7 +6,7 @@ import java.util.Objects;
 
 /**
  * The loaded cascade inputs: one flat {@code key=value} map per source, plus
- * the active profiles. This is what {@link ConfigLoaderImpl} produces and what
+ * the active profiles. This is what {@link ConfigCascade} produces and what
  * {@link AppConfigDefault} turns into symbol providers, one per tier.
  *
  * <p>The maps stay separate instead of arriving pre-merged because the symbol

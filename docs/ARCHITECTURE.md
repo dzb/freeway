@@ -35,10 +35,22 @@ freeway-commons         zero deps
   `FreewayApp.run(args, ModuleEx...)`, or through the launcher
   `FreewayApp.create(...).name(...).start()`.
 - **`ModuleEx`** — declares its bindings in `bind(Binder)`; how it is placed is
-  not its concern. Composition is the ordered modules handed to the entry point;
-  the structure behind them (`ModuleNode`, package-private in `ioc.internal`) is
-  internal — it exists to own the invariants and to render the startup log, not
-  as an API. A module whose class declares `@SubModule` is a **bundle**: its
+  not its concern. Composition has **two sources**, and they are ordered:
+  1. the modules handed to the entry point (instances and class declarations, in
+     order), always;
+  2. the `META-INF/services/com.jujin.freeway.ioc.ModuleEx` providers on the
+     classpath, appended after them by `FreewayApp` when `autoDiscovery` is on
+     (the default; `FreewayApp.create(...).autoDiscovery(false)` turns it off).
+     A provider whose class is already declared — including through a bundle's
+     `@SubModule` — is ignored, so the author's declaration always wins. The
+     startup log names every discovered module.
+  `Freeway.create(...)` (the ioc entry point) performs no discovery: it places
+  exactly what it is given. `freeway-http` and `freeway-db` ship SPI files, so
+  on `FreewayApp` a classpath with those jars and no explicit placement still
+  composes them — a server starts / a database is configured by presence alone.
+  The structure behind composition (`ModuleNode`, package-private in
+  `ioc.internal`) is internal — it exists to own the invariants and to render
+  the startup log, not as an API. A module whose class declares `@SubModule` is a **bundle**: its
   submodules follow it as static metadata the entry point reads, and any
   submodule can be placed on its own instead. A class is a declaration
   instantiated at load time, an instance a configured module (the only form a
@@ -115,10 +127,14 @@ freeway-commons         zero deps
   declarations all fail the build. Branch writes are isolated by a
   `PARALLEL` node's `join` meta (`merge`, default — with conflict detection —
   or `shared`). Tasks resolve from a closed vocabulary — `@name` (IoC binding
-  id) or `#graph` (nested subflow) — plus a node's `data` field for static
-  values; there is no marker/`$meta` string syntax. The module runs in-process;
-  it is not a durable workflow engine and offers no pause/resume. Zero
-  dependencies beyond commons + ioc.
+  id) or `#graphId` (nested subflow) — plus a node's `data` field for static
+  values; there is no marker/`$meta` string syntax. Execution events leave
+  through one optional sink (`FlowEngine.create(..., BiConsumer<String,Object>)`):
+  `FlowModule` installs one that publishes each event on the application's
+  `EventBus` under `"flow." + topic`, while a standalone engine keeps them
+  inside the evaluation. The module runs in-process; it is not a durable
+  workflow engine and offers no pause/resume. Zero dependencies beyond
+  commons + ioc.
 
 ## Injection Annotations
 

@@ -10,7 +10,12 @@ import java.util.logging.LogRecord;
  */
 public final class JULFileFormatter extends Formatter {
 
-    private static final JULLogFormatterSupport.FormatConfig CONFIG =
+    /**
+     * Built per instance, not held statically: {@code freeway.log.mdc} is read
+     * at construction, and a static snapshot would freeze the first handler's
+     * answer for every later file (and for tests that set the property).
+     */
+    private final JULLogFormatterSupport.FormatConfig config =
         new JULLogFormatterSupport.FormatConfig(
             DateTimeFormatter.ofPattern(
                 "yyyy-MM-dd'T'HH:mm:ss.SSSXXX"
@@ -18,11 +23,11 @@ public final class JULFileFormatter extends Formatter {
             8,
             false,
             false,
-            true
+            JULLogFormatterSupport.showMdc()
         );
 
     @Override
     public String format(LogRecord record) {
-        return JULLogFormatterSupport.format(this, record, CONFIG);
+        return JULLogFormatterSupport.format(this, record, config);
     }
 }

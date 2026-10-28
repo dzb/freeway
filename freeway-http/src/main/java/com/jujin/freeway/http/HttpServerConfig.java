@@ -35,6 +35,11 @@ import com.jujin.freeway.http.HttpModule.ConfigKeys;
  *                          (0 = OS default)
  * @param sendBufferSize    desired SO_SNDBUF for accepted sockets
  *                          (0 = OS default)
+ * @param maxHeaderBytes    maximum size of the inbound request headers, shared
+ *                          by both protocols: the HTTP/1.1 header block and the
+ *                          HTTP/2 header-block/field-list limits (advertised in
+ *                          SETTINGS). One number so the same request cannot be
+ *                          accepted on one protocol and refused on the other.
  */
 public record HttpServerConfig(
     String host,
@@ -47,7 +52,8 @@ public record HttpServerConfig(
     Duration writeTimeout,
     CompressionConfig compression,
     int receiveBufferSize,
-    int sendBufferSize
+    int sendBufferSize,
+    int maxHeaderBytes
 ) {
     public static final String DEFAULT_HOST = "127.0.0.1";
     public static final int DEFAULT_PORT = 8080;
@@ -57,6 +63,7 @@ public record HttpServerConfig(
     public static final Duration DEFAULT_READ_TIMEOUT = Duration.ofSeconds(30);
     public static final Duration DEFAULT_WRITE_TIMEOUT = Duration.ofSeconds(30);
     public static final int DEFAULT_MAX_CONNECTIONS = 0;
+    public static final int DEFAULT_MAX_HEADER_BYTES = 16 * 1024;
 
     public HttpServerConfig {
         host = host == null || host.isBlank() ? "127.0.0.1" : host;
@@ -73,6 +80,10 @@ public record HttpServerConfig(
         if (maxBodySize <= 0) {
             throw new IllegalArgumentException(
                 "maxBodySize must be positive: " + maxBodySize);
+        }
+        if (maxHeaderBytes <= 0) {
+            throw new IllegalArgumentException(
+                "maxHeaderBytes must be positive: " + maxHeaderBytes);
         }
         if (readTimeout == null || readTimeout.isNegative()) {
             throw new IllegalArgumentException("readTimeout must be non-negative");
@@ -139,7 +150,8 @@ public record HttpServerConfig(
         return new HttpServerConfig(
             DEFAULT_HOST, DEFAULT_PORT, DEFAULT_BACKLOG, DEFAULT_SHUTDOWN_GRACE,
             DEFAULT_MAX_BODY_SIZE, DEFAULT_READ_TIMEOUT, DEFAULT_MAX_CONNECTIONS,
-            DEFAULT_WRITE_TIMEOUT, CompressionConfig.DEFAULT, 0, 0);
+            DEFAULT_WRITE_TIMEOUT, CompressionConfig.DEFAULT, 0, 0,
+            DEFAULT_MAX_HEADER_BYTES);
     }
 
     // ── Key declarations: name and type only ──
@@ -168,6 +180,8 @@ public record HttpServerConfig(
         SymbolSpec.of(ConfigKeys.SERVER_RECEIVE_BUFFER, Integer.class, null);
     private static final SymbolSpec<Integer> SEND_BUFFER =
         SymbolSpec.of(ConfigKeys.SERVER_SEND_BUFFER, Integer.class, null);
+    private static final SymbolSpec<Integer> MAX_HEADER_BYTES =
+        SymbolSpec.of(ConfigKeys.SERVER_MAX_HEADER_BYTES, Integer.class, null);
 
     /**
      * This configuration as {@code freeway.http.server.*} answers it: start from
@@ -192,6 +206,8 @@ public record HttpServerConfig(
         cfg = cfg.withCompression(CompressionConfig.from(symbols));
         cfg = cfg.withReceiveBufferSize(symbols.resolve(RECEIVE_BUFFER.orDefault(cfg.receiveBufferSize())));
         cfg = cfg.withSendBufferSize(symbols.resolve(SEND_BUFFER.orDefault(cfg.sendBufferSize())));
+        cfg = cfg.withMaxHeaderBytes(
+            symbols.resolve(MAX_HEADER_BYTES.orDefault(cfg.maxHeaderBytes())));
         return cfg;
     }
 
@@ -199,76 +215,83 @@ public record HttpServerConfig(
     public HttpServerConfig withHost(String host) {
         return new HttpServerConfig(host, port, backlog, shutdownGrace,
             maxBodySize, readTimeout, maxConnections, writeTimeout, compression,
-            receiveBufferSize, sendBufferSize);
+            receiveBufferSize, sendBufferSize, maxHeaderBytes);
     }
 
     /** Same configuration with {@link #port} replaced. */
     public HttpServerConfig withPort(int port) {
         return new HttpServerConfig(host, port, backlog, shutdownGrace,
             maxBodySize, readTimeout, maxConnections, writeTimeout, compression,
-            receiveBufferSize, sendBufferSize);
+            receiveBufferSize, sendBufferSize, maxHeaderBytes);
     }
 
     /** Same configuration with {@link #backlog} replaced. */
     public HttpServerConfig withBacklog(int backlog) {
         return new HttpServerConfig(host, port, backlog, shutdownGrace,
             maxBodySize, readTimeout, maxConnections, writeTimeout, compression,
-            receiveBufferSize, sendBufferSize);
+            receiveBufferSize, sendBufferSize, maxHeaderBytes);
     }
 
     /** Same configuration with {@link #shutdownGrace} replaced. */
     public HttpServerConfig withShutdownGrace(Duration shutdownGrace) {
         return new HttpServerConfig(host, port, backlog, shutdownGrace,
             maxBodySize, readTimeout, maxConnections, writeTimeout, compression,
-            receiveBufferSize, sendBufferSize);
+            receiveBufferSize, sendBufferSize, maxHeaderBytes);
     }
 
     /** Same configuration with {@link #maxBodySize} replaced. */
     public HttpServerConfig withMaxBodySize(long maxBodySize) {
         return new HttpServerConfig(host, port, backlog, shutdownGrace,
             maxBodySize, readTimeout, maxConnections, writeTimeout, compression,
-            receiveBufferSize, sendBufferSize);
+            receiveBufferSize, sendBufferSize, maxHeaderBytes);
     }
 
     /** Same configuration with {@link #readTimeout} replaced. */
     public HttpServerConfig withReadTimeout(Duration readTimeout) {
         return new HttpServerConfig(host, port, backlog, shutdownGrace,
             maxBodySize, readTimeout, maxConnections, writeTimeout, compression,
-            receiveBufferSize, sendBufferSize);
+            receiveBufferSize, sendBufferSize, maxHeaderBytes);
     }
 
     /** Same configuration with {@link #maxConnections} replaced. */
     public HttpServerConfig withMaxConnections(int maxConnections) {
         return new HttpServerConfig(host, port, backlog, shutdownGrace,
             maxBodySize, readTimeout, maxConnections, writeTimeout, compression,
-            receiveBufferSize, sendBufferSize);
+            receiveBufferSize, sendBufferSize, maxHeaderBytes);
+    }
+
+    /** Same configuration with {@link #maxHeaderBytes} replaced. */
+    public HttpServerConfig withMaxHeaderBytes(int maxHeaderBytes) {
+        return new HttpServerConfig(host, port, backlog, shutdownGrace,
+            maxBodySize, readTimeout, maxConnections, writeTimeout, compression,
+            receiveBufferSize, sendBufferSize, maxHeaderBytes);
     }
 
     /** Same configuration with {@link #writeTimeout} replaced. */
     public HttpServerConfig withWriteTimeout(Duration writeTimeout) {
         return new HttpServerConfig(host, port, backlog, shutdownGrace,
             maxBodySize, readTimeout, maxConnections, writeTimeout, compression,
-            receiveBufferSize, sendBufferSize);
+            receiveBufferSize, sendBufferSize, maxHeaderBytes);
     }
 
     /** Same configuration with {@link #compression} replaced. */
     public HttpServerConfig withCompression(CompressionConfig compression) {
         return new HttpServerConfig(host, port, backlog, shutdownGrace,
             maxBodySize, readTimeout, maxConnections, writeTimeout, compression,
-            receiveBufferSize, sendBufferSize);
+            receiveBufferSize, sendBufferSize, maxHeaderBytes);
     }
 
     /** Same configuration with {@link #receiveBufferSize} replaced. */
     public HttpServerConfig withReceiveBufferSize(int receiveBufferSize) {
         return new HttpServerConfig(host, port, backlog, shutdownGrace,
             maxBodySize, readTimeout, maxConnections, writeTimeout, compression,
-            receiveBufferSize, sendBufferSize);
+            receiveBufferSize, sendBufferSize, maxHeaderBytes);
     }
 
     /** Same configuration with {@link #sendBufferSize} replaced. */
     public HttpServerConfig withSendBufferSize(int sendBufferSize) {
         return new HttpServerConfig(host, port, backlog, shutdownGrace,
             maxBodySize, readTimeout, maxConnections, writeTimeout, compression,
-            receiveBufferSize, sendBufferSize);
+            receiveBufferSize, sendBufferSize, maxHeaderBytes);
     }
 }

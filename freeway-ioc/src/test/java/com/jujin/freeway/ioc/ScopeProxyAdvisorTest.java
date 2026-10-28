@@ -690,6 +690,25 @@ class ScopeProxyAdvisorTest {
     }
 
     @Test
+    void singletonRejectsNotThreadSafeConcreteBoundByClassOnly() {
+        // The other spelling of the same binding: bind(Concrete) with no
+        // .to(...) names its implementation right there, so its class-declared
+        // markers must be read too. Before this, @NotThreadSafe on that shape
+        // was silently dropped and the singleton holder was accepted.
+        Container container = Freeway.create(binder -> {
+            binder.bind(UnsafeShared.class);
+            binder.bind(SingletonHoldingUnsafe.class).to(SingletonHoldingUnsafe.class);
+        });
+
+        RuntimeException ex = assertThrows(RuntimeException.class,
+            () -> container.get(SingletonHoldingUnsafe.class));
+        assertInstanceOf(IllegalStateException.class, ex.getCause());
+        assertTrue(ex.getCause().getMessage().contains("@NotThreadSafe"),
+            "bind(Concrete) must carry the class-declared marker too, got: "
+                + ex.getCause().getMessage());
+    }
+
+    @Test
     void singletonRejectsNotThreadSafeImplementationBehindInterface() {
         // Regression: validateScopeBeforeResolution returned early for
         // interface targets, so an interface bound to a @NotThreadSafe impl

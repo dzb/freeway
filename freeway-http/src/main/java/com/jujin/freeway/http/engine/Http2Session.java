@@ -83,7 +83,8 @@ final class Http2Session {
                         ssl ? connection.getSSLSession() : null,
                         connection.socket()),
                 HttpSession.timeoutMillis(ctx.config().readTimeout()),
-                ctx.engine().h2ResetBurstLimit(), ctx.engine().h2ResetWindow());
+                ctx.engine().h2ResetBurstLimit(), ctx.engine().h2ResetWindow(),
+                ctx.config().maxHeaderBytes());
             final Http2Connection goAwayTarget = h2conn;
             connection.setPreCloseHook(() -> {
                 try {

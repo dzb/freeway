@@ -19,7 +19,8 @@ import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.http.engine.FreewayHttpEngine;
 import com.jujin.freeway.http.SslContexts;
 import com.jujin.freeway.http.SslSettings;
-import com.jujin.freeway.http.filter.AccessLogFilter;
+import com.jujin.freeway.http.event.AccessLog;
+import com.jujin.freeway.http.event.HttpExchangeEvent;
 import com.jujin.freeway.http.filter.CorsFilter;
 import com.jujin.freeway.http.filter.ErrorHandler;
 import com.jujin.freeway.http.filter.HealthCheck;
@@ -176,10 +177,6 @@ public final class HttpModule implements ModuleEx {
         binder.bind(HttpServer.class).to(container -> {
             var filters = new ArrayList<>(
                 container.extension(HttpFilter.class).all());
-            if (container.get(SymbolSource.class)
-                    .resolve(ACCESS_LOG_ENABLED)) {
-                filters.add(new AccessLogFilter());
-            }
             var pipeline = new HttpPipeline(
                 container.get(RouteIndex.class),
                 container.get(WebSocketIndex.class),
@@ -189,11 +186,26 @@ public final class HttpModule implements ModuleEx {
                 List.copyOf(filters),
                 container.extension(ErrorHandler.class).all()
             );
+            EventBus events = container.get(EventBus.class);
+            boolean accessLogOn = container.get(SymbolSource.class)
+                .resolve(ACCESS_LOG_ENABLED);
+            AccessLog accessLog = accessLogOn ? new AccessLog() : null;
             return HttpServer.create(
                 container.get(HttpEngine.class),
                 container.get(HttpServerConfig.class),
                 pipeline,
-                event -> container.get(EventBus.class).publish(event));
+                event -> {
+                    // The access log is an observer of the server's exchange
+                    // events, not a filter: the one line per request includes
+                    // the requests a filter never sees (preflight, health).
+                    // Written before the publish, and outside the bus, so a
+                    // Defer scope on this thread cannot delay or drop the line
+                    // and no subscriber can keep it from being written.
+                    if (accessLog != null && event instanceof HttpExchangeEvent exchange) {
+                        accessLog.accept(exchange);
+                    }
+                    events.publish(event);
+                });
         });
 
         binder.contribute(RuntimeHook.class).add(SERVER_HOOK, new RuntimeHook() {
@@ -446,6 +458,10 @@ public final class HttpModule implements ModuleEx {
         public static final String SERVER_RECEIVE_BUFFER = "freeway.http.server.receive-buffer-size";
         /** Desired SO_SNDBUF for accepted sockets (default 0 = OS default). */
         public static final String SERVER_SEND_BUFFER    = "freeway.http.server.send-buffer-size";
+        /** Inbound request-header size limit in bytes, shared by HTTP/1.1 (the
+         *  header block) and HTTP/2 (header-block and field-list limits, the
+         *  latter advertised in SETTINGS). Default 16 KiB. */
+        public static final String SERVER_MAX_HEADER_BYTES = "freeway.http.server.max-header-bytes";
         /** Inbound RST_STREAM burst guard: cancels arriving before the server
          *  responded, beyond this count within the reset window, trip the
          *  connection with GOAWAY(ENHANCE_YOUR_CALM) (0 disables the guard).

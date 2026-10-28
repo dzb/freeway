@@ -53,7 +53,10 @@ public interface Binding<T> {
      * Marks this binding as primary. When multiple bindings exist for the
      * same type, the primary one is resolved when no id is specified.
      *
-     * @throws IllegalArgumentException if multiple primary bindings exist
+     * <p>This call only records the marker. More than one primary for a type
+     * is reported by the resolution that needs a single answer
+     * ({@code Container.get(type)}) — not here, where no lookup exists yet —
+     * and a duplicate that is never resolved is therefore never reported.</p>
      */
     Binding<T> primary();
 

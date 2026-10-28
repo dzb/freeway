@@ -32,7 +32,8 @@ import com.jujin.freeway.http.HttpServer;
 import com.jujin.freeway.http.HttpPipeline;
 import com.jujin.freeway.http.TestHttp;
 import com.jujin.freeway.http.event.HttpErrorEvent;
-import com.jujin.freeway.http.filter.AccessLogFilter;
+import com.jujin.freeway.http.event.AccessLog;
+import com.jujin.freeway.http.event.HttpExchangeEvent;
 import com.jujin.freeway.http.route.Route;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -395,10 +396,16 @@ class HttpServerOperationalTest {
     void accessLogIncludesClientIpAndUserAgent() throws Exception {
         int port = freePort();
         var log = new ByteArrayOutputStream();
+        AccessLog accessLog = new AccessLog(new PrintStream(log, true));
         var server = HttpServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(port).withMaxBodySize(1024).withReadTimeout(Duration.ofSeconds(2)).withMaxConnections(0), HttpPipeline.of(Route.get("/", ctx -> ctx.send(200, "ok")))
-                .withFilter(new AccessLogFilter(new PrintStream(log, true)))
-                );
+            TestServerConfig.loopback(port).withMaxBodySize(1024)
+                .withReadTimeout(Duration.ofSeconds(2)).withMaxConnections(0),
+            HttpPipeline.of(Route.get("/", ctx -> ctx.send(200, "ok"))),
+            event -> {
+                if (event instanceof HttpExchangeEvent exchange) {
+                    accessLog.accept(exchange);
+                }
+            });
         server.start();
         try {
             var client = HttpClient.newBuilder().build();

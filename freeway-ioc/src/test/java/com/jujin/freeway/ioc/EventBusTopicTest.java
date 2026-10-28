@@ -36,7 +36,7 @@ class EventBusTopicTest {
                 .add(EventSubscriber.of("post.created", p -> log.add((String) p)))
         );
 
-        EventBus bus = new EventBus(container);
+        EventBus bus = EventBus.create(container);
         bus.publish("post.created", "hello");
 
         assertEquals(1, log.size());
@@ -46,7 +46,7 @@ class EventBusTopicTest {
     @Test
     void stringTopicRuntimeSubscriberReceivesPayload() {
         List<String> log = new ArrayList<>();
-        EventBus bus = new EventBus(Freeway.create());
+        EventBus bus = EventBus.create(Freeway.create());
         bus.subscribe("post.created", p -> log.add((String) p));
         bus.publish("post.created", "runtime");
 
@@ -62,7 +62,7 @@ class EventBusTopicTest {
                 .add(EventSubscriber.of("post.created", p -> log.add("post:" + p)))
         );
 
-        EventBus bus = new EventBus(container);
+        EventBus bus = EventBus.create(container);
         bus.publish("comment.added", "test");
 
         // "comment.added" has no subscriber → DeadEvent
@@ -83,7 +83,7 @@ class EventBusTopicTest {
                     .add(EventSubscriber.of(String.class, p -> classLog.add(p)));
             }
         );
-        EventBus bus = new EventBus(container);
+        EventBus bus = EventBus.create(container);
 
         bus.publish("x");
 
@@ -108,7 +108,7 @@ class EventBusTopicTest {
                     .add(EventSubscriber.of("x", p -> topicLog.add((String) p)));
             }
         );
-        EventBus bus = new EventBus(container);
+        EventBus bus = EventBus.create(container);
 
         bus.publish("x", "payload");
 
@@ -126,7 +126,7 @@ class EventBusTopicTest {
                 .add(EventSubscriber.of(DeadEvent.class, (Consumer<DeadEvent>) deads::add))
         );
 
-        new EventBus(container).publish("no.such.topic", "orphan");
+        EventBus.create(container).publish("no.such.topic", "orphan");
 
         assertEquals(1, deads.size());
         assertEquals("orphan", deads.get(0).event());
@@ -135,7 +135,7 @@ class EventBusTopicTest {
     @Test
     void stringTopicUnsubscribe() {
         List<String> log = new ArrayList<>();
-        EventBus bus = new EventBus(Freeway.create());
+        EventBus bus = EventBus.create(Freeway.create());
         Subscription<Object> sub = bus.subscribe("topic", p -> log.add((String) p));
         bus.unsubscribe(sub);
         bus.publish("topic", "x");
@@ -157,7 +157,7 @@ class EventBusTopicTest {
             }
         );
 
-        new EventBus(container).publish("topic", "payload");
+        EventBus.create(container).publish("topic", "payload");
 
         assertTrue(deads.isEmpty());
     }

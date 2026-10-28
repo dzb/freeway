@@ -116,10 +116,10 @@
 ### 1.1 Record 风格（不可变，适合查询/插入）
 
 ```java
-@Table("t_user")                  // 指定表名（不指定则取类名小写）
+@Table("t_user")                  // 指定表名（不指定则取类名 snake_case）
 record User(
     @Id @Generated Long id,       // 自增主键
-    @Column String name,          // 列名默认同字段名，VARCHAR(255)
+    @Column String name,          // 列名默认取字段名 snake_case，VARCHAR(255)
     @Column Integer age           // INTEGER
 ) {
     // 构造时不用管 id，数据库自动生成
@@ -145,10 +145,10 @@ static class UserBean {
 
 | 注解 | 作用 | 说明 |
 |------|------|------|
-| `@Table("xxx")` | 映射表名 | 不指定则取类名小写 |
+| `@Table("xxx")` | 映射表名 | 不指定则取类名的 snake_case（`UserProfile` → `user_profile`） |
 | `@Id` | 标记主键 | 必填 |
 | `@Generated` | 自增主键 | 搭配 `@Id` 使用，数据库自动生成 |
-| `@Column("xxx")` | 映射列名 | 不指定则取字段名 |
+| `@Column("xxx")` | 映射列名 | 不指定则取字段名的 snake_case（`userName` → `user_name`） |
 | `@Transient` | 忽略字段 | 不参与持久化 |
 
 ---
@@ -177,7 +177,7 @@ Schema.ensure(db, User.class);
 
 ### 2.3 版本化 SQL 迁移（MigrationRunner）
 
-把 `V1__描述.sql`（Flyway 兼容命名：`V` + 数字，可用 `.`/`_` 分隔，如 `V1_2__init.sql`）放进 classpath 的 `db/migration/` 目录。IoC 方式（`DbModule`）启动时会在 HTTP server 之前执行尚未应用的迁移；独立使用可手动调用 `new MigrationRunner(db, true, "db/migration", "_migrations").run()`。相关配置：`freeway.db.migration.enabled`（默认 `true`）、`freeway.db.migration.path`（默认 `db/migration/`）、`freeway.db.migration.table`（默认 `_migrations`）。
+把 `V1__描述.sql`（Flyway 兼容命名：`V` + 数字，可用 `.`/`_` 分隔，如 `V1_2__init.sql`）放进 classpath 的 `db/migration/` 目录。IoC 方式（`DbModule`）启动时会在 HTTP server 之前执行尚未应用的迁移；独立使用可手动调用 `new MigrationRunner(db, MigrationRunner.Options.defaults()).run()`。相关配置：`freeway.db.migration.enabled`（默认 `true`）、`freeway.db.migration.path`（默认 `db/migration/`）、`freeway.db.migration.table`（默认 `_migrations`）。
 
 **校验和双轨校验（CRLF/LF）**：每个已应用迁移的原始字节 SHA-256 存入校验和表。每次启动重新比对：原始字节一致 → 通过；不一致时再用 CRLF→LF 归一化后的字节比对一次——纯换行风格变化（如 Windows 检出把 LF 变 CRLF）不再误报"文件被修改"，而真正的内容改动仍抛 `SqlException`（checksum mismatch，启动失败）。已存储的校验和行不会被改写。
 
@@ -397,8 +397,8 @@ INSERT 构建器：
 ```java
 ExecuteResult r = db.execute(
     Sql.insert("t_user")
-        .set("name", "闪电")
-        .set("age", 3)
+        .setColumn("name", "闪电")
+        .setColumn("age", 3)
 );
 ```
 

@@ -1,6 +1,7 @@
 package com.jujin.freeway.cloud.registry;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.jujin.freeway.cloud.discovery.Endpoint;
@@ -121,18 +122,19 @@ class RegistryNodeClientTest {
     }
 
     @Test
-    void a_404_heartbeat_reasserts_the_registered_instance_on_that_node() throws Exception {
+    void a_404_heartbeat_reports_the_lease_lost_instead_of_healing_itself() throws Exception {
         StubNode restarted = stub();
         restarted.renewStatus = 404; // the node restarted: its table is empty
         RegistryNodeClient client = client(restarted);
 
         client.register(instance("i1"));
-        client.renew("svc", "i1");
+        boolean held = client.renew("svc", "i1");
 
-        assertEquals(2, restarted.registrations.size(),
-            "the node that lost the table was re-asserted on the next heartbeat");
-        assertEquals("i1", restarted.registrations.get(1).instanceId(),
-            "the re-assertion is the instance the client registered, not a guess");
+        assertFalse(held,
+            "a node that lost the table makes the heartbeat answer 'lost'; the lifecycle "
+                + "hook re-registers, and that one write fans out to every node");
+        assertEquals(1, restarted.registrations.size(),
+            "re-registration is the caller's decision, not a hidden second write");
     }
 
     @Test

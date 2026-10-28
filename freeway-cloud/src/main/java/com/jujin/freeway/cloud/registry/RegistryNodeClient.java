@@ -5,6 +5,7 @@ import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.commons.json.JsonCodecDefault;
 import com.jujin.freeway.commons.json.JsonUtils;
 import com.jujin.freeway.cloud.discovery.RegistryServerModule;
+import com.jujin.freeway.cloud.discovery.Health;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import java.io.IOException;
 import java.net.URI;
@@ -42,10 +43,6 @@ final class RegistryNodeClient implements AutoCloseable {
     private final RegistryNodes nodes;
     private final HttpClient http;
     private final JsonCodec codec = new JsonCodecDefault();
-    /** The instance this client last registered — the body a 404 self-heal needs,
-     *  since the heartbeat only carries the ids. One instance per process is the
-     *  shape the core lifecycle hook drives. */
-    private volatile ServiceInstance registered;
     /** Readiness this client last published; carried on every heartbeat so a
      *  restarted node learns it without a second call. */
     private volatile boolean ready = true;
@@ -58,12 +55,25 @@ final class RegistryNodeClient implements AutoCloseable {
 
     /** Writes the instance to every node; every node failing fails loudly. */
     public void register(ServiceInstance instance) {
-        registered = Objects.requireNonNull(instance, "instance");
+        register(instance, Health.up());
+    }
+
+    /**
+     * Writes the instance with the probe state it should be registered under:
+     * a warming instance goes in as {@link Health#starting()}, so it is in the
+     * registry but not in discovery from the first write. The readiness bit
+     * also rides the heartbeat from then on.
+     */
+    public void register(ServiceInstance instance, Health health) {
+        Objects.requireNonNull(instance, "instance");
+        Objects.requireNonNull(health, "health");
+        this.ready = health.ready();
         int failures = 0;
         for (URI node : nodes.addresses()) {
             try {
                 HttpResponse<String> response = exchange(node,
-                    "POST", "/registry/services/" + segment(instance.serviceId()) + "/instances",
+                    "POST", "/registry/services/" + segment(instance.serviceId()) + "/instances"
+                        + "?ready=" + health.ready(),
                     codec.toJson(instance));
                 if (response.statusCode() / 100 != 2) {
                     failures++;
@@ -109,6 +119,7 @@ final class RegistryNodeClient implements AutoCloseable {
 
     public boolean renew(String serviceId, String instanceId) {
         boolean aliveSomewhere = false;
+        boolean lostSomewhere = false;
         for (URI node : nodes.addresses()) {
             try {
                 HttpResponse<String> response = exchange(node,
@@ -118,21 +129,21 @@ final class RegistryNodeClient implements AutoCloseable {
                     "{\"ready\":" + ready + "}");
                 if (response.statusCode() == 200) {
                     aliveSomewhere = true;
-                } else if (response.statusCode() == 404 && registered != null) {
-                    // The node restarted (its table is empty): repopulate it directly
-                    // from the instance this client registered — not from a guess.
-                    HttpResponse<String> reRegistered = exchange(node,
-                        "POST", "/registry/services/" + segment(serviceId) + "/instances",
-                        codec.toJson(registered));
-                    if (reRegistered.statusCode() / 100 == 2) {
-                        aliveSomewhere = true;
-                    }
+                } else if (response.statusCode() == 404) {
+                    // This node no longer holds the instance (it restarted, or
+                    // its lease expired). Answer "lost" and let the lifecycle
+                    // hook re-register — one write fans out to every node, so
+                    // the lost one is repopulated by the same call that heals
+                    // the fleet. Re-registering here as well would be a second
+                    // mechanism for one event, invisible to the caller's
+                    // failure reporting.
+                    lostSomewhere = true;
                 }
             } catch (Exception e) {
                 LOG.warn("Registry node {} unreachable for a heartbeat: {}", node, e.getMessage());
             }
         }
-        return aliveSomewhere;
+        return aliveSomewhere && !lostSomewhere;
     }
 
     /** Removes the instance from every node; one unreachable node must not hold shutdown. */

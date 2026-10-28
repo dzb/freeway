@@ -42,4 +42,17 @@ public final class ResponseFraming {
     public static boolean suppressBodyBytes(boolean bodyAllowed, String method) {
         return !bodyAllowed || "HEAD".equalsIgnoreCase(method);
     }
+
+    /** True when this response header must be omitted from the wire.
+     *
+     *  <p>RFC 9110 §8.6: a response without a body (204/205/304) must not
+     *  carry {@code Content-Length}, regardless of who set it — a handler-set
+     *  value must not leak next to a suppressed body. HEAD keeps it
+     *  (§9.3.2: same headers as GET) because this asks {@code bodyAllowed},
+     *  which is status-based. Both protocol writers call this, so the rule
+     *  cannot hold on one and not the other.</p>
+     */
+    public static boolean suppressesHeader(String name, boolean bodyAllowed) {
+        return !bodyAllowed && "Content-Length".equalsIgnoreCase(name);
+    }
 }

@@ -111,10 +111,29 @@ public interface FlowContext {
 
     /**
      * @hidden Opens a branch-local write buffer on the calling thread: every
-     *  write until the returned merger runs lands in the buffer, reads see
+     *  write until the scope commits lands in the buffer, reads see
      *  buffer-then-parent. The PARALLEL dispatcher wraps each branch with
-     *  this; calling the merger folds the buffer into the parent (conflict
-     *  if a key this branch wrote was written differently meanwhile).
+     *  this; committing folds the buffer into the parent (conflict if a key
+     *  this branch wrote was written differently meanwhile), and closing
+     *  without committing discards it.
+     *
+     *  <p>The scope is the shape: a branch cannot forget to either commit or
+     *  discard, because try-with-resources closes it on every exit path —
+     *  including the one where the branch threw.</p>
      */
-    Runnable beginBranch();
+    Branch beginBranch();
+
+    /**
+     * @hidden One branch's write buffer. Commit exactly once; the closing
+     *  scope discards whatever was not committed.
+     */
+    interface Branch extends AutoCloseable {
+
+        /** Folds the buffer into the parent; fails on a write-write conflict. */
+        void commit();
+
+        /** Discards the buffer unless it was committed. Idempotent. */
+        @Override
+        void close();
+    }
 }

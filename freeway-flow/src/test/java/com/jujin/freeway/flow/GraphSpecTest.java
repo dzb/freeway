@@ -33,6 +33,44 @@ class GraphSpecTest {
     }
 
     @Test
+    void aSettledSpecSerializesTheSameUntilItChanges() {
+        GraphSpec spec = GraphSpec.create("cached", s -> {
+            s.entry("start");
+            s.addStart("start").linkAdd("a");
+            s.addActivity("a").task("@t").linkAdd("e");
+            s.addEnd("e");
+        });
+
+        Map<String, Object> first = spec.toMap();
+        assertEquals(first, spec.toMap(),
+            "an unchanged spec normalizes to the same document (the cache is real)");
+
+        spec.addActivity("later").task("@t").linkAdd("e");
+        assertTrue(spec.toMap().toString().contains("later"),
+            "a mutation invalidates the snapshot; the next toMap() must see it");
+    }
+
+    @Test
+    void aConditionalLinkOutOfAParallelForkIsRefusedWhenBuilt() {
+        // A fork runs every branch, so a `when` on its edge is never
+        // evaluated. Accepting it would compile a guard that silently does
+        // nothing; the shape is refused where the author can see why.
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+            () -> GraphSpec.create("condfork", spec -> {
+                spec.entry("s");
+                spec.addStart("s").linkAdd("fork");
+                var fork = spec.addParallel("fork").task("@noop");
+                fork.linkAdd("a", link -> link.when("x > 1"));
+                fork.linkAdd("b");
+                spec.addEnd("a");
+                spec.addEnd("b");
+            }).create());
+
+        assertTrue(ex.getMessage().contains("PARALLEL node 'fork'"), ex.getMessage());
+        assertTrue(ex.getMessage().contains("would be ignored"), ex.getMessage());
+    }
+
+    @Test
     void testBlueprintBuildsAndRuns() {
         GraphSpec blueprint = GraphSpec.create("blueprint_v2", bp -> {
             bp.entry("start");

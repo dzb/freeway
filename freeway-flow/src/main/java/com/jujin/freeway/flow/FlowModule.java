@@ -6,6 +6,7 @@ import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.Scope;
 import com.jujin.freeway.ioc.annotation.Builtin;
 import com.jujin.freeway.ioc.annotation.Marker;
+import com.jujin.freeway.ioc.event.EventBus;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,6 +30,11 @@ import org.slf4j.LoggerFactory;
  *       add or remove an interceptor while runs are in flight</li>
  *   <li>a contributed driver with id {@code "default"} overrides the built-in
  *       (the usual {@code .primary()} seam)</li>
+ *   <li>every {@link FlowContext#eventBus()} publish is also forwarded to the
+ *       application's {@link EventBus} under {@code "flow." + topic} — the
+ *       correlation-free bridge between the execution-scoped bus and the
+ *       process-scoped one. Standalone {@code FlowEngine.create()}
+ *       assemblies have no application bus and forward nothing.</li>
  * </ul>
  */
 @Marker(Builtin.class)
@@ -50,7 +56,9 @@ public class FlowModule implements ModuleEx {
                 driverMap.putAll(contributed);
                 List<FlowInterceptor> interceptors =
                     container.extension(FlowInterceptor.class).all();
-                return FlowEngine.create(driverMap, interceptors);
+                EventBus events = container.get(EventBus.class);
+                return FlowEngine.create(driverMap, interceptors,
+                    (topic, payload) -> events.publish("flow." + topic, payload));
             })
             .scope(Scope.SINGLETON);
     }

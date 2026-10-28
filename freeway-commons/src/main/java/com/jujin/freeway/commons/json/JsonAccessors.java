@@ -1,7 +1,9 @@
 package com.jujin.freeway.commons.json;
 
+import com.jujin.freeway.commons.coercion.Coercer;
+import com.jujin.freeway.commons.coercion.CoercerDefault;
+
 import java.math.BigDecimal;
-import java.math.BigInteger;
 
 final class JsonAccessors {
 
@@ -11,172 +13,34 @@ final class JsonAccessors {
         return value == null ? null : String.valueOf(value);
     }
 
+    /**
+     * The scalar readers delegate to the same {@link Coercer} the typed JSON
+     * path uses, so a node getter and {@code JsonCodec.convert} cannot disagree
+     * about "1", "yes" or "1.5". They used to be a second, stricter rule set
+     * (JSON literals only), which made {@code {"b":1}} readable through one
+     * path and rejected through the other. The built-in coercer is used here
+     * because a tree node has no container; an application's own
+     * {@code CoerceRule}s apply through {@code JsonCodec}, not through the
+     * node getters.
+     */
+    private static final Coercer SCALARS = new CoercerDefault();
+
     static Integer integer(Object value) {
-        if (value == null) {
-            return null;
-        }
-        if (value instanceof Number number) {
-            if (number instanceof BigInteger bi) {
-                if (
-                    bi.compareTo(BigInteger.valueOf(Integer.MAX_VALUE)) > 0 ||
-                    bi.compareTo(BigInteger.valueOf(Integer.MIN_VALUE)) < 0
-                ) {
-                    throw new IllegalArgumentException(
-                        "Number " + number + " is out of Integer range"
-                    );
-                }
-                return bi.intValue();
-            }
-            if (number instanceof BigDecimal bd) {
-                if (
-                    bd.compareTo(BigDecimal.valueOf(Integer.MAX_VALUE)) > 0 ||
-                    bd.compareTo(BigDecimal.valueOf(Integer.MIN_VALUE)) < 0
-                ) {
-                    throw new IllegalArgumentException(
-                        "Number " + number + " is out of Integer range"
-                    );
-                }
-                return bd.intValue();
-            }
-            if (number instanceof Double d && (d.isNaN() || d.isInfinite())) {
-                throw new IllegalArgumentException(
-                    "Cannot convert " + number + " to Integer"
-                );
-            }
-            if (number instanceof Float f && (f.isNaN() || f.isInfinite())) {
-                throw new IllegalArgumentException(
-                    "Cannot convert " + number + " to Integer"
-                );
-            }
-            long v = number.longValue();
-            if (v < Integer.MIN_VALUE || v > Integer.MAX_VALUE) {
-                throw new IllegalArgumentException(
-                    "Number " + number + " is out of Integer range"
-                );
-            }
-            return number.intValue();
-        }
-        try {
-            return Integer.parseInt(String.valueOf(value));
-        } catch (NumberFormatException e) {
-            throw new IllegalArgumentException(
-                "Cannot parse '" + value + "' as Integer"
-            );
-        }
+        return value == null ? null : SCALARS.coerce(value, Integer.class);
     }
 
     static Long longValue(Object value) {
-        if (value == null) {
-            return null;
-        }
-        if (value instanceof Number number) {
-            if (number instanceof BigInteger) {
-                BigInteger bi = (BigInteger) number;
-                if (
-                    bi.compareTo(BigInteger.valueOf(Long.MAX_VALUE)) > 0 ||
-                    bi.compareTo(BigInteger.valueOf(Long.MIN_VALUE)) < 0
-                ) {
-                    throw new IllegalArgumentException(
-                        "Number " + number + " is out of Long range"
-                    );
-                }
-                return bi.longValue();
-            }
-            if (number instanceof BigDecimal) {
-                BigDecimal bd = (BigDecimal) number;
-                if (
-                    bd.compareTo(BigDecimal.valueOf(Long.MAX_VALUE)) > 0 ||
-                    bd.compareTo(BigDecimal.valueOf(Long.MIN_VALUE)) < 0
-                ) {
-                    throw new IllegalArgumentException(
-                        "Number " + number + " is out of Long range"
-                    );
-                }
-                return bd.longValue();
-            }
-            if (number instanceof Double d) {
-                if (d.isNaN() || d.isInfinite()) {
-                    throw new IllegalArgumentException(
-                        "Cannot convert " + number + " to Long"
-                    );
-                }
-                // (long) silently saturates out-of-range doubles to
-                // Long.MAX/MIN — reject like the BigDecimal branch does.
-                // 0x1p63 = 2^63, the double Long.MAX_VALUE rounds to.
-                if (d >= 0x1p63 || d < -0x1p63) {
-                    throw new IllegalArgumentException(
-                        "Number " + number + " is out of Long range"
-                    );
-                }
-            }
-            if (number instanceof Float f) {
-                if (f.isNaN() || f.isInfinite()) {
-                    throw new IllegalArgumentException(
-                        "Cannot convert " + number + " to Long"
-                    );
-                }
-                if (f >= 0x1p63f || f < -0x1p63f) {
-                    throw new IllegalArgumentException(
-                        "Number " + number + " is out of Long range"
-                    );
-                }
-            }
-            return number.longValue();
-        }
-        try {
-            return Long.parseLong(String.valueOf(value));
-        } catch (NumberFormatException e) {
-            throw new IllegalArgumentException(
-                "Cannot parse '" + value + "' as Long"
-            );
-        }
+        return value == null ? null : SCALARS.coerce(value, Long.class);
     }
 
     static Double doubleValue(Object value) {
-        if (value == null) {
-            return null;
-        }
-        if (value instanceof Number number) {
-            double d = number.doubleValue();
-            if (Double.isInfinite(d)) {
-                throw new IllegalArgumentException(
-                    "Number " + number + " is out of Double range"
-                );
-            }
-            return d;
-        }
-        try {
-            return Double.parseDouble(String.valueOf(value));
-        } catch (NumberFormatException e) {
-            throw new IllegalArgumentException(
-                "Cannot parse '" + value + "' as Double"
-            );
-        }
+        return value == null ? null : SCALARS.coerce(value, Double.class);
     }
 
     static Boolean booleanValue(Object value) {
-        if (value == null) {
-            return null;
-        }
-        if (value instanceof Boolean b) {
-            return b;
-        }
-        String s = String.valueOf(value);
-        if ("true".equalsIgnoreCase(s)) return true;
-        if ("false".equalsIgnoreCase(s)) return false;
-        throw new IllegalArgumentException(
-            "Cannot parse '" + value + "' as Boolean"
-        );
+        return value == null ? null : SCALARS.coerce(value, Boolean.class);
     }
 
-    /**
-     * The value as an object. {@code null} (absent) stays {@code null} — that is
-     * how every {@code getX} in this family answers a missing key — but a value
-     * that is <em>present and not an object</em> throws, like its numeric and
-     * boolean siblings: returning {@code null} there made "the key is absent"
-     * and "the key holds a string" indistinguishable, and the mistake surfaced
-     * later as a silently ignored field.
-     */
     static JsonObject object(Object value) {
         if (value == null) {
             return null;

@@ -68,6 +68,18 @@ public class Node {
     public String id() { return id; }
     public String title() { return title; }
     public NodeType type() { return type; }
+
+    /**
+     * Whether this LOOP repeats its body. A LOOP without {@code $for} is a
+     * plain activity gateway that fans out once, so its successors do not
+     * arrive per iteration and nothing about them is loop bookkeeping. One
+     * definition, shared by the executor ({@code loopRun}) and the graph
+     * check — deciding it twice is how the two drift apart, and the check
+     * then refuses a graph the engine runs perfectly well.
+     */
+    boolean iterates() {
+        return type == NodeType.LOOP && metaAsString("$for") != null;
+    }
     public Map<String, Object> metas() { return metas; }
     public Map<String, Object> data() { return data; }
 
@@ -115,20 +127,23 @@ public class Node {
             "Cannot read meta '" + key + "' as number: " + tmp.getClass().getName());
     }
 
+    /**
+     * The incoming links, in declaration order of their sources.
+     *
+     * <p>Built once by the {@link Graph} constructor, not lazily: the lazy
+     * version scanned every link in the graph on first touch per node, so a
+     * graph with J joins paid O(J x E) just to count arrivals, and every node
+     * that asked for predecessors paid its own scan. The graph already walks
+     * its links once to build the nodes; building the reverse index in the
+     * same pass makes that walk the only one.</p>
+     */
     public List<Link> prevLinks() {
-        if (prevLinks == null) {
-            List<Link> tmp = new ArrayList<>();
-            if (type() != NodeType.START) {
-                for (Link l : graph.links()) {
-                    if (id().equals(l.nextId())) {
-                        tmp.add(l);
-                    }
-                }
-                Collections.reverse(tmp);
-            }
-            prevLinks = List.copyOf(tmp);
-        }
         return prevLinks;
+    }
+
+    /** Called once by {@link Graph} with the reverse index for this node. */
+    void attachIncoming(List<Link> incoming) {
+        this.prevLinks = List.copyOf(incoming);
     }
 
     public List<Link> nextLinks() { return nextLinks; }

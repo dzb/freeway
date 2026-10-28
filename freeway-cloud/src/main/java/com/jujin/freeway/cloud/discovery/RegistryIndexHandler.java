@@ -24,10 +24,11 @@ final class RegistryIndexHandler implements RouteHandler {
     @Override
     public void handle(HttpContext ctx) throws IOException {
         Map<String, Object> routes = new LinkedHashMap<>();
-        routes.put("register", RegistryServerModule.REGISTER);
-        routes.put("renew", RegistryServerModule.RENEW);
-        routes.put("unregister", RegistryServerModule.UNREGISTER);
-        routes.put("discover", RegistryServerModule.DISCOVER);
+        // Derived from the served table, so a new route cannot be missing from
+        // its own self-description.
+        for (RegistryServerModule.Surface surface : RegistryServerModule.SURFACE) {
+            routes.put(surface.label(), surface.path());
+        }
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("proto", RegistryServerModule.PROTO);

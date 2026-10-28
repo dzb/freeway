@@ -26,7 +26,7 @@ class EventBusStatsTest {
             binder -> binder.contribute(EventSubscriber.class)
                 .add(EventSubscriber.of(PostCreatedEvent.class, e -> log.add("ok")))
         );
-        EventBus bus = new EventBus(container);
+        EventBus bus = EventBus.create(container);
         bus.subscribe(PostCreatedEvent.class, e -> {
             throw new IllegalStateException("boom");
         });
@@ -61,7 +61,7 @@ class EventBusStatsTest {
         };
         Container container = Freeway.create(binder ->
             binder.bind(Metrics.class).to(c -> metrics).primary());
-        EventBus bus = new EventBus(container);
+        EventBus bus = EventBus.create(container);
         bus.subscribe(PostCreatedEvent.class, e -> { });
 
         bus.publish(new PostCreatedEvent(new Post("x")));
@@ -76,7 +76,7 @@ class EventBusStatsTest {
         // New contract pin: DeadEvent.source identifies the bus that emitted
         // the diagnostic (it used to leak the internal EventDispatcher).
         Container container = Freeway.create(binder -> { });
-        EventBus bus = new EventBus(container);
+        EventBus bus = EventBus.create(container);
         List<DeadEvent> dead = new ArrayList<>();
         bus.subscribe(DeadEvent.class, dead::add);
 

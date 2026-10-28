@@ -2,7 +2,7 @@ package com.jujin.freeway.boot;
 
 import com.jujin.freeway.boot.internal.AppRuntimeDefault;
 import com.jujin.freeway.boot.internal.BootModule;
-import com.jujin.freeway.boot.internal.ConfigLoaderImpl;
+import com.jujin.freeway.boot.internal.ConfigCascade;
 import com.jujin.freeway.commons.logging.LogBootstrap;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Freeway;
@@ -241,7 +241,7 @@ public final class FreewayApp {
         ClassLoader effectiveLoader = resolveClassLoader();
         AppConfig config = this.config != null
             ? this.config
-            : ConfigLoaderImpl.load(effectiveLoader, args);
+            : ConfigCascade.load(effectiveLoader, args);
 
         Container container;
         AppRuntime app;

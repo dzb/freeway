@@ -18,8 +18,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * fully introspectable — private constructors, fields and setters are reached
  * via a private lookup. JDK classes live in non-open modules, so only their
  * public members are reachable (via {@link MethodHandles#publicLookup()});
- * {@code BeanPlan.plan} on a JDK type therefore succeeds with a zero-property
- * or non-constructable plan instead of failing. If deeper JDK reflection is
+ * {@link #plan(Class)} on a JDK type therefore succeeds with a zero-property
+ * or non-constructable plan instead of failing; If deeper JDK reflection is
  * ever required, the JVM must be started with the matching
  * {@code --add-opens} flag — the framework does not and cannot do this for
  * the application.

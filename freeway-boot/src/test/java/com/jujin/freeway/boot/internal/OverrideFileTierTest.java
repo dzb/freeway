@@ -70,6 +70,42 @@ class OverrideFileTierTest {
     }
 
     @Test
+    void aLogKeyInAnOverrideFileIsNamedAsHavingNoEffect(@TempDir Path dir) throws Exception {
+        // The working-directory files are invisible to logging: it reads -D,
+        // the environment and the classpath baseline before this tier exists.
+        Path file = Files.writeString(
+            dir.resolve("application.properties"), "freeway.log.level=DEBUG\n");
+        List<String> warnings = captureWarnings(() -> {
+            AppConfigDefault config = of(List.of(file));
+            config.close();
+        });
+
+        String notice = warnings.stream()
+            .filter(w -> w.contains("freeway.log.level"))
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("expected a log-key notice, got " + warnings));
+        assertTrue(notice.contains("application.properties"),
+            "the notice names the file to fix: " + notice);
+        assertTrue(notice.contains("no effect"),
+            "and says the value does not reach a logger: " + notice);
+    }
+
+    @Test
+    void aLogKeyInTheClasspathBaselineIsNotNamedHere(@TempDir Path dir) throws Exception {
+        // This class owns the override tier only; the baseline is a channel
+        // logging reads, and its class-load-only keys are named by the loader.
+        AppConfigDefault config = new AppConfigDefault(
+            new ConfigSources(Map.of(), Map.of(),
+                Map.of("freeway.log.level", "DEBUG"), List.of()),
+            List.of());
+        try {
+            assertEquals("DEBUG", fileValue(config, "freeway.log.level"));
+        } finally {
+            config.close();
+        }
+    }
+
+    @Test
     void distinctKeysAcrossOverrideFilesAreSilent(@TempDir Path dir) throws Exception {
         Path first = Files.writeString(dir.resolve("first.properties"), "freeway.db.url=jdbc:first\n");
         Path second = Files.writeString(dir.resolve("second.properties"), "freeway.db.username=sa\n");
@@ -101,7 +137,9 @@ class OverrideFileTierTest {
 
     /** The WARN messages logged under the config's logger while {@code action} runs. */
     private static List<String> captureWarnings(Runnable action) {
-        Logger logger = Logger.getLogger(AppConfigDefault.class.getName());
+        List<Logger> loggers = List.of(
+            Logger.getLogger(AppConfigDefault.class.getName()),
+            Logger.getLogger(LogKeyNotices.class.getName()));
         List<String> messages = new ArrayList<>();
         Handler handler = new Handler() {
             @Override
@@ -120,14 +158,19 @@ class OverrideFileTierTest {
             public void close() {
             }
         };
-        boolean parentHandlers = logger.getUseParentHandlers();
-        logger.setUseParentHandlers(false);
-        logger.addHandler(handler);
+        List<Boolean> parentHandlers = new ArrayList<>(loggers.size());
+        for (Logger logger : loggers) {
+            parentHandlers.add(logger.getUseParentHandlers());
+            logger.setUseParentHandlers(false);
+            logger.addHandler(handler);
+        }
         try {
             action.run();
         } finally {
-            logger.removeHandler(handler);
-            logger.setUseParentHandlers(parentHandlers);
+            for (int i = 0; i < loggers.size(); i++) {
+                loggers.get(i).removeHandler(handler);
+                loggers.get(i).setUseParentHandlers(parentHandlers.get(i));
+            }
         }
         return messages;
     }

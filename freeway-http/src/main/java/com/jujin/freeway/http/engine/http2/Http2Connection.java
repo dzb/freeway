@@ -44,18 +44,15 @@ public final class Http2Connection {
      * per-stream state. */
     private static final int MAX_CONCURRENT_STREAMS = 100;
     /**
-     * Cap on a single inbound header block (across HEADERS + CONTINUATION
-     * fragments) before HPACK decode — bounds memory under a malicious peer.
-     * This is the connection's raw-wire bound; the *decoded* list size is
-     * bounded separately by {@link #MAX_HEADER_LIST_SIZE} (enforced inside
-     * {@link com.jujin.freeway.http.engine.http2.hpack.HPackContext#decode}),
-     * and dynamic-table sizing is owned entirely by HPackContext. */
-    private static final int MAX_INBOUND_HEADER_BLOCK = 64 * 1024;
-    /**
-     * Advertised SETTINGS_MAX_HEADER_LIST_SIZE (RFC 7540 §6.5.2), passed as
-     * the decode-time cap so a peer cannot inflate the decoded field list
-     * beyond what we advertise. */
-    private static final int MAX_HEADER_LIST_SIZE = 64 * 1024;
+     * The inbound header budget, from {@link com.jujin.freeway.http.HttpServerConfig#maxHeaderBytes()}:
+     * one number for the raw header block (HEADERS + CONTINUATION fragments,
+     * bounded before HPACK decode), the decoded field list passed to
+     * {@link com.jujin.freeway.http.engine.http2.hpack.HPackContext#decode},
+     * and the value advertised in SETTINGS_MAX_HEADER_LIST_SIZE. The same
+     * number HTTP/1.1 applies to its header block, so a request cannot fit on
+     * one protocol and be refused on the other.
+     */
+    private final int maxHeaderBytes;
     /**
      * Inbound RST_STREAM burst guard (CVE-2023-44487 rapid-reset family).
      * {@link #MAX_CONCURRENT_STREAMS} alone does not stop a peer that opens,
@@ -123,7 +120,8 @@ public final class Http2Connection {
                            int readTimeoutMillis) {
         this(socket, inputStream, outputStream, executor, handler, readTimeoutMillis,
             FreewayHttpEngine.DEFAULT_H2_RESET_BURST_LIMIT,
-            FreewayHttpEngine.DEFAULT_H2_RESET_WINDOW);
+            FreewayHttpEngine.DEFAULT_H2_RESET_WINDOW,
+            com.jujin.freeway.http.HttpServerConfig.DEFAULT_MAX_HEADER_BYTES);
     }
 
     /**
@@ -135,6 +133,25 @@ public final class Http2Connection {
                            ExecutorService executor, StreamHandler handler,
                            int readTimeoutMillis, int resetBurstLimit,
                            Duration resetWindow) {
+        this(socket, inputStream, outputStream, executor, handler, readTimeoutMillis,
+            resetBurstLimit, resetWindow,
+            com.jujin.freeway.http.HttpServerConfig.DEFAULT_MAX_HEADER_BYTES);
+    }
+
+    /**
+     * Full constructor: the reset burst guard plus the inbound header budget
+     * ({@code maxHeaderBytes} — see {@link
+     * com.jujin.freeway.http.HttpServerConfig#maxHeaderBytes()}).
+     */
+    public Http2Connection(Socket socket, InputStream inputStream, OutputStream outputStream,
+                           ExecutorService executor, StreamHandler handler,
+                           int readTimeoutMillis, int resetBurstLimit,
+                           Duration resetWindow, int maxHeaderBytes) {
+        if (maxHeaderBytes <= 0) {
+            throw new IllegalArgumentException(
+                "maxHeaderBytes must be positive: " + maxHeaderBytes);
+        }
+        this.maxHeaderBytes = maxHeaderBytes;
         if (resetBurstLimit < 0) {
             throw new IllegalArgumentException(
                 "resetBurstLimit must be >= 0: " + resetBurstLimit);
@@ -157,7 +174,7 @@ public final class Http2Connection {
         localSettings.set(new SettingParameter(
             SettingIdentifier.SETTINGS_MAX_CONCURRENT_STREAMS, MAX_CONCURRENT_STREAMS));
         localSettings.set(new SettingParameter(
-            SettingIdentifier.SETTINGS_MAX_HEADER_LIST_SIZE, MAX_HEADER_LIST_SIZE));
+            SettingIdentifier.SETTINGS_MAX_HEADER_LIST_SIZE, maxHeaderBytes));
     }
 
     void lock() {
@@ -223,7 +240,7 @@ public final class Http2Connection {
     }
 
     private void processFrames() throws IOException {
-        var headerBlock = new HeaderBlockState();
+        var headerBlock = new HeaderBlockState(maxHeaderBytes);
 
         while (!closed.get()) {
             updateReadTimeout();
@@ -460,7 +477,7 @@ public final class Http2Connection {
     private HeaderFields decodeFields(HeaderBlockState headerBlock)
             throws IOException {
         var fields = new HeaderFields();
-        for (var field : hpack.decode(headerBlock.combined(), MAX_HEADER_LIST_SIZE)) {
+        for (var field : hpack.decode(headerBlock.combined(), maxHeaderBytes)) {
             fields.add(field);
         }
         return fields;
@@ -531,21 +548,25 @@ public final class Http2Connection {
     }
 
     /** In-progress HEADERS/CONTINUATION header block. Tracks the raw fragment
-     *  bytes (bounded by {@link #MAX_INBOUND_HEADER_BLOCK}) and whether the
+     *  bytes (bounded by {@link #maxHeaderBytes}) and whether the
      *  block carries END_STREAM, so the stream can be marked half-closed once
      *  the block completes. */
     private static final class HeaderBlockState {
         final List<byte[]> fragments = new ArrayList<>();
+        final int limit;
         int size;
         boolean inHeaders;
         int openStreamId;
         boolean endStream;
 
+        HeaderBlockState(int limit) {
+            this.limit = limit;
+        }
+
         void add(byte[] block) throws Http2Exception {
-            if (size + block.length > MAX_INBOUND_HEADER_BLOCK) {
+            if (size + block.length > limit) {
                 throw new Http2Exception(Http2ErrorCode.COMPRESSION_ERROR,
-                    "Header block exceeds " + MAX_INBOUND_HEADER_BLOCK
-                        + " bytes");
+                    "Header block exceeds " + limit + " bytes");
             }
             fragments.add(block);
             size += block.length;

@@ -145,17 +145,10 @@ public final class DatabaseImpl implements Database {
         if (tx.isBound()) {
             throw new IllegalStateException("Nested transaction not supported");
         }
-        PooledConnection conn = pool.borrow();
-        int originalIsolation = -1;
+        OwnedTransaction owned = OwnedTransaction.begin(this, isolation);
         activeTxThreads.add(Thread.currentThread());
         try {
-            var raw = conn.connection();
-            originalIsolation = raw.getTransactionIsolation();
-            raw.setAutoCommit(false);
-            if (isolation != null && isolation != IsolationLevel.DEFAULT) {
-                raw.setTransactionIsolation(isolation.jdbcLevel());
-            }
-            TxBinding binding = new TxBinding(conn);
+            TxBinding binding = new TxBinding(owned.connection());
             Defer.within(() -> {
                 ScopedValue.where(tx, binding).run(() -> {
                     try {
@@ -167,7 +160,7 @@ public final class DatabaseImpl implements Database {
                     }
                 });
                 try {
-                    raw.commit();
+                    owned.commit();
                 } catch (SQLException e) {
                     throw new RuntimeException("Commit failed", e);
                 }
@@ -175,47 +168,16 @@ public final class DatabaseImpl implements Database {
             });
         } catch (Throwable e) {
             // Catch Throwable, not just Exception: an Error thrown by work
-            // (e.g. AssertionError) must still roll back — the finally's
-            // restoreConnectionState setAutoCommit(true) would otherwise
-            // silently COMMIT the failed transaction.
+            // (e.g. AssertionError) must still roll back — the restore in
+            // close() would otherwise silently COMMIT the failed transaction.
             LOG.debug("Transaction rolled back", e);
-            try {
-                conn.connection().rollback();
-            } catch (SQLException re) {
-                LOG.warn("Transaction rollback failed", re);
-            }
+            owned.rollbackQuietly();
             if (e instanceof RuntimeException re) throw re;
             if (e instanceof Error err) throw err;
             throw new RuntimeException(e);
         } finally {
             activeTxThreads.remove(Thread.currentThread());
-            restoreConnectionState(conn, originalIsolation);
-            pool.release(conn);
-        }
-    }
-
-    private void restoreConnectionState(
-        PooledConnection conn,
-        int originalIsolation
-    ) {
-        try {
-            var raw = conn.connection();
-            if (
-                originalIsolation >= 0 &&
-                raw.getTransactionIsolation() != originalIsolation
-            ) {
-                raw.setTransactionIsolation(originalIsolation);
-            }
-            if (!raw.getAutoCommit()) {
-                raw.setAutoCommit(true);
-            }
-        } catch (SQLException e) {
-            // The connection cannot be handed back in a defined state:
-            // invalidate destroys it instead of recycling it. Releasing the
-            // handle afterwards is a no-op, so transaction()'s finally stays
-            // unchanged.
-            LOG.warn("Failed to restore connection state — destroying connection", e);
-            pool.invalidate(conn);
+            owned.close();
         }
     }
 

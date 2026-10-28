@@ -52,6 +52,20 @@ class ResponseFramingTest {
     }
 
     @Test
+    void bodylessResponsesDropContentLengthOnBothProtocols() {
+        // The rule used to live in the HTTP/1.1 writer only, so a handler-set
+        // Content-Length on a 204 went out on h2. Both writers now ask here.
+        assertTrue(ResponseFraming.suppressesHeader("Content-Length", false),
+            "204/205/304 must not carry Content-Length (RFC 9110 §8.6)");
+        assertTrue(ResponseFraming.suppressesHeader("content-length", false),
+            "the name is case-insensitive");
+        assertFalse(ResponseFraming.suppressesHeader("Content-Length", true),
+            "a response with a body keeps its Content-Length");
+        assertFalse(ResponseFraming.suppressesHeader("Content-Type", false),
+            "only Content-Length is suppressed");
+    }
+
+    @Test
     void bodySuppressionTable() {
         assertFalse(ResponseFraming.suppressBodyBytes(true, "GET"));
         assertFalse(ResponseFraming.suppressBodyBytes(true, "POST"));

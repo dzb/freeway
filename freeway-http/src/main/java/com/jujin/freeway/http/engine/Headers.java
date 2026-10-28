@@ -23,14 +23,23 @@ final class Headers {
 
     private final LinkedHashMap<Key, List<String>> values = new LinkedHashMap<>();
 
-    /** Copies an existing header map (for example a parsed request) into a
-     *  case-insensitive store. */
+    /** Copies a parsed request's header map into a case-insensitive store,
+     *  lowercasing every name.
+     *
+     *  <p>This is the one place a request's header names are canonicalized:
+     *  HTTP/1.1 parsing lowercases them already, HTTP/2 field names arrive in
+     *  whatever case the peer sent (the built-in engine keeps the first letter
+     *  upper-case for display), and a map consumer such as
+     *  {@code ctx.headers()} must not be able to tell which engine answered.
+     *  Response headers are not copied through here — their case is preserved
+     *  for the wire.</p> */
     static Headers copyOf(Map<String, List<String>> source) {
         Headers headers = new Headers();
         if (source != null) {
             source.forEach((name, values) -> {
                 if (values != null) {
-                    values.forEach(value -> headers.add(name, value));
+                    String canonical = name.toLowerCase(Locale.ROOT);
+                    values.forEach(value -> headers.add(canonical, value));
                 }
             });
         }

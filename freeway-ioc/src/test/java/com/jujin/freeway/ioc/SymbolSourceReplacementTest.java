@@ -1,9 +1,11 @@
 package com.jujin.freeway.ioc;
 
+import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.ioc.extension.Extension;
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
+import com.jujin.freeway.ioc.symbol.SymbolSpec;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
@@ -28,11 +30,13 @@ class SymbolSourceReplacementTest {
     private static final class ViewSource implements SymbolSource {
 
         private final Extension<SymbolProvider> contributed;
-        private final SymbolSource delegate =
-            SymbolSource.of(new CoercerDefault(), SymbolProvider.systemProperties());
+        private final Coercer coercer;
+        private final SymbolSource delegate;
 
-        ViewSource(Extension<SymbolProvider> contributed) {
+        ViewSource(Extension<SymbolProvider> contributed, Coercer coercer) {
             this.contributed = contributed;
+            this.coercer = coercer;
+            this.delegate = SymbolSource.of(coercer, SymbolProvider.systemProperties());
         }
 
         @Override
@@ -44,6 +48,14 @@ class SymbolSourceReplacementTest {
                 }
             }
             return delegate.resolve(name);
+        }
+
+        @Override
+        public <T> T resolve(SymbolSpec<T> spec) {
+            // Typing belongs to the seam: parse through the chain's coercer so
+            // parser-less specs (Duration, Integer, user CoerceRules) resolve
+            // exactly as they do on the framework's own chain.
+            return spec.parse(resolve(spec.key(), null), coercer);
         }
 
         @Override
@@ -69,14 +81,20 @@ class SymbolSourceReplacementTest {
     void replacedSourceSeesInstanceContributionThroughTheView() {
         Container container = Freeway.create(binder -> {
             binder.bind(SymbolSource.class)
-                .to(c -> new ViewSource(c.extension(SymbolProvider.class)))
+                .to(c -> new ViewSource(
+                    c.extension(SymbolProvider.class), c.get(Coercer.class)))
                 .primary();
             binder.contribute(SymbolProvider.class)
-                .add("test-tier", SymbolProvider.of(() -> Map.of("probe", "value"), 7));
+                .add("test-tier", SymbolProvider.of(() -> Map.of("probe", "value", "probe.count", "7"), 7));
         });
 
         assertEquals("value", container.get(SymbolSource.class).resolve("probe", null),
             "a lookup through the replacement must see the contributed tier");
+        // The seam includes typing: a parser-less spec must resolve through the
+        // container's coercer, not throw "has no parser and no Coercer".
+        assertEquals(7, container.get(SymbolSource.class).resolve(
+                SymbolSpec.of("probe.count", Integer.class, 0)),
+            "a replacement must type parser-less specs through the chain's coercer");
         container.close();
     }
 
@@ -87,7 +105,8 @@ class SymbolSourceReplacementTest {
         // facade, no post-load replay into the winner.
         Container container = Freeway.create(binder -> {
             binder.bind(SymbolSource.class)
-                .to(c -> new ViewSource(c.extension(SymbolProvider.class)))
+                .to(c -> new ViewSource(
+                    c.extension(SymbolProvider.class), c.get(Coercer.class)))
                 .primary();
             binder.contribute(SymbolProvider.class).add(ClassTier.class);
         });
@@ -107,6 +126,11 @@ class SymbolSourceReplacementTest {
         @Override
         public String resolve(String name) {
             return delegate.resolve(name);
+        }
+
+        @Override
+        public <T> T resolve(SymbolSpec<T> spec) {
+            return delegate.resolve(spec);
         }
 
         @Override

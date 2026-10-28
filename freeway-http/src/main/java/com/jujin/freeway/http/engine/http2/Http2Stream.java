@@ -329,6 +329,18 @@ public final class Http2Stream {
 
     /** InputStream adapter that reads request body from DATA frames using park/unpark for blocking. */
     private class DataIn extends InputStream {
+
+        /**
+         * How much of an unread request body the server swallows after it has
+         * already answered (linger close), and how long it waits for it.
+         * Draining an upload to EOF keeps the connection reusable, which is
+         * what a client wants after a 401/404/413 — but an unbounded drain
+         * lets a slow uploader hold a stream and a virtual thread for as long
+         * as it likes, and the body limit is not in this path at all. Past
+         * either bound the stream is reset instead.
+         */
+        private static final int MAX_LINGER_BYTES = 64 * 1024;
+        private static final long MAX_LINGER_NANOS = 500_000_000L; // 500 ms
         private final ConcurrentLinkedQueue<InboundData> queue = new ConcurrentLinkedQueue<>();
         private volatile Thread reader;
         private int offset;
@@ -352,11 +364,37 @@ public final class Http2Stream {
         @Override
         public void close() throws IOException {
             if (Thread.currentThread() == reader || reader == null) {
-                byte[] drainBuffer = new byte[2048];
-                while (read(drainBuffer, 0, drainBuffer.length) != -1) {}
+                drainBounded();
             } else {
                 LockSupport.unpark(reader);
             }
+        }
+
+        /**
+         * Linger close: swallow at most {@link #MAX_LINGER_BYTES} bytes and
+         * wait at most {@link #MAX_LINGER_NANOS} for them. Reaching either
+         * bound resets the stream (RST_STREAM(NO_ERROR) — the response is
+         * already complete, so this only says "stop sending"), which discards
+         * the rest of the upload without touching the connection or its other
+         * streams.
+         */
+        private void drainBounded() throws IOException {
+            long deadline = System.nanoTime() + MAX_LINGER_NANOS;
+            byte[] buffer = new byte[2048];
+            int total = 0;
+            while (total < MAX_LINGER_BYTES) {
+                int wanted = Math.min(buffer.length, MAX_LINGER_BYTES - total);
+                int read = read(buffer, 0, wanted, deadline);
+                if (read == -1) {
+                    return; // the body ended: the connection stays reusable
+                }
+                if (read < 0) {
+                    break; // the peer went quiet: do not hold the thread
+                }
+                total += read;
+            }
+            halfClosed = true;
+            connection.sendResetStream(Http2ErrorCode.NO_ERROR, streamId);
         }
 
         @Override
@@ -367,6 +405,17 @@ public final class Http2Stream {
 
         @Override
         public int read(byte[] buffer, int off, int len) throws IOException {
+            return read(buffer, off, len, 0L);
+        }
+
+        /**
+         * {@code deadlineNanos == 0} blocks indefinitely (the handler's own
+         * read); a deadline makes the wait bounded and returns {@code -2} when
+         * it expires with nothing read — the linger close's signal to reset
+         * instead of waiting.
+         */
+        private int read(byte[] buffer, int off, int len, long deadlineNanos)
+                throws IOException {
             int bytesRead = 0;
             try {
                 reader = Thread.currentThread();
@@ -375,7 +424,15 @@ public final class Http2Stream {
                     while ((inbound = queue.peek()) == null) {
                         if (bytesRead > 0) return bytesRead;
                         if (halfClosed) return -1;
-                        LockSupport.park();
+                        if (deadlineNanos != 0L) {
+                            long remaining = deadlineNanos - System.nanoTime();
+                            if (remaining <= 0L) {
+                                return -2;
+                            }
+                            LockSupport.parkNanos(Math.min(remaining, 1_000_000L));
+                        } else {
+                            LockSupport.park();
+                        }
                         if (Thread.interrupted()) throw new IOException("interrupted");
                     }
                     byte[] data = inbound.data();

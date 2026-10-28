@@ -44,7 +44,7 @@ class EventBusStreamTest {
     @Test
     void classStreamReceivesEventsUntilBusClose() throws Exception {
         Container container = Freeway.create();
-        EventBus bus = new EventBus(container);
+        EventBus bus = EventBus.create(container);
 
         List<Object> received = new CopyOnWriteArrayList<>();
         AtomicBoolean completed = new AtomicBoolean();
@@ -69,7 +69,7 @@ class EventBusStreamTest {
     @Test
     void topicStreamMatchesExactTopicOnly() throws Exception {
         Container container = Freeway.create();
-        EventBus bus = new EventBus(container);
+        EventBus bus = EventBus.create(container);
 
         List<Object> received = new CopyOnWriteArrayList<>();
         bus.stream("market.ticker").subscribe(collecting(new ArrayList<>()));
@@ -86,7 +86,7 @@ class EventBusStreamTest {
     @Test
     void independentStreamsFanOut() throws Exception {
         Container container = Freeway.create();
-        EventBus bus = new EventBus(container);
+        EventBus bus = EventBus.create(container);
 
         List<Object> first = new CopyOnWriteArrayList<>();
         List<Object> second = new CopyOnWriteArrayList<>();
@@ -104,7 +104,7 @@ class EventBusStreamTest {
     @Test
     void cancelEndsStreamAndUnsubscribesFromBus() throws Exception {
         Container container = Freeway.create();
-        EventBus bus = new EventBus(container);
+        EventBus bus = EventBus.create(container);
 
         List<DeadEvent> deads = new CopyOnWriteArrayList<>();
         bus.subscribe(DeadEvent.class, (Consumer<DeadEvent>) deads::add);
@@ -136,7 +136,7 @@ class EventBusStreamTest {
     @Test
     void closedStreamRejectsLateSubscribers() throws Exception {
         Container container = Freeway.create();
-        EventBus bus = new EventBus(container);
+        EventBus bus = EventBus.create(container);
 
         Flow.Publisher<Tick> publisher = bus.stream(Tick.class);
         // Subscribe and cancel through the real path to close the stream.
@@ -172,7 +172,7 @@ class EventBusStreamTest {
         // non-blockingly. The drop must be visible in stats(), not just a
         // debug log — otherwise an operator cannot see a stalled consumer.
         Container container = Freeway.create();
-        EventBus bus = new EventBus(container);
+        EventBus bus = EventBus.create(container);
 
         bus.stream(Tick.class).subscribe(new Flow.Subscriber<>() {
             @Override public void onSubscribe(Flow.Subscription s) { /* never request */ }
@@ -196,7 +196,7 @@ class EventBusStreamTest {
     @Test
     void deferScopeDeliversToStreamAfterCommit() throws Exception {
         Container container = Freeway.create();
-        EventBus bus = new EventBus(container);
+        EventBus bus = EventBus.create(container);
 
         List<Object> received = new CopyOnWriteArrayList<>();
         bus.stream(Tick.class).subscribe(collecting(received));
@@ -212,7 +212,7 @@ class EventBusStreamTest {
     @Test
     void streamOnClosedBusFailsFast() {
         Container container = Freeway.create();
-        EventBus bus = new EventBus(container);
+        EventBus bus = EventBus.create(container);
         bus.close();
 
         assertThrows(IllegalStateException.class, () -> bus.stream(Tick.class));
@@ -227,7 +227,7 @@ class EventBusStreamTest {
         // IllegalStateException out of subscribe() (Flow: subscribe must not
         // throw) and not leave the subscription attached to a dead registry.
         Container container = Freeway.create();
-        EventBus bus = new EventBus(container);
+        EventBus bus = EventBus.create(container);
         Flow.Publisher<Tick> publisher = bus.stream(Tick.class);
         bus.close();
 
@@ -253,7 +253,7 @@ class EventBusStreamTest {
     @Test
     void streamedTopicsEmitNoDeadEvents() throws Exception {
         Container container = Freeway.create();
-        EventBus bus = new EventBus(container);
+        EventBus bus = EventBus.create(container);
 
         List<Object> deads = new CopyOnWriteArrayList<>();
         bus.subscribe(DeadEvent.class, (Consumer<DeadEvent>) deads::add);

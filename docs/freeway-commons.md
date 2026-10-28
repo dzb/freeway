@@ -4,12 +4,14 @@ Commons provides the small, shared runtime utilities used across Freeway.
 
 ## Stable API
 
+> 这份清单只列 **commons 自己的**类型。`SymbolSpec`（`ioc.symbol`）与 `AppConfig`
+> （`freeway-boot`）属于各自的模块，见 `DEVELOPER-GUIDE` 与 `freeway-config.md`。
+
 - `JsonCodec` / `JsonCodecDefault` / `JsonUtils`
 - `Defer` / `ScopedCache`
 - `BeanValidator`
 - `Coercer` / `CoerceRule`
 - `ReflectiveHandles` — cached `MethodHandle`/`VarHandle`/constructor handles for reflective invocation hot paths (`methodHandle`, `defaultMethodHandle`, `invokeOn`)
-- `SymbolSpec` — typed, defaulted `AppConfig` keys with per-key parsers
 - `ContextExecutor` — explicit cross-thread propagation of `ScopedValue`-based context
 - `JULFileHandler`
 - `LogBootstrap`

@@ -31,6 +31,15 @@ import java.util.Objects;
  *
  * <p>Frames failing CE constraints (missing id/type/source) fail loudly —
  * never silently dropped.</p>
+ *
+ * <p><b>One known cost.</b> Building a frame serializes the payload twice:
+ * {@code codec.toJson(payload)} produces the text {@link JsonUtils#parse} turns
+ * back into a tree node, and {@code codec.toJson(frame)} then serializes the
+ * whole frame (payload included) again. The root cause is the codec's contract
+ * — text and types, deliberately no tree API — so the envelope reuses the tree
+ * layer through {@code JsonUtils}. It is the price of that seam on the mesh's
+ * hot path, kept visible here rather than discovered in a profile; a codec-side
+ * tree entry point would remove it.</p>
  */
 public final class CloudEventEnvelope {
 

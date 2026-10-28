@@ -24,6 +24,11 @@ public final class ServiceRegistryDefault implements ServiceRegistry {
     }
 
     @Override
+    public void register(ServiceInstance instance, Health health) {
+        store.register(instance, health);
+    }
+
+    @Override
     public boolean renew(String serviceId, String instanceId) {
         return store.renew(serviceId, instanceId);
     }

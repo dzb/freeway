@@ -74,6 +74,18 @@ final class JULLogFormatterSupport {
 
     private JULLogFormatterSupport() {}
 
+    /**
+     * Whether the MDC block is rendered — {@code freeway.log.mdc}, default on.
+     * One read for every formatter: the console and the file output are two
+     * destinations of the same line, so a switch that turns the block off must
+     * turn it off in both. (It used to be read by the console only.)
+     */
+    static boolean showMdc() {
+        String override = JULEnhancer.sysOrEnv(LogKeys.MDC);
+        return override == null
+            || !("false".equalsIgnoreCase(override) || "0".equals(override));
+    }
+
     static String padRight(String s, int n) {
         if (s.length() >= n) return s;
         return s + " ".repeat(n - s.length());

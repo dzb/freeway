@@ -1,5 +1,6 @@
 package com.jujin.freeway.cloud.registry;
 
+import com.jujin.freeway.cloud.discovery.Health;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.cloud.discovery.ServiceRegistry;
 import java.util.Objects;
@@ -21,6 +22,11 @@ final class RegistryNodeServiceRegistry implements ServiceRegistry {
     @Override
     public void register(ServiceInstance instance) {
         client.register(instance);
+    }
+
+    @Override
+    public void register(ServiceInstance instance, Health health) {
+        client.register(instance, health);
     }
 
     @Override

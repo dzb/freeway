@@ -124,6 +124,33 @@ class RegistryServerModuleTest {
     }
 
     @Test
+    void a_registration_can_be_warming_from_its_first_write() throws Exception {
+        // Readiness as a registration input: the client that knows it is
+        // warming registers as starting in one write, instead of registering
+        // as ready and being marked not-ready a moment later — a window in
+        // which discovery could route traffic to it.
+        try (AppRuntime app = FreewayApp.create(
+                new HttpModule(), new CloudDiscoveryModule(), new RegistryServerModule()).start()) {
+            http(app, HttpRequest.newBuilder(
+                    uri(app, "/registry/services/svc/instances?ready=false"))
+                .POST(HttpRequest.BodyPublishers.ofString(INSTANCE)));
+
+            HttpResponse<String> found = http(app, HttpRequest.newBuilder(
+                uri(app, "/registry/services/svc/instances")).GET());
+            assertTrue(found.body().equals("[]") || found.body().isEmpty(),
+                "a warming registration must not be discoverable, got " + found.body());
+
+            http(app, HttpRequest.newBuilder(
+                    uri(app, "/registry/services/svc/instances/i1/ready?ready=true")).POST(
+                HttpRequest.BodyPublishers.ofString("")));
+            HttpResponse<String> after = http(app, HttpRequest.newBuilder(
+                uri(app, "/registry/services/svc/instances")).GET());
+            assertTrue(after.body().contains("i1"),
+                "and becomes discoverable when it flips ready: " + after.body());
+        }
+    }
+
+    @Test
     void the_index_describes_the_protocol_before_any_credential() throws Exception {
         System.setProperty(CloudModule.ConfigKeys.REGISTRY_TOKEN, "s3cret");
         try (AppRuntime app = FreewayApp.create(
@@ -136,12 +163,34 @@ class RegistryServerModuleTest {
                 "the index must announce the protocol: " + index.body());
             assertTrue(index.body().contains("discover"),
                 "and the routes it serves: " + index.body());
+            assertTrue(index.body().contains("ready"),
+                "the index derives from the served table, so a route added there "
+                    + "cannot be missing here: " + index.body());
+            assertTrue(index.body().contains("\"index\""),
+                "including the index itself: " + index.body());
             assertTrue(String.valueOf(RegistryServerModule.PROTO).equals(
                     index.headers().firstValue(RegistryServerModule.PROTO_HEADER).orElse("")),
                 "responses echo the protocol, got header "
                     + index.headers().map());
         } finally {
             System.clearProperty(CloudModule.ConfigKeys.REGISTRY_TOKEN);
+        }
+    }
+
+    @Test
+    void an_older_protocol_is_accepted() throws Exception {
+        // The documented promise: a server keeps accepting older clients.
+        // Equality made a proto-0 client a 426 — a version answer for a client
+        // the node could have served.
+        try (AppRuntime app = FreewayApp.create(
+                new HttpModule(), new CloudDiscoveryModule(), new RegistryServerModule()).start()) {
+            HttpResponse<String> older = http(app, HttpRequest.newBuilder(
+                    uri(app, "/registry/services/svc/instances"))
+                .header(RegistryServerModule.PROTO_HEADER, "0")
+                .POST(HttpRequest.BodyPublishers.ofString(INSTANCE)));
+            assertTrue(older.statusCode() != 426,
+                "an older protocol must be served, got " + older.statusCode()
+                    + ": " + older.body());
         }
     }
 

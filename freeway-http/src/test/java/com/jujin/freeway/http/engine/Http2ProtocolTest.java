@@ -307,6 +307,58 @@ class Http2ProtocolTest {
     }
 
     @Test
+    void aRejectedUploadIsResetAfterABoundedLingerInsteadOfDrainedToEof() throws Exception {
+        // 413 arrives while the client is still uploading. The server must not
+        // read the rest of the body to EOF (an unbounded drain: no limit, no
+        // deadline, one stream plus one virtual thread held by a slow
+        // uploader). It lingers for a bounded window, then resets the stream.
+        var server = HttpServer.create(TestHttp.engine(),
+            TestServerConfig.loopback(),
+            HttpPipeline.of(Route.post("/reject", ctx -> ctx.send(413, ""))));
+        server.start();
+        try (Socket socket = new Socket("127.0.0.1", server.port())) {
+            socket.setSoTimeout(5000);
+            var out = socket.getOutputStream();
+            out.write(PREFACE_BYTES);
+            writeFrame(out, 0, 0x4, 0, 0, null); // client SETTINGS
+            consumeSettings(socket.getInputStream());
+
+            byte[] block = {
+                0x03, 0x04, 'P', 'O', 'S', 'T',                  // :method POST
+                0x06, 0x04, 'h', 't', 't', 'p',                  // :scheme http
+                0x04, 0x07, '/', 'r', 'e', 'j', 'e', 'c', 't',   // :path /reject
+                0x01, 0x01, 'x'                                  // :authority x
+            };
+            writeFrame(out, block.length, 0x1, 0x4, 1, block);   // HEADERS, END_HEADERS
+            writeFrame(out, 5, 0x0, 0x0, 1,
+                "hello".getBytes(StandardCharsets.US_ASCII));    // DATA, no END_STREAM
+
+            boolean reset = false;
+            long deadline = System.currentTimeMillis() + 4000;
+            while (System.currentTimeMillis() < deadline && !reset) {
+                byte[] header = new byte[9];
+                if (!readFullyOrEof(socket.getInputStream(), header)) {
+                    break;
+                }
+                int len = length(header);
+                int type = header[3] & 0xff;
+                byte[] payload = new byte[len];
+                readFully(socket.getInputStream(), payload);
+                if (type == 0x3 && streamId(header) == 1) {      // RST_STREAM
+                    reset = true;
+                    assertEquals(0, int32(payload, 0),
+                        "the request was answered; resetting it must be NO_ERROR");
+                }
+            }
+            assertTrue(reset,
+                "a rejected upload must be reset after the bounded linger, not drained "
+                    + "to EOF (which would hold the stream and a virtual thread)");
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
     void h2cRejectsStreamsBeyondConcurrentCap() throws Exception {
         // MAX_CONCURRENT_STREAMS (100): the 101st concurrent stream must be
         // rejected with RST_STREAM(REFUSED_STREAM). Handlers hold streams open
@@ -837,8 +889,10 @@ class Http2ProtocolTest {
                 }
                 assertEquals(100L, settings.getOrDefault(0x3, -1L),
                     "server must advertise SETTINGS_MAX_CONCURRENT_STREAMS=100");
-                assertEquals(65536L, settings.getOrDefault(0x6, -1L),
-                    "server must advertise SETTINGS_MAX_HEADER_LIST_SIZE");
+                assertEquals((long) HttpServerConfig.DEFAULT_MAX_HEADER_BYTES,
+                    settings.getOrDefault(0x6, -1L),
+                    "server must advertise SETTINGS_MAX_HEADER_LIST_SIZE from the one "
+                        + "configured header budget");
                 assertEquals(16384L, settings.getOrDefault(0x5, -1L),
                     "server must advertise SETTINGS_MAX_FRAME_SIZE=16384");
             }

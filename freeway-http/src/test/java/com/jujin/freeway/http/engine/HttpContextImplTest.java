@@ -97,6 +97,40 @@ class HttpContextImplTest {
     }
 
     @Test
+    void setPathVarsReplacesTheWholeMatch() {
+        // The name says "set"; the implementation used to merge, so a caller
+        // that reused a context kept the previous match's variables — and a
+        // filter reading a tenant id would read last request's value.
+        var ctx = context(new RecordingWriter());
+        ctx.setPathVars(Map.of("tenant", "acme", "id", "42"));
+        ctx.setPathVars(Map.of("id", "43"));
+
+        assertEquals(Map.of("id", "43"), ctx.pathVars(),
+            "a new match replaces the old one; nothing may linger");
+    }
+
+    @Test
+    void requestHeaderNamesAreCanonicalLowercaseWhateverTheEngine() {
+        // HTTP/2 keeps the first letter of an inbound field name upper-case
+        // (Http2HeaderField.normalizedName) while HTTP/1.1 lowercases it, so a
+        // map consumer such as cloud's PropagationFilter saw `Traceparent` on
+        // h2 and `traceparent` on h1 — and the W3C trace was silently dropped
+        // on h2. The context canonicalizes names once, at this boundary.
+        var ctx = context(new RecordingWriter());
+        ctx.reset("GET", "/", null,
+                Map.of("Traceparent", List.of("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"),
+                       "X-Custom", List.of("abc")),
+                null, -1, false, new ByteArrayOutputStream(), null, false);
+
+        assertTrue(ctx.headers().containsKey("traceparent"),
+                "a map lookup by the lowercase name must work: " + ctx.headers().keySet());
+        assertFalse(ctx.headers().containsKey("Traceparent"),
+                "keys are lowercase, not merely case-insensitive");
+        assertEquals("abc", ctx.header("X-Custom").orElse(null),
+                "the single-name accessor stays case-insensitive");
+    }
+
+    @Test
     void setHeaderIsSingleSourceOfTruth() {
         var ctx = context(new RecordingWriter());
         ctx.setHeader("X-Custom", "abc");

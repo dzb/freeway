@@ -63,7 +63,7 @@ public final class BootModule implements ModuleEx {
      * <p>Not a feature module's surface. {@code boot}, {@code ioc} and {@code commons}
      * are the infrastructure modules — base capabilities only, and the one
      * configuration among them is logging's ({@code commons.logging.LogKeys}). These
-     * three keys are the cascade's own knobs, read by {@link ConfigLoaderImpl}, and
+     * three keys are the cascade's own knobs, read by {@link ConfigCascade}, and
      * they sit directly under the root namespace: {@link #PREFIX} is that root, and a
      * feature module's {@code freeway.<module>.*} table never holds one of them. The
      * infra tables are named {@code *Keys} ({@code LogKeys}, {@code EnvKeys},

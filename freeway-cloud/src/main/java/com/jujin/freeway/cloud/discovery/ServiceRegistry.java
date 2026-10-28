@@ -13,6 +13,21 @@ public interface ServiceRegistry {
     void register(ServiceInstance instance);
 
     /**
+     * Registers an instance with the probe state the caller already knows.
+     *
+     * <p>This exists so a slow-starting process is registered as
+     * {@link Health#starting()}: "in the registry, not in the discovery result"
+     * has to be one write, not a register followed by a mark-not-ready that
+     * leaves a window where discovery can see it. The default delegates to
+     * {@link #register(ServiceInstance)} for adapters whose backend cannot
+     * express readiness at registration time — the same posture
+     * {@link #markReady} takes.</p>
+     */
+    default void register(ServiceInstance instance, Health health) {
+        register(instance);
+    }
+
+    /**
      * Heartbeat: refreshes the instance's {@code lastSeen} so it is not evicted
      * as stale.
      *

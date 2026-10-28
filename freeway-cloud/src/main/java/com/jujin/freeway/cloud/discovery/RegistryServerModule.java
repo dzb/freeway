@@ -1,6 +1,8 @@
 package com.jujin.freeway.cloud.discovery;
 
 import com.jujin.freeway.http.route.Route;
+import com.jujin.freeway.http.route.RouteHandler;
+import java.util.List;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.ModuleEx;
 
@@ -53,19 +55,38 @@ public final class RegistryServerModule implements ModuleEx {
      *  it has credentials. */
     public static final String INDEX = "/registry";
 
+    /**
+     * The surface as data: one row per route, read by {@link #bind} to
+     * contribute the routes and by {@link RegistryIndexHandler} to describe
+     * them. There used to be two lists — this one and the index's — and the
+     * index drifted (it was missing {@code ready} and itself). A single table
+     * makes "what do we serve" answer itself.
+     */
+    static final List<Surface> SURFACE = List.of(
+        new Surface("register", "freeway.cloud.registry.register", "POST", REGISTER, RegistryApi.class),
+        new Surface("renew", "freeway.cloud.registry.renew", "POST", RENEW, RegistryApi.class),
+        new Surface("unregister", "freeway.cloud.registry.unregister", "DELETE", UNREGISTER, RegistryApi.class),
+        new Surface("discover", "freeway.cloud.registry.discover", "GET", DISCOVER, RegistryApi.class),
+        new Surface("ready", "freeway.cloud.registry.ready", "POST", READY, RegistryApi.class),
+        new Surface("index", "freeway.cloud.registry.index", "GET", INDEX, RegistryIndexHandler.class)
+    );
+
+    /** One served route: the index label, the contribution id, and how to route it. */
+    record Surface(String label, String id, String method, String path,
+                    Class<? extends RouteHandler> handler) {}
+
     @Override
     public void bind(Binder b) {
-        b.contribute(Route.class).add("freeway.cloud.registry.register",
-            Route.post(REGISTER, RegistryApi.class));
-        b.contribute(Route.class).add("freeway.cloud.registry.renew",
-            Route.post(RENEW, RegistryApi.class));
-        b.contribute(Route.class).add("freeway.cloud.registry.unregister",
-            Route.delete(UNREGISTER, RegistryApi.class));
-        b.contribute(Route.class).add("freeway.cloud.registry.discover",
-            Route.get(DISCOVER, RegistryApi.class));
-        b.contribute(Route.class).add("freeway.cloud.registry.ready",
-            Route.post(READY, RegistryApi.class));
-        b.contribute(Route.class).add("freeway.cloud.registry.index",
-            Route.get(INDEX, RegistryIndexHandler.class));
+        for (Surface surface : SURFACE) {
+            b.contribute(Route.class).add(surface.id(), route(surface));
+        }
+    }
+
+    private static Route route(Surface surface) {
+        return switch (surface.method()) {
+            case "POST" -> Route.post(surface.path(), surface.handler());
+            case "DELETE" -> Route.delete(surface.path(), surface.handler());
+            default -> Route.get(surface.path(), surface.handler());
+        };
     }
 }

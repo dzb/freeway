@@ -6,6 +6,7 @@ import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.Container;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -50,6 +51,29 @@ class FlowModuleTest {
             s.addActivity("a").task(task).linkAdd("e");
             s.addEnd("e");
         }).create();
+    }
+
+    /** Publishes one event through the execution's own bus. */
+    public static final class EmittingTask implements TaskHandler {
+        @Override
+        public void run(FlowContext context, Node node) {
+            context.eventBus().publish("audit", "hello");
+        }
+    }
+
+    @Test
+    void flowEventsReachTheApplicationBusUnderTheFlowNamespace() {
+        Container container = Freeway.create(new FlowModule(), binder ->
+            binder.bind(EmittingTask.class).id("emit").to(EmittingTask.class));
+
+        List<Object> received = new ArrayList<>();
+        container.get(com.jujin.freeway.ioc.event.EventBus.class)
+            .subscribe("flow.audit", received::add);
+
+        container.get(FlowEngine.class).eval(simpleGraph("@emit", null), FlowContext.of());
+
+        assertEquals(List.of("hello"), received,
+            "a container-assembled engine forwards execution events to the application bus");
     }
 
     @Test

@@ -84,9 +84,17 @@ class MultiCtorBean {
 }
 
 class OverrideSymbolSource implements SymbolSource {
+    private static final com.jujin.freeway.commons.coercion.Coercer COERCER =
+        new com.jujin.freeway.commons.coercion.CoercerDefault();
+
     @Override
     public String resolve(String name) {
         return "override:" + name;
+    }
+
+    @Override
+    public <T> T resolve(com.jujin.freeway.ioc.symbol.SymbolSpec<T> spec) {
+        return spec.parse(resolve(spec.key()), COERCER);
     }
 
     @Override

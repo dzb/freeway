@@ -132,13 +132,14 @@ CLI 参数（`--freeway.config.file=...`）同样无效——启动时会打 WAR
 日志键可以住在两个地方（`-D` 系统属性与环境变量都高于两个文件；专用文件更具体、优先于 app 文件；本节全部键只在 `freeway.log.*` 命名空间内生效）：
 
 1. **专用文件** `freeway-logging.properties`（classpath 根）——日志专属声明，**优先生效**。旧名 `freeway-log.properties` **不再被读取**：若它仍留在 classpath 根，启动会打一行 stderr 提示改名（配置不会被采纳，但也不会静默失效）
-2. **应用主配置** `application.properties` / `application.json`（classpath 根 + 工作目录 + 激活 profile 的变体，后读的文件赢）——只取 `freeway.log.*` 键
+2. **应用主配置** `application.properties` / `application.json`（类路径根与激活 profile 的变体；**工作目录中的同名文件与热重载不参与日志侧**，只有类路径基线参与）——只取 `freeway.log.*` 键
 
 注意三条边界：
 
-- **四个键住不进文件**：`freeway.log.color`、`freeway.log.mdc`、`freeway.log.mdc.priority`、`freeway.log.caller-info` 在**类加载期**读取（早于文件解析），只认 `-D` 与环境变量，写进上面两个家都静默无效。
+- **四个键住不进文件**：`freeway.log.color`、`freeway.log.mdc`、`freeway.log.mdc.priority`、`freeway.log.caller-info` 在**类加载期**读取（早于文件解析），只认 `-D` 与环境变量；写进任何配置**文件**都不生效——启动会对这类声明打一行 WARN 点名（键、值、来源，以及可用的通道）。
 - **per-logger 级别**（`<logger>.level`）只支持专用文件——在应用主配置里它与普通点号键无法区分（会把任意应用键误认成 logger）。
 - 应用文件侧走主级联的 **classpath 基线**（含 `-D`/env/类路径文件声明的 profile 选择）；工作目录文件声明与热重载不参与日志侧。
+- 因此 **CLI 参数**（`--freeway.log.level=DEBUG`）与**工作目录覆盖文件**里的 `freeway.log.*` 不会作用于 logger。它们仍会进入符号链，看起来像生效了——启动会为每个这样的键打一行 WARN，点名键、值、来源和三条可用通道（`-D`、环境变量、类路径配置文件）。
 
 另有三个**进程级键**（不是 `freeway.*`，框架同样读取）：
 
@@ -247,6 +248,7 @@ CLI 参数（`--freeway.config.file=...`）同样无效——启动时会打 WAR
 | `freeway.http.server.max-connections` | 调优 | Integer | `0` | 否 | 最大并发连接数（`0` = 不限） |
 | `freeway.http.server.receive-buffer-size` | 调优 | Integer | `0` | 否 | SO_RCVBUF（`0` = OS 默认） |
 | `freeway.http.server.send-buffer-size` | 调优 | Integer | `0` | 否 | SO_SNDBUF（`0` = OS 默认） |
+| `freeway.http.server.max-header-bytes` | 调优 | Integer | `16384` | 否 | 入站请求头上限（字节），HTTP/1.1 的头块与 HTTP/2 的头块/字段表/SETTINGS 共用同一个数；改它不会让两条协议分叉 |
 
 #### 压缩
 
@@ -259,7 +261,7 @@ CLI 参数（`--freeway.config.file=...`）同样无效——启动时会打 WAR
 
 | 键 | 档 | 类型 | 默认值 | 必填 | 说明 |
 |----|------|------|--------|------|------|
-| `freeway.http.access-log.enabled` | 姿态 | Boolean | `false` | 否 | 启用文本访问日志（stdout 输出 method path status elapsed-ms） |
+| `freeway.http.access-log.enabled` | 姿态 | Boolean | `false` | 否 | 启用文本访问日志（stdout 输出 method path status elapsed-ms ip ua）；每个交换一行，含 CORS 预检与健康探针。自定义目的地：关掉该键，贡献自己的 `EventSubscriber<HttpExchangeEvent>` |
 
 #### CORS
 

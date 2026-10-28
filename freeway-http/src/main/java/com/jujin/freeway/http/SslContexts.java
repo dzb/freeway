@@ -24,9 +24,18 @@ import com.jujin.freeway.http.HttpModule.ConfigKeys;
 /**
  * Builds TLS material from {@link SslSettings}: keystore/truststore loading, SNI
  * key managers, and protocol/cipher restriction. Shared by the built-in HTTPS
- * engine and any adapter that terminates TLS itself (Undertow builds its
- * {@code SSLContext} from here), so keystore handling — including SNI and the
- * null-vs-empty password rule — is identical across engines.
+ * engine and any adapter that terminates TLS itself — the Undertow adapter in
+ * {@code freeway-ext} builds its {@code SSLContext} from here — so keystore
+ * handling, including SNI and the null-vs-empty password rule, is identical
+ * across engines.
+ *
+ * <p><b>Why public.</b> This class has no caller in this repository outside
+ * {@code HttpModule}, which once looked like unused surface and led to a
+ * narrowing that broke the adapter at compile time. A library's consumers are
+ * the callers that exist, not the callers grep can see: an adapter that
+ * terminates TLS must reach the same keystore logic, and the compiler is what
+ * keeps the two in agreement. Public surface here is a consequence of that
+ * consumer, not a promise to application code.</p>
  */
 public final class SslContexts {
 

@@ -16,6 +16,19 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class Http1xParserTest {
 
     @Test
+    void theConfiguredHeaderLimitIsWhatTheParserEnforces() {
+        // The size budget used to be a private constant in this class while
+        // HTTP/2 applied a different one; both now take the same configured
+        // number, so this parser is the only place HTTP/1.1 decides.
+        String raw = "GET / HTTP/1.1\r\nHost: example\r\nX-Big: "
+            + "a".repeat(4096) + "\r\n\r\n";
+        var parser = new Http1xParser(new ByteArrayInputStream(
+            raw.getBytes(StandardCharsets.ISO_8859_1)), 1024);
+
+        assertThrows(IOException.class, parser::parse);
+    }
+
+    @Test
     void parseWebSocketUpgradeRequest() throws IOException {
         String raw = "GET /api/ws/lobby HTTP/1.1\r\n"
             + "Host: 127.0.0.1:8080\r\n"

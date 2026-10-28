@@ -24,7 +24,7 @@
  *       the exchange faces {@link HttpRequest}, {@link HttpResponse},
  *       {@link RequestView} (the read-only projection shared with a
  *       WebSocket session), {@link ExchangeMeta} and its
- *       {@link ExchangeMetaDefault} (per-exchange state, constructed
+ *       {@link ExchangeMetaImpl} (per-exchange state, constructed
  *       directly rather than looked up). During handle this half is the only
  *       crossing between a pipeline and a transport.</li>
  *   <li><strong>The TLS contract</strong> — {@link SslSettings} (key material

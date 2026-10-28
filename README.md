@@ -296,7 +296,7 @@ A compact JDBC data access layer with ORM:
 - `Database` - SQL execution with positional/named parameters and collection expansion.
 - `Orm` - lightweight CRUD: `insert`, `update`, `delete`, `findById`, `findAll`, `save` (upsert). Primitive `@Generated` keys read as zero are treated as unset on `save()`, so auto-increment ids are never clobbered with 0.
 - `Row` - schema-less query result with type-safe column access.
-- `Sql` - programmatic SQL builder: `Sql.insert("t").set("col", v)`.
+- `Sql` - programmatic SQL builder: `Sql.insert("t").setColumn("col", v)`.
 - `RowMapper` - auto-mapping for records, beans, and basic types; `@Column` annotation drives column name matching.
 - Transactions - `db.transaction(() -> { ... })` with ScopedValue isolation, transaction-aware EventBus. DB work must stay on the transaction thread — cross-thread access is detected and rejected with a `SqlException`.
 - Connection pooling - `Pool` interface + `PoolDefault` built-in impl; pluggable via module `.primary()` (same pattern as HTTP engine). HikariCP adapter available in [freeway-ext](https://github.com/dzb/freeway-ext).
@@ -365,6 +365,11 @@ Extensions are released to Maven Central alongside the core at the same version.
     <version>1.5.6</version>
 </dependency>
 ```
+
+> The group id keeps its original `com.jujin8` spelling while the Java packages
+> are `com.jujin.freeway`. Renaming either would break every consumer's build
+> for no design gain, so the inconsistency is stated here rather than left for
+> the first `import` to puzzle over.
 
 ## Configuration
 

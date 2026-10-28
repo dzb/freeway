@@ -12,7 +12,6 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -117,21 +116,16 @@ class JoinMarkerAtomicityTest {
     }
 
     @Test
-    void aJoinWithBranchesInsideAndOutsideALoopIsRefusedAtLoad() {
-        ExecutorService executor = Executors.newFixedThreadPool(2);
-        try {
-            FlowEngine engine = engine(executor, node -> { });
+    void aJoinWithBranchesInsideAndOutsideALoopIsRefusedWhenBuilt() {
+        // The verdict belongs to the graph, not to one entry point: the graph
+        // cannot be constructed at all, so load/eval can never receive it.
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+            JoinMarkerAtomicityTest::loopWithExternalIncomingJoin);
 
-            IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
-                () -> engine.load(loopWithExternalIncomingJoin()));
-
-            assertTrue(ex.getMessage().contains("Join 'j'"), ex.getMessage());
-            assertTrue(ex.getMessage().contains("iteration domains"), ex.getMessage());
-            assertTrue(ex.getMessage().contains("'q' runs once"), ex.getMessage());
-            assertTrue(ex.getMessage().contains("loopjoin"), ex.getMessage());
-        } finally {
-            executor.shutdownNow();
-        }
+        assertTrue(ex.getMessage().contains("Join 'j'"), ex.getMessage());
+        assertTrue(ex.getMessage().contains("iteration domains"), ex.getMessage());
+        assertTrue(ex.getMessage().contains("'q' runs once"), ex.getMessage());
+        assertTrue(ex.getMessage().contains("loopjoin"), ex.getMessage());
     }
 
     /**
@@ -235,16 +229,10 @@ class JoinMarkerAtomicityTest {
      */
     @Test
     void twoIndependentLoopsFeedingOneJoinIsRejected() {
-        ExecutorService executor = Executors.newFixedThreadPool(2);
-        try {
-            FlowEngine engine = engine(executor, node -> { });
-            IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
-                () -> engine.load(twoIndependentLoops()));
-            assertTrue(ex.getMessage().contains("iteration domains"), ex.getMessage());
-            assertTrue(ex.getMessage().contains("'a' repeats per iteration"), ex.getMessage());
-        } finally {
-            executor.shutdownNow();
-        }
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+            JoinMarkerAtomicityTest::twoIndependentLoops);
+        assertTrue(ex.getMessage().contains("iteration domains"), ex.getMessage());
+        assertTrue(ex.getMessage().contains("'a' repeats per iteration"), ex.getMessage());
     }
 
     private static Graph twoIndependentLoops() {
@@ -279,48 +267,14 @@ class JoinMarkerAtomicityTest {
     @Test
     void siblingLoopsSharingANodeAreRejectedWhicheverOrderTheyAreDeclared() {
         for (String first : List.of("l1", "l2")) {
-            ExecutorService executor = Executors.newFixedThreadPool(2);
-            try {
-                FlowEngine engine = engine(executor, node -> { });
-                String second = "l1".equals(first) ? "l2" : "l1";
-                IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
-                    () -> engine.load(sharedDownstreamLoopBodies(first, second)),
-                    "declaring '" + first + "' first must not let an uncountable "
-                        + "join load");
-                assertTrue(ex.getMessage().contains("iteration domains"), ex.getMessage());
-                assertTrue(ex.getMessage().contains("'a' repeats per iteration"),
-                    "must name the shared node: " + ex.getMessage());
-            } finally {
-                executor.shutdownNow();
-            }
-        }
-    }
-
-    /**
-     * A rejected graph is never registered, so retrying the same id is judged
-     * again rather than reported as "already loaded". Validating before anything
-     * is published is what makes that true; a registration that had to be undone
-     * afterwards would leave both answers in play.
-     */
-    @Test
-    void aRejectedLoadLeavesTheIdFreeToRetry() {
-        ExecutorService executor = Executors.newFixedThreadPool(2);
-        try {
-            FlowEngine engine = engine(executor, node -> { });
-
-            IllegalArgumentException first = assertThrows(IllegalArgumentException.class,
-                () -> engine.load(twoIndependentLoops()));
-            assertTrue(first.getMessage().contains("iteration domains"), first.getMessage());
-
-            IllegalArgumentException again = assertThrows(IllegalArgumentException.class,
-                () -> engine.load(twoIndependentLoops()));
-            assertTrue(again.getMessage().contains("iteration domains"),
-                "the retry must be judged again, not refused as a duplicate: "
-                    + again.getMessage());
-            assertNull(engine.graph("twoloops"),
-                "a rejected graph must not be left registered");
-        } finally {
-            executor.shutdownNow();
+            String second = "l1".equals(first) ? "l2" : "l1";
+            IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> sharedDownstreamLoopBodies(first, second),
+                "declaring '" + first + "' first must not let an uncountable "
+                    + "join be built");
+            assertTrue(ex.getMessage().contains("iteration domains"), ex.getMessage());
+            assertTrue(ex.getMessage().contains("'a' repeats per iteration"),
+                "must name the shared node: " + ex.getMessage());
         }
     }
 

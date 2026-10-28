@@ -186,6 +186,7 @@ class JULFileHandlerTest {
         }
 
         handler.close();
+        JULFileHandler.awaitCompression();
 
         // Compression is async — wait briefly for the daemon thread
         for (int attempt = 0; attempt < 20; attempt++) {
@@ -369,6 +370,7 @@ class JULFileHandlerTest {
             handler.publish(record);
         }
         handler.close();
+        JULFileHandler.awaitCompression();
 
         // Compression is async — wait briefly
         Path gzFile = null;
@@ -512,6 +514,7 @@ class JULFileHandlerTest {
             handler.publish(record);
         }
         handler.close();
+        JULFileHandler.awaitCompression();
 
         // Wait for compression to finish; the .gz.tmp staging file must be
         // gone afterwards (moved into place atomically or deleted on error).

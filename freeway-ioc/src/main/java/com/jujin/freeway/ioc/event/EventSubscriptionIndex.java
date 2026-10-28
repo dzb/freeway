@@ -22,15 +22,15 @@ import java.util.function.Consumer;
  */
 final class EventSubscriptionIndex {
 
-    private final Container container;
+    private final List<EventSubscriber<?>> moduleSubscribers;
     private final Map<Class<?>, List<Subscription<?>>> runtimeSubs =
         new ConcurrentHashMap<>();
     private final Map<String, List<Subscription<?>>> runtimeTopicSubs =
         new ConcurrentHashMap<>();
     private volatile ModuleIndex moduleIndex;
 
-    EventSubscriptionIndex(Container container) {
-        this.container = container;
+    EventSubscriptionIndex(List<EventSubscriber<?>> moduleSubscribers) {
+        this.moduleSubscribers = moduleSubscribers;
     }
 
     /**
@@ -154,7 +154,7 @@ final class EventSubscriptionIndex {
             }
             var classIdx = new HashMap<Class<?>, List<Consumer<Object>>>();
             var topicIdx = new HashMap<String, List<Consumer<Object>>>();
-            for (EventSubscriber<?> sub : container.extension(EventSubscriber.class).all()) {
+            for (EventSubscriber<?> sub : moduleSubscribers) {
                 Consumer<Object> handler = adapt(sub);
                 if (sub.topic() == null) {
                     classIdx.computeIfAbsent(sub.eventType(), k -> new ArrayList<>()).add(handler);

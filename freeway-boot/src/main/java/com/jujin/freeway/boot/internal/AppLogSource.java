@@ -9,7 +9,7 @@ import java.util.Map;
 /**
  * The boot-side {@link LogConfigSource}: exposes the {@code freeway.log.*}
  * subset of the application's classpath config files through the SAME read the
- * main cascade performs — {@link ConfigLoaderImpl#loadLayers} and the
+ * main cascade performs — {@link ConfigCascade#loadLayers} and the
  * {@code files} source it returns — so a log key in {@code application.properties}/
  * {@code application.json} (or a profile variant) is parsed by one shared
  * implementation and the file-family knowledge exists exactly once.
@@ -40,7 +40,7 @@ public final class AppLogSource implements LogConfigSource {
         // The loader's own classpath resolution — the same loader rule the
         // main cascade uses (FreewayApp's resolveClassLoader: TCCL first).
         ClassLoader loader = Thread.currentThread().getContextClassLoader();
-        ConfigSources sources = ConfigLoaderImpl.loadLayers(
+        ConfigSources sources = ConfigCascade.loadLayers(
             loader != null ? loader : AppLogSource.class.getClassLoader(),
             new String[0]);
         return logSubset(sources.files());

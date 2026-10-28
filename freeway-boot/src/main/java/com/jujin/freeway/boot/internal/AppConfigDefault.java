@@ -108,6 +108,9 @@ public final class AppConfigDefault implements AppConfig {
     private final ConfigFileWatcher watcher;
     /** {@code key\0earlier\0later} of every duplicate already named. */
     private final Set<String> warnedDuplicates = ConcurrentHashMap.newKeySet();
+    /** {@code origin\0key} of every unread log key already named, so a hot
+     *  reload does not repeat the same line. */
+    private final Set<String> warnedUnreadLogKeys = ConcurrentHashMap.newKeySet();
 
     /**
      * Tiered form: {@code sources} carries the cascade inputs the loader
@@ -199,6 +202,11 @@ public final class AppConfigDefault implements AppConfig {
         Map<String, Path> declaredBy = new HashMap<>();
         for (OverrideFile file : overrideFiles) {
             Map<String, String> values = readOverride(file);
+            // Logging never reads the filesystem override files (it configures
+            // itself from -D/env/classpath before this tier exists), so a
+            // freeway.log.* key here is silently inert — name it.
+            LogKeyNotices.unread(
+                file.path().toString(), values, warnedUnreadLogKeys);
             warnAboutDuplicateKeys(file.path(), values, declaredBy);
             values.keySet().forEach(key -> declaredBy.putIfAbsent(key, file.path()));
             layers.add(values); // later files win
@@ -270,13 +278,13 @@ public final class AppConfigDefault implements AppConfig {
                 "Unable to load " + path + " — fix the path or its permissions", e);
         }
         Path name = path.getFileName();
-        ConfigLoaderImpl.warnAboutBootstrapKeys(
+        ConfigCascade.warnAboutBootstrapKeys(
             name != null ? name.toString() : path.toString(), values);
         // A profile variant's file name already is the selection, so its own
         // freeway.profile must not surface: AppConfig promises that the active
         // list and the resolved value of that key cannot disagree.
         return file.role() == Role.PROFILE_VARIANT
-            ? ConfigLoaderImpl.withoutActivationKey(values)
+            ? ConfigCascade.withoutActivationKey(values)
             : values;
     }
 

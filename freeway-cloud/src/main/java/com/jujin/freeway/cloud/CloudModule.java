@@ -24,10 +24,16 @@ import java.time.Duration;
  * }</pre>
  *
  * <p>Any module below is an ordinary module, so taking a subset is placing it
- * directly instead of the bundle — no exclusion list exists:
+ * directly instead of the bundle — no exclusion list exists. A subset still
+ * has to include what the subset reads: the RPC client resolves through
+ * {@code ServiceDiscovery} and {@code LoadBalancer}, which
+ * {@code CloudDiscoveryModule} binds, so "just the client" is two modules —
+ * otherwise the container builds and the first call fails with a missing
+ * binding:
  *
  * <pre>{@code
- * FreewayApp.run(new OrderModule(), CloudRpcModule.class);   // just the client
+ * FreewayApp.run(new OrderModule(),
+ *     CloudRpcModule.class, CloudDiscoveryModule.class);   // just the client
  * }</pre>
  *
  * <p>{@code bind(Binder)} is the shared cloud surface: cross-cutting bindings

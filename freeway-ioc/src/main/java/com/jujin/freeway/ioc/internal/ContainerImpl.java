@@ -162,7 +162,7 @@ public final class ContainerImpl implements Container {
         // instead of the bus freezing the pre-load NoopMetrics builtin. Its
         // close is deferred past every lifecycle callback (see Shutdown); a bus
         // that was never resolved has nothing to close.
-        registerBuiltin(EventBus.class, EventBus::new, "EventBus");
+        registerBuiltin(EventBus.class, EventBus::create, "EventBus");
         // Composition, in three acts: bind every module, create the deferred
         // contributions (config layer first), then seal the contribution
         // window — from here the extension stores are immutable and the read
@@ -394,6 +394,15 @@ public final class ContainerImpl implements Container {
      * live container.
      */
     <T> void register(BindingImpl<T> binding) {
+        // A self-bound concrete type carries its implementation class in the
+        // binding itself, so extract its class-declared markers here — the same
+        // set {@code .to(Impl)} puts on an interface-keyed binding. Without
+        // this, the two spellings of one binding disagreed about @Primary and
+        // about the @NotThreadSafe rejection (bind(Concrete) silently kept
+        // neither).
+        if (binding.isSelfBound()) {
+            binding.addMarkers(MarkerIndex.extractClassMarkers(binding.type()));
+        }
         bindingIndex.register(binding);
         markerIndex.sync(binding);
         binding.seal();

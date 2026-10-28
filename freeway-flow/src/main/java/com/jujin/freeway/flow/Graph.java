@@ -54,6 +54,29 @@ public class Graph {
 
         this.nodes = Collections.unmodifiableMap(nodeMap);
         this.links = List.copyOf(linkAry);
+
+        // The reverse index, built in the same pass that walked the links to
+        // build the nodes: Node.prevLinks() reads it instead of scanning the
+        // whole link list on first touch per node.
+        Map<String, List<Link>> incoming = new LinkedHashMap<>();
+        for (Link link : linkAry) {
+            incoming.computeIfAbsent(link.nextId(), k -> new ArrayList<>()).add(link);
+        }
+        for (Node node : nodes.values()) {
+            List<Link> prev = node.type() == NodeType.START
+                ? List.of()
+                : incoming.getOrDefault(node.id(), List.of());
+            // Declaration order of the sources, as the lazy scan produced.
+            List<Link> ordered = new ArrayList<>(prev);
+            Collections.reverse(ordered);
+            node.attachIncoming(ordered);
+        }
+
+        // Shape check at the one place every graph goes through: a join fed
+        // from different iteration domains cannot be counted, and refusing it
+        // here means no entry point (load, eval(Graph), eval(GraphSpec)) can
+        // hand the executor a graph the accounting has no answer for.
+        JoinDomains.rejectMixed(this);
         this.metas = blueprint.meta().isEmpty()
                 ? Map.of()
                 : Collections.unmodifiableMap(new LinkedHashMap<>(blueprint.meta()));

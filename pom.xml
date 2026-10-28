@@ -200,4 +200,20 @@
         <module>freeway-flow</module>
         <module>freeway-cloud</module>
     </modules>
+
+    <profiles>
+        <!-- The in-repo consumers. Off by default because they start servers
+             and are not part of the framework's own test budget; `mvn -Pdemos
+             verify` compiles and tests them against the reactor's snapshots,
+             which is what keeps "the compile error is the migration path"
+             true for the code that actually consumes the API. -->
+        <profile>
+            <id>demos</id>
+            <modules>
+                <module>demo/rest-db</module>
+                <module>demo/registry-server</module>
+                <module>demo/cloud-event-mesh</module>
+            </modules>
+        </profile>
+    </profiles>
 </project>

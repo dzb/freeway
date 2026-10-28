@@ -20,7 +20,7 @@ import java.util.function.Supplier;
  * {@link FlowContext}, not by writing into this state — there is no
  * shared string-keyed bag for a key collision to corrupt.</p>
  */
-public final class ExecState {
+final class ExecState {
     /**
      * A gateway node the execution got stuck at: an EXCLUSIVE node that
      * matched no condition and has no default link, or an INCLUSIVE/PARALLEL

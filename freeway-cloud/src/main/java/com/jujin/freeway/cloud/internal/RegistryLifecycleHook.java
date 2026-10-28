@@ -1,6 +1,8 @@
 package com.jujin.freeway.cloud.internal;
 
 import com.jujin.freeway.cloud.discovery.ServiceDeclaration;
+import com.jujin.freeway.cloud.discovery.Health;
+import com.jujin.freeway.cloud.health.CloudHealthContributor;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.cloud.discovery.ServiceRegistry;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
@@ -83,13 +85,18 @@ public final class RegistryLifecycleHook implements RuntimeHook {
         stopped = false;
         SymbolSource symbols = container.get(SymbolSource.class);
         shutdownDrain = resolveDrain(symbols.resolve(SHUTDOWN_DRAIN_RAW), registry, symbols);
+        // Whether a readiness gate will arm is known before the first write:
+        // an application with health checks registers as starting, so "in the
+        // registry, not in discovery" is one write rather than a window.
+        boolean warming = !container.extension(CloudHealthContributor.class).all().isEmpty();
+        Health initialHealth = warming ? Health.starting() : Health.up();
         try {
             for (ServiceDeclaration declaration : container.extension(ServiceDeclaration.class).all()) {
                 ServiceInstance instance = declaration.resolve(container);
                 if (instance == null) {
                     continue; // declaration not applicable this boot
                 }
-                registry.register(instance);
+                registry.register(instance, initialHealth);
                 registered.add(instance);
                 LOG.info("Registered service '{}' instance '{}' at {}", instance.serviceId(),
                     instance.instanceId(), instance.endpoint());
@@ -197,7 +204,13 @@ public final class RegistryLifecycleHook implements RuntimeHook {
                 continue;
             }
             try {
-                registry.register(instance);
+                // Re-registration re-publishes the readiness the instance
+                // actually has: a warming instance that lost its lease must not
+                // come back as ready.
+                Health health = readinessGate != null && !readinessGate.ready()
+                    ? Health.starting()
+                    : Health.up();
+                registry.register(instance, health);
                 LOG.warn("Registration for {} instance {} was gone — re-registered",
                     instance.serviceId(), instance.instanceId());
             } catch (Exception ex) {

@@ -38,7 +38,7 @@ public abstract class AbstractHttpContext implements HttpContext {
      *  the way {@code Backoff.baseMillis} is the base an attempt grows from. */
     private final long baseMaxBodySize;
     protected final Map<String, String> pathVariables = new LinkedHashMap<>(4);
-    private final ExchangeMetaDefault exchangeMeta;
+    private final ExchangeMetaImpl exchangeMeta;
 
     protected AbstractHttpContext(JsonCodec jsonCodec, Coercer coercer,
                                   long maxBodySize) {
@@ -49,7 +49,7 @@ public abstract class AbstractHttpContext implements HttpContext {
                                   String correlationId, long maxBodySize) {
         this.jsonCodec = Objects.requireNonNull(jsonCodec, "jsonCodec");
         this.coercer = Objects.requireNonNull(coercer, "coercer");
-        this.exchangeMeta = new ExchangeMetaDefault(correlationId);
+        this.exchangeMeta = new ExchangeMetaImpl(correlationId);
         this.baseMaxBodySize = requirePositive(maxBodySize);
         this.maxBodySize = this.baseMaxBodySize;
     }
@@ -139,6 +139,11 @@ public abstract class AbstractHttpContext implements HttpContext {
 
     @Override
     public HttpContext setPathVars(Map<String, String> vars) {
+        // "Set", not "merge": this replaced the whole match, so a caller that
+        // reuses a context (an adapter's dispatch, a test double) cannot leave
+        // last request's tenant/id behind. The engine's reset() also clears;
+        // the difference is that a caller no longer has to know that.
+        this.pathVariables.clear();
         this.pathVariables.putAll(vars);
         return this;
     }

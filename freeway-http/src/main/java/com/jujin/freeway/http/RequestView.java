@@ -36,7 +36,12 @@ public interface RequestView {
     /** Returns all request header values for the given name. */
     List<String> headers(String name);
 
-    /** Returns an unmodifiable map of all request headers. */
+    /** Returns an unmodifiable map of all request headers, keyed by
+     *  <b>lowercase</b> name — the context canonicalizes names once at the
+     *  engine boundary, so a map lookup by the lowercase name ({@code
+     *  traceparent}, {@code content-type}) works on every engine. The
+     *  single-name accessors ({@link #header(String)}, {@link #headers(String)})
+     *  are case-insensitive and need no canonical form. */
     Map<String, List<String>> headers();
 
     /** Returns a path parameter value by name. */

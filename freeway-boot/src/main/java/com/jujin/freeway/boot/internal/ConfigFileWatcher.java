@@ -156,10 +156,21 @@ final class ConfigFileWatcher implements AutoCloseable {
         }
     }
 
-    /** Whether the event batch touched one of the watched files. */
-    private boolean touched(WatchKey key) {
-        boolean touched = false;
+    /**
+     * Whether the event batch requires a reload: it touched one of the watched
+     * files, or it reports an overflow.
+     *
+     * <p>OVERFLOW means the platform dropped events from this batch — possibly
+     * ours, and there is no way to know which. Reloading re-reads a handful of
+     * small files; not reloading leaves the config silently stale at the exact
+     * moment (a batch of writes, an IDE save storm) hot reload is most likely
+     * to matter. Cheap enough to prefer the wrong-but-safe side.</p>
+     */
+    static boolean touched(WatchKey key, Set<Path> files) {
         for (WatchEvent<?> event : key.pollEvents()) {
+            if (event.kind() == StandardWatchEventKinds.OVERFLOW) {
+                return true;
+            }
             if (!(event.context() instanceof Path changed)) {
                 continue;
             }
@@ -168,10 +179,14 @@ final class ConfigFileWatcher implements AutoCloseable {
                 .toAbsolutePath()
                 .normalize();
             if (files.contains(absolute)) {
-                touched = true;
+                return true;
             }
         }
-        return touched;
+        return false;
+    }
+
+    private boolean touched(WatchKey key) {
+        return touched(key, files);
     }
 
     private static void closeQuietly(WatchService watchService) {

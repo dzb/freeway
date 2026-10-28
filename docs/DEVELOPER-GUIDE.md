@@ -972,7 +972,7 @@ Three-layer architecture: **engine layer** handles transport (socket I/O, protoc
 | Body | `BodyHandler`, `MultipartForm` |
 | WebSocket | `WebSocketSession`, `WebSocketListener`, `WebSocketRoute`, `WebSocketGroup`, `WebSocketIndex` |
 | SSE | `SseEmitter`, `SseEvent` |
-| Built-ins | `JsonCodecDefault`, `AccessLogFilter`, `CorsFilter`, `HealthFilter`, `HealthCheck`, `StaticResourceMount`, `ErrorHandler` |
+| Built-ins | `JsonCodecDefault`, `CorsFilter`, `HealthFilter`, `HealthCheck`, `StaticResourceMount`, `ErrorHandler` |
 
 Engine internals (`engine/` and sub-packages) are implementation details — `FreewayHttpEngine` is the only public class. `JdkHttpEngine`/`JdkHttpContext` have been removed; the built-in engine is the sole default.
 
@@ -1072,8 +1072,11 @@ identical, and so is the duplicate check.
 
 Handler classes also support `POST`/`PUT`/`PATCH` with request bodies.
 Call `ctx.bodyAsJson(BodyType.class)` inside the handler to deserialize
-the request body — equivalent to the `BodyHandler<T>` convenience but
-with full access to constructor-injected services.
+the request body — the same deserialization as the `BodyHandler<T>`
+convenience, with full access to constructor-injected services. One
+difference to keep in mind: `BodyHandler` also runs `BeanValidator` on the
+deserialized body and throws `ValidationException` on failure; a handler
+that calls `bodyAsJson` itself must validate explicitly.
 
 If you find yourself calling a static method like
 `AppContext.get(SomeService.class)` inside a lambda handler, switch to a
@@ -1149,7 +1152,7 @@ public class AuthFilter implements HttpFilter {
 binder.contribute(HttpFilter.class).add(new AuthFilter());
 ```
 
-Built-in filters: `AccessLogFilter` (optional text access log), `CorsFilter` (configurable CORS via `freeway.http.cors.*` keys), `HealthFilter` (health endpoint, see below). Request timing is measured by `HttpServer` and published as `HttpExchangeEvent`.
+Built-in filters: `CorsFilter` (configurable CORS via `freeway.http.cors.*` keys) and `HealthFilter` (health endpoint, see below). Request timing is measured by `HttpServer` and published as `HttpExchangeEvent`; the optional text access log (`freeway.http.access-log.enabled`) is an observer of that event, not a filter, so it also covers preflight and health probes.
 
 ### Health Check
 
@@ -1721,7 +1724,7 @@ db/migration/
 **Standalone usage:**
 
 ```java
-MigrationRunner runner = new MigrationRunner(database, true, "db/migration", "_migrations");
+MigrationRunner runner = new MigrationRunner(database, MigrationRunner.Options.defaults());
 int applied = runner.run();  // returns count of newly-applied files
 ```
 
@@ -1992,8 +1995,7 @@ join counter re-arms each LOOP iteration for a fork-join inside a loop body.
 | `FlowDriver` | Pluggable task/condition executor + optional `PARALLEL` executor — contributed via `binder.contribute(FlowDriver.class)` |
 | `FlowDriverDefault` | Built-in driver: resolves `@name` against the container, `#graphId` via sub-graph runs; standalone with inline handlers when container is null |
 | `FlowInterceptor` | Contributed chain (flow-level `interceptFlow` + node `onNodeStart`/`onNodeEnd`); fixed at load, cannot change while running |
-| `ExecState` | Per-evaluation join counters, loop iterators and dead-end marks — engine-owned, no shared string bag |
-| `FlowEventBus` | Topic pub/sub scoped to one execution (cleared at run boundaries) |
+| `FlowEventBus` | Topic pub/sub scoped to one execution (cleared at run boundaries); a container-assembled engine also forwards each publish to the application `EventBus` under `"flow." + topic` |
 | `ExprEvaluator` | Self-written recursive descent expression evaluator (~600 lines) |
 
 **Driver & interceptor assembly:** graphs select a driver via `"driver"`

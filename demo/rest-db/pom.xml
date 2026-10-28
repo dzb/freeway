@@ -10,6 +10,10 @@
     <packaging>jar</packaging>
 
     <properties>
+        <!-- Follows the core version; bump this one line with a release.
+             Build from the repository root with -Pdemos so the reactor
+             resolves it without an install step. -->
+        <freeway.version>1.5.7-SNAPSHOT</freeway.version>
         <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
@@ -18,17 +22,17 @@
         <dependency>
             <groupId>com.jujin8.freeway</groupId>
             <artifactId>freeway-boot</artifactId>
-            <version>1.5.6</version>
+            <version>${freeway.version}</version>
         </dependency>
         <dependency>
             <groupId>com.jujin8.freeway</groupId>
             <artifactId>freeway-http</artifactId>
-            <version>1.5.6</version>
+            <version>${freeway.version}</version>
         </dependency>
         <dependency>
             <groupId>com.jujin8.freeway</groupId>
             <artifactId>freeway-db</artifactId>
-            <version>1.5.6</version>
+            <version>${freeway.version}</version>
         </dependency>
         <dependency>
             <groupId>com.h2database</groupId>

@@ -145,8 +145,9 @@ public final class HttpServer implements AutoCloseable {
                 }
                 if (publishEvents) {
                     publish(new HttpExchangeEvent(
-                        ctx.method(), ctx.path(),
-                        ctx.status(), elapsed));
+                        ctx.method(), ctx.path(), ctx.status(), elapsed,
+                        ctx.remoteAddress(),
+                        ctx.headers("user-agent").stream().findFirst().orElse("")));
                 }
             }
         };

@@ -36,7 +36,7 @@ class EventBusAsyncPublishTest {
                 .add(EventSubscriber.of(PostCreatedEvent.class, e -> log.add("async")))
         );
 
-        EventBus bus = new EventBus(container);
+        EventBus bus = EventBus.create(container);
         bus.publishAsync(new PostCreatedEvent(new Post("x")));
         Await.until(2000, () -> log.size() == 1);
 
@@ -47,7 +47,7 @@ class EventBusAsyncPublishTest {
     @Test
     void asyncStringTopicPublishDelivers() throws Exception {
         List<String> log = new ArrayList<>();
-        EventBus bus = new EventBus(Freeway.create());
+        EventBus bus = EventBus.create(Freeway.create());
         bus.subscribe("topic", p -> log.add((String) p));
         bus.publishAsync("topic", "hello");
         Await.until(2000, () -> log.size() == 1);
@@ -63,7 +63,7 @@ class EventBusAsyncPublishTest {
                 .add(EventSubscriber.of(PostCreatedEvent.class, e -> log.add("sync")))
         );
 
-        EventBus bus = new EventBus(container);
+        EventBus bus = EventBus.create(container);
         bus.setAsyncExecutor(Executors.newVirtualThreadPerTaskExecutor());
         bus.publish(new PostCreatedEvent(new Post("x"))); // sync, not async
 
@@ -81,7 +81,7 @@ class EventBusAsyncPublishTest {
             binder -> binder.contribute(EventSubscriber.class)
                 .add(EventSubscriber.of(PostCreatedEvent.class, e -> log.add("event")))
         );
-        EventBus bus = new EventBus(container);
+        EventBus bus = EventBus.create(container);
 
         Defer.within(() -> {
             bus.publishAsync(new PostCreatedEvent(new Post("x")));

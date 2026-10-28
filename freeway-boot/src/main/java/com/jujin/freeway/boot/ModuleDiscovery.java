@@ -55,6 +55,13 @@ final class ModuleDiscovery {
         if (discovered.isEmpty()) {
             return modules;
         }
+        // Say what the classpath added: composition is a fact about the run,
+        // and the startup tree alone cannot tell a discovered module from a
+        // declared one (they render the same). One line, named classes.
+        LOG.info(
+            "Discovered {} module(s) on the classpath (autoDiscovery): {}",
+            discovered.size(),
+            discovered.stream().map(module -> module.getClass().getName()).toList());
         List<ModuleEx> all = new ArrayList<>(modules);
         all.addAll(discovered);
         return all;

@@ -15,14 +15,14 @@ import java.util.concurrent.ThreadLocalRandom;
  * for their own contexts. The exposed state methods are specified by
  * {@link ExchangeMeta}.
  */
-public final class ExchangeMetaDefault implements ExchangeMeta {
+public final class ExchangeMetaImpl implements ExchangeMeta {
 
     private volatile String correlationId;
     private volatile Instant startTime;
     private volatile Object principal;
     private volatile ConcurrentHashMap<String, Object> attributes;
 
-    public ExchangeMetaDefault(String correlationId) {
+    public ExchangeMetaImpl(String correlationId) {
         this.correlationId = correlationId != null && !correlationId.isBlank()
             ? correlationId : fastCorrelationId();
         this.startTime = Instant.now();

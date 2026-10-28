@@ -68,6 +68,15 @@ final class BindingImpl<T> implements Binding<T> {
         return type.isInterface() && scope != Scope.PROTOTYPE;
     }
 
+    /**
+     * True when the binding names only the concrete type ({@code bind(Concrete)}
+     * with no {@code .to(...)}) — the implementation class is {@link #type}, so
+     * its class-declared markers still belong on this binding.
+     */
+    boolean isSelfBound() {
+        return provider == null;
+    }
+
     Set<Class<?>> markers() {
         return Collections.unmodifiableSet(markers);
     }

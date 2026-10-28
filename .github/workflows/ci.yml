@@ -1,0 +1,35 @@
+name: build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  core:
+    name: core (JDK 25)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+      - name: Build and test
+        run: mvn -B -ntp verify
+
+  consumers:
+    name: in-repo consumers (demos)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+      # The core's only in-repo consumers. "The compile error is the migration
+      # path" only holds while something compiles against the API, and until
+      # this job existed nothing did.
+      - name: Build core and demos
+        run: mvn -B -ntp -Pdemos verify

@@ -19,7 +19,12 @@ import com.jujin.freeway.http.internal.HttpHeaders;
 final class Http1xParser {
 
     private static final int MAX_HEADER_COUNT = 200;
-    private static final int MAX_HEADER_SIZE = 8192;
+    /**
+     * The header-size budget, from {@link HttpServerConfig#maxHeaderBytes()}:
+     * the same number HTTP/2 advertises in SETTINGS, so a request that fits on
+     * one protocol fits on the other.
+     */
+    private final int maxHeaderBytes;
     private static final int MAX_REQUEST_LINE_SIZE = 8192;
 
     private InputStream in;
@@ -35,7 +40,19 @@ final class Http1xParser {
     // (typically a pipelined next request). Reclaimed before the next parse.
     private ByteArrayInputStream chunkedPrefix;
 
-    Http1xParser(InputStream in) { this.in = in; }
+    /** Convenience for callers with no configuration (tests): the module default. */
+    Http1xParser(InputStream in) {
+        this(in, com.jujin.freeway.http.HttpServerConfig.DEFAULT_MAX_HEADER_BYTES);
+    }
+
+    Http1xParser(InputStream in, int maxHeaderBytes) {
+        this.in = in;
+        if (maxHeaderBytes <= 0) {
+            throw new IllegalArgumentException(
+                "maxHeaderBytes must be positive: " + maxHeaderBytes);
+        }
+        this.maxHeaderBytes = maxHeaderBytes;
+    }
 
     /** Reuse this parser for a new request on the same connection. */
     void reset(InputStream newIn) {
@@ -217,11 +234,11 @@ final class Http1xParser {
     private Map<String, List<String>> parseHeaders() throws IOException {
         var headers = new LinkedHashMap<String, List<String>>();
         int headerCount = 0, totalSize = 0;
-        boolean haveLine = readLine(headerKeyBuf, MAX_HEADER_SIZE, false);
+        boolean haveLine = readLine(headerKeyBuf, maxHeaderBytes, false);
         while (haveLine) {
             if (headerKeyBuf.isEmpty()) break; // blank line terminates headers
             totalSize += headerKeyBuf.length() + 2;
-            if (totalSize > MAX_HEADER_SIZE) throw new IOException("Headers too large");
+            if (totalSize > maxHeaderBytes) throw new IOException("Headers too large");
 
             int colon = -1;
             for (int i = 0; i < headerKeyBuf.length(); i++) {
@@ -254,7 +271,7 @@ final class Http1xParser {
             // RFC 7230 §3.2.4 obs-fold: continuation lines start with SP/HT.
             boolean headersEnded = false;
             while (!headersEnded) {
-                boolean haveFold = readLine(headerKeyBuf, MAX_HEADER_SIZE, false);
+                boolean haveFold = readLine(headerKeyBuf, maxHeaderBytes, false);
                 if (!haveFold || headerKeyBuf.isEmpty()) {
                     // clean EOF at a line boundary, or the terminating blank
                     // line — the block is complete.
@@ -263,7 +280,7 @@ final class Http1xParser {
                 }
                 if (headerKeyBuf.charAt(0) == ' ' || headerKeyBuf.charAt(0) == '\t') {
                     totalSize += headerKeyBuf.length() + 2;
-                    if (totalSize > MAX_HEADER_SIZE) {
+                    if (totalSize > maxHeaderBytes) {
                         throw new IOException("Headers too large");
                     }
                     headerValBuf.append(' ').append(headerKeyBuf.toString().trim());

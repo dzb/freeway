@@ -30,7 +30,7 @@ class ShutdownTest {
         // close it before ClosingPublisher — whose close() publishes. The
         // shutdown must defer the bus and deliver the event instead.
         Container container = Freeway.create();
-        EventBus bus = new EventBus(container);
+        EventBus bus = EventBus.create(container);
         var received = new CopyOnWriteArrayList<String>();
         bus.subscribe(String.class, received::add);
 
@@ -53,7 +53,7 @@ class ShutdownTest {
         // Same deferral for the @PreDestroy drain: a publish during PreDestroy
         // must reach subscribers, never hit a closed bus.
         Container container = Freeway.create();
-        EventBus bus = new EventBus(container);
+        EventBus bus = EventBus.create(container);
         var received = new CopyOnWriteArrayList<String>();
         bus.subscribe(String.class, received::add);
 

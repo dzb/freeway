@@ -168,6 +168,8 @@ and protocol/cipher-suite restrictions.
   automatically fall back to buffered streaming. sendfile transfers are
   tracked by the write-timeout watchdog and counted under
   `freeway.http.sendfile.transfers`.
-- A text access log can be enabled with `freeway.http.access-log.enabled`, or by
-  contributing `new AccessLogFilter(out)` as an `HttpFilter` when the destination
-  is not the log.
+- A text access log can be enabled with `freeway.http.access-log.enabled`; it
+  writes one line per exchange from `HttpExchangeEvent`, including CORS
+  preflights and health probes that never reach a route. A different
+  destination is an application-contributed
+  `EventSubscriber.of(HttpExchangeEvent.class, …)` with the key off.

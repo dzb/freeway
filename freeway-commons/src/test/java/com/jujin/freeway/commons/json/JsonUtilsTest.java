@@ -697,18 +697,20 @@ class JsonUtilsTest {
     }
 
     @Test
-    void booleanCoercionRejectsNonBooleanInput() {
-        // CoercerDefault accepts "yes"/"on"/"1" by design (config coercion).
-        // JSON booleans only accept "true"/"false". Test through JSON path:
-        JsonObject obj = JsonUtils.parseObject("{\"flag\": true}");
-        assertEquals(Boolean.TRUE, obj.getBoolean("flag"));
-
-        obj = JsonUtils.parseObject("{\"flag\": false}");
-        assertEquals(Boolean.FALSE, obj.getBoolean("flag"));
-
-        // "yes" is not valid JSON boolean
-        JsonObject bad = JsonUtils.parseObject("{\"flag\": \"yes\"}");
-        assertThrows(IllegalArgumentException.class, () -> bad.getBoolean("flag"));
+    void scalarGettersShareTheCoercerRules() {
+        // One rule set for a scalar, whether it is read through a node getter
+        // or converted by the typed path. These used to differ: getBoolean on
+        // {"flag":1} threw while coerce(1, Boolean.class) was true, so the
+        // same JSON had two answers depending on how it was read.
+        assertEquals(Boolean.TRUE, JsonUtils.parseObject("{\"flag\": true}").getBoolean("flag"));
+        assertEquals(Boolean.FALSE, JsonUtils.parseObject("{\"flag\": false}").getBoolean("flag"));
+        assertEquals(Boolean.TRUE, JsonUtils.parseObject("{\"flag\": 1}").getBoolean("flag"),
+            "the coercer's truthy-number rule applies to the getter too");
+        assertEquals(Boolean.TRUE, JsonUtils.parseObject("{\"flag\": \"yes\"}").getBoolean("flag"),
+            "and its yes/on spelling");
+        assertEquals(Integer.valueOf(1),
+            JsonUtils.parseObject("{\"n\": \"1.5\"}").getInt("n"),
+            "a fractional string truncates, exactly as the coercer does");
     }
 
     @SuppressWarnings("unchecked")

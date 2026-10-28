@@ -188,7 +188,7 @@ class AppConfigDefaultTest {
     private static AppConfig load(Path configFile) {
         System.setProperty(FILE_KEY, configFile.toString());
         try {
-            return ConfigLoaderImpl.load(AppConfigDefaultTest.class.getClassLoader());
+            return ConfigCascade.load(AppConfigDefaultTest.class.getClassLoader());
         } finally {
             System.clearProperty(FILE_KEY);
         }
@@ -308,7 +308,7 @@ class AppConfigDefaultTest {
         Path file = Files.writeString(dir.resolve("override.properties"), HOT_KEY + "=v1\n");
         System.setProperty(FILE_KEY, file.toString());
         try {
-            AppConfig config = ConfigLoaderImpl.load(AppConfigDefaultTest.class.getClassLoader());
+            AppConfig config = ConfigCascade.load(AppConfigDefaultTest.class.getClassLoader());
             try (Container container = Freeway.create(new BootModule(config))) {
                 SymbolSource symbols = container.get(SymbolSource.class);
                 assertEquals("v1", symbols.resolve(HOT_KEY));

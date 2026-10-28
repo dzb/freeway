@@ -199,7 +199,7 @@ sequenceDiagram
 
 - **提交在 drain 之前**——事件只在提交成功后派发；回滚时 `Defer` discard，事件整体丢弃。**事件与事务同生共死**，不会出现"回滚了但事件发了"。
 - **`Error` 路径**：work 抛 `Error`（如 `AssertionError`）→ `Defer.within` 的 `catch(Throwable)` discard + rethrow → `transaction()` 的 `catch(Throwable)` 执行 rollback。修复前只 catch `Exception`，`Error` 漏过回滚、恢复连接状态时的 `setAutoCommit(true)` 反而把失败事务提交了。
-- **drain 失败边界（已知，未改）**：事件处理器抛异常发生在 commit **之后**——`Defer.within` discard + rethrow → `transaction()` 再尝试 rollback（已提交，无效果）并 rethrow。结果是"事务已提交但调用方看到失败"，事件部分派发。这是可辩护的语义（事件是工作单元的一部分），保持现状。
+- **drain 失败边界**：单个动作抛异常发生在 commit **之后**，`DeferScope.drain` 对每个动作 `catch (Throwable)` 只记 WARN，作用域仍正常返回——所以调用方看到**成功**，事件是**部分派发**的（其余动作照常执行）。只有"动作排序"本身失败（依赖约束不可满足）才会 rethrow。这是可辩护的语义（清理动作必须跑完），代价是事件失败对调用方不可见，需要日志侧观察。
 - **跨线程**：`ScopedValue` 绑定在当前线程，不传播到子线程。子线程里 `Defer.isActive()` 为 false，`publish()` 立即派发、不受事务保护；`publishAsync` 也因此保留立即语义（不参与 Defer）。
 
 ### 场景二：DB 事务 + 缓存失效（手动 defer）

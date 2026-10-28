@@ -74,10 +74,13 @@ final class ReadinessGate implements AutoCloseable {
         ReadinessGate gate = new ReadinessGate(checks, registry, instances, RETRY);
         if (gate.allHealthy()) {
             // Everything is already healthy at boot: there is nothing to wait
-            // for, so the instances keep the readiness they registered with.
-            // Marking them not-ready here would create a window in which a
-            // perfectly ready process is undiscoverable — the very cost this
-            // gate exists to avoid, paid by the wrong service.
+            // for. The instance was registered as starting (the hook knows a
+            // gate will arm before it registers), so the one write that makes
+            // it discoverable belongs here — returning without it would leave
+            // a perfectly ready process invisible until its next heartbeat.
+            for (ServiceInstance instance : instances) {
+                registry.markReady(instance, true);
+            }
             return null;
         }
         for (ServiceInstance instance : instances) {
@@ -94,6 +97,11 @@ final class ReadinessGate implements AutoCloseable {
                 + "ServiceRegistry.markReady");
         }
         return gate;
+    }
+
+    /** Whether every contributor currently answers healthy. */
+    boolean ready() {
+        return allHealthy();
     }
 
     void start() {

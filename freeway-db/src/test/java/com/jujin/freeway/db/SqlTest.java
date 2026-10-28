@@ -221,6 +221,39 @@ class SqlTest {
     }
 
     @Test
+    void joinConditionBindsValuesBeforeWhereValues() {
+        // `on` used to be the only condition slot with no value channel: a `?`
+        // in the ON text never reached args(), so db.query(...) complained about
+        // too few parameters while the SQL silently kept the placeholder.
+        // ON text precedes WHERE text, so its binds precede theirs even when
+        // the where() call came first.
+        Sql q = Sql.select("*").from("users u")
+            .leftJoin("orders o").on("o.user_id = ? AND o.status = ?", 7L, "open")
+            .where("u.tenant = ?", "acme");
+
+        assertEquals(
+            "SELECT * FROM users u LEFT JOIN orders o"
+                + " ON o.user_id = ? AND o.status = ? WHERE u.tenant = ?",
+            q.sql());
+        assertArrayEquals(new Object[]{7L, "open", "acme"}, q.args(),
+            "args() is ordered by ? position: ON binds first");
+    }
+
+    @Test
+    void joinConditionBindsFirstEvenWhenWhereWasAddedFirst() {
+        Sql q = Sql.select("*").from("users u")
+            .where("u.tenant = ?", "acme")
+            .leftJoin("orders o").on("o.user_id = ?", 7L);
+
+        assertEquals(
+            "SELECT * FROM users u LEFT JOIN orders o ON o.user_id = ?"
+                + " WHERE u.tenant = ?",
+            q.sql());
+        assertArrayEquals(new Object[]{7L, "acme"}, q.args(),
+            "call order does not change positional order: the ON text is earlier");
+    }
+
+    @Test
     void selectWithInnerJoin() {
         Sql q = Sql.select("*").from("users")
             .innerJoin("orders").on("users.id = orders.user_id");
@@ -689,6 +722,27 @@ class SqlTest {
     }
 
     @Test
+    void aConflictActionWithoutItsTargetIsRejectedAtTheCall() {
+        // Emitted alone, the action read `INSERT … VALUES (…) DO NOTHING`:
+        // syntactically invalid, and the database rejected it far from the
+        // builder call that produced it. The conflict clause must exist first.
+        IllegalStateException noTarget = assertThrows(IllegalStateException.class,
+            () -> Sql.insert("users").setColumn("id", 1).doNothing());
+        assertTrue(noTarget.getMessage().contains("onConflict"),
+            "the message names the fix: " + noTarget.getMessage());
+
+        assertThrows(IllegalStateException.class,
+            () -> Sql.insert("users").setColumn("id", 1)
+                .doUpdateSet("name = excluded.name"));
+    }
+
+    @Test
+    void aSecondConflictClauseIsRejected() {
+        Sql once = Sql.insert("users").setColumn("id", 1).onConflict("id");
+        assertThrows(IllegalStateException.class, () -> once.onConflict("id"));
+    }
+
+    @Test
     void insertWithOnConflictDoNothing() {
         Sql q = Sql.insert("users").setColumn("id", 1).setColumn("name", "john")
             .onConflict("id")
@@ -1019,9 +1073,43 @@ class SqlTest {
     }
 
     @Test
-    void orderByAfterLimitIsRejected() {
+    void clauseOrderFollowsSqlNotTheCallOrder() {
+        // LIMIT declared before ORDER BY: the renderer still emits
+        // ORDER BY … LIMIT … — the only order SQL accepts. The old builder
+        // appended text in call order and had to reject this sequence.
+        Sql q = Sql.select("*").from("t").limit(5).orderBy("id").offset(2);
+        assertEquals("SELECT * FROM t ORDER BY id LIMIT 5 OFFSET 2", q.sql());
+    }
+
+    @Test
+    void havingBindsAfterWhereEvenWhenDeclaredFirst() {
+        // The renderer emits WHERE before HAVING whatever the call order; the
+        // bind values must follow the text, or a valid statement silently binds
+        // the wrong values (the old tail appended both text and args in call
+        // order, so this sequence produced invalid SQL instead).
+        Sql q = Sql.select("dept, count(*)").from("users")
+            .having("count(*) > ?", 10)
+            .where("active = ?", true);
+
+        assertEquals(
+            "SELECT dept, count(*) FROM users WHERE active = ? HAVING count(*) > ?",
+            q.sql());
+        assertArrayEquals(new Object[]{true, 10}, q.args());
+    }
+
+    @Test
+    void aSecondClauseOfTheSameKindIsRejected() {
+        // Appending twice used to render two clauses — invalid SQL discovered
+        // by the database instead of the builder.
         assertThrows(IllegalStateException.class,
-            () -> Sql.select("*").from("t").limit(5).orderBy("id"));
+            () -> Sql.select("*").from("t").orderBy("a").orderBy("b"));
+        assertThrows(IllegalStateException.class,
+            () -> Sql.select("*").from("t").limit(1).limit(2));
+        assertThrows(IllegalStateException.class,
+            () -> Sql.insert("t").setColumn("id", 1).returning("id").returning("id"));
+        assertThrows(IllegalStateException.class,
+            () -> Sql.select("count(*)").from("t").groupBy("d").having("c > 1")
+                .having("c > 2"));
     }
 
     @Test

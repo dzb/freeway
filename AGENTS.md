@@ -52,22 +52,25 @@ transitively) plus JUnit at test scope. Anything else belongs in an ext adapter.
   - `XDefault` — it can: an extension binds an alternative with `.primary()`,
     an adapter builds on the default, or config activates another one.
     Examples: `AppRuntimeDefault`, `JsonCodecDefault`, `PoolDefault`,
-    `FlowDriverDefault`, `FlowEngineDefault`, `ExchangeMetaDefault` and the
-    twelve cloud defaults.
+    `FlowDriverDefault`, `FlowEngineDefault` and the twelve cloud defaults.
   - `XImpl` — it cannot: container-internal assembly (`ContainerImpl`,
     `BindingImpl`, `DatabaseImpl`), engine-internal components
-    (`HttpContextImpl`), or per-owner types that coexist with other
-    implementations (`PooledConnectionImpl`). A type stays `XDefault` even
+    (`HttpContextImpl`, `ExchangeMetaImpl`), or per-owner types that coexist with
+    other implementations (`PooledConnectionImpl`). A type stays `XDefault` even
     where the framework wires it concretely.
   - Substituting a role means honoring its whole seam, not just its lookups:
     contributions reach the config chain through one channel —
     `contribute(SymbolProvider.class)` into the extension store; there is no
     register/replay step. A replacement `SymbolSource` must take that view
-    itself, in the factory that builds it:
-    `binder.bind(SymbolSource.class).to(c -> new MySource(c.extension(SymbolProvider.class)))`.
-    A replacement that ignores the view serves only its own tiers and boot's
-    cascade disappears silently (`SymbolSourceReplacementTest` pins the
-    pattern).
+    itself, and the container's `Coercer` with it, in the factory that builds
+    it:
+    `binder.bind(SymbolSource.class).to(c -> new MySource(c.extension(SymbolProvider.class), c.get(Coercer.class)))`.
+    The view without the coercer serves raw strings only: `resolve(SymbolSpec)`
+    is a seam method, not a default, precisely because a chain that cannot type
+    a parser-less spec (`SymbolSpec.of(key, Duration.class, default)`) would
+    throw on the first read. A replacement that ignores the view serves only
+    its own tiers and boot's cascade disappears silently
+    (`SymbolSourceReplacementTest` pins both halves).
 - **Factory verbs**: `of` builds a *value* from the parts you hand it — the
   records do this (`Endpoint.of`, `ServiceInstance.of`, `SymbolSpec.of`),
   mirroring `List.of`. `create` is the framework *entry
@@ -219,10 +222,12 @@ nothing.
   framework opens none of its own.
 - **Keep concepts few**: Module, Service, Extension, Scope, Runtime. Composition is
   the ordered modules handed to an entry point (`Freeway.create`,
-  `FreewayApp.run`/`create`); the validated structure behind it (`ModuleNode`) is
-  internal to `ioc.internal`, and boot's launcher is `FreewayApp` itself — a
-  separate tree type or builder type would be a sixth concept with no question of
-  its own.
+  `FreewayApp.run`/`create`), plus — for `FreewayApp` only, and on by default —
+  the `META-INF/services` providers on the classpath, appended after the declared
+  ones (`autoDiscovery(false)` turns it off; `Freeway.create` never discovers).
+  The validated structure behind it (`ModuleNode`) is internal to `ioc.internal`,
+  and boot's launcher is `FreewayApp` itself — a separate tree type or builder
+  type would be a sixth concept with no question of its own.
 
 ### Shape at the API surface
 

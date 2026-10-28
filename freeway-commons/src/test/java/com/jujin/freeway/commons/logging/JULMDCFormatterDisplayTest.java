@@ -54,6 +54,23 @@ class JULMDCFormatterDisplayTest {
     }
 
     @Test
+    void theFileFormatterHonoursTheSameMdcSwitch() {
+        // The switch used to be read by the console formatter only, so
+        // -Dfreeway.log.mdc=false cleaned the console and left traceId in the
+        // file. Both destinations render the same line and read the same key.
+        MDC.put("traceId", "abc-123");
+        LogRecord record = new LogRecord(Level.INFO, "msg");
+        record.setLoggerName("test");
+        System.setProperty(LogKeys.MDC, "false");
+        try {
+            String out = new JULFileFormatter().format(record);
+            assertFalse(out.contains("traceId"), "MDC must be gone from the file line: " + out);
+        } finally {
+            System.clearProperty(LogKeys.MDC);
+        }
+    }
+
+    @Test
     void omitsBlockWhenMdcEmpty() {
         JULConsoleFormatter formatter = new JULConsoleFormatter(false);
         LogRecord record = new LogRecord(Level.INFO, "msg");

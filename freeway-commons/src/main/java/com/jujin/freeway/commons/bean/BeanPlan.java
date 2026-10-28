@@ -62,8 +62,11 @@ public final class BeanPlan {
     }
 
     /**
-     * Creates a {@link BeanPlan} for the given type. Results are cached by
-     * {@link BeanIntrospector}.
+     * Builds a {@link BeanPlan} for the given type, uncached: every call
+     * redoes the reflection and handle lookup. The hot path wants
+     * {@link BeanIntrospector#plan(Class)}, which caches one plan per class
+     * in a {@code ClassValue}; this factory is the constructor that cache
+     * computes from.
      *
      * @param type the class to introspect
      * @return a new bean plan

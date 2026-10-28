@@ -49,12 +49,23 @@ final class RegistryApi implements RouteHandler {
         this.symbols = Objects.requireNonNull(symbols, "symbols");
     }
 
+    /** True when {@code announced} is a protocol this node speaks: older or equal. */
+    private static boolean supports(String announced) {
+        try {
+            return Integer.parseInt(announced.trim()) <= RegistryServerModule.PROTO;
+        } catch (NumberFormatException notANumber) {
+            return false;
+        }
+    }
+
     @Override
     public void handle(HttpContext ctx) throws IOException {
         // Version first: a client that speaks a newer protocol gets a readable
-        // 426 here instead of a 404 on whichever route moved.
+        // 426 here instead of a 404 on whichever route moved. Older protocols
+        // are accepted — the documented promise is "a server keeps accepting
+        // older clients", and equality made a proto-0 client a 426.
         String announced = ctx.header(RegistryServerModule.PROTO_HEADER).orElse("");
-        if (!announced.isEmpty() && !String.valueOf(RegistryServerModule.PROTO).equals(announced)) {
+        if (!announced.isEmpty() && !supports(announced)) {
             ctx.setHeader(RegistryServerModule.PROTO_HEADER,
                 String.valueOf(RegistryServerModule.PROTO));
             ctx.sendJson(426, Map.of(
@@ -121,7 +132,14 @@ final class RegistryApi implements RouteHandler {
     private void register(HttpContext ctx) throws IOException {
         String json = ctx.bodyText();
         ServiceInstance instance = codec.fromJson(json, ServiceInstance.class);
-        store.register(instance);
+        // A client that already knows it is warming registers as such in one
+        // write (`?ready=false`), instead of registering as ready and being
+        // marked not-ready a moment later — a window in which discovery could
+        // route traffic to it. Absent means ready, the pre-existing contract.
+        Boolean ready = readinessOf(ctx);
+        store.register(instance, ready != null && !ready
+            ? Health.starting()
+            : Health.up());
         ctx.sendJson(200, instance);
     }
 

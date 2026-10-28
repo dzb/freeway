@@ -8,7 +8,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
-import com.jujin.freeway.http.ExchangeMetaDefault;
+import com.jujin.freeway.http.ExchangeMetaImpl;
 import com.jujin.freeway.http.internal.HttpHeaders;
 
 /**
@@ -28,7 +28,7 @@ import com.jujin.freeway.http.internal.HttpHeaders;
  */
 public abstract class AbstractWebSocketSession implements WebSocketSession {
 
-    private final ExchangeMetaDefault exchangeMeta;
+    private final ExchangeMetaImpl exchangeMeta;
     private final String method;
     private final String path;
     private final Map<String, String> pathVariables;
@@ -51,7 +51,7 @@ public abstract class AbstractWebSocketSession implements WebSocketSession {
         Map<String, List<String>> queryParams,
         Map<String, List<String>> headers
     ) {
-        this.exchangeMeta = new ExchangeMetaDefault(correlationId);
+        this.exchangeMeta = new ExchangeMetaImpl(correlationId);
         this.method = Objects.requireNonNull(method, "method");
         this.path = Objects.requireNonNull(path, "path");
         this.pathVariables = pathVariables == null ? Map.of() : Map.copyOf(pathVariables);

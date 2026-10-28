@@ -3,9 +3,6 @@ package com.jujin.freeway.flow;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Comparator;
-import java.util.Deque;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
@@ -16,6 +13,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiConsumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -66,11 +64,19 @@ public final class FlowEngineDefault implements FlowEngine {
     private final Map<String, Graph> graphMap = new ConcurrentHashMap<>();
     private final Map<String, FlowDriver> drivers;
     private final List<FlowInterceptor> interceptors;
+    /** The module-level exit, or null for a standalone engine (see FlowEngine). */
+    private final BiConsumer<String, Object> eventSink;
 
     public FlowEngineDefault(Map<String, FlowDriver> drivers,
             List<FlowInterceptor> interceptors) {
+        this(drivers, interceptors, null);
+    }
+
+    public FlowEngineDefault(Map<String, FlowDriver> drivers,
+            List<FlowInterceptor> interceptors, BiConsumer<String, Object> eventSink) {
         this.drivers = Map.copyOf(Objects.requireNonNull(drivers, "drivers"));
         this.interceptors = List.copyOf(Objects.requireNonNull(interceptors, "interceptors"));
+        this.eventSink = eventSink;
     }
 
     @Override
@@ -104,275 +110,13 @@ public final class FlowEngineDefault implements FlowEngine {
         if (graphMap.containsKey(id)) {
             throw new IllegalArgumentException("Graph already loaded: " + id);
         }
-        // Validated before anything is published: a rejected graph must leave the
-        // engine as it found it, and the way to guarantee that is not to register
-        // it at all — a rollback would be a second answer to "is this graph
-        // loaded", and the retry of a rejected id relies on there being only one.
-        rejectUnsatisfiableJoin(graph, id);
+        // No graph-shape validation here: the graph was checked when it was
+        // built (JoinDomains, from the Graph constructor), so an unloadable
+        // shape cannot be constructed at all. A second check on this entry
+        // point would be a fact that holds only for callers who go through it.
         if (graphMap.putIfAbsent(id, graph) != null) {
             throw new IllegalArgumentException("Graph already loaded: " + id);
         }
-    }
-
-    /**
-     * Refuses a join whose branches cannot all arrive — the one graph shape the
-     * arrival accounting has no answer for.
-     *
-     * <p>A join waits for {@code prevLinks().size()} arrivals. That count is
-     * right when every branch reaches the join exactly once, and it stops being
-     * right the moment a LOOP sits upstream: a branch inside a loop body arrives
-     * once <em>per iteration</em>. Mixed with a branch outside the loop, the
-     * expected count matches neither the per-iteration arrivals nor the
-     * accumulated ones, so no reset policy satisfies it — zeroing each iteration
-     * starves the join of the outside branch, and accumulating over-activates it
-     * and then re-marks it dead on the next arrival. Both policies shipped before
-     * this check, and both surfaced at the end of the run as
-     *
-     * <pre>dead end at node 'j' (… a join gateway never received all its incoming branches)</pre>
-     *
-     * <p>which describes a lost branch. No branch was lost — the graph asked for
-     * something the engine cannot count. That is a configuration error, and this
-     * framework rejects those at load with the node named, rather than letting
-     * them surface as a run-time symptom pointing at the wrong cause.
-     * </p>
-     *
-     * <p>What is fine: every branch arriving once per the same unit — a join with
-     * no loop upstream of it, or a join fed entirely from within one iteration
-     * domain (see {@link #iterationDomains}), including directly from a loop node
-     * itself, since {@link #loopRun} walks the loop's matching successors once per
-     * item. That is the shape the per-iteration reset exists for.
-     *
-     * <p>A LOOP without {@code $for} fans out once, so it counts as no loop at
-     * all (see {@link #iterates}).
-     */
-    private static void rejectUnsatisfiableJoin(Graph graph, String graphId) {
-        IterationDomains domains = iterationDomains(graph);
-        for (Node node : graph.nodes().values()) {
-            if (node.type() != NodeType.INCLUSIVE && node.type() != NodeType.PARALLEL) continue;
-            if (node.prevLinks().size() < 2) continue;
-            String domain = null;
-            boolean first = true;
-            boolean mixed = false;
-            for (Link link : node.prevLinks()) {
-                String branch = domains.outermost().get(link.prevNode().id());
-                // `first`, not `domain == null`: null is itself a legitimate
-                // domain (a branch above no loop), so using it as the sentinel
-                // would let a later branch overwrite it and the comparison would
-                // never run.
-                if (first) {
-                    domain = branch;
-                    first = false;
-                } else if (!Objects.equals(domain, branch)) {
-                    mixed = true;
-                }
-                // A branch that two loops repeat without either containing the
-                // other belongs to neither exclusively, so no single domain can
-                // describe it: the arrival count is wrong whichever way it is
-                // read, and that is a rejection no matter what the other
-                // branches say.
-                if (domains.ambiguous().contains(link.prevNode().id())) {
-                    mixed = true;
-                }
-            }
-            if (mixed) {
-                throw new IllegalArgumentException(
-                    "Join '" + node.id() + "' in graph '" + graphId + "' is fed from "
-                        + "different iteration domains (" + describeDomains(node, domains)
-                        + "): a join waits for " + node.prevLinks().size() + " arrivals, "
-                        + "but a branch upstream of a LOOP arrives once per iteration "
-                        + "while one outside every LOOP arrives once, so that count can "
-                        + "line up with neither one iteration nor the whole run. Give "
-                        + "every branch the same domain — all inside one loop, or all "
-                        + "downstream of them."
-                );
-            }
-        }
-    }
-
-    /** The domains a join's branches come from, named, for the error message. */
-    private static String describeDomains(Node join, IterationDomains domains) {
-        List<String> seen = new ArrayList<>();
-        for (Link link : join.prevLinks()) {
-            String id = link.prevNode().id();
-            List<String> owning = domains.owners().get(id);
-            String label;
-            if (owning == null || owning.isEmpty()) {
-                label = "'" + id + "' runs once";
-            } else if (owning.size() == 1) {
-                label = "'" + id + "' repeats per iteration of '" + owning.get(0) + "'";
-            } else {
-                label = "'" + id + "' repeats per iteration of "
-                    + String.join(" and ", owning.stream().map(loop -> "'" + loop + "'").toList());
-            }
-            if (!seen.contains(label)) {
-                seen.add(label);
-            }
-        }
-        return String.join(", ", seen);
-    }
-
-    /**
-     * Which iterating loop repeats each node a join branches from, and where no
-     * single loop can claim one.
-     *
-     * <p>Outermost is the granularity that matters, because the per-iteration
-     * join reset is re-armed by the outermost loop's body: a join fed by a nested
-     * loop's node and by a sibling inside the same outer body gets exactly one
-     * arrival from each per outer iteration, which is countable. Innermost would
-     * call that pair "different domains" and refuse a graph the engine runs.
-     *
-     * <p>Ownership is never awarded to the first loop examined: that depends on
-     * the order the loops were declared in (same-depth siblings are otherwise
-     * unordered), and the verdict has to be a property of the graph, not of the
-     * document that declares it. Instead each branch node is asked which loops
-     * can reach it, walking backwards from the node; a node two loops repeat
-     * where neither contains the other has no outermost owner at all and is
-     * reported as ambiguous rather than awarded to whichever loop came first.
-     *
-     * <p>Only join branches are asked, not every node: the walk is over the
-     * branch's ancestors, so the cost is bounded by the shape that is actually
-     * being validated rather than by loops x downstream. The straightforward
-     * "every loop walks everything it reaches" version measured 1 651 ms on 500
-     * sibling loops over a 20 000-node shared tail; this way is 106 ms on that
-     * graph, 38 ms on the 5 000-node one, and flat in the number of loops.
-     */
-    private static IterationDomains iterationDomains(Graph graph) {
-        Set<String> branches = new HashSet<>();
-        for (Node node : graph.nodes().values()) {
-            if (node.type() != NodeType.INCLUSIVE && node.type() != NodeType.PARALLEL) continue;
-            if (node.prevLinks().size() < 2) continue;
-            for (Link link : node.prevLinks()) {
-                branches.add(link.prevNode().id());
-            }
-        }
-
-        Map<String, List<String>> owners = new HashMap<>();
-        for (String branch : branches) {
-            List<Node> loops = loopsReaching(graph, branch);
-            if (loops.isEmpty()) continue;
-            // Deterministic, and deliberately not declaration order: the loop id
-            // is what the message names, so ties cannot reach the verdict.
-            loops.sort(Comparator.comparing(Node::id));
-            owners.put(branch, loops.stream().map(Node::id).toList());
-        }
-
-        Map<String, Integer> depth = nestingDepth(graph);
-        Map<String, String> outermost = new HashMap<>();
-        Set<String> ambiguous = new HashSet<>();
-        for (Map.Entry<String, List<String>> entry : owners.entrySet()) {
-            List<String> owning = entry.getValue();
-            String outer = owning.get(0);
-            for (String candidate : owning) {
-                if (depth.getOrDefault(candidate, 0) < depth.getOrDefault(outer, 0)) {
-                    outer = candidate;
-                }
-            }
-            outermost.put(entry.getKey(), outer);
-            for (String other : owning) {
-                if (other.equals(outer) || ambiguous.contains(entry.getKey())) {
-                    continue;
-                }
-                // Nested either way is one domain: the outer loop repeats the
-                // inner one, so the node has a single outermost owner after all.
-                if (!reachesLoop(graph, outer, other) && !reachesLoop(graph, other, outer)) {
-                    ambiguous.add(entry.getKey());
-                }
-            }
-        }
-        return new IterationDomains(outermost, ambiguous, owners);
-    }
-
-    /** Whether {@code ancestor}'s body contains the loop {@code nodeId}. */
-    private static boolean reachesLoop(Graph graph, String ancestor, String nodeId) {
-        return loopsReaching(graph, nodeId).stream()
-            .anyMatch(loop -> loop.id().equals(ancestor));
-    }
-
-    /**
-     * The iterating loops that can reach {@code nodeId} — its own Loop ancestors,
-     * found by walking links backwards. The node counts as its own owner when it
-     * <em>is</em> a loop, since {@code loopRun} walks a loop's successors once per
-     * item and a join that branches straight off the loop node is inside it.
-     */
-    private static List<Node> loopsReaching(Graph graph, String nodeId) {
-        List<Node> loops = new ArrayList<>();
-        Set<String> visited = new HashSet<>();
-        Deque<Node> pending = new ArrayDeque<>();
-        Node start = graph.nodes().get(nodeId);
-        if (start != null) {
-            pending.push(start);
-        }
-        while (!pending.isEmpty()) {
-            Node node = pending.pop();
-            if (!visited.add(node.id())) {
-                continue;
-            }
-            if (node.type() == NodeType.LOOP && iterates(node)) {
-                loops.add(node);
-            }
-            for (Link link : node.prevLinks()) {
-                pending.push(link.prevNode());
-            }
-        }
-        return loops;
-    }
-
-    /** Which loop repeats each node, and where that is not a single answer. */
-    private record IterationDomains(
-        Map<String, String> outermost,
-        Set<String> ambiguous,
-        Map<String, List<String>> owners
-    ) {
-    }
-
-
-    /**
-     * Iterating loops above each node, memoized over the whole graph.
-     *
-     * <p>Built from {@code nextLinks} rather than {@link Node#prevLinks()},
-     * which lazily scans every link in the graph on first touch per node — asked
-     * of every node in turn that is O(V x E).
-     */
-    private static Map<String, Integer> nestingDepth(Graph graph) {
-        Map<String, List<Node>> parents = new HashMap<>();
-        for (Node node : graph.nodes().values()) {
-            for (Link link : node.nextLinks()) {
-                parents.computeIfAbsent(link.nextId(), key -> new ArrayList<>()).add(node);
-            }
-        }
-        Map<String, Integer> memo = new HashMap<>();
-        for (Node node : graph.nodes().values()) {
-            depthAbove(node, parents, memo);
-        }
-        return memo;
-    }
-
-    /** Graphs are DAGs, so the walk up terminates; the memo makes it one pass. */
-    private static int depthAbove(Node node, Map<String, List<Node>> parents,
-                                  Map<String, Integer> memo) {
-        Integer known = memo.get(node.id());
-        if (known != null) {
-            return known;
-        }
-        int deepest = 0;
-        for (Node parent : parents.getOrDefault(node.id(), List.of())) {
-            deepest = Math.max(deepest, depthAbove(parent, parents, memo));
-        }
-        int depth = deepest + (node.type() == NodeType.LOOP && iterates(node) ? 1 : 0);
-        memo.put(node.id(), depth);
-        return depth;
-    }
-
-    /**
-     * Whether this LOOP iterates. One definition, shared with {@link #loopRun}:
-     * a LOOP without {@code $for} is a plain activity gateway that fans out once,
-     * so its successors do not arrive per iteration and nothing about them is
-     * loop bookkeeping. Deciding that twice — once where the engine runs, once
-     * where the graph is checked — is how the two drift apart, and the check then
-     * refuses a graph the engine runs perfectly well.
-     */
-    private static boolean iterates(Node loop) {
-        return loop.metaAsString("$for") != null;
     }
 
     @Override
@@ -404,6 +148,9 @@ public final class FlowEngineDefault implements FlowEngine {
     public void eval(Graph graph, FlowEvaluation evaluation) throws FlowException {
         if (!evaluation.isSubgraphEval()) {
             evaluation.context().eventBus().clear();
+            // The sink is the engine's, the bus is the context's: a reused
+            // context takes the sink of the engine running it now.
+            evaluation.context().eventBus().forwardTo(eventSink);
         }
         FlowInterceptor.FlowChain walk = () -> this.walk(evaluation, graph.start());
         runChain(0, evaluation.context(), graph, walk);
@@ -686,35 +433,42 @@ public final class FlowEngineDefault implements FlowEngine {
      * {@code join: "shared"}, the branch runs over a thread-local write
      * buffer and merges into the parent on clean completion — concurrent
      * branches then cannot race on a key, and a genuine write-write conflict
-     * fails the run with both values named. A branch that stopped or failed
-     * contributes nothing (its partial writes are discarded with it).
+     * fails the run with both values named. A branch that <em>failed</em>
+     * contributes nothing: the scope closes without committing and its partial
+     * writes are discarded with it. A branch that stopped ({@code ctx.stop()})
+     * is a legal early end, not a rollback — its writes merged before the stop
+     * are kept, exactly as a stopped non-branch walk keeps them.
      */
     private void runBranch(FlowEvaluation evaluation, Node fork, Node branch) throws FlowException {
         if ("shared".equals(fork.metaAsString("join"))) {
             walk(evaluation, branch);
             return;
         }
-        Runnable merge = evaluation.context().beginBranch();
-        // A throwing walk never reaches the merger: an aborted branch
-        // contributes nothing, its partial writes discarded with it.
-        walk(evaluation, branch);
-        merge.run();
+        // The scope is the fact: closing without committing discards the
+        // buffer on every exit path, so a throwing branch cannot leave a layer
+        // behind on this thread. The javadoc's "a stopped or failed branch
+        // contributes nothing" is now what the shape does, not what the code
+        // around it remembers to do.
+        try (FlowContext.Branch scope = evaluation.context().beginBranch()) {
+            walk(evaluation, branch);
+            scope.commit();
+        }
     }
 
     // --- LOOP ---
 
     private void loopRun(FlowEvaluation evaluation, Node node, ArrayDeque<Node> frontier)
             throws FlowException {
-        String forKey = node.metaAsString("$for");
-        // forKey is read once and both uses come from it: the guard is
-        // "was there one", and the binding below needs the name itself. iterates()
-        // is the shared PREDICATE (the graph check uses it too) — two reads of
-        // the same meta would be one more place for the two to drift.
-        if (forKey == null) {
+        // The predicate has one home — Node#iterates, shared with the graph
+        // check — and the name is read once for the binding below. Deciding
+        // "does this loop iterate" in two places is how the check and the
+        // executor drift apart.
+        if (!node.iterates()) {
             // No $in/$for pair: a plain activity gateway (iteration is undefined).
             if (taskExec(evaluation, node)) fanOut(evaluation, node, frontier);
             return;
         }
+        String forKey = node.metaAsString("$for");
 
         ArrayDeque<Iterator<?>> stack = evaluation.execState().loopStack(node.graph(), node.id());
         Iterator<?> iterator;

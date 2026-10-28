@@ -132,14 +132,9 @@ final class Http1xResponseWriter implements HttpResponseWriter {
         rawOut.write(reasonBytes(ctx.status()));
         rawOut.write(CRLF);
         for (var entry : ctx.responseHeaderEntries()) {
-            // RFC 9110 §8.6: a response without a body (204/205/304) must
-            // not carry Content-Length, regardless of who set it — a
-            // handler-set value must not leak onto the wire next to a
-            // suppressed body. HEAD keeps Content-Length (RFC 9110 §9.3.2:
-            // same headers as GET) because allowsResponseBody() is
-            // status-based, and 1xx never reaches this writer.
-            if (!ctx.allowsResponseBody()
-                    && entry.getKey().equalsIgnoreCase("Content-Length")) {
+            // The bodyless-Content-Length rule lives in ResponseFraming so
+            // HTTP/2 applies the same one (RFC 9110 §8.6).
+            if (ResponseFraming.suppressesHeader(entry.getKey(), ctx.allowsResponseBody())) {
                 continue;
             }
             rawOut.write(entry.getKey().getBytes(StandardCharsets.ISO_8859_1));

@@ -1,6 +1,8 @@
 package com.jujin.freeway.boot.internal;
 
 import com.jujin.freeway.boot.AppConfig;
+import com.jujin.freeway.commons.logging.LogConfig;
+import com.jujin.freeway.ioc.symbol.SymbolProvider;
 import com.jujin.freeway.commons.util.EnvKeys;
 import java.io.IOException;
 import java.io.InputStream;
@@ -11,6 +13,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,13 +39,19 @@ import com.jujin.freeway.boot.internal.BootModule.ConfigKeys;
  * CLI, {@code -D}, env, files). This loader does not read them — the symbol
  * chain does — so a {@code -D} value outranks every file.</p>
  *
+ * <p>Named for what it is: a set of pure functions over the cascade layers —
+ * no instance, no interface, no binding, nothing to substitute. The {@code
+ * Impl} suffix means "container-internal assembly" or "one implementation
+ * among siblings", and neither applies here; using it anyway made the suffix
+ * mean two different things across the repository.</p>
+ *
  * <p>Returns an {@link AppConfigDefault} built from the loaded
  * {@link ConfigSources}: the file tier is watched and re-read on change, so
  * config edits are visible to later symbol lookups without a restart.
  */
-public final class ConfigLoaderImpl {
+public final class ConfigCascade {
     private static final Logger LOG = LoggerFactory.getLogger(
-        ConfigLoaderImpl.class
+        ConfigCascade.class
     );
     private static final Pattern PROFILE_NAME_PATTERN = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]*");
 
@@ -87,6 +96,11 @@ public final class ConfigLoaderImpl {
 
         warnAboutBootstrapKeys("the classpath config files", sources.files());
         warnAboutBootstrapKeys("the command-line arguments", sources.cli());
+        // Logging configures itself before the container exists, so it reads
+        // -D, environment variables and the classpath files — not the CLI tier.
+        // The class-load-only keys ignore every file, the classpath included.
+        LogKeyNotices.unread("the command-line arguments", sources.cli(), null);
+        LogKeyNotices.classLoadOnly("the classpath config files", sources.files());
         return new AppConfigDefault(sources, overrideFiles(sources.profiles()));
     }
 
@@ -201,14 +215,21 @@ public final class ConfigLoaderImpl {
         Map<String, String> json = loadResource(loader, APPLICATION_JSON);
         Map<String, String> cli = parseArgs(args);
 
-        // Non-profile layers in ascending priority order (properties → json →
-        // filesystem base → environment → args). profile.* layers cannot
-        // participate here — their file names ARE the profile selection.
-        // Environment must outrank files: FREEWAY_PROFILE driving profile
-        // selection would otherwise silently lose to a freeway.profile key
-        // in a file.
-        Map<String, String> base = ConfigMaps.overlay(
-            List.of(properties, json, filesystemBase, environment, cli));
+        // Ascending precedence, derived from the symbol chain's own tiers
+        // rather than a second hand-ordered list: the chain says a lower
+        // TIER_* number wins, and overlay() gives the last entry the win, so
+        // the layers are ordered by descending tier. Within one tier the list
+        // order is the precedence (stable sort keeps it) — properties, then
+        // json, then the filesystem base. profile.* layers cannot participate
+        // here — their file names ARE the profile selection. Environment must
+        // outrank files: FREEWAY_PROFILE driving profile selection would
+        // otherwise silently lose to a freeway.profile key in a file.
+        Map<String, String> base = overlayByTier(List.of(
+            new Tier(SymbolProvider.TIER_FILES, properties),
+            new Tier(SymbolProvider.TIER_FILES, json),
+            new Tier(SymbolProvider.TIER_FILES, filesystemBase),
+            new Tier(SymbolProvider.TIER_ENV, environment),
+            new Tier(SymbolProvider.TIER_CLI, cli)));
         List<String> profiles = parseProfiles(base.get(PROFILE_KEY));
 
         // The profile band merges in two passes: every profile's properties,
@@ -235,6 +256,22 @@ public final class ConfigLoaderImpl {
             ConfigMaps.overlay(fileLayers),
             profiles
         );
+    }
+
+    /** One cascade layer and the symbol tier it belongs to. */
+    private record Tier(int order, Map<String, String> values) {}
+
+    /**
+     * Folds layers by the symbol chain's tier order: a lower {@code TIER_*}
+     * is higher precedence, and {@link ConfigMaps#overlay} applies the later
+     * entry last — so the layers are sorted by descending tier.
+     */
+    private static Map<String, String> overlayByTier(List<Tier> layers) {
+        return ConfigMaps.overlay(
+            layers.stream()
+                .sorted(java.util.Comparator.comparingInt(Tier::order).reversed())
+                .map(Tier::values)
+                .toList());
     }
 
     /**
@@ -305,7 +342,7 @@ public final class ConfigLoaderImpl {
      *  a classpath resource is bounded exactly like a filesystem file. */
     private static Map<String, String> loadResource(ClassLoader loader, String name) {
         ClassLoader effectiveLoader =
-            loader != null ? loader : ConfigLoaderImpl.class.getClassLoader();
+            loader != null ? loader : ConfigCascade.class.getClassLoader();
         InputStream stream = effectiveLoader.getResourceAsStream(name);
         if (stream == null) {
             return Map.of();

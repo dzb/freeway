@@ -7,6 +7,7 @@ import com.jujin.freeway.ioc.Container;
 import java.util.Objects;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Flow;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -74,27 +75,47 @@ public final class EventBus implements AutoCloseable {
     }
 
     /**
-     * A bus over {@code container}'s {@code EventSubscriber} contributions and
-     * {@link Metrics}. The container binds its own ({@code container.get(EventBus.class)});
-     * {@code Container} is not an injectable type, so the bus is not
-     * constructor-injected — it is built by that builtin's factory.
+     * A bus over its three collaborators, none of which is the container:
+     * the {@link Metrics} that observes it, the composition-time
+     * {@link EventSubscriber} contributions, and an optional
+     * {@link AsyncCarrier}. The bus outlives composition and is handed to
+     * application code, so it must not hold a container that can reach
+     * everything (see {@code AGENTS.md}, "Who may hold the Container").
+     *
+     * @param carrier the ambient-context carrier, or {@code null} for none
      */
-    public EventBus(Container container) {
-        Objects.requireNonNull(container, "container");
-        // Metrics is a container builtin (NoopMetrics by default) — always
-        // resolvable; a contributed/primary implementation observes the bus.
-        this.stats = new EventStats(container.get(Metrics.class));
-        // The bus is built lazily on first resolution, always after
-        // composition; its subscribers arrive as sealed contributions.
-        this.subscriptions = new EventSubscriptionIndex(container);
+    public EventBus(Metrics metrics, List<EventSubscriber<?>> subscribers,
+            AsyncCarrier carrier) {
+        this.stats = new EventStats(Objects.requireNonNull(metrics, "metrics"));
+        // Contributions are sealed by the time the bus is built (the container
+        // resolves it lazily, after composition), so the list is the table —
+        // no live view, no container handle.
+        this.subscriptions = new EventSubscriptionIndex(
+            List.copyOf(Objects.requireNonNull(subscribers, "subscribers")));
         this.dispatcher = new EventDispatcher(this, subscriptions, stats);
         this.executors = new EventExecutorSupport(this::requireOpen);
-        // The bus is built after composition, so a cloud-bound carrier is
-        // already in place when one exists; otherwise dispatch stays bare.
         // Resolved once — dispatch must not pay a lookup per event.
-        this.contextCarrier = container.isActiveBinding(AsyncCarrier.class)
-            ? container.get(AsyncCarrier.class)::capture
-            : work -> work;
+        this.contextCarrier = carrier != null ? carrier::capture : work -> work;
+    }
+
+    /**
+     * Assembly-point factory (the container's own builtin and tests): takes
+     * the three collaborators off a composed container and returns a bus that
+     * holds none of it. Application code resolves {@code EventBus} instead.
+     */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    public static EventBus create(Container container) {
+        Objects.requireNonNull(container, "container");
+        // The extension store is keyed by the raw EventSubscriber class; the
+        // entries themselves carry their event type in the instance.
+        List<EventSubscriber<?>> subscribers =
+            (List) container.extension(EventSubscriber.class).all();
+        return new EventBus(
+            container.get(Metrics.class),
+            subscribers,
+            container.isActiveBinding(AsyncCarrier.class)
+                ? container.get(AsyncCarrier.class)
+                : null);
     }
 
     // ==================== class-based publish ====================
