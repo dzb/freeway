@@ -61,7 +61,7 @@ public static void main(String[] args) {
 
 ```properties
 freeway.cloud.server-port=8060
-freeway.cloud.registry.node-token=s3cret      # 出了本机必设：读写都要这个头
+freeway.cloud.registry.token=s3cret      # 出了本机必设：读写都要这个头
 ```
 
 **每个业务服务**（注册方 = 调用方 = 监听方）：
@@ -74,8 +74,8 @@ FreewayApp.run(args,
 ```
 
 ```properties
-freeway.cloud.registry-node.nodes=http://n1:8060,http://n2:8060
-freeway.cloud.registry-node.token=s3cret
+freeway.cloud.registry.nodes=http://n1:8060,http://n2:8060
+freeway.cloud.registry.token=s3cret
 freeway.cloud.registry.service-id=order-service
 ```
 
@@ -89,6 +89,29 @@ freeway.cloud.registry.service-id=order-service
 | 调用别人 | `RemoteProxyFactory` 按发现结果 + 加权轮询选实例 |
 | `GET /health/ready` | 报真实注册状态：已注册 / 排空中 / 连续心跳失败 |
 | 停机 | 先从全部节点注销（drain 窗口）再关进程 |
+
+**发现结果的复用**：`ServiceDiscovery` 的实现在内部缓存答案（Eureka/Ribbon/Spring Cloud LB
+都是同一形状；K8s informer 这类推送式不需要 TTL）。默认
+`freeway.cloud.registry.cache-ttl=5s`（半个心跳，远在 30s 驱逐窗口内），可按服务覆盖
+（`…cache-ttl.checkout=1s`，`0` = 该服务不缓存）。后端失败时，窗口内继续用最旧的答案
+（grace = max(10×ttl, 30s)），超出窗口才抛。
+
+**政策**（框架提供的默认手段，不是强制）：走网络的发现实现用 `CachingServiceDiscovery.around(delegate, ttl, metrics)`
+包一层——fleet 就是这么做的；进程内 store **不包**（查表本身已是 0 成本，缓存只会让它变慢）；
+自带推送新鲜度的适配器（K8s informer）也不包，把 `TtlPolicy` 答成 `0`。换句话说：**缓存的发现实现是
+框架给的默认能力，套不套由后端决定**。
+
+**协议与凭证轮转**：注册面有协议版本——客户端每个请求带 `X-Registry-Proto`，不兼容时节点答
+`426`（并附带支持的版本），节点永远接受更旧的协议；`GET /registry` 在无凭证时可读，自述协议、
+路由与认证方式。凭证轮转不需要停节点：把当前 `token` 的值填进
+`freeway.cloud.registry.token-previous`、新值写进 `token` 即可两个并存，然后滚动切换
+写入方，最后清空旧值键——密钥按请求解析，配置热重载即生效。
+
+**就绪门（readiness）**：注册发生在应用能服务之前，所以带 `CloudHealthContributor` 的进程会先以
+"未就绪"注册（`Health.starting()`：在注册表里、不在发现结果里），等**所有**贡献者通过后才翻成
+就绪——慢启动的连接池/迁移不再吃它处理不了的流量。没有贡献者的应用**注册即就绪**（保持旧行为：
+不给不存在信号的应用加等待）。翻转是即时的（`POST …/instances/{id}/ready`），同时也随下一次心跳
+携带，所以老节点只是延迟一拍，不会分叉。
 
 **节点的运维语义**（v1 的明确选择）：无持久化——表是可重建状态，节点重启后表为空，每个实例
 的下一次心跳收到 404 会**就地把自己重新注册到该节点**，一个心跳周期内恢复满员；无共识复制——
@@ -218,6 +241,11 @@ subscribe：对端在握手时看不见的兴趣，是无法被兑现的兴趣�
 （peers 或 `enabled=true`）+ 订阅声明 + `token`——缺任何一项都是静默分区而非错误；
 `stats().droppedNoSubscriber()` 与 `framesQueued()` / `framesDropped()` 让发送侧事后可观测。
 
+**半开连接**：设 `freeway.cloud.event.keepalive-ms` 后，mesh 每拍向 peer 发 WebSocket ping，要求
+pong 在下一拍前回来；没回就关连接，交给既有重连（出站）与注销（入站）路径。抓的是"TCP 还活着、
+对端已经不读"——NAT/LB 静默丢连接正是这种形状，靠发送失败要等到下一次发布才发现。默认关：
+活性探测是流量，已用 TCP keepalive 或 service mesh 的部署可以不为第二个意见付费。
+
 **投递语义**：at-most-once、实时。发布时离线的 peer 错过该事件（无重放队列）——需要持久、
 按键有序的投递用 Kafka 平面（`freeway-mq-kafka`）。入站帧可挂拦截器
 （`contribute(CloudEventInterceptor.class)`）；抛异常的 handler 被隔离并计数；网格从设计上
@@ -248,6 +276,14 @@ subscribe：对端在握手时看不见的兴趣，是无法被兑现的兴趣�
 选择器是绑定：适配器以 `.primary()` 绑定角色，内置默认让位。`type` 键是给人与适配器看的
 声明；声明了外部后端却没有适配器接管时，本地实现启动告警一次（`BackendTypeGuard`），不让
 声明看起来像已生效。
+
+## 出站 TLS 的在线轮换
+
+默认情况下 `TransportSecurity` 的 `SSLContext` 解析一次，换 keystore/truststore 需重启；设
+`freeway.cloud.rpc.tls.reload-interval` 后，KeyManager/TrustManager 每次握手委托给**可轮换材料**
+（size/mtime + 节流，读失败保留旧材料），下一次握手即生效——**不重建客户端**，因为 JDK
+`HttpClient` 在构建时就捕获了 context。入站侧是另一个机制（引擎每次握手读当前 context，
+`freeway.http.ssl.reload-interval`），两侧合起来才是完整的证书轮换。
 
 ## 键的读取时机与停机顺序
 

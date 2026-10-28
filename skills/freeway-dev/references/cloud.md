@@ -36,8 +36,24 @@ FreewayApp.run(args, new HttpModule(),
 
 ```properties
 freeway.cloud.server-port=8060
-freeway.cloud.registry.node-token=s3cret      # X-Registry-Token required on reads and writes
+freeway.cloud.registry.token=s3cret      # X-Registry-Token required on reads and writes
 ```
+
+Protocol and credentials (both are versioned/rotatable on a live node):
+
+```properties
+freeway.cloud.registry.token=s3cret            # current shared secret
+freeway.cloud.registry.token-previous=old      # accepted during rotation, then cleared
+```
+
+- wire protocol: clients send `X-Registry-Proto: 1`; an unsupported value is
+  answered `426` (with the supported version), never a 404. A node always
+  accepts older protocols, so nodes upgrade before clients.
+- `GET /registry` is readable without credentials: it announces the protocol,
+  the four routes and the auth posture — a mismatch is diagnosable before auth.
+- `POST …/instances/{id}/ready` (body `{"ready":true|false}` or `?ready=`)
+  flips readiness immediately; the same bit also rides the 10s heartbeat, so an
+  older node is a delay, not a divergence.
 
 Run 2+ nodes for availability. Semantics by design: **no persistence** (the
 table is rebuildable — a restarted node is repopulated by the next heartbeat of
@@ -48,9 +64,9 @@ fleet serving; nodes are independent peers).
 ### The fleet client (`RegistryFleetModule`)
 
 ```properties
-freeway.cloud.registry-node.nodes=http://n1:8060,http://n2:8060   # required
-freeway.cloud.registry-node.token=s3cret                          # matches the nodes
-freeway.cloud.registry-node.timeout-ms=3000
+freeway.cloud.registry.nodes=http://n1:8060,http://n2:8060   # required
+freeway.cloud.registry.token=s3cret                          # matches the nodes
+freeway.cloud.registry.timeout-ms=3000
 ```
 
 - register: fan-out to every node; any node refusing fails startup loudly
@@ -62,6 +78,25 @@ freeway.cloud.registry-node.timeout-ms=3000
 The lifecycle itself (register on start, heartbeats, lost-lease self-heal,
 deregister, startup compensation) is driven by the core `RegistryLifecycleHook` —
 adapters implement transport only.
+
+**Readiness (the instance is not discoverable until it can serve).** An
+application that contributes `CloudHealthContributor`s registers as
+`Health.starting()`, and a gate flips it to ready only when **every** check
+passes (retried every second, off the startup thread). No contributors ⇒ ready
+as registered — the old behaviour, deliberately. `ServiceRegistry.markReady` is
+the seam (default no-op, so Consul-style adapters are unaffected).
+
+**Caching is the discovery implementation's own policy.** A network-backed
+implementation wraps itself with `CachingServiceDiscovery.around(delegate, ttl,
+metrics)` — freshness, single-flight refresh, and serving the last answer while
+the backend is failing (grace = max(10×ttl, 30s)). The in-process store does
+not wrap (a map read), and a pushed backend (K8s informer) answers `0`.
+
+```properties
+freeway.cloud.registry.cache-ttl=5s                  # default; 0 disables caching
+freeway.cloud.registry.cache-ttl.checkout=1s         # per service, optional
+freeway.cloud.registry.cache-ttl.legacy=0            # no cache for this service
+```
 
 ## Remote Invocation
 
@@ -113,8 +148,28 @@ freeway.cloud.event.token=mesh-secret           # production MUST set it (WS 100
 - delivery is at-most-once, real-time; durable per-key ordering is the Kafka
   plane. Local `EventBus` is untouched; mirror a remote fact into the local bus
   explicitly inside the handler
+- `keepalive-ms` (default off): each connection pings its peer and requires the
+  pong before the next tick, catching half-open links a NAT/LB drops silently;
+  a missed probe closes the connection and the existing reconnect/unregister
+  path takes over. No protocol change — it reuses WebSocket ping/pong
+  (`WebSocketListener.onPong` is how the mesh sees the answer)
 - observability: `stats()` — `published / framesQueued / framesDropped /
-  sendFailures / droppedNoSubscriber / droppedLegacy`
+  sendFailures / droppedNoSubscriber / droppedLegacy`; the same counters are
+  scraped as `cloud_event_*` gauges on `/metrics` when an observability module
+  is installed (registered even with no peers: "no peers" is a fact)
+
+## TLS Material Rotation
+
+```properties
+freeway.cloud.rpc.tls.reload-interval=1s     # outbound: client certs + trust anchors
+freeway.http.ssl.reload-interval=5s          # inbound: the certificate the server presents
+```
+
+Outbound rotation cannot rebuild the `HttpClient` (the JDK captures its
+`SSLContext` at construction), so it keeps one context and delegates to
+rotating material — the key/trust managers re-read the files per handshake
+(throttled, keep-on-failure). Point it at short-lived certificates and the
+rotation no longer needs a restart.
 
 ## Health, Observability, Resilience, Secrets, Storage
 

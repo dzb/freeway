@@ -509,17 +509,20 @@ CLI 参数（`--freeway.config.file=...`）同样无效——启动时会打 WAR
 | `freeway.cloud.registry.service-host` | 姿态·auto | String | `auto` | 否 | 注册地址主机名。`auto` = 绑定地址若是具体地址就用它（服务器只在那里监听）；绑定 `0.0.0.0`/`::` 时优先 `POD_IP`、否则首个可路由本地地址，都没有才回落绑定地址并告警。多网卡主机请点名 |
 | `freeway.cloud.registry.service-scheme` | 姿态·auto | String | `auto` | 否 | 注册协议，同时决定事件网格拨号用 `ws` 还是 `wss`。`auto` = 跟随 HTTP 服务器是否启用 TLS；显式值只接受 `http`/`https`，其它值启动失败 |
 | `freeway.cloud.registry.shutdown-drain` | 姿态·auto | Duration | `auto` | 否 | **停机 drain 窗口**：摘除注册并置 readiness 为 draining 之后，继续服务这段时间再停。`auto` = 由注册表后端回答（`ServiceRegistry.drainWindow()`）：内置进程内注册表答 `0s`（同 JVM 无传播延迟），注册中心适配器自带传播窗口（如 `5s`），因此不必每个部署各写一遍；显式时长优先，负值启动失败 |
-| `freeway.cloud.registry.node-token` | 决策 | String | *(空)* | 否 | **注册节点 HTTP 面的共享密钥**（装了 `RegistryServerModule` 的进程，即 freeway 自家注册后端的节点）：非空时写入方必须带 `X-Registry-Token` 头（framework 的 `RegistryFleetModule` 客户端发送同名头，值用 `freeway.cloud.registry-node.token` 配）。空 = 面板开放（开发姿态）；节点出了本机就应设置 |
+| `freeway.cloud.registry.token` | 决策 | String | *(空)* | 否 | **注册面共享密钥，一个键两侧都用**（与 `event.token` 同构）：节点要求它、客户端出示它（`X-Registry-Token` 头），因此**两边的值必须一致**。空 = 不认证（节点面板开放、客户端不发头）——开发姿态；节点出了本机就应设置 |
+| `freeway.cloud.registry.token-previous` | 决策 | String | *(空)* | 否 | **轮转窗口**：与 `token` 并列接受的旧密钥。轮转步骤：把当前值填到这里、新值写进 `token`、滚动切换写入方、最后清空本键——节点全程不停机。空 = 无窗口；两个都空 = 面开放 |
+| `freeway.cloud.registry.cache-ttl` | 调优 | Duration | `5s` | 否 | **发现结果的复用窗口**（缓存是发现实现的新鲜度策略，不是调用方的事）：`0` = 每次调用都问。5s 取半个心跳（心跳 10s），远在 30s 驱逐窗口之内；后端失败时窗口内最旧答案继续服务（grace = max(10×ttl, 30s)），超出才响亮失败 |
+| `freeway.cloud.registry.cache-ttl.<serviceId>` | 调优 | Duration | *(继承全局)* | 否 | **按服务的覆盖**：配了就生效、不配继承全局；`0` = 该服务不缓存。动态键族，以 `KnownKeys.admit` 前缀准入（与按文件日志键同一做法）；非法值 warn 一次后回退全局 |
+| `freeway.cloud.registry.service-port` | 调优·哨兵 | Integer | *(空)* | 否 | 注册端口。空 = HTTP server 实际监听端口 |
+| `freeway.cloud.registry.service-instance-id` | 调优·哨兵 | String | *(空)* | 否 | 实例级稳定标识。空 = 派生键 `service-id@host:port` |
 
-**注册节点舰队（客户端侧，`RegistryFleetModule`）**——模块放置即选择此后端；三个键都在客户端进程上配：
+**注册节点舰队（客户端侧，`RegistryFleetModule`）**——模块放置即选择此后端；两个键在客户端进程上配，
+共享密钥就是上面的 `freeway.cloud.registry.token`（同一个键，两侧同值）：
 
 | 键 | 档 | 类型 | 默认值 | 必填 | 说明 |
 |----|------|------|--------|------|------|
-| `freeway.cloud.registry-node.nodes` | 姿态·presence | String | *(空)* | 是* | **节点舰队地址**，逗号分隔，每项 `host:port`（按 `http://` 说）或完整 `http(s)://host:port`。写扇出到全部节点、读取并集——任一节点存活即整队可用。模块已放置而此键为空 = 启动失败并点名本键 |
-| `freeway.cloud.registry-node.token` | 决策 | String | *(空)* | 否 | 与节点的 `freeway.cloud.registry.node-token` 相同的共享密钥，经 `X-Registry-Token` 头发送。空 = 不发头（对应开放的开发节点） |
-| `freeway.cloud.registry-node.timeout-ms` | 调优 | Long | `3000` | 否 | 单次节点交换的连接 + 请求超时（毫秒） |
-| `freeway.cloud.registry.service-port` | 调优·哨兵 | Integer | *(空)* | 否 | 注册端口。空 = HTTP server 实际监听端口 |
-| `freeway.cloud.registry.service-instance-id` | 调优·哨兵 | String | *(空)* | 否 | 实例级稳定标识。空 = 派生键 `service-id@host:port` |
+| `freeway.cloud.registry.nodes` | 姿态·presence | String | *(空)* | 是* | **节点舰队地址**，逗号分隔，每项 `host:port`（按 `http://` 说）或完整 `http(s)://host:port`。写扇出到全部节点、读取并集——任一节点存活即整队可用。模块已放置而此键为空 = 启动失败并点名本键 |
+| `freeway.cloud.registry.timeout-ms` | 调优 | Long | `3000` | 否 | 单次节点交换的连接 + 请求超时（毫秒） |
 
 #### RPC / 远程调用
 
@@ -570,6 +573,7 @@ CLI 参数（`--freeway.config.file=...`）同样无效——启动时会打 WAR
 |----|------|------|--------|------|------|
 | `freeway.cloud.event.peers` | 姿态·presence | String | *(空)* | 否 | **对等节点列表（presence 主键）**——非空即启用 mesh；空 = 纯监听方需显式 `enabled=true`。启用前确认网络可达 |
 | `freeway.cloud.event.discovery-feed-ms` | 姿态·presence | Long | *(未设)* | 否 | **发现喂食间隔（presence 键，设了即开）**：每隔该毫秒数向已绑定的 `ServiceDiscovery` 查询本服务实例，整份替换 mesh 的 discovered 集合（本节点被排除）。发现后端上下线即网格自配置；一次查询失败保留原集合（不能把一次故障读成“全员离场”）。未设 = 关；值 < 1 启动失败并点名本键。需有 discovery 可问（`CloudModule` 或适配器），否则启动失败 |
+| `freeway.cloud.event.keepalive-ms` | 姿态·presence | Long | *(未设)* | 否 | **网格半开连接探测**：设了即开，每隔该毫秒数向每个 peer 发 WebSocket ping，并要求 pong 在下一拍前到达；超时即关闭连接、交给既有重连/注销路径。抓的是 NAT/LB 静默丢连接（TCP 还活着、对端已不读）。未设 = 关（只剩发送失败与 TCP keepalive 两个信号）；非正值启动失败 |
 | `freeway.cloud.event.enabled` | 姿态 | Boolean | *(未设)* | 否 | 显式主开关，**设了就赢**：`true` 开（含无 peers 的 discovery-fed mesh）、`false` = 总闸（连已配置的 peers 也压制）。未设时退到 presence 规则（peers 非空即开）。什么都不设 = 模块装了也不动 |
 | `freeway.cloud.event.token` | 决策 | String | *(空)* | 否 | Mesh 握手共享密钥（空 = 无对等认证）。**多节点生产必配**：全节点值一致、经 `FREEWAY_CLOUD_EVENT_TOKEN` 注入；不一致以 WS `1008` 断开，轮换需滚动重启 |
 | `freeway.cloud.event.connect-timeout-ms` | 调优 | Long | `3000` | 否 | 出站拨号 socket 连接超时（毫秒） |
@@ -585,6 +589,7 @@ CLI 参数（`--freeway.config.file=...`）同样无效——启动时会打 WAR
 | `freeway.cloud.rpc.tls.key-store-password` | 必填·条件 | String | *(空)* | 否 | RPC 客户端密钥库密码 |
 | `freeway.cloud.rpc.tls.trust-store` | 决策 | String | *(空)* | 否 | RPC 客户端信任库路径 |
 | `freeway.cloud.rpc.tls.trust-store-password` | 决策 | String | *(空)* | 否 | RPC 客户端信任库密码 |
+| `freeway.cloud.rpc.tls.reload-interval` | 姿态·presence | Duration | *(未设 = 不轮换)* | 否 | **出站 TLS 材料热轮换**：设了就按该间隔允许下一次握手取到新的 keystore/truststore（惰性、握手时刷，无后台线程；读失败保留旧材料）。不设 = 解析一次、轮换需重启——与入站 `freeway.http.ssl.reload-interval` 同一约定。为什么要它：JDK `HttpClient` 在构建时捕获 `SSLContext`，所以换材料的正确做法是让 context 里的 KeyManager/TrustManager 委托给可轮换材料，而不是重建客户端 |
 
 #### Auth 传播
 

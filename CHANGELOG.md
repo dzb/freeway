@@ -31,11 +31,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **发现结果的缓存（实现内部，默认 5s）**（`freeway-cloud`）：`ServiceRegistry`/`ServiceDiscovery`
+  的 fleet 的发现实现用框架提供的 `CachingServiceDiscovery` 包了一层——TTL + 单飞刷新 + 失败保旧 + 按服务覆盖。
+  缓存是**发现实现的新鲜度策略**，所以放在实现里而不是调用方：RPC、网格喂食器、应用自读的
+  `@Inject ServiceDiscovery` 全都受益，seam 不多一个方法。默认 `freeway.cloud.registry.cache-ttl=5s`
+  （半个心跳、远在 30s 驱逐窗口内），`…cache-ttl.<serviceId>` 可覆盖、`0` 关闭该服务的缓存；
+  失败时 grace = max(10×ttl, 30s) 内继续用最旧答案，超出才抛。此前每次 RPC 尝试都扇出一次
+  到注册节点（1000 rps × 3 节点 = 3000 QPS），且调用路径上多一跳 RTT。
+
+- **出站 TLS 材料在线轮换**（`freeway-cloud`）：`freeway.cloud.rpc.tls.reload-interval` 设了就按
+  间隔允许下一次握手取到新的 keystore/truststore——`SSLContext` 只建一次，`KeyManager`/
+  `TrustManager` 委托给可轮换材料（size/mtime + 节流、读失败保留旧材料）。这是唯一不重建客户端
+  的做法：JDK `HttpClient` 构建时捕获 context，重建就要重开连接池与在途结算（RPC 与 mesh 共用
+  同一份 `TransportSecurity`，两处都要改）。入站侧本就有热轮换，此前是方向不对称。
+
+- **网格半开连接探测**（`freeway-cloud` + `freeway-http`）：`WebSocketListener` 新增
+  `onPong`（引擎此前对 `Pong` 是 `/* no-op */`，应用看不到回执），mesh 侧新增
+  `MeshKeepalive`：`freeway.cloud.event.keepalive-ms` 设了即开，每拍 ping、要求 pong 在下一拍
+  前回来，否则关连接交给既有重连/注销。**无协议变更**——复用 WS 的 ping/pong，机制在传输层、
+  策略在连接所有者，这是与"新增 mesh 心跳帧"相比的落点差别（后者要 proto 升级且重复 WS 已有能力）。
+- **readiness 真正进入发现结果**（`freeway-cloud`）：`ServiceRegistry.markReady`（默认 no-op，
+  Consul 等自带健康检查的适配器免改）+ `RegistryStore` 就绪位 + `RegistryApi` 的
+  `…/ready` 路由与心跳携带。`RegistryLifecycleHook` 带 `CloudHealthContributor` 的进程先以
+  `Health.starting()` 注册、就绪门通过后才翻位——慢启动实例不再在能服务之前被派发流量；
+  无贡献者时注册即就绪（旧行为不变）。
+
+- **注册面协议版本与凭证在线轮转**（`freeway-cloud`）：客户端每请求带 `X-Registry-Proto`，
+  不兼容答 `426`（附支持版本）而不是 404；`GET /registry` 无凭证自述协议/路由/认证方式。
+  节点 token 改为**按请求解析**并支持 `token-previous` 双值窗口——轮转不再需要停节点，
+  与 mesh token 的"滚动重启"相比是在线操作。
+- **网格指标可抓取**（`freeway-cloud`）：`/metrics` 新增 `cloud_event.published /
+  frames_queued / frames_dropped / send_failures / inbound_delivered / dropped_legacy /
+  dropped_no_subscriber / peers` 八条 gauge（读 `CloudEventBus.stats()`），网格未接线时也在
+  ——"没有 peer"是必须看得见的事实，不是缺失的序列。
+
 - **freeway 自家注册后端成形：节点 + `RegistryFleetModule` 客户端**（`freeway-cloud`）：
   `RegistryServerModule` 的 HTTP 面此前明文无鉴权、也没有任何 freeway 客户端会写它——"独立注册
   节点"只有半截。现在两端齐了，都在 freeway-cloud 内：节点可设共享密钥（非空时写入方必须带
   `X-Registry-Token` 头，读写都查——readiness 表被别人写满同样是攻击面）；`RegistryFleetModule`
-  把一**组**注册节点绑定为 `ServiceRegistry`/`ServiceDiscovery`（键 `freeway.cloud.registry-node.*`）：
+  把一**组**注册节点绑定为 `ServiceRegistry`/`ServiceDiscovery`（键 `freeway.cloud.registry.*`）：
   写入扇出到节点列表、发现取各节点回答的并集、404 心跳就地重灌（重灌的是本进程注册过的实例，
   不是猜测的端点）、任一节点存活即整队可用。节点 = `HttpModule + CloudDiscoveryModule +
   RegistryServerModule` 的普通 freeway 应用（组装约十行，见该模块 javadoc）。端到端测试：一个节点

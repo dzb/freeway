@@ -256,6 +256,11 @@ public record Health(boolean live, boolean ready, Instant lastSeen) {
   `ServiceInstance.weight()`（缺省 1），权重和按调用序取模。zone/canary
   仍只是 metadata，自定义策略 bind 一个 primary 实现即可（接口是
   `@FunctionalInterface`）。
+- **发现结果的复用是发现实现自己的策略**（`CachingServiceDiscovery`，默认
+  `registry.cache-ttl=5s`）：TTL + 单飞刷新 + 失败保旧。缓存由实现自己套，
+  于是每个消费者（RPC、网格喂食器、应用自读）都得到它，而 seam 仍只有一个方法；
+  失败保旧也落在知道失败的那一层。进程内 store 不套（查表本身 0 成本），
+  推送式后端（K8s informer）不套或答 `0`。
 
 ### 5.2 跨进程调用 rpc
 
@@ -690,13 +695,13 @@ API**，遵循 `Database`/`Pool` 模式，并发交给虚拟线程。
 | 指标维度（labels）+ 按服务归因 | 现在 4 条无标签序列，一个失败没法回答"哪个服务" | `Metrics` 加一个可选的 tags 参数（不破坏现有调用面），先给 `cloud.rpc.*` 打 `service` 标签 |
 | retry budget | 只按调用重试，重试风暴在依赖大面积失败时反而加压 | `Retryer` 增加按服务的令牌预算，超额直接失败而不是继续退避 |
 | zone / canary 默认策略 | weight 已被 `LoadBalancerDefault` 读取；zone/canary 仍只是 metadata，"标了没用" | 在 metadata 存在时优先按 zone，无 metadata 时保持加权轮询 |
-| 网格丢弃计数指标 | 每连接有界队列 + 独立发送线程已落地（发布线程不再阻塞）；队列满/写失败的丢弃仍无声 | 把 `sendFailures`/队满丢弃暴露成网格指标；与上一项共用标签机制 |
-| 网格应用层心跳 | 半开连接只能靠 TCP/WS 行为与 send 失败发现，被 NAT/LB 静默丢弃时不及时 | 可选的 `event.keepalive` 间隔键（默认关）＋ ping/pong 帧与失联判定；键名在设计里已预留 |
-| readiness 发布到注册表 + startup probe | `Health.starting()` 已存在却没人发布：注册即"就绪"对外是假话，慢启动 pod 会被打 | SPI 加一个就绪位写入（或扩展 `register` 的可选就绪态），注册 hook 先发 starting、就绪后再翻转；同时补 startup probe 语义 |
-| 出站证书轮换 | `SecretStore` 能轮换，但 TLS 材料只在启动时读一次——证书到期只能重启 | `TransportSecurityDefault` 复用密钥文件的 size/mtime 监测，重建 `SSLContext` |
+| ~~网格丢弃计数指标~~ **已交付（1.5.7）**：`/metrics` 暴露 `cloud_event.*` 系列（published/frames_queued/frames_dropped/send_failures/inbound_delivered/dropped_legacy/dropped_no_subscriber/peers），标签维度仍待做 |
+| ~~网格应用层心跳~~ **已交付（1.5.7）**：`WebSocketListener.onPong` 可见 + mesh 侧 `MeshKeepalive`（`event.keepalive-ms`，两腿共用策略），无协议变更（复用 WS ping/pong） |
+| ~~readiness 发布到注册表 + startup probe~~ **已交付（1.5.7）**：`ServiceRegistry.markReady`（默认 no-op，适配器免改）+ 注册以 `Health.starting()` + 就绪门（贡献者全通过才翻位）；启动探针语义即"未就绪 = 不进发现结果" |
+| ~~出站证书轮换~~ **已交付（1.5.7）**：`rpc.tls.reload-interval` 设了即开——`SSLContext` 只建一次，`KeyManager`/`TrustManager` 委托给可轮换材料（size/mtime + 节流、失败保留旧材料）。**不是**重建 context：JDK `HttpClient` 构建时就捕获它，重建要重开连接池与在途结算 |
+
 | 每方法韧性策略 | 现在整个 `CloudHttpClient` 一套阈值，读与写该有不同的重试观 | `@Idempotent` 同级的每方法声明（超时/重试上限），由 `RemoteProxyFactory` 读取 |
 | 本地调用的韧性注解（`@Retry` / `@CircuitBreak` / `@RateLimit` + `Advisor` 织入） | 三个 SPI 目前只在 `CloudHttpClient` 出站路径统一生效（§5.5）：进程内直连的慢依赖没有同一套治理，应用得手写模板代码 | 复用 ioc 已有的 `Binding.advise` / `Advisor.wrap(selector, advice)`，读方法级（退到类级）注解并复用同一批 SPI；注解只做选择，阈值仍是现有键，不新增第二套配置 |
-| SKILL 文档 cloud 章节（`skills/freeway-dev/SKILL.zh.md`） | 应用面 API 仍在动，写早了立刻过期 | 以 `docs/DEVELOPER-GUIDE.md` 的 `## Cloud` 一节为骨架（三档接入表 + 能力索引表），不另起一套说法 |
 
 ### 8.3 交付标准（沿用实施计划）
 

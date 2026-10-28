@@ -40,10 +40,12 @@ Freeway is a JDK 25+ Java framework built around compose-first modules, explicit
 - `freeway-http` - routing, filters, static resources, multipart, SSE, WebSocket
 - `freeway-db` - JDBC access, transactions, pools, migrations, schema
 - `freeway-cloud` - the cloud-native layer: service registry & discovery (in-process
-  store, a deployable registry node, and a fleet client), remote invocation (RPC over
-  HTTP with discovery + load balancing + resilience), an explicit event mesh
-  (`CloudEventBus`, at-most-once), health/readiness, observability, secrets, object
-  storage. `CloudModule` is the 8-module bundle; every sub-module is also placeable
+  store, a deployable registry node, and a fleet client; caching is the discovery
+  implementation's own policy via `CachingServiceDiscovery`), remote invocation (RPC
+  over HTTP with discovery + load balancing + resilience), an explicit event mesh
+  (`CloudEventBus`, at-most-once, optional keepalive), health/readiness (a warming
+  instance is not discoverable until its contributors pass), observability, secrets,
+  object storage, and hot TLS rotation in both directions. `CloudModule` is the 8-module bundle; every sub-module is also placeable
   alone. Third-party discovery backends (Consul) live in `freeway-ext`
 - external adapters live in `freeway-ext`
 

@@ -1178,10 +1178,33 @@ Schema.ensure(db, TestEntity.class);
 | Consul | `CloudModule` + ext `ConsulModule` | Consul 集群 |
 
 注册节点 = 普通 freeway 应用：`new HttpModule(), new CloudDiscoveryModule(),
-new RegistryServerModule()`，键 `freeway.cloud.registry.node-token` 设共享密钥。
-客户端配 `freeway.cloud.registry-node.nodes`（节点列表）与 `.token`：
+new RegistryServerModule()`，键 `freeway.cloud.registry.token` 设共享密钥。
+客户端配 `freeway.cloud.registry.nodes`（节点列表）与 `.token`：
 写扇出到全部节点、读取并集、心跳 404 就地重灌——任一节点存活即整队可用。
 注册（启动）、心跳（10s）、注销（停机）、readiness 全部自动，业务代码零注册逻辑。
+
+**注册面是可演进、可轮转的**（这三点容易被问）：
+
+| 机制 | 怎么用 |
+|---|---|
+| 协议版本 | 客户端带 `X-Registry-Proto: 1`；不兼容答 `426`（附支持版本），节点永远接受**更旧**的协议 → 先升节点后升客户端 |
+| 自述索引 | `GET /registry` 无凭证可读：协议、四条路由、认证方式 |
+| 凭证轮转 | 当前值填 `token-previous`、新值写 `token` → 两值并存 → 滚动切写入方 → 清空旧键。**不停节点** |
+| 就绪位 | `POST …/instances/{id}/ready`（或 `?ready=`）即时翻转；同时随心跳携带，老节点只是慢一拍 |
+
+**就绪门（readiness）**：贡献了 `CloudHealthContributor` 的应用**先以"未就绪"注册**——
+在注册表里、不在发现结果里——所有检查通过才翻位（后台每秒重试，不阻塞启动）。没有贡献者的应用
+注册即就绪（旧行为）。接缝是 `ServiceRegistry.markReady`（默认 no-op，Consul 这类自带健康检查的
+适配器不受影响）。
+
+**发现结果的缓存是发现实现自己的策略**：走网络的实现用
+`CachingServiceDiscovery.around(delegate, ttl, metrics)` 包一层（TTL + 单飞刷新 + 失败保旧）；
+进程内 store 不包（查表 0 成本），推送式后端（K8s informer）答 `0`。
+
+```properties
+freeway.cloud.registry.cache-ttl=5s              # 默认 5s；0 = 关
+freeway.cloud.registry.cache-ttl.checkout=1s     # 按服务覆盖（可选，不配继承全局）
+```
 
 ### 远程调用：两个切点
 
@@ -1210,6 +1233,14 @@ freeway.cloud.event.discovery-feed-ms=10000     # 同伴来自注册发现（整
 freeway.cloud.event.token=mesh-secret           # 生产必配，全节点一致
 ```
 
+`freeway.cloud.event.keepalive-ms` 设了即开半开连接探测：每拍 ping、要求 pong 在下一拍前回来，
+否则关连接交给既有重连/注销。抓 NAT/LB 静默丢连接（TCP 还活着、对端已不读），**无协议变更**
+（复用 WS ping/pong，引擎的 `WebSocketListener.onPong` 让 mesh 看到回执）。
+
+网格的计数器同时以 `cloud_event_*` gauge 暴露在 `/metrics`（published / frames_queued /
+frames_dropped / send_failures / inbound_delivered / dropped_legacy / dropped_no_subscriber /
+peers）——**没有 peer 时也在**。
+
 发布 `mesh.publish("order.created", payload)`（Defer 感知：事务内缓冲、回滚即弃）；
 接收即白名单 `contribute(CloudEventSubscription.class).add("orders",
 CloudEventSubscription.of("order.", OrderCreated.class, handler))`——topic 不匹配的帧
@@ -1219,6 +1250,9 @@ CloudEventSubscription.of("order.", OrderCreated.class, handler))`——topic �
 ### 语义要点
 
 - Cloud 键在组件构建时读一次（例外：单次调用预算、密钥文件 size/mtime 重读）；
+- TLS 材料两个方向都能在线轮换：出站 `rpc.tls.reload-interval`（context 建一次、KeyManager/
+  TrustManager 委托给可轮换材料——JDK `HttpClient` 捕获 context，重建就要重开连接池与在途结算）、
+  入站 `freeway.http.ssl.reload-interval`（引擎每次握手读当前 context）；
 - 停机有序：注册 hook 先摘除并 drain（`registry.shutdown-drain=auto` 由后端回答窗口），
   HTTP 服务后停，出站调用有 `rpc.shutdown-grace`（5s）收尾，网格 peer 收 1001；
 - 完整指南见 `docs/freeway-cloud.md`，设计取舍见 `docs/freeway-cloud-design.md`，
