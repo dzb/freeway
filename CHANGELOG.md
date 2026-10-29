@@ -209,7 +209,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   此前"下一次 tick 仍未见 pong"即判死，预算恰好等于 interval——测试里 50 ms，一次 JVM 停顿或
   调度延迟就会把健康回环连接关闭并重拨（`MeshKeepaliveEndToEndTest` 偶发失败的真实原因）。
   `MeshKeepaliveTest` 新增"迟到但答了"的用例，旧实现下必红。
-- **冗余收敛（复审之二，见 `docs/audit-redundancy-1.5.7.md`）**：
+- **冗余收敛（复审之二）**：
   - 注册面 token 比较改用常数时间（`ConstantTime`，与网状 token 同一规则）；`ObjectStorage` 的 etag
     复用 `Digests.sha256Hex`，删掉内联 SHA-256；cloud 响应统一用 `HttpStatus` 常量（含新增 426）。
   - `FreewayApp` 的 run 收敛为 `run(ModuleEx...)` + `run(Launch, ModuleEx...)`：删掉 `run(String[] args, …)`
@@ -329,8 +329,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   接口继承没有带来多态。
 - **http2 内部类型收口**（`freeway-http`）：`hpack` 子包并入 `engine.http2`，
   `HPackContext`/`HeaderFields`/`Http2HeaderField`/`ContinuationFrame`/`Http2Exception` 降为包私有。
-- **文档**：新增复审报告 `docs/audit-simplification-1.5.7.md`（各模块评估 + 12 项可简化设计 + 实施
-  记录）；`Route`、`RouteGroup`、`WebSocketRoute`、`WebSocketGroup`、`WebSocketMatch`、`CorsFilter`、
+- **文档**：`Route`、`RouteGroup`、`WebSocketRoute`、`WebSocketGroup`、`WebSocketMatch`、`CorsFilter`、
   `StaticResourceMount`、`Binder`、`Query`、`MigrationRunner`、`JsonArray`、`CloudModule` 补类型级
   javadoc；`DEVELOPER-GUIDE` 的 SQL Builder 一节写明冲突子句收列名。
 
