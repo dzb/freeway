@@ -24,7 +24,7 @@ import java.lang.annotation.Target;
  *     @Override public void bind(Binder b) { ... }
  * }
  *
- * FreewayApp.run(WebBundle.class);
+ * FreewayApp.create(WebBundle.class).start();
  * }</pre>
  *
  * <p>Submodules are named by class (annotations cannot carry instances), so a

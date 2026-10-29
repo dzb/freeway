@@ -62,7 +62,7 @@ class HttpSslActivationTest {
         System.setProperty(ConfigKeys.SSL_KEY_STORE, keystore.toString());
         System.setProperty(ConfigKeys.SSL_KEY_STORE_PASSWORD, "changeit");
 
-        app = FreewayApp.run(new String[0], binder ->
+        app = FreewayApp.run(binder ->
             binder.contribute(Route.class)
                 .add(Route.get("/", ctx -> ctx.send(200, "ok"))));
 
@@ -86,7 +86,7 @@ class HttpSslActivationTest {
         System.setProperty(ConfigKeys.SSL_KEY_STORE_PASSWORD, "changeit");
         System.setProperty(ConfigKeys.SSL_ENABLED, "false");
 
-        app = FreewayApp.run(new String[0], binder ->
+        app = FreewayApp.run(binder ->
             binder.contribute(Route.class)
                 .add(Route.get("/", ctx -> ctx.send(200, "ok"))));
 
@@ -104,7 +104,7 @@ class HttpSslActivationTest {
         System.setProperty(ConfigKeys.SSL_ENABLED, "true");
 
         IllegalStateException failure = assertThrows(IllegalStateException.class, () ->
-            FreewayApp.run(new String[0], binder ->
+            FreewayApp.run(binder ->
                 binder.contribute(Route.class)
                     .add(Route.get("/", ctx -> ctx.send(200, "ok")))));
         assertTrue(rootMessage(failure).contains("ssl.key-store"),
@@ -117,7 +117,7 @@ class HttpSslActivationTest {
         System.setProperty(ConfigKeys.SSL_ENABLED, "yolo");
 
         Exception failure = assertThrows(Exception.class, () ->
-            FreewayApp.run(new String[0], binder ->
+            FreewayApp.run(binder ->
                 binder.contribute(Route.class)
                     .add(Route.get("/", ctx -> ctx.send(200, "ok")))));
         assertTrue(rootMessage(failure).contains("ssl.enabled"),

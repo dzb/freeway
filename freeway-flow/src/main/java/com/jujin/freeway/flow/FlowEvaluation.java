@@ -81,19 +81,6 @@ public final class FlowEvaluation {
      * non-{@link FlowException} failure as {@code TASK_FAILED}. Entry point
      * for custom drivers that execute tasks outside the normal dispatch.
      */
-    public void runTask(Node node, String description) throws FlowException {
-        Objects.requireNonNull(node, "node");
-        try {
-            engine.driver(node.graph())
-                .handleTask(this, new TaskDesc(node, description));
-        } catch (FlowException e) {
-            throw e;
-        } catch (Throwable e) {
-            throw new FlowException(
-                FlowException.TASK_FAILED + ": " + node.graph().id() + " / " + node.id(), e);
-        }
-    }
-
     // --- run control ---
 
     /** Ends the run at the next node boundary (intentional early completion). */

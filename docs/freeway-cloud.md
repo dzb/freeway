@@ -52,7 +52,7 @@ FreewayApp.run(
 
 ```java
 public static void main(String[] args) {
-    FreewayApp.run(args,
+    FreewayApp.run(Launch.of(args),
         new HttpModule(),              // HTTP 面：注册/心跳/发现四条路由
         new CloudDiscoveryModule(),    // 实例表（RegistryStore）
         new RegistryServerModule());   // 把实例表发布成 HTTP 面
@@ -67,7 +67,7 @@ freeway.cloud.registry.token=s3cret      # 出了本机必设：读写都要这�
 **每个业务服务**（注册方 = 调用方 = 监听方）：
 
 ```java
-FreewayApp.run(args,
+FreewayApp.run(Launch.of(args),
     new HttpModule(),
     new CloudModule(),
     new RegistryFleetModule());    // 把节点舰队绑定为本进程的注册与发现
@@ -241,10 +241,11 @@ subscribe：对端在握手时看不见的兴趣，是无法被兑现的兴趣�
 （peers 或 `enabled=true`）+ 订阅声明 + `token`——缺任何一项都是静默分区而非错误；
 `stats().droppedNoSubscriber()` 与 `framesQueued()` / `framesDropped()` 让发送侧事后可观测。
 
-**半开连接**：设 `freeway.cloud.event.keepalive-ms` 后，mesh 每拍向 peer 发 WebSocket ping，要求
-pong 在下一拍前回来；没回就关连接，交给既有重连（出站）与注销（入站）路径。抓的是"TCP 还活着、
-对端已经不读"——NAT/LB 静默丢连接正是这种形状，靠发送失败要等到下一次发布才发现。默认关：
-活性探测是流量，已用 TCP keepalive 或 service mesh 的部署可以不为第二个意见付费。
+**半开连接**：设 `freeway.cloud.event.keepalive-ms` 后，mesh 每拍向 peer 发 WebSocket ping；同一时刻
+只保留一个在途探测，pong 的预算按 `max(3 × 间隔, 1 s)` 派生，耗尽才关连接，交给既有重连（出站）
+与注销（入站）路径。抓的是"TCP 还活着、对端已经不读"——NAT/LB 静默丢连接正是这种形状，靠发送
+失败要等到下一次发布才发现；1 s 下限则保证一次 JVM 停顿或调度延迟不会把健康链路误判为半开。
+默认关：活性探测是流量，已用 TCP keepalive 或 service mesh 的部署可以不为第二个意见付费。
 
 **投递语义**：at-most-once、实时。发布时离线的 peer 错过该事件（无重放队列）——需要持久、
 按键有序的投递用 Kafka 平面（`freeway-mq-kafka`）。入站帧可挂拦截器

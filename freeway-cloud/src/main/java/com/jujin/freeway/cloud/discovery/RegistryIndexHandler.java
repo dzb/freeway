@@ -2,6 +2,7 @@ package com.jujin.freeway.cloud.discovery;
 
 import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.route.RouteHandler;
+import com.jujin.freeway.http.HttpStatus;
 import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -40,6 +41,6 @@ final class RegistryIndexHandler implements RouteHandler {
         body.put("tokenRotation", List.of("current", "previous"));
         ctx.setHeader(RegistryServerModule.PROTO_HEADER,
             String.valueOf(RegistryServerModule.PROTO));
-        ctx.sendJson(200, body);
+        ctx.sendJson(HttpStatus.OK, body);
     }
 }

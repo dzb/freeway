@@ -1,5 +1,6 @@
 package com.jujin.freeway.cloud.discovery;
 
+import com.jujin.freeway.cloud.internal.ConstantTime;
 import com.jujin.freeway.cloud.internal.RegistryStore;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.commons.json.JsonObject;
@@ -9,6 +10,7 @@ import com.jujin.freeway.http.route.RouteHandler;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 import com.jujin.freeway.ioc.symbol.SymbolSpec;
 import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
+import com.jujin.freeway.http.HttpStatus;
 import java.io.IOException;
 import java.util.Map;
 import java.util.Objects;
@@ -68,7 +70,7 @@ final class RegistryApi implements RouteHandler {
         if (!announced.isEmpty() && !supports(announced)) {
             ctx.setHeader(RegistryServerModule.PROTO_HEADER,
                 String.valueOf(RegistryServerModule.PROTO));
-            ctx.sendJson(426, Map.of(
+            ctx.sendJson(HttpStatus.UPGRADE_REQUIRED, Map.of(
                 "error", "unsupported registry protocol " + announced,
                 "supported", RegistryServerModule.PROTO));
             return;
@@ -80,7 +82,7 @@ final class RegistryApi implements RouteHandler {
             // A shared-secret check, not an identity system: the node is
             // reachable inside a trusted network, and the token keeps an
             // accidental writer from registering into it.
-            ctx.send(401, "");
+            ctx.send(HttpStatus.UNAUTHORIZED, "");
             return;
         }
         String method = ctx.method();
@@ -100,12 +102,12 @@ final class RegistryApi implements RouteHandler {
                     register(ctx);
                 }
             } else {
-                ctx.send(405, "");
+                ctx.send(HttpStatus.METHOD_NOT_ALLOWED, "");
             }
         } catch (RuntimeException e) {
             // Advertising a malformed payload must surface as a 400, without leaking
             // a stack trace that says little in a log.
-            ctx.sendJson(400, Map.of("error", e.getMessage()));
+            ctx.sendJson(HttpStatus.BAD_REQUEST, Map.of("error", e.getMessage()));
         }
     }
 
@@ -121,12 +123,12 @@ final class RegistryApi implements RouteHandler {
             return true;
         }
         String presented = ctx.header(RegistryServerModule.TOKEN_HEADER).orElse("");
-        return (!current.isBlank() && current.equals(presented))
-            || (!previous.isBlank() && previous.equals(presented));
+        return (!current.isBlank() && ConstantTime.isEqual(current, presented))
+            || (!previous.isBlank() && ConstantTime.isEqual(previous, presented));
     }
 
     private void discover(HttpContext ctx, String serviceId) throws IOException {
-        ctx.sendJson(200, store.liveReady(serviceId, RegistryStore.DEFAULT_EVICTION));
+        ctx.sendJson(HttpStatus.OK, store.liveReady(serviceId, RegistryStore.DEFAULT_EVICTION));
     }
 
     private void register(HttpContext ctx) throws IOException {
@@ -140,7 +142,7 @@ final class RegistryApi implements RouteHandler {
         store.register(instance, ready != null && !ready
             ? Health.starting()
             : Health.up());
-        ctx.sendJson(200, instance);
+        ctx.sendJson(HttpStatus.OK, instance);
     }
 
     /**
@@ -153,7 +155,7 @@ final class RegistryApi implements RouteHandler {
         boolean alive = ready == null
             ? store.renew(serviceId, instanceId)
             : store.renew(serviceId, instanceId, ready);
-        ctx.sendJson(alive ? 200 : 404, Map.of("alive", alive));
+        ctx.sendJson(alive ? HttpStatus.OK : HttpStatus.NOT_FOUND, Map.of("alive", alive));
     }
 
     /** Explicit readiness flip, so a starting instance becomes discoverable at
@@ -161,7 +163,8 @@ final class RegistryApi implements RouteHandler {
     private void ready(HttpContext ctx, String serviceId, String instanceId) throws IOException {
         Boolean ready = readinessOf(ctx);
         boolean applied = ready != null && store.markReady(serviceId, instanceId, ready);
-        ctx.sendJson(applied ? 200 : 404, Map.of("ready", Boolean.TRUE.equals(ready)));
+        ctx.sendJson(applied ? HttpStatus.OK : HttpStatus.NOT_FOUND,
+            Map.of("ready", Boolean.TRUE.equals(ready)));
     }
 
     private void unregister(HttpContext ctx, String serviceId, String instanceId)
@@ -169,7 +172,8 @@ final class RegistryApi implements RouteHandler {
         // By id, straight at the store: an instance that is still warming must
         // be removable, and the discovery view deliberately hides those.
         boolean removed = store.unregister(serviceId, instanceId);
-        ctx.sendJson(removed ? 200 : 404, Map.of("unregistered", removed));
+        ctx.sendJson(removed ? HttpStatus.OK : HttpStatus.NOT_FOUND,
+            Map.of("unregistered", removed));
     }
 
     /** Reads {@code {"ready":…}} from the body, or {@code ?ready=} from the query. */

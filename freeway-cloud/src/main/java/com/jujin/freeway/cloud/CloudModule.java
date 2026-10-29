@@ -20,7 +20,7 @@ import java.time.Duration;
  * itself — and the startup tree shows the bundle as its own level:
  *
  * <pre>{@code
- * FreewayApp.run(new OrderModule(), CloudModule.class);   // the whole bundle
+ * FreewayApp.create(new OrderModule()).add(CloudModule.class).start();  // the whole bundle
  * }</pre>
  *
  * <p>Any module below is an ordinary module, so taking a subset is placing it
@@ -54,6 +54,12 @@ import java.time.Duration;
     CloudHealthModule.class,
     CloudStorageModule.class
 })
+/**
+ * The standard cloud bundle: declares the context, secret, discovery, RPC,
+ * observe, resilience, health and storage modules as submodules, so placing this
+ * class places all of them. Each is an ordinary module and can be placed on its
+ * own instead — the bundle is a convenience, not a policy.
+ */
 public final class CloudModule implements ModuleEx {
 
     @Override
@@ -107,10 +113,12 @@ public final class CloudModule implements ModuleEx {
          *  it finds (this node excluded). Unset = off; a value below 1 fails startup.
          *  Static {@code event.peers} are a separate set and survive an empty round. */
         public static final String EVENT_DISCOVERY_FEED_MS = "freeway.cloud.event.discovery-feed-ms";
-        /** Keepalive probe interval (ms) for mesh connections: each tick pings
-         *  the peer and requires the pong before the next tick, catching
-         *  half-open links a NAT/LB drops silently. Unset = off (TCP keepalive
-         *  and send failures are the only signals then). */
+        /** Keepalive probe interval (ms) for mesh connections: a tick pings
+         *  the peer, one probe is in flight at a time, and its pong budget is
+         *  {@code max(3 × interval, 1 s)} — so a pause-sized stall does not
+         *  close a healthy link. Catches half-open links a NAT/LB drops
+         *  silently. Unset = off (TCP keepalive and send failures are the only
+         *  signals then). */
         public static final String EVENT_KEEPALIVE_MS = "freeway.cloud.event.keepalive-ms";
         /** Shared secret the mesh handshake must present; blank = no peer auth.
          *  Every node of a multi-node mesh must set the same value. */

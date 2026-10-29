@@ -2,15 +2,18 @@ package com.jujin.freeway.commons.scoped;
 
 import java.util.Objects;
 import java.util.concurrent.Callable;
-import java.util.function.Consumer;
-import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
  * Scope-bound deferred execution. Actions registered via {@link #defer(Runnable)}
- * are held until the enclosing scope completes successfully, then executed in
- * dependency order. If the scope throws (or {@link DeferScope#rollback()} is
- * called), deferred actions are discarded.
+ * are held until the enclosing action scope completes successfully, then executed
+ * in dependency order. If the scope throws (or {@link #rollback()} is called),
+ * deferred actions are discarded.
+ *
+ * <p>An action scope is a {@link ScopeSession} with the action capability; a
+ * {@link ScopedCache} value scope opened inside it attaches its values to the same
+ * session, so deferred actions always run while cached values are still open —
+ * whichever order the two are nested in.</p>
  *
  * <h3>Basic usage</h3>
  * <pre>{@code
@@ -22,15 +25,15 @@ import java.util.function.Supplier;
  *
  * <h3>Manual rollback</h3>
  * <pre>{@code
- * Defer.within(scope -> {
+ * Defer.within(() -> {
  *     handle(request);
- *     if (bad) { scope.rollback(); return; }
+ *     if (bad) { Defer.rollback(); return; }
  * });
  * }</pre>
  *
  * <h3>Ordered actions</h3>
  * <pre>{@code
- * Defer.within(scope -> {
+ * Defer.within(() -> {
  *     Defer.defer("index",  () -> rebuildIndex()).after("cache");
  *     Defer.defer("cache",  () -> clearCache());
  *     Defer.defer("notify", () -> notifyUsers()).after("index", "cache");
@@ -46,117 +49,97 @@ import java.util.function.Supplier;
  */
 public final class Defer {
 
-    private static final ScopedValue<DeferScope> CURRENT =
-        ScopedValue.newInstance();
-
     private Defer() {}
 
     // ==================== scope ====================
-    /** Returns true if called inside a {@link #within} block. */
+
+    /** Returns true if called inside an action scope. */
     public static boolean isActive() {
-        return CURRENT.isBound();
+        ScopeSession current = ScopeSession.current();
+        return current != null && current.acceptsActions();
     }
 
     /**
-     * Opens a deferred-execution scope. Deferred actions drain on success,
-     * discard on failure.
+     * Opens an action scope. Deferred actions drain on success, discard on
+     * failure.
      */
     public static void within(Runnable work) {
         Objects.requireNonNull(work, "work");
-        withinScope(scope -> {
+        withinScope(() -> {
             work.run();
             return null;
         });
     }
 
     /**
-     * Opens a deferred-execution scope that yields the work's result.
-     * Deferred actions drain on normal return (unless rollback was called),
-     * discard on exception — then the result is never produced.
+     * Opens an action scope that yields the work's result. Deferred actions
+     * drain on normal return (unless rollback was called), discard on
+     * exception — then the result is never produced.
      */
     public static <T> T within(Supplier<T> work) {
-        Objects.requireNonNull(work, "work");
-        return withinScope(scope -> work.get());
-    }
-
-    /**
-     * Opens a deferred-execution scope with a {@link DeferScope} handle for
-     * manual {@link DeferScope#rollback()}. Actions drain on normal return
-     * (unless rollback was called), discard on exception.
-     *
-     * <p><b>Nesting with {@link ScopedCache}:</b> the cache scope must wrap
-     * this Defer scope ({@code ScopedCache.within(() -> Defer.within(...))})
-     * so deferred actions run while cached values are still open. The reverse
-     * nesting ({@code Defer.within(() -> ScopedCache.within(...))}) cleans up
-     * cached values when the inner cache scope exits — before any deferred
-     * action registered in this scope runs — so such actions must not touch
-     * cached resources. {@link ScopedCache} detects that nesting at runtime
-     * and warns.
-     */
-    public static void within(Consumer<DeferScope> work) {
-        Objects.requireNonNull(work, "work");
-        withinScope(scope -> {
-            work.accept(scope);
-            return null;
-        });
-    }
-
-    /**
-     * Opens a deferred-execution scope with a {@link DeferScope} handle for
-     * manual {@link DeferScope#rollback()}, yielding the work's result.
-     *
-     * <p>The same nesting contract with {@link ScopedCache} applies as for
-     * {@link #within(Consumer)} — nest the cache scope outside this one.
-     */
-    public static <T> T within(Function<DeferScope, T> work) {
         Objects.requireNonNull(work, "work");
         return withinScope(work);
     }
 
-    private static <T> T withinScope(Function<DeferScope, T> work) {
-        Objects.requireNonNull(work, "work");
-        DeferScope scope = new DeferScope();
-        try {
-            T result = ScopedValue.where(CURRENT, scope).call(() -> work.apply(scope));
-            if (!scope.isRolledBack()) {
-                scope.drain();
-            } else {
-                scope.discard();
-            }
-            return result;
-        } catch (Throwable t) {
-            scope.discard();
-            throw t;
+    /**
+     * Marks the current action scope for rollback: its deferred actions are
+     * discarded when it exits normally. Outside an action scope this is a no-op.
+     *
+     * <p>Rollback belongs to the action façade, not to the shared session: a
+     * cache handle cannot roll back the action scope it attached to.</p>
+     */
+    public static void rollback() {
+        ScopeSession current = ScopeSession.current();
+        if (current != null && current.acceptsActions()) {
+            current.markRolledBack();
         }
+    }
+
+    private static <T> T withinScope(Supplier<T> work) {
+        Objects.requireNonNull(work, "work");
+        ScopeSession scope = new ScopeSession(true, false);
+        // Close inside the binding: deferred actions are part of the scope and
+        // must still see values attached to it.
+        return ScopedValue.where(ScopeSession.CURRENT, scope).call(() -> {
+            try {
+                T result = work.get();
+                scope.closeAfterSuccess();
+                return result;
+            } catch (Throwable t) {
+                scope.closeAfterFailure();
+                throw t;
+            }
+        });
     }
 
     // ==================== defer ====================
 
     /**
-     * If inside a {@link #within} block, enqueues the un-named action.
-     * Otherwise runs it immediately.
+     * If inside an action scope, enqueues the un-named action. Otherwise runs
+     * it immediately.
      */
     public static void defer(Runnable action) {
         Objects.requireNonNull(action, "action");
-        if (CURRENT.isBound()) {
-            CURRENT.get().add(new DeferAction(null, action));
+        ScopeSession current = ScopeSession.current();
+        if (current != null && current.acceptsActions()) {
+            current.addAction(new DeferAction(null, action));
         } else {
             action.run();
         }
     }
 
     /**
-     * If inside a {@link #within} block, enqueues a named action and
-     * returns a handle for ordering via {@link DeferAction#before} /
-     * {@link DeferAction#after}. Otherwise runs {@code action} immediately
-     * and returns a no-op handle.
+     * If inside an action scope, enqueues a named action and returns a handle
+     * for ordering via {@link DeferAction#before} / {@link DeferAction#after}.
+     * Otherwise runs {@code action} immediately and returns a no-op handle.
      */
     public static DeferAction defer(String id, Runnable action) {
         Objects.requireNonNull(id, "id");
         Objects.requireNonNull(action, "action");
-        if (CURRENT.isBound()) {
+        ScopeSession current = ScopeSession.current();
+        if (current != null && current.acceptsActions()) {
             DeferAction da = new DeferAction(id, action);
-            CURRENT.get().add(da);
+            current.addAction(da);
             return da;
         }
         action.run();
@@ -166,16 +149,18 @@ public final class Defer {
     // ==================== supply ====================
 
     /**
-     * If inside a {@link #within} block, returns a {@link Supplier} whose
+     * If inside an action scope, returns a {@link Supplier} whose
      * {@code get()} computes the value on first access and caches it; if it
      * is never accessed, the value is computed when the scope commits.
-     * Outside a scope, the supplier computes on each {@code get()} call.
+     * Outside an action scope, the supplier computes on each {@code get()}
+     * call.
      */
     public static <T> Supplier<T> supply(Callable<T> callable) {
         Objects.requireNonNull(callable, "callable");
-        if (CURRENT.isBound()) {
+        ScopeSession current = ScopeSession.current();
+        if (current != null && current.acceptsActions()) {
             DeferredSupplier<T> ds = new DeferredSupplier<>(callable);
-            CURRENT.get().add(new DeferAction(null, ds::compute));
+            current.addAction(new DeferAction(null, ds::compute));
             return ds;
         }
         return () -> {
@@ -199,13 +184,14 @@ public final class Defer {
         Objects.requireNonNull(id, "id");
         Objects.requireNonNull(callable, "callable");
         DeferredSupplier<T> ds = new DeferredSupplier<>(callable);
-        if (CURRENT.isBound()) {
+        ScopeSession current = ScopeSession.current();
+        if (current != null && current.acceptsActions()) {
             DeferAction da = new DeferAction(id, ds::compute, ds);
-            CURRENT.get().add(da);
+            current.addAction(da);
             return da;
         }
-        // Outside a scope, run immediately — a silently dropped callable
-        // would be a footgun. The value stays available via value().
+        // Outside an action scope, run immediately — a silently dropped
+        // callable would be a footgun. The value stays available via value().
         ds.compute();
         return new DeferAction(id, ds::compute, ds);
     }
@@ -245,20 +231,6 @@ public final class Defer {
             }
         }
 
-        /**
-         * Runs the callable exactly once per supplier: a cached failure is
-         * rethrown without re-execution — Errors included, so a supply whose
-         * callable throws an Error must not re-execute the side-effecting
-         * callable on the next access, and a failed supply must not silently
-         * degrade to null.
-         *
-         * <p>Errors keep their type: an {@link Error} propagates as-is (and
-         * is cached as-is) so callers catching AssertionError and friends
-         * see the original. All other throwables — checked exceptions and
-         * RuntimeExceptions alike — are wrapped once in a
-         * {@code RuntimeException} carrying {@link #FAILURE_MESSAGE}, keeping
-         * the long-standing supply-failure shape callers match on.
-         */
         private void runOnce() {
             if (failure != null) {
                 rethrowCached();

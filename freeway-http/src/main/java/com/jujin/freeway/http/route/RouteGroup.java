@@ -4,9 +4,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
+/**
+ * A prefix plus routes declared under it; {@link #expand()} resolves each route
+ * to its full path before {@link RouteIndex} registers it.
+ */
 public record RouteGroup(String prefix, List<Route> routes) {
     public RouteGroup {
-        prefix = PathJoiner.normalize(prefix);
+        prefix = PathPattern.normalize(prefix);
         routes = List.copyOf(routes);
     }
 
@@ -23,7 +27,7 @@ public record RouteGroup(String prefix, List<Route> routes) {
     public List<Route> expand() {
         List<Route> expanded = new ArrayList<>(routes.size());
         for (Route route : routes) {
-            expanded.add(new Route(route.method(), PathJoiner.join(prefix, route.path()),
+            expanded.add(new Route(route.method(), PathPattern.join(prefix, route.path()),
                 route.handler()));
         }
         return List.copyOf(expanded);

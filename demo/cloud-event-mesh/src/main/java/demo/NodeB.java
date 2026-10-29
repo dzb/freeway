@@ -1,5 +1,6 @@
 package demo;
 
+import com.jujin.freeway.boot.Launch;
 import com.jujin.freeway.boot.FreewayApp;
 import com.jujin.freeway.cloud.event.CloudEventModule;
 import com.jujin.freeway.cloud.event.CloudEventSubscription;
@@ -35,7 +36,7 @@ public final class NodeB {
         // CloudEventBus: no dial peers — this node waits for inbound connections.
         System.setProperty(ConfigKeys.EVENT_ENABLED, "true");
 
-        var app = FreewayApp.run(args, new HttpModule(), new CloudEventModule(), new ModuleEx() {
+        var app = FreewayApp.run(Launch.of(args), new HttpModule(), new CloudEventModule(), new ModuleEx() {
             @Override
             public void bind(Binder binder) {
                 // Declared interest: prefix "greet.hello" (= the topic A publishes).

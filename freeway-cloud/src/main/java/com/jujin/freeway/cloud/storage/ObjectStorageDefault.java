@@ -1,5 +1,6 @@
 package com.jujin.freeway.cloud.storage;
 
+import com.jujin.freeway.commons.util.Digests;
 import java.io.IOException;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
@@ -113,7 +114,7 @@ public final class ObjectStorageDefault implements ObjectStorage {
         } catch (IOException e) {
             throw new StorageException("Failed to write " + bucket + "/" + key, e);
         }
-        String etag = etag(data);
+        String etag = Digests.sha256Hex(data);
         long size = data.length;
         emit(new com.jujin.freeway.cloud.storage.ObjectStoredEvent(bucket, key, size, etag));
         return new PutResult(etag);
@@ -236,15 +237,6 @@ public final class ObjectStorageDefault implements ObjectStorage {
             } catch (Exception e) {
                 LOG.warn("Object storage event publish failed: {}", e.getMessage());
             }
-        }
-    }
-
-    private static String etag(byte[] data) {
-        try {
-            java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
-            return java.util.HexFormat.of().formatHex(digest.digest(data));
-        } catch (java.security.NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 unavailable", e);
         }
     }
 }

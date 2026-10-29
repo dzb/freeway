@@ -5,6 +5,7 @@ import com.jujin.freeway.cloud.health.HealthResult;
 import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.route.RouteHandler;
 
+import com.jujin.freeway.http.HttpStatus;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -88,7 +89,7 @@ public final class ReadyHandler implements RouteHandler {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("status", healthy ? "ok" : "unhealthy");
         body.put("cloud", cloud);
-        ctx.sendJson(healthy ? 200 : 503, body);
+        ctx.sendJson(healthy ? HttpStatus.OK : HttpStatus.SERVICE_UNAVAILABLE, body);
     }
 
     private HealthResult withTimeout(CloudHealthContributor contributor) throws Exception {

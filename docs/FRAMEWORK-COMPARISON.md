@@ -79,7 +79,7 @@ ModuleEx（bind 方法）
 + Database / Orm（直接使用）
 + HttpFilter（一个接口，doFilter + order）
 + EventBus / EventSubscriber
-+ FreewayApp.run(args, modules...)
++ FreewayApp.run(Launch.of(args), modules...)
 ```
 
 | 框架 | 核心概念数 |
@@ -100,7 +100,7 @@ ModuleEx（bind 方法）
 | Spring Boot | `@SpringBootApplication`（= `@SpringBootConfiguration` + `@EnableAutoConfiguration` + `@ComponentScan`） | 3 个注解组合，背后扫描整个 classpath |
 | Quarkus | `@QuarkusMain`（可选） | 低 |
 | Micronaut | 无特殊注解 | 低 |
-| **Freeway** | `FreewayApp.run(args, new AppModule())` | **一个方法调用，模块显式传入** |
+| **Freeway** | `FreewayApp.run(Launch.of(args), new AppModule())` | **一个方法调用，模块显式传入** |
 
 ### 3.2 注册一个 REST 端点
 
@@ -200,13 +200,13 @@ Freeway 的 HTTP 引擎遵循与其他组件相同的 `.primary()` 模式：
 
 ```java
 // 默认 — FreewayHttpEngine（内置）
-FreewayApp.run(args, new AppModule(), new HttpModule());
+FreewayApp.run(Launch.of(args), new AppModule(), new HttpModule());
 
 // 替换为 Undertow — 加模块即可，无需配置
-FreewayApp.run(args, new AppModule(), new HttpModule(), new UndertowModule());
+FreewayApp.run(Launch.of(args), new AppModule(), new HttpModule(), new UndertowModule());
 
 // 替换为 Jetty
-FreewayApp.run(args, new AppModule(), new HttpModule(), new JettyModule());
+FreewayApp.run(Launch.of(args), new AppModule(), new HttpModule(), new JettyModule());
 ```
 
 | 引擎 | 来源 | I/O 模型 |
@@ -612,7 +612,7 @@ binder.bind(UserService.class).to(UserServiceImpl.class);
 
 ```java
 // Agent 读到这段代码，完全理解它在做什么：
-FreewayApp.run(args, new AppModule(), new HttpModule(), new DbModule());
+FreewayApp.run(Launch.of(args), new AppModule(), new HttpModule(), new DbModule());
 // 启动应用，加载 AppModule 和 DbModule
 
 // 没有隐藏行为

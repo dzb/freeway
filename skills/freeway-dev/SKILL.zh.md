@@ -33,10 +33,10 @@ freeway-db-hikari, freeway-mq-kafka）在
 
 ```java
 // 最简方式
-AppRuntime runtime = FreewayApp.run(new String[0], new AppModule());
+AppRuntime runtime = FreewayApp.run(new AppModule());
 
 // 带更多模块
-AppRuntime runtime = FreewayApp.run(new String[0], new AppModule(), new HttpModule(), new DbModule());
+AppRuntime runtime = FreewayApp.run(new AppModule(), new HttpModule(), new DbModule());
 
 // Fluent builder（精细控制）
 AppRuntime app = FreewayApp.create(new MyModule())
@@ -106,7 +106,7 @@ MyService svc = c.get(MyService.class);
 c.close();
 
 // 完整应用
-AppRuntime runtime = FreewayApp.run(new String[0], new AppModule());
+AppRuntime runtime = FreewayApp.run(new AppModule());
 Container c = runtime.container();
 ```
 
@@ -249,9 +249,9 @@ Primary 解析使用 `binding.primary()` DSL，不是注解。
 |-------|------|----------|
 | `SINGLETON` | 每个容器一个实例 | 容器 `close()` 时 |
 | `PROTOTYPE` | 每次解析创建新实例 | 容器不持有，不自动销毁 |
-| `THREAD` | 每个 `Scoping.within()` 边界内一个实例 | 作用域退出时，`@PreDestroy` + `AutoCloseable` |
+| `THREAD` | 每个 scope session 一个实例 | 拥有它的 session 关闭时；在 `Defer` action scope 内附着时随该 action scope 关闭 |
 
-`Scoping.within()` 基于 JDK 25 `ScopedValue`，虚拟线程零 overhead，支持嵌套。
+`Scoping.within()` 基于 JDK 25 `ScopedValue`，虚拟线程零 overhead，支持嵌套。若在 `Defer.within` 内打开，值/bean 附着到该 action scope，活到它关闭。
 
 **作用域兼容规则**：Singleton 不能直接注入 thread-scoped 的具体类。需要用接口 + proxy：
 
@@ -458,8 +458,7 @@ binder.contribute(EventSubscriber.class)
 
 ### 内置生命周期事件
 
-- `AppStartedEvent(Container)` — 所有钩子启动后发布
-- `AppStoppingEvent(Container)` — 关闭前发布
+- `AppLifecycleEvent(Container, AppState)` — `RUNNING`：所有钩子启动后发布；`STOPPING`：关闭前发布
 
 ## AOP
 
@@ -725,7 +724,7 @@ Orm orm = Orm.of(db);
 ### IoC 集成
 
 ```java
-FreewayApp.run(new String[0], new AppModule(), new DbModule());
+FreewayApp.run(new AppModule(), new DbModule());
 // Database, Orm, Coercer 可注入
 ```
 
@@ -998,7 +997,7 @@ engine.load(graph);
 engine.eval("orderFlow", FlowContext.of());
 
 // 通过 IoC — FlowModule 自动注册贡献的 TaskHandler 和 FlowDriver
-FreewayApp.run(args, new AppModule(), new FlowModule());
+FreewayApp.run(Launch.of(args), new AppModule(), new FlowModule());
 ```
 
 支持 PlantUML 导出、执行追踪、子图调用、拦截器链。零外部依赖。
@@ -1026,6 +1025,11 @@ Defer.within(() -> {
     db.execute("UPDATE ...");
     Defer.defer(() -> cache.invalidate("key"));  // 提交后执行
 });
+
+Defer.within(() -> {
+    Defer.defer(() -> metrics.record());  // 成功才执行
+    if (aborted) Defer.rollback();        // 正常退出但丢弃全部动作
+});
 ```
 
 框架已内置场景：DB 事务内 EventBus 自动延迟、HTTP 请求边界、Kafka 记录处理。
@@ -1038,8 +1042,11 @@ ScopedCache.within(() -> {
     Connection conn = ScopedCache.get("db", () -> dataSource.getConnection());
     // 同一 key 在作用域内复用
 });
-// 退出时自动清理
+// 退出时自动清理；在 Defer.within 内打开时值附着到 action scope，活到它关闭
 ```
+
+值的**生命周期**与**访问窗口**分开：块外 `ScopedCache.isActive()` 为 false、`get` 不缓存；
+`ScopeSession` 是只读句柄（`isActionScope()` / `isClosed()`），rollback 用 `Defer.rollback()`。
 
 IoC 的 `Scope.THREAD` 基于 ScopedCache 实现。
 
@@ -1109,7 +1116,7 @@ CREATED → STARTING → RUNNING → STOPPING → STOPPED
 ### AppRuntime 用法
 
 ```java
-AppRuntime runtime = FreewayApp.run(new String[0], new AppModule());
+AppRuntime runtime = FreewayApp.run(new AppModule());
 AppConfig cfg = runtime.config();          // 获取配置（profiles / 符号源 / 生命周期）
 Greeter greeter = runtime.get(Greeter.class); // 按类型取服务
 AppState state = runtime.state();          // 当前状态

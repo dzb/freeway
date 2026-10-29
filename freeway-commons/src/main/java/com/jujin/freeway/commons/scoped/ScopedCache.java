@@ -1,67 +1,51 @@
 package com.jujin.freeway.commons.scoped;
 
-import java.util.Collections;
-import java.util.IdentityHashMap;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 /**
  * Scope-bound value cache. Values created via {@link #get(Object, Supplier)}
  * inside a {@link #within} block are cached per scope session and cleaned up
- * when the scope exits. Outside a scope, {@code get} creates values without
- * caching.
+ * when the owning scope exits.
  *
- * <h3>Basic usage</h3>
- * <pre>{@code
- * ScopedCache.within(() -> {
- *     Connection conn = ScopedCache.get(ds, () -> createConnection());
- *     conn.query(...);
- * });
- * // conn is cleaned up on scope exit
- * }</pre>
+ * <p>The value <em>lifetime</em> and the value <em>access window</em> are
+ * separate facts. Inside an action scope ({@link Defer#within}) the values are
+ * stored on that action session and are cleaned when it closes, but they are
+ * exposed to application code only while a cache block is open (and to
+ * deferred actions while the action scope drains). Outside that window
+ * {@link #get} creates uncached values and {@link #isActive()} is false, even
+ * if the enclosing action scope still holds values.</p>
+ *
+ * <p>Outside any scope, {@code get} creates values without caching and without
+ * cleanup; the caller owns them.</p>
  */
 public final class ScopedCache {
-    private static final Logger LOG = LoggerFactory.getLogger(ScopedCache.class);
-
-    private static final ScopedValue<Session> CURRENT = ScopedValue.newInstance();
-    private static final List<Consumer<Object>> ON_CLOSE = new CopyOnWriteArrayList<>();
-    /**
-     * Warn threshold for accumulated {@link #ON_CLOSE} handlers. Registration
-     * is meant to be startup-time and one-off — steady growth past this
-     * means a per-request registration leaking.
-     */
-    private static final int ON_CLOSE_WARN_THRESHOLD = 16;
 
     private ScopedCache() {}
 
     // ==================== scope ====================
 
-    /** Returns true if called inside a {@link #within} block. */
+    /** Returns true while a cache block (or an action drain) exposes cached values. */
     public static boolean isActive() {
-        return CURRENT.isBound();
+        return cacheSession() != null;
     }
 
-    /** Returns the current scope, or null if outside a scope. */
-    public static Session currentSession() {
-        if (!CURRENT.isBound()) {
-            return null;
-        }
-        return CURRENT.get();
+    /** Returns the read-only session token while values are exposed, or null. */
+    public static ScopeSession currentSession() {
+        return cacheSession();
+    }
+
+    /** The session the cache view is bound to, or null when no value access is open. */
+    private static ScopeSession cacheSession() {
+        return ScopeSession.CACHE.isBound() ? ScopeSession.CACHE.get() : null;
     }
 
     /**
-     * Opens a scoped cache. Cached values are cleaned up when the
-     * scope exits (normally or exceptionally).
+     * Opens a value scope, or attaches to an enclosing action scope. Cached
+     * values are cleaned up when the owning scope exits (normally or
+     * exceptionally).
      */
     public static void within(Runnable work) {
         Objects.requireNonNull(work, "work");
@@ -71,95 +55,63 @@ public final class ScopedCache {
         });
     }
 
-    /**
-     * Opens a scoped cache and returns the work's result.
-     * Cached values are cleaned up on exit.
-     */
+    /** As {@link #within(Runnable)}, returning the work's value. */
     public static <T> T within(Supplier<T> work) {
         Objects.requireNonNull(work, "work");
         return within(session -> work.get());
     }
 
     /**
-     * Opens a scoped cache with a {@link Session} handle for
-     * advanced use (tracking, manual close). Cached values are
-     * cleaned up when the scope exits.
-     *
-     * <p><b>Nesting with {@link Defer}:</b> this cache scope must wrap the
-     * Defer scope ({@code ScopedCache.within(() -> Defer.within(...))}) —
-     * deferred actions then run while cached values are still open. The
-     * reverse nesting ({@code Defer.within(() -> ScopedCache.within(...))})
-     * cleans up cached values when this scope exits, <em>before</em> outer
-     * Defer actions run; such actions must not touch cached resources. The
-     * reverse nesting is detected at runtime and reported with a warning.
+     * Opens a value scope with a read-only {@link ScopeSession} token. Inside
+     * an action scope the token is that action scope and values stay attached
+     * to it; the token exposes no rollback or close. Otherwise a new value
+     * scope is opened and closed here.
      */
-    public static <T> T within(Function<Session, T> work) {
+    public static <T> T within(Function<ScopeSession, T> work) {
         Objects.requireNonNull(work, "work");
-        if (Defer.isActive()) {
-            warnDeferNesting();
+        ScopeSession outer = ScopeSession.current();
+        if (outer != null && outer.isActionScope()) {
+            outer.enableValues();
+            // Values live on the action scope; this binding only opens the
+            // access window for the block (and restores any outer cache view).
+            return ScopedValue.where(ScopeSession.CACHE, outer)
+                .call(() -> work.apply(outer));
         }
-        Session session = new Session();
+        ScopeSession scope = new ScopeSession(false, true);
         try {
-            return ScopedValue.where(CURRENT, session).call(() -> work.apply(session));
+            return ScopedValue.where(ScopeSession.CURRENT, scope).call(() ->
+                ScopedValue.where(ScopeSession.CACHE, scope)
+                    .call(() -> work.apply(scope)));
         } finally {
-            session.close();
+            scope.closeValues();
         }
-    }
-
-    /**
-     * ScopedCache and Defer are independent scoped primitives with no ordering
-     * contract between them. The safe nesting is cache-outer / Defer-inner:
-     * deferred actions then run while cached values are still open. With
-     * Defer-outer / cache-inner the cache cleanup runs when this scope exits,
-     * before the outer Defer drain, so deferred actions may see closed
-     * resources. Warn once per JVM — the nesting is a structural error the
-     * caller should fix, and repeated warnings would only add noise.
-     */
-    private static volatile boolean deferNestingWarned;
-
-    private static void warnDeferNesting() {
-        if (deferNestingWarned) {
-            return;
-        }
-        deferNestingWarned = true;
-        LOG.warn(
-            "ScopedCache.within() opened inside an active Defer scope: cached values are "
-                + "cleaned up when this cache scope exits, BEFORE deferred actions in the "
-                + "outer Defer scope run — such actions may see the resources already closed. "
-                + "Nest ScopedCache OUTSIDE Defer.within instead."
-        );
-    }
-
-    static void resetDeferNestingWarning() {
-        deferNestingWarned = false;
     }
 
     // ==================== get ====================
 
     /**
-     * Inside a scope, returns the cached value for {@code key},
-     * creating it via {@code factory} on first access.
-     * Outside a scope — including other threads, since {@link ScopedValue}
-     * does not propagate — creates and returns without caching and without
-     * cleanup registration; the caller owns the value and its lifecycle.
+     * Inside a cache window, returns the cached value for {@code key},
+     * creating it via {@code factory} on first access. Outside a window —
+     * including other threads, since {@link ScopedValue} does not propagate —
+     * creates and returns without caching and without cleanup registration;
+     * the caller owns the value and its lifecycle.
      */
     @SuppressWarnings("unchecked")
     public static <V> V get(Object key, Supplier<V> factory) {
         Objects.requireNonNull(key, "key");
         Objects.requireNonNull(factory, "factory");
-        if (CURRENT.isBound()) {
-            Session session = CURRENT.get();
-            return (V) session.getOrCreate(key, (Supplier<Object>) factory);
+        ScopeSession session = cacheSession();
+        if (session != null) {
+            return (V) session.getOrCreate(key, (Supplier<Object>) factory, null);
         }
         return factory.get();
     }
 
     /**
-     * Inside a scope, returns the cached value for {@code key}, creating it
-     * via {@code factory} on first access and running {@code onExit} with it
-     * once when the scope exits. Outside a scope — including other threads —
-     * creates and returns without caching and without cleanup registration;
-     * the caller owns the value and its lifecycle, and {@code onExit} never
+     * Inside a cache window, returns the cached value for {@code key}, creating
+     * it via {@code factory} on first access and running {@code onExit} with it
+     * once when the owning scope exits. Outside a window, creates and returns
+     * without caching and without cleanup registration; {@code onExit} never
      * runs. A cached key ignores later registrations (factory and cleanup
      * alike): first creation wins.
      */
@@ -167,9 +119,11 @@ public final class ScopedCache {
     public static <V> V get(Object key, Supplier<V> factory, Consumer<V> onExit) {
         Objects.requireNonNull(key, "key");
         Objects.requireNonNull(factory, "factory");
-        if (CURRENT.isBound()) {
-            Session session = CURRENT.get();
-            return (V) session.getOrCreate(key, (Supplier<Object>) factory,
+        ScopeSession session = cacheSession();
+        if (session != null) {
+            return (V) session.getOrCreate(
+                key,
+                (Supplier<Object>) factory,
                 onExit == null ? null : v -> onExit.accept((V) v));
         }
         return factory.get();
@@ -184,112 +138,15 @@ public final class ScopedCache {
      * startup-time one-time calls.
      */
     public static void onClose(Consumer<Object> handler) {
-        Objects.requireNonNull(handler, "handler");
-        ON_CLOSE.add(handler);
-        int count = ON_CLOSE.size();
-        if (count > ON_CLOSE_WARN_THRESHOLD) {
-            LOG.warn(
-                "ScopedCache.onClose handler count is {} — handlers accumulate process-wide; "
-                    + "register once at startup or pair with removeOnClose to avoid a leak",
-                count
-            );
-        }
+        ScopeSession.addOnClose(handler);
     }
 
     /** Unregisters a previously registered close handler. */
     public static void removeOnClose(Consumer<Object> handler) {
-        Objects.requireNonNull(handler, "handler");
-        ON_CLOSE.remove(handler);
+        ScopeSession.removeOnClose(handler);
     }
 
     static void resetCleanups() {
-        ON_CLOSE.clear();
-    }
-
-    // ==================== scope handle ====================
-
-    /**
-     * A scoped cache session. Created automatically by
-     * {@link ScopedCache#within}; can be tracked by framework
-     * code for shutdown safety.
-     */
-    public static final class Session {
-        private final Map<Object, Object> cache = new LinkedHashMap<>();
-        /** Per-entry exit cleanup, keyed like {@link #cache} — first registration wins. */
-        private final Map<Object, Consumer<Object>> cleanups = new LinkedHashMap<>();
-        private volatile boolean closed;
-        /**
-         * Guards cache/closed. A dedicated object — Session handles escape
-         * to user code ({@link #within}), so the intrinsic monitor stays
-         * out of the close-vs-create protocol.
-         */
-        private final Object lock = new Object();
-
-        Session() {}
-
-        Object getOrCreate(Object key, Supplier<Object> factory) {
-            return getOrCreate(key, factory, null);
-        }
-
-        Object getOrCreate(Object key, Supplier<Object> factory, Consumer<Object> onExit) {
-            synchronized (lock) {
-                if (closed) {
-                    throw new IllegalStateException("Session is closed");
-                }
-                if (cache.containsKey(key)) {
-                    return cache.get(key);
-                }
-                Object created = factory.get();
-                cache.put(key, created);
-                if (onExit != null) {
-                    cleanups.putIfAbsent(key, onExit);
-                }
-                return created;
-            }
-        }
-
-        public void close() {
-            synchronized (lock) {
-                if (closed) {
-                    return;
-                }
-                closed = true;
-                List<Map.Entry<Object, Object>> snapshot = cache.entrySet().stream()
-                        .filter(e -> e.getValue() != null).toList();
-                Map<Object, Consumer<Object>> pending = new LinkedHashMap<>(cleanups);
-                cache.clear();
-                cleanups.clear();
-                if (snapshot.isEmpty()) {
-                    return;
-                }
-                Set<Object> seen = Collections.newSetFromMap(new IdentityHashMap<>());
-                for (Map.Entry<Object, Object> entry : snapshot) {
-                    Object value = entry.getValue();
-                    if (!seen.add(value)) {
-                        continue;
-                    }
-                    // Entry cleanup first: it replaces the container's old global-hook claim,
-                    // which ran before any later-registered handler by registration order.
-                    Consumer<Object> cleanup = pending.get(entry.getKey());
-                    if (cleanup != null) {
-                        try {
-                            cleanup.accept(value);
-                        } catch (Throwable ex) {
-                            LOG.warn("ScopedCache cleanup failed", ex);
-                        }
-                    }
-                    for (Consumer<Object> handler : ON_CLOSE) {
-                        try {
-                            handler.accept(value);
-                        } catch (Throwable ex) {
-                            // Errors included: cleanup must always run to
-                            // completion — one failing handler must not skip
-                            // the rest (matches DeferScope.drain).
-                            LOG.warn("ScopedCache cleanup handler failed", ex);
-                        }
-                    }
-                }
-            }
-        }
+        ScopeSession.resetOnClose();
     }
 }

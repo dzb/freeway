@@ -2,6 +2,7 @@ package com.jujin.freeway.cloud.internal;
 
 import com.jujin.freeway.cloud.observe.MetricsSnapshot;
 import com.jujin.freeway.http.HttpContext;
+import com.jujin.freeway.http.HttpStatus;
 import com.jujin.freeway.http.route.RouteHandler;
 
 /**
@@ -24,6 +25,6 @@ public final class MetricsHandler implements RouteHandler {
     @Override
     public void handle(HttpContext ctx) throws Exception {
         ctx.setHeader("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
-        ctx.send(200, snapshot.prometheusText());
+        ctx.send(HttpStatus.OK, snapshot.prometheusText());
     }
 }

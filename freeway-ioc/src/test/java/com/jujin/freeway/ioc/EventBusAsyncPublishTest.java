@@ -71,7 +71,7 @@ class EventBusAsyncPublishTest {
     }
 
     @Test
-    void publishAsyncInsideDeferScopeDefersUntilScopeEnds() throws Exception {
+    void publishAsyncInsideActionScopeDefersUntilScopeEnds() throws Exception {
         // Regression: publishAsync submitted to the executor directly — the
         // executor thread does NOT inherit the Defer ScopedValue binding, so
         // the guard inside publish() saw no scope and dispatched before the

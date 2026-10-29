@@ -18,7 +18,9 @@ Commons provides the small, shared runtime utilities used across Freeway.
 
 ## Scoped Primitives
 
-`Defer` buffers side effects until the enclosing scope commits. `ScopedCache` memoizes values for the lifetime of a scope and runs cleanup on exit.
+`Defer` buffers side effects until the enclosing action scope commits. `ScopedCache` memoizes values for the lifetime of a scope and runs cleanup on exit. Both are façades over one `ScopeSession`: one binding for the scope, one close algorithm (actions first, then values). A cache scope opened inside `Defer.within(...)` attaches to that action scope, so values live until the action scope closes.
+
+The value **lifetime** and the value **access window** are separate: inside a `ScopedCache.within` block (and while the action scope drains) values are visible; outside that window `ScopedCache.isActive()` is false and `get` creates uncached values, while the attached values remain stored until the action scope closes.
 
 ### Use `Defer` When
 
@@ -40,7 +42,7 @@ Commons provides the small, shared runtime utilities used across Freeway.
 
 For more details, see:
 
-- [Defer summary](freeway-defer-summary.md)
+- [Scope primitives — Defer & ScopedCache](freeway-defer-summary.md)
 - [DB usage guide](freeway-db.md)
 
 ## JSON
@@ -114,7 +116,7 @@ All `freeway.log.*` keys support env vars via the configurable prefix (`freeway.
 If JUL's lazy `LogManager` initialization clears named file handlers:
 
 ```java
-AppRuntime runtime = FreewayApp.run(args, new AppModule());
+AppRuntime runtime = FreewayApp.run(Launch.of(args), new AppModule());
 LogBootstrap.applyNamedFileLoggers();  // re-attach if needed
 ```
 

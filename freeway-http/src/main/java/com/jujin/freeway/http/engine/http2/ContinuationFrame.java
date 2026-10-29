@@ -6,7 +6,7 @@ import java.io.OutputStream;
 /** A header block split across frames (RFC 9113 §6.10). Public because
  *  {@code hpack.HPackContext} owns header framing and cannot see
  *  package-private siblings — an intra-engine contract, not API. */
-public final class ContinuationFrame extends BaseFrame {
+final class ContinuationFrame extends BaseFrame {
     private final byte[] headerBlock;
 
     public ContinuationFrame(FrameHeader header, byte[] headerBlock) {

@@ -575,7 +575,7 @@ CLI 参数（`--freeway.config.file=...`）同样无效——启动时会打 WAR
 |----|------|------|--------|------|------|
 | `freeway.cloud.event.peers` | 姿态·presence | String | *(空)* | 否 | **对等节点列表（presence 主键）**——非空即启用 mesh；空 = 纯监听方需显式 `enabled=true`。启用前确认网络可达 |
 | `freeway.cloud.event.discovery-feed-ms` | 姿态·presence | Long | *(未设)* | 否 | **发现喂食间隔（presence 键，设了即开）**：每隔该毫秒数向已绑定的 `ServiceDiscovery` 查询本服务实例，整份替换 mesh 的 discovered 集合（本节点被排除）。发现后端上下线即网格自配置；一次查询失败保留原集合（不能把一次故障读成“全员离场”）。未设 = 关；值 < 1 启动失败并点名本键。需有 discovery 可问（`CloudModule` 或适配器），否则启动失败 |
-| `freeway.cloud.event.keepalive-ms` | 姿态·presence | Long | *(未设)* | 否 | **网格半开连接探测**：设了即开，每隔该毫秒数向每个 peer 发 WebSocket ping，并要求 pong 在下一拍前到达；超时即关闭连接、交给既有重连/注销路径。抓的是 NAT/LB 静默丢连接（TCP 还活着、对端已不读）。未设 = 关（只剩发送失败与 TCP keepalive 两个信号）；非正值启动失败 |
+| `freeway.cloud.event.keepalive-ms` | 姿态·presence | Long | *(未设)* | 否 | **网格半开连接探测**：设了即开，每隔该毫秒数向每个 peer 发 WebSocket ping；同一时刻只保留一个在途探测，pong 的预算按 `max(3 × 间隔, 1 s)` 派生（不是"下一拍"），预算耗尽才关闭连接、交给既有重连/注销路径。抓的是 NAT/LB 静默丢连接（TCP 还活着、对端已不读），1 s 下限保证一次 JVM 停顿/调度延迟不会误杀健康链路。未设 = 关（只剩发送失败与 TCP keepalive 两个信号）；非正值启动失败 |
 | `freeway.cloud.event.enabled` | 姿态 | Boolean | *(未设)* | 否 | 显式主开关，**设了就赢**：`true` 开（含无 peers 的 discovery-fed mesh）、`false` = 总闸（连已配置的 peers 也压制）。未设时退到 presence 规则（peers 非空即开）。什么都不设 = 模块装了也不动 |
 | `freeway.cloud.event.token` | 决策 | String | *(空)* | 否 | Mesh 握手共享密钥（空 = 无对等认证）。**多节点生产必配**：全节点值一致、经 `FREEWAY_CLOUD_EVENT_TOKEN` 注入；不一致以 WS `1008` 断开，轮换需滚动重启 |
 | `freeway.cloud.event.connect-timeout-ms` | 调优 | Long | `3000` | 否 | 出站拨号 socket 连接超时（毫秒） |

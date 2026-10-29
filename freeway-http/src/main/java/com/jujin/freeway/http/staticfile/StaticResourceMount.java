@@ -35,6 +35,12 @@ import com.jujin.freeway.http.MediaTypes;
 import com.jujin.freeway.http.internal.HttpHeaders;
 import com.jujin.freeway.http.route.PathPattern;
 
+/**
+ * A directory or classpath tree served under a URL prefix, with cache headers,
+ * single-range requests and the sendfile fast path for large files. Mounts are
+ * contributed as declarations; the HTTP module hands them to the pipeline in
+ * contribution order.
+ */
 public final class StaticResourceMount {
     private static final Logger LOG = LoggerFactory.getLogger(StaticResourceMount.class);
     private static final long DEFAULT_CACHE_MAX_AGE_SECONDS = 86_400L;
@@ -499,7 +505,7 @@ public final class StaticResourceMount {
     }
 
     private static String normalizeMount(String mountPath) {
-        return PathPattern.normalizePath(mountPath);
+        return PathPattern.normalize(mountPath);
     }
 
     private interface ResourceSource {

@@ -27,7 +27,7 @@ Orm orm = Orm.of(db);
 ## IoC Usage
 
 ```java
-FreewayApp.run(new String[0], new AppModule(), new DbModule());
+FreewayApp.run(new AppModule(), new DbModule());
 ```
 
 ## Configuration Keys

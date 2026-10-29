@@ -4,6 +4,12 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
 
+/**
+ * A prepared query: bind parameters (positional or named, through
+ * {@link #param(String, Object)}), then materialize rows with
+ * {@link #list(Class)} / {@link #one(Class)} / {@link #stream(Class)}, or run a
+ * DML statement with {@link #execute()}.
+ */
 public interface Query {
 
     Query param(String name, Object value);

@@ -13,6 +13,13 @@ import com.jujin.freeway.ioc.symbol.SymbolSource;
 import com.jujin.freeway.ioc.symbol.SymbolSpec;
 import com.jujin.freeway.http.HttpModule.ConfigKeys;
 
+/**
+ * Built-in CORS policy: origin allow-list, methods, headers, preflight max-age
+ * and credentials, driven by the {@code freeway.http.cors.*} keys. An inactive
+ * filter (the default) is skipped by the pipeline; {@link #isActive()} and
+ * {@link #resolveAllowedOrigin(String)} are also consulted when a WebSocket
+ * upgrade is considered.
+ */
 public final class CorsFilter implements HttpFilter {
     private static final Logger LOG = LoggerFactory.getLogger(CorsFilter.class);
 

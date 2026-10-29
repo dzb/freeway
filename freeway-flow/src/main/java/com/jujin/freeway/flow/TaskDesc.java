@@ -7,43 +7,43 @@ package com.jujin.freeway.flow;
  * only {@code data}, writing values without a task).
  */
 public final class TaskDesc {
-    private final Node node;
-    private final String description;
-    private final TaskHandler handler;
+    private final Ref<Node, TaskHandler> ref;
 
     public TaskDesc(Node node, String description) {
         this(node, description, null);
     }
 
     public TaskDesc(Node node, String description, TaskHandler handler) {
-        this.node = node;
-        this.description = description == null ? null : description.trim();
-        this.handler = handler;
+        this.ref = new Ref<>(node, description, handler);
     }
 
-    public Node node() { return node; }
-    public String description() { return description; }
-    public TaskHandler handler() { return handler; }
+    public Node node() { return ref.owner(); }
+
+    public String description() { return ref.description(); }
+
+    public TaskHandler handler() { return ref.handler(); }
 
     public boolean isEmpty() {
-        return (description == null || description.isEmpty()) && handler == null;
+        return ref.isEmpty();
     }
 
     /** True for a {@code #graphId} sub-graph reference. */
     public boolean isGraphRef() {
+        String description = ref.description();
         return description != null && description.startsWith("#") && description.length() > 1;
     }
 
     /** True for a {@code @name} container reference. */
     public boolean isHandlerRef() {
+        String description = ref.description();
         return description != null && description.startsWith("@") && description.length() > 1;
     }
 
     @Override
     public String toString() {
         if (isEmpty()) {
-            return "{nodeId='" + node.id() + "', description=null}";
+            return "{nodeId='" + node().id() + "', description=null}";
         }
-        return "{nodeId='" + node.id() + "', description='" + description + "'}";
+        return "{nodeId='" + node().id() + "', description='" + description() + "'}";
     }
 }

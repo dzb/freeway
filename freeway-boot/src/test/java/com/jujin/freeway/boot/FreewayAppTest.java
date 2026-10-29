@@ -7,8 +7,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import com.jujin.freeway.boot.event.AppStartedEvent;
-import com.jujin.freeway.boot.event.AppStoppingEvent;
+import com.jujin.freeway.boot.event.AppLifecycleEvent;
 import com.jujin.freeway.boot.internal.AppConfigDefault;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
@@ -65,7 +64,7 @@ class FreewayAppTest {
     @Test
     void bootsApplicationWithExplicitModules() {
         AppRuntime app = FreewayApp.run(
-            new String[]{"--freeway.profile=dev", "--app.name=Overridden"},
+            Launch.of("--freeway.profile=dev", "--app.name=Overridden"),
             new TestBootApp()
         );
         try {
@@ -358,7 +357,7 @@ class FreewayAppTest {
         System.setProperty(SERVER_PORT_KEY, "8080");
         try {
             AppRuntime app = FreewayApp.run(
-                new String[]{"--server.port=7070"},
+                Launch.of("--server.port=7070"),
                 new ValueHolderModule()
             );
             try {
@@ -675,16 +674,17 @@ class FreewayAppTest {
             @Override
             public void bind(Binder binder) {
                 binder.contribute(EventSubscriber.class)
-                    .add(EventSubscriber.of(AppStartedEvent.class, events::add))
-                    .add(EventSubscriber.of(AppStoppingEvent.class, events::add));
+                    .add(EventSubscriber.of(AppLifecycleEvent.class, events::add));
             }
         }).start();
         app.close();
 
-        assertTrue(events.stream().anyMatch(e -> e instanceof AppStartedEvent),
-            "AppStartedEvent must be published on start");
-        assertTrue(events.stream().anyMatch(e -> e instanceof AppStoppingEvent),
-            "AppStoppingEvent must be published before shutdown");
+        assertTrue(events.stream().anyMatch(
+                e -> e instanceof AppLifecycleEvent lifecycle && lifecycle.state() == AppState.RUNNING),
+            "AppLifecycleEvent(RUNNING) must be published on start");
+        assertTrue(events.stream().anyMatch(
+                e -> e instanceof AppLifecycleEvent lifecycle && lifecycle.state() == AppState.STOPPING),
+            "AppLifecycleEvent(STOPPING) must be published before shutdown");
     }
 
     @Test

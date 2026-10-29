@@ -10,6 +10,9 @@ import java.util.Locale;
 public final class MediaTypes {
 
     public static final String TEXT_PLAIN_UTF8 = "text/plain; charset=utf-8";
+
+    /** The bare JSON media type, for producers that do not want a charset parameter. */
+    public static final String JSON = "application/json";
     public static final String JSON_UTF8 = "application/json; charset=utf-8";
     public static final String EVENT_STREAM_UTF8 =
         "text/event-stream; charset=utf-8";

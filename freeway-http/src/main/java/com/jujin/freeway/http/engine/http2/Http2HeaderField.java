@@ -1,6 +1,6 @@
 package com.jujin.freeway.http.engine.http2;
 
-public final class Http2HeaderField {
+final class Http2HeaderField {
     public String name, value, normalizedName;
 
     public Http2HeaderField() {

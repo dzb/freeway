@@ -30,7 +30,7 @@ ServiceDiscovery`, `RemoteProxyFactory`, `RpcExport`) never changes.
 A normal freeway application:
 
 ```java
-FreewayApp.run(args, new HttpModule(),
+FreewayApp.run(Launch.of(args), new HttpModule(),
     new CloudDiscoveryModule(), new RegistryServerModule());
 ```
 

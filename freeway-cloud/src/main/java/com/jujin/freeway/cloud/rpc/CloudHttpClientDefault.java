@@ -5,6 +5,7 @@ import com.jujin.freeway.cloud.context.Propagator;
 import com.jujin.freeway.cloud.discovery.LoadBalancer;
 import com.jujin.freeway.cloud.discovery.ServiceDiscovery;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
+import com.jujin.freeway.cloud.internal.CloudHttpClients;
 import com.jujin.freeway.cloud.observe.Tracer;
 import com.jujin.freeway.cloud.resilience.CircuitBreaker;
 import com.jujin.freeway.cloud.resilience.CircuitBreakerDefault;
@@ -33,7 +34,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import javax.net.ssl.SSLContext;
 import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
 
 /**
@@ -244,14 +244,10 @@ public final class CloudHttpClientDefault implements CloudHttpClient {
         this.policy = new ResiliencePolicy(resolvedRetryer, this.tracer, this.metrics);
         this.shutdownGrace = wiring.shutdownGrace();
         this.requestTimeout = wiring.requestTimeout();
-        HttpClient.Builder builder = HttpClient.newBuilder()
-            .connectTimeout(wiring.connectTimeout())
-            .version(HttpClient.Version.HTTP_1_1);
-        SSLContext sslContext = this.transport.sslContext();
-        if (sslContext != null) {
-            builder.sslContext(sslContext);
-        }
-        this.http = builder.build();
+        this.http = CloudHttpClients
+            .builder(wiring.connectTimeout(), this.transport.sslContext())
+            .version(HttpClient.Version.HTTP_1_1)
+            .build();
         this.asyncExecutor = Executors.newVirtualThreadPerTaskExecutor();
     }
 

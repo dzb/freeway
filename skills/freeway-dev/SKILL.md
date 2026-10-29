@@ -49,6 +49,8 @@ Freeway is a JDK 25+ Java framework built around compose-first modules, explicit
   alone. Third-party discovery backends (Consul) live in `freeway-ext`
 - external adapters live in `freeway-ext`
 
+Scope primitives: `Defer` and `ScopedCache` share one `ScopeSession`. Use `Defer.within(Runnable|Supplier)` and `Defer.rollback()` for manual rollback (there is no scope-handle overload). A cache scope opened inside a `Defer` action scope attaches to it: values live until that action scope closes, while the access window is the cache block (and the action drain) — outside it `ScopedCache.isActive()` is false and `get` does not cache. `Scoping.within()` follows the same attach rule for `Scope.THREAD` beans.
+
 ## Canonical Entrypoints
 
 - `Freeway.create(ModuleEx...)` - container only; modules are the unit of composition

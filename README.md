@@ -125,7 +125,7 @@ public final class App implements ModuleEx {
     }
 
     public static void main(String[] args) {
-        FreewayApp.run(args, new App());
+        FreewayApp.run(Launch.of(args), new App());
     }
 }
 ```
@@ -223,13 +223,13 @@ The IoC module provides the framework core:
 - Extension points - `binder.contribute(Route.class).add(...)` and ordered `add(id, value).before/after(...)`. Inject as `List<V>` (all contributions, ordered) or `Map<String, V>` (named contributions, keyed by id) — constructor parameters consume contributions implicitly, fields require `@Inject`. An explicit `@Inject("id")` prefers a bound service of that type/id over contributions (bind your own `List<Foo>`/`Map<String, Foo>` service and inject it by id). `Extension<V>` is a framework-internal handle and is rejected at injection time.
 - Runtime hooks - `RuntimeHook` lets modules attach start/stop behavior to `AppRuntime`.
 - Advisors - method interception for interface services.
-- EventBus - process-local pub/sub: class-based or string-topic, module-contributed (ordered) or runtime-subscribed, with `Stoppable` short-circuit, `DeadEvent` logging, `publishAsync`, a globally ordered `publishOrdered(event)` channel, and cumulative `stats()`. **Transaction-aware**: events published inside a DB transaction automatically defer until commit. Lifecycle events (`AppStartedEvent`, `AppStoppingEvent`) published automatically by boot.
+- EventBus - process-local pub/sub: class-based or string-topic, module-contributed (ordered) or runtime-subscribed, with `Stoppable` short-circuit, `DeadEvent` logging, `publishAsync`, a globally ordered `publishOrdered(event)` channel, and cumulative `stats()`. **Transaction-aware**: events published inside a DB transaction automatically defer until commit. Lifecycle events (`AppLifecycleEvent` for `AppState.RUNNING` / `STOPPING`) published automatically by boot.
 
 ### Boot (`freeway-boot`)
 
 Boot turns a composed container into an application runtime:
 
-- `FreewayApp.run(args, ModuleEx...)` - accepts command-line args and module instances. Loads config, discovers SPI modules, starts the full application lifecycle. Use `FreewayApp.create(...)` for fine-grained control over autoDiscovery, shutdown hook, and more.
+- `FreewayApp.run(Launch.of(args), ModuleEx...)` - accepts command-line args and module instances. Loads config, discovers SPI modules, starts the full application lifecycle. Use `FreewayApp.create(...)` for fine-grained control over autoDiscovery, shutdown hook, and more.
 - Module dedup - installing two **distinct** instances of the same module class fails fast with an actionable error: in `Freeway.create(...)` (e.g. an explicit install plus SPI auto-discovery) and in `FreewayApp` (e.g. two explicitly configured instances). The same instance added twice is tolerated; an explicit declaration wins over an SPI-discovered one.
 - `AppRuntime` - owns config, profiles, runtime state, and runtime hooks.
 - Shutdown hook - closes the runtime on JVM shutdown.
@@ -261,7 +261,7 @@ stateDiagram-v2
 
 `start()` runs RuntimeHooks in contribution order (supports `before/after` ordering). Any hook failure rolls back already-started hooks. `close()` stops hooks in reverse order, then closes the container. Failed stop produces `FAILED` state with suppressed exceptions. A `close()` during `STARTING` unwinds the startup on the starting thread; from another thread it waits for `start()`, which holds the runtime monitor — waiting is the safe direction, since unwinding would leave the runtime briefly `STARTING` with its hooks half-run.
 
-Lifecycle events are published on the EventBus: `AppStartedEvent` after start, `AppStoppingEvent` before shutdown — modules like cache can subscribe to warmup/flush without implementing RuntimeHook.
+Lifecycle events are published on the EventBus as `AppLifecycleEvent`: `RUNNING` after start, `STOPPING` before shutdown — modules like cache can subscribe to warmup/flush without implementing RuntimeHook.
 
 ### HTTP (`freeway-http`)
 
@@ -283,10 +283,10 @@ Switch engines by adding the extension module — the container selects it via `
 
 ```java
 // FreewayHttpEngine (default)
-FreewayApp.run(new String[0], new AppModule(), new HttpModule());
+FreewayApp.run(new AppModule(), new HttpModule());
 
 // Undertow — just add the module
-FreewayApp.run(new String[0], new AppModule(), new HttpModule(), new UndertowModule());
+FreewayApp.run(new AppModule(), new HttpModule(), new UndertowModule());
 ```
 
 ### DB (`freeway-db`)

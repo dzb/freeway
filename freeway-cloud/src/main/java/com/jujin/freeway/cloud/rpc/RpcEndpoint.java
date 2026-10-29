@@ -7,6 +7,7 @@ import com.jujin.freeway.commons.json.JsonObject;
 import com.jujin.freeway.commons.json.JsonUtils;
 import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.route.Route;
+import com.jujin.freeway.http.HttpStatus;
 import java.io.IOException;
 import java.lang.reflect.Array;
 import java.lang.reflect.Type;
@@ -97,9 +98,9 @@ public final class RpcEndpoint {
         try {
             Object result = ReflectiveHandles.invokeOn(entry.handle(), target.handler(), args);
             if (result == null) {
-                ctx.send(200, "");
+                ctx.send(HttpStatus.OK, "");
             } else {
-                ctx.sendJson(200, result);
+                ctx.sendJson(HttpStatus.OK, result);
             }
         } catch (Throwable e) {
             // Handler failures (business or otherwise) never escape as a 500:
@@ -175,7 +176,7 @@ public final class RpcEndpoint {
             : "remote handler failed";
         ctx.setHeader(RemoteCaller.EXCEPTION_CLASS_HEADER, headerText(className));
         ctx.setHeader(RemoteCaller.EXCEPTION_MESSAGE_HEADER, headerText(message));
-        ctx.sendJson(400, Map.of("error", className));
+        ctx.sendJson(HttpStatus.BAD_REQUEST, Map.of("error", className));
     }
 
     static void reject(HttpContext ctx, int status, String message) throws IOException {

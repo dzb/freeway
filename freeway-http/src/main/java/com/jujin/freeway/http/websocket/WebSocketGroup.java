@@ -4,11 +4,15 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
-import com.jujin.freeway.http.route.PathJoiner;
+import com.jujin.freeway.http.route.PathPattern;
 
+/**
+ * A prefix plus WebSocket routes declared under it; {@link #expand()} resolves
+ * each route to its full path before {@link WebSocketIndex} registers it.
+ */
 public record WebSocketGroup(String prefix, List<WebSocketRoute> routes) {
     public WebSocketGroup {
-        prefix = PathJoiner.normalize(prefix);
+        prefix = PathPattern.normalize(prefix);
         routes = List.copyOf(routes);
     }
 
@@ -25,7 +29,7 @@ public record WebSocketGroup(String prefix, List<WebSocketRoute> routes) {
     public List<WebSocketRoute> expand() {
         List<WebSocketRoute> expanded = new ArrayList<>(routes.size());
         for (WebSocketRoute route : routes) {
-            expanded.add(WebSocketRoute.of(PathJoiner.join(prefix, route.path()), route.endpoint()));
+            expanded.add(WebSocketRoute.of(PathPattern.join(prefix, route.path()), route.endpoint()));
         }
         return List.copyOf(expanded);
     }

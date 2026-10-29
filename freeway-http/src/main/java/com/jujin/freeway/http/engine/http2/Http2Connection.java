@@ -22,8 +22,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.jujin.freeway.http.engine.FreewayHttpEngine;
-import com.jujin.freeway.http.engine.http2.hpack.HPackContext;
-import com.jujin.freeway.http.engine.http2.hpack.HeaderFields;
 
 /**
  * HTTP/2 connection controller. Manages the full connection lifecycle:

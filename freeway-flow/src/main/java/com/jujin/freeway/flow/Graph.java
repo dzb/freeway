@@ -122,17 +122,6 @@ public class Graph {
     public List<Link> links() { return links; }
     public Node node(String id) { return nodes.get(id); }
 
-    public Node nodeOrThrow(String id) {
-        Node node = node(id);
-        if (node == null) {
-            throw new IllegalArgumentException(
-                "Graph '" + this.id + "' has no node '" + id
-                    + "' — ids are declared in the graph definition (Graph.nodes())"
-            );
-        }
-        return node;
-    }
-
     // --- serialization ---
 
     public String toJson() {
@@ -153,12 +142,18 @@ public class Graph {
         return toPlantUml(options != null ? options : PlantUmlOptions.defaults(), null);
     }
 
-    public String toPlantUml(Function<PlantUmlDisplayContext, PlantUmlDisplayResult> displayMappingFunc) {
+    /**
+     * Renders the graph, asking {@code displayMappingFunc} for each node task and
+     * link condition. The function returns the label: {@code null} keeps the
+     * default rendering, an empty string hides the element, any other text
+     * replaces the default.
+     */
+    public String toPlantUml(Function<PlantUmlSubject, String> displayMappingFunc) {
         return toPlantUml(PlantUmlOptions.defaults(), displayMappingFunc);
     }
 
     public String toPlantUml(PlantUmlOptions options,
-                              Function<PlantUmlDisplayContext, PlantUmlDisplayResult> displayMappingFunc) {
+                              Function<PlantUmlSubject, String> displayMappingFunc) {
         if (options == null) options = PlantUmlOptions.defaults();
 
         StringBuilder sb = new StringBuilder();
@@ -260,22 +255,20 @@ public class Graph {
     }
 
     private void appendNodeTask(StringBuilder sb, String nodeId, Node node,
-                                 Function<PlantUmlDisplayContext, PlantUmlDisplayResult> displayMappingFunc) {
+                                 Function<PlantUmlSubject, String> displayMappingFunc) {
         String task = node.task().description();
         if (task == null || task.isEmpty()) return;
 
-        if (displayMappingFunc != null) {
-            PlantUmlDisplayResult result = applyDisplayFunc(displayMappingFunc,
-                PlantUmlDisplayContext.ofNode(node), nodeId);
-            if (result != null) {
-                if (!result.isVisible()) return;
-                if (result.isUseDefault()) {
-                    sb.append(nodeId).append(" : ").append(escapePlantUmlText(task)).append("\n");
-                } else {
-                    sb.append(nodeId).append(" : ").append(escapePlantUmlText(result.text())).append("\n");
-                }
+        String label = displayMappingFunc == null
+            ? null
+            : applyDisplayFunc(displayMappingFunc,
+                new PlantUmlSubject.NodeSubject(node), nodeId);
+        if (label != null) {
+            if (label.isEmpty()) {
                 return;
             }
+            sb.append(nodeId).append(" : ").append(escapePlantUmlText(label)).append("\n");
+            return;
         }
         sb.append(nodeId).append(" : ").append(escapePlantUmlText(task)).append("\n");
     }
@@ -295,33 +288,32 @@ public class Graph {
      * debugging aid, so silently rendering the wrong one costs exactly when it
      * is needed.
      */
-    private static PlantUmlDisplayResult applyDisplayFunc(
-            Function<PlantUmlDisplayContext, PlantUmlDisplayResult> func,
-            PlantUmlDisplayContext ctx, String subject) {
+    private static String applyDisplayFunc(
+            Function<PlantUmlSubject, String> func,
+            PlantUmlSubject subject, String description) {
         try {
-            return func.apply(ctx);
+            return func.apply(subject);
         } catch (RuntimeException e) {
             throw new IllegalStateException(
-                "PlantUML display function failed for " + subject
-                    + " — return PlantUmlDisplayResult.of(text) to relabel it, "
-                    + ".ofDefault() to keep the default, or .HIDDEN to drop it",
+                "PlantUML display function failed for " + description
+                    + " — return the label text, null to keep the default, or an empty "
+                    + "string to hide it",
                 e);
         }
     }
 
     private String buildLinkWhenText(Link link,
-                                      Function<PlantUmlDisplayContext, PlantUmlDisplayResult> displayMappingFunc) {
+                                      Function<PlantUmlSubject, String> displayMappingFunc) {
         String when = link.when().description();
         if (when == null || when.isEmpty()) return null;
 
-        if (displayMappingFunc != null) {
-            PlantUmlDisplayResult result = applyDisplayFunc(displayMappingFunc,
-                PlantUmlDisplayContext.ofLink(link), "link " + link.prevId() + " → " + link.nextId());
-            if (result != null) {
-                if (!result.isVisible()) return null;
-                if (result.isUseDefault()) return escapePlantUmlText(when);
-                return escapePlantUmlText(result.text());
-            }
+        String label = displayMappingFunc == null
+            ? null
+            : applyDisplayFunc(displayMappingFunc,
+                new PlantUmlSubject.LinkSubject(link),
+                "link " + link.prevId() + " → " + link.nextId());
+        if (label != null) {
+            return label.isEmpty() ? null : escapePlantUmlText(label);
         }
         return escapePlantUmlText(when);
     }

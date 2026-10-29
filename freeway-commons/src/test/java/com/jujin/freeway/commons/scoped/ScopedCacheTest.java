@@ -1,6 +1,4 @@
 package com.jujin.freeway.commons.scoped;
-import java.util.logging.Handler;
-import java.util.logging.Logger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -10,10 +8,8 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.logging.LogRecord;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -106,7 +102,7 @@ class ScopedCacheTest {
     @Test
     void currentSessionReturnsScopeInside() {
         ScopedCache.within(() -> {
-            ScopedCache.Session s = ScopedCache.currentSession();
+            ScopeSession s = ScopedCache.currentSession();
             assertSame(s, ScopedCache.currentSession());
             return null;
         });
@@ -208,8 +204,8 @@ class ScopedCacheTest {
 
         ScopedCache.within(scope -> {
             ScopedCache.get("k", () -> "v");
-            scope.close();
-            scope.close();
+            scope.closeValues();
+            scope.closeValues();
             assertEquals(1, cleaned.get());
             return null;
         });
@@ -218,7 +214,7 @@ class ScopedCacheTest {
     @Test
     void getAfterCloseThrows() {
         ScopedCache.within(scope -> {
-            scope.close();
+            scope.closeValues();
             assertThrows(IllegalStateException.class, () ->
                 ScopedCache.get("k", () -> "v")
             );
@@ -356,71 +352,39 @@ class ScopedCacheTest {
         assertEquals(0, second.get());
     }
 
-    // ====================== Defer nesting contract ======================
+    // ====================== Defer / cache convergence ======================
 
     @Test
-    void warnsWhenOpenedInsideActiveDeferScope() {
-        List<LogRecord> records = new ArrayList<>();
-        Logger jul = Logger.getLogger(
-            ScopedCache.class.getName()
-        );
-        Handler capturing = new Handler() {
-            @Override
-            public void publish(LogRecord record) {
-                records.add(record);
-            }
-
-            @Override
-            public void flush() {}
-
-            @Override
-            public void close() {}
-        };
-        jul.setLevel(java.util.logging.Level.ALL);
-        jul.addHandler(capturing);
-        ScopedCache.resetDeferNestingWarning();
-        try {
-            Defer.within(() ->
-                ScopedCache.within(() -> ScopedCache.get("k", () -> "v")));
-        } finally {
-            jul.removeHandler(capturing);
-        }
-        assertFalse(records.isEmpty(),
-            "unsafe Defer-outer / cache-inner nesting must warn");
-        assertTrue(records.stream()
-            .anyMatch(r -> r.getMessage() != null
-                && r.getMessage().contains("ScopedCache.within")));
+    void cacheOpenedInsideActionScopeAttachesAndOutlivesTheInnerBlock() {
+        AtomicReference<String> seen = new AtomicReference<>();
+        AtomicInteger cleaned = new AtomicInteger();
+        Defer.within(() -> {
+            ScopedCache.within(() -> {
+                ScopedCache.get("k", () -> "v", v -> cleaned.incrementAndGet());
+                Defer.defer(() -> seen.set(ScopedCache.get("k", () -> "recreated")));
+            });
+            // Access ends with the block; the value still belongs to the action scope.
+            assertFalse(ScopedCache.isActive(), "value access must end with the cache block");
+            assertEquals("recreated",
+                ScopedCache.get("k", () -> "recreated"),
+                "outside the window get creates uncached instead of reading the action scope");
+            assertEquals(0, cleaned.get(), "cleanup must wait for the action scope");
+        });
+        assertEquals("v", seen.get(),
+            "a deferred action must still see the value cached in the inner block");
+        assertEquals(1, cleaned.get(), "the value must be cleaned exactly once");
+        assertFalse(ScopedCache.isActive());
     }
 
     @Test
-    void noWarningForSafeNesting() {
-        List<LogRecord> records = new ArrayList<>();
-        Logger jul = Logger.getLogger(
-            ScopedCache.class.getName()
-        );
-        Handler capturing = new Handler() {
-            @Override
-            public void publish(LogRecord record) {
-                records.add(record);
-            }
-
-            @Override
-            public void flush() {}
-
-            @Override
-            public void close() {}
-        };
-        jul.setLevel(java.util.logging.Level.ALL);
-        jul.addHandler(capturing);
-        ScopedCache.resetDeferNestingWarning();
-        try {
-            ScopedCache.within(() ->
-                Defer.within(() -> ScopedCache.get("k", () -> "v")));
-        } finally {
-            jul.removeHandler(capturing);
-        }
-        assertTrue(records.stream()
-            .noneMatch(r -> r.getMessage() != null
-                && r.getMessage().contains("ScopedCache.within")));
+    void actionScopeInsideCacheKeepsTheOuterValuesOpen() {
+        AtomicReference<String> seen = new AtomicReference<>();
+        ScopedCache.within(() -> {
+            ScopedCache.get("k", () -> "v");
+            Defer.within(() ->
+                Defer.defer(() -> seen.set(ScopedCache.get("k", () -> "recreated"))));
+        });
+        assertEquals("v", seen.get(),
+            "an action scope may read values owned by an enclosing cache scope");
     }
 }

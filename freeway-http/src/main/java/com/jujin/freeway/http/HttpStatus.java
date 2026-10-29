@@ -22,6 +22,7 @@ public final class HttpStatus {
     public static final int UNSUPPORTED_MEDIA_TYPE = 415;
     public static final int RANGE_NOT_SATISFIABLE = 416;
     public static final int UNPROCESSABLE_CONTENT = 422;
+    public static final int UPGRADE_REQUIRED = 426;
     public static final int TOO_MANY_REQUESTS = 429;
     public static final int INTERNAL_ERROR = 500;
     public static final int NOT_IMPLEMENTED = 501;

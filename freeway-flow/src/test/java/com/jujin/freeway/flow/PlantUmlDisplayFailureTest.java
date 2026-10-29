@@ -37,7 +37,7 @@ class PlantUmlDisplayFailureTest {
 
         assertTrue(ex.getMessage().contains("display function failed"),
             "the message must name what failed: " + ex.getMessage());
-        assertTrue(ex.getMessage().contains("HIDDEN") && ex.getMessage().contains("ofDefault"),
+        assertTrue(ex.getMessage().contains("empty string") && ex.getMessage().contains("null"),
             "the message must point at the three real outcomes of a display "
                 + "function, not just report a throw: " + ex.getMessage());
         assertEquals(IllegalArgumentException.class, ex.getCause().getClass(),
@@ -58,11 +58,11 @@ class PlantUmlDisplayFailureTest {
             spec.addEnd("e");
         });
         IllegalStateException ex = assertThrows(IllegalStateException.class,
-            () -> withCondition.toPlantUml(ctx -> {
-                if (ctx.isLink()) {
+            () -> withCondition.toPlantUml(subject -> {
+                if (subject instanceof PlantUmlSubject.LinkSubject) {
                     throw new IllegalStateException("link boom");
                 }
-                return PlantUmlDisplayResult.ofDefault();
+                return null;
             }));
 
         assertTrue(ex.getMessage().contains("link "),
@@ -73,8 +73,10 @@ class PlantUmlDisplayFailureTest {
 
     @Test
     void aWorkingDisplayFunctionStillRelabels() {
-        String puml = graph().toPlantUml(
-            ctx -> PlantUmlDisplayResult.of("custom-" + ctx.id()));
+        String puml = graph().toPlantUml(subject ->
+            subject instanceof PlantUmlSubject.NodeSubject node
+                ? "custom-" + node.id()
+                : null);
 
         assertTrue(puml.contains("custom-"),
             "the successful path must be unchanged: " + puml);
@@ -82,11 +84,10 @@ class PlantUmlDisplayFailureTest {
 
     @Test
     void hiddenAndDefaultStillWork() {
-        assertFalse(graph().toPlantUml(ctx -> PlantUmlDisplayResult.HIDDEN)
-            .contains("@task1"),
-            "HIDDEN must drop the label entirely");
+        assertFalse(graph().toPlantUml(subject -> "").contains("@task1"),
+            "an empty string must drop the label entirely");
 
-        String withDefault = graph().toPlantUml(ctx -> PlantUmlDisplayResult.ofDefault());
+        String withDefault = graph().toPlantUml(subject -> null);
         assertTrue(withDefault.contains("@task1"),
             "ofDefault must keep the default label: " + withDefault);
     }

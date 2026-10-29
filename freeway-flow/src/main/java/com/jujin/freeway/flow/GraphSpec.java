@@ -145,14 +145,6 @@ public class GraphSpec {
         return addNode(id, NodeType.ACTIVITY);
     }
 
-    public NodeSpec addActivity(NamedTaskHandler handler) {
-        Objects.requireNonNull(handler, "handler");
-        NodeSpec node = addActivity(handler.name());
-        node.title(handler.title());
-        node.task(handler);
-        return node;
-    }
-
     public NodeSpec addInclusive(String id) {
         return addNode(id, NodeType.INCLUSIVE);
     }

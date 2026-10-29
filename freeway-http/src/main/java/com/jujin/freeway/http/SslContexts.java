@@ -1,6 +1,5 @@
 package com.jujin.freeway.http;
 
-import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.KeyStore;
@@ -19,6 +18,7 @@ import javax.net.ssl.TrustManagerFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import com.jujin.freeway.http.HttpModule.ConfigKeys;
+import com.jujin.freeway.commons.security.TlsStores;
 
 
 /**
@@ -93,30 +93,15 @@ public final class SslContexts {
 
     private static KeyStore loadKeyStore(Path path, String type, String password)
             throws Exception {
-        KeyStore ks = KeyStore.getInstance(type);
-        try (InputStream in = Files.newInputStream(path)) {
-            ks.load(in, keyStorePasswordChars(password));
-        }
-        return ks;
+        return TlsStores.load(path, type, password);
     }
 
     private static KeyManager[] defaultKeyManagers(KeyStore store, String password)
             throws Exception {
         KeyManagerFactory kmf = KeyManagerFactory.getInstance(
             KeyManagerFactory.getDefaultAlgorithm());
-        kmf.init(store, keyStorePasswordChars(password));
+        kmf.init(store, TlsStores.passwordChars(password));
         return kmf.getKeyManagers();
-    }
-
-    /**
-     * A keystore may legitimately have no password (e.g. a PKCS#12 store created
-     * with an empty password), in which case {@code KeyStore.load} expects a
-     * {@code null} char array — not an empty one. Passing {@code null} straight
-     * through avoids the NPE that {@code password.toCharArray()} would throw when
-     * the configured password is absent.
-     */
-    private static char[] keyStorePasswordChars(String password) {
-        return password == null ? null : password.toCharArray();
     }
 
     private static KeyManager[] buildSniKeyManagers(SslSettings s,
@@ -149,7 +134,7 @@ public final class SslContexts {
             }
         }
         return new KeyManager[]{new SniKeyManager(
-            byHost, effectiveDefault, keyStorePasswordChars(s.keyStorePassword()))};
+            byHost, effectiveDefault, TlsStores.passwordChars(s.keyStorePassword()))};
     }
 
     private static TrustManager[] buildTrustManagers(SslSettings s)

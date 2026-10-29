@@ -30,6 +30,25 @@ class PoolConfigTest {
     }
 
     @Test
+    void everyFieldHasAWither() {
+        PoolConfig base = PoolConfig.defaults("jdbc:h2:mem:x", "sa", "");
+        Duration seven = Duration.ofSeconds(7);
+
+        assertEquals("jdbc:h2:mem:y", base.withUrl("jdbc:h2:mem:y").url());
+        assertEquals("su", base.withUsername("su").username());
+        assertEquals("pw", base.withPassword("pw").password());
+        assertEquals(7, base.withMaxSize(7).maxSize());
+        assertEquals(7, base.withMinIdle(7).minIdle());
+        assertEquals(seven, base.withConnectionTimeout(seven).connectionTimeout());
+        assertEquals(seven, base.withMaxLifetime(seven).maxLifetime());
+        assertEquals(seven, base.withMaxIdleTime(seven).maxIdleTime());
+        assertEquals(seven, base.withCleanInterval(seven).cleanInterval());
+        assertEquals("select 1", base.withHealthCheckQuery("select 1").healthCheckQuery());
+        assertEquals(seven, base.withHealthCheckTimeout(seven).healthCheckTimeout());
+        assertEquals(seven, base.withQueryTimeout(seven).queryTimeout());
+    }
+
+    @Test
     void withersChangeOneFieldAndKeepTheRest() {
         PoolConfig base = PoolConfig.defaults("jdbc:h2:mem:x", "sa", "");
         PoolConfig tuned = base

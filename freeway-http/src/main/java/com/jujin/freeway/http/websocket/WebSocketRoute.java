@@ -4,9 +4,14 @@ import java.util.Objects;
 
 import com.jujin.freeway.http.route.PathPattern;
 
+/**
+ * One WebSocket mount: a path template and the endpoint that opens sessions for
+ * it. The class form is resolved by the HTTP module at startup, like an HTTP
+ * route's class handler.
+ */
 public record WebSocketRoute(String path, WebSocketEndpoint endpoint) {
     public WebSocketRoute {
-        path = PathPattern.normalizePath(path);
+        path = PathPattern.normalize(path);
         endpoint = Objects.requireNonNull(endpoint, "endpoint");
         PathPattern.validateRegistrationPath(path);
     }

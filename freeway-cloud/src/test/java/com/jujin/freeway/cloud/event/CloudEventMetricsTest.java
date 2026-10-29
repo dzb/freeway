@@ -53,7 +53,7 @@ class CloudEventMetricsTest {
     @Test
     void the_planes_counters_are_scrapable_before_the_mesh_exists() throws Exception {
         // No peers, no enabled key: the mesh stays unwired on purpose.
-        app = FreewayApp.run(new String[0],
+        app = FreewayApp.run(
             new HttpModule(), new CloudObserveModule(), new CloudEventModule());
 
         String metrics = scrape();
@@ -70,7 +70,7 @@ class CloudEventMetricsTest {
 
     @Test
     void publishing_moves_the_counters_the_scrape_reads() throws Exception {
-        app = FreewayApp.run(new String[0],
+        app = FreewayApp.run(
             new HttpModule(), new CloudObserveModule(), new CloudEventModule());
 
         app.get(CloudEventBus.class).publish("metrics.tick", "one");

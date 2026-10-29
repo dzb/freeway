@@ -1,4 +1,4 @@
-package com.jujin.freeway.http.engine.http2.hpack;
+package com.jujin.freeway.http.engine.http2;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;

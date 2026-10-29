@@ -4,6 +4,12 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Mutable JSON array node — the write counterpart to {@link JsonObject}. Values
+ * are normalized on insert, and the typed accessors coerce on read with the
+ * same rules as {@link JsonObject}. Obtain one from {@link JsonUtils#array()} or
+ * by parsing.
+ */
 public final class JsonArray {
 
     private final ArrayList<Object> values;

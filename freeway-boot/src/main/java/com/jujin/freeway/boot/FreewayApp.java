@@ -22,7 +22,7 @@ import org.slf4j.LoggerFactory;
  * <h3>Start now</h3>
  * <pre>{@code
  * AppRuntime app = FreewayApp.run(new MyModule());
- * AppRuntime app = FreewayApp.run(new String[]{"--freeway.profile=dev"}, new MyModule());
+ * AppRuntime app = FreewayApp.run(Launch.of("--freeway.profile=dev"), new MyModule());
  * }</pre>
  *
  * <h3>Configure, then start</h3>
@@ -74,34 +74,24 @@ public final class FreewayApp {
 
     // ── entries ─────────────────────────────────────────────────
 
-    /** Start an application with the given modules and empty arguments. */
+    /** Start an application with the given modules and the default launch. */
     public static AppRuntime run(ModuleEx... modules) {
-        return run(new String[0], modules);
+        return run(Launch.defaults(), modules);
     }
 
     /**
-     * Start an application with the given modules and command-line arguments.
-     * Config is loaded from the default cascade, ServiceLoader modules are
-     * discovered, and a JVM shutdown hook is registered. Use
-     * {@link #create(ModuleEx...)} for more control.
+     * Start an application with the given modules and launch settings: config
+     * comes from the default cascade, discovery follows {@link Launch}, and the
+     * JVM shutdown hook is registered by default. Use
+     * {@link #create(ModuleEx...)} for the full chain (a substituted config, a
+     * named root, a custom class loader, or modules declared by class).
      */
-    public static AppRuntime run(String[] args, ModuleEx... modules) {
-        return create(modules).args(args).start();
-    }
-
-    /**
-     * Start an application whose modules are named by class — the normal form;
-     * an instance is for a module whose constructor takes arguments.
-     */
-    @SafeVarargs
-    public static AppRuntime run(Class<? extends ModuleEx>... types) {
-        return run(new String[0], types);
-    }
-
-    /** @see #run(Class[]) */
-    @SafeVarargs
-    public static AppRuntime run(String[] args, Class<? extends ModuleEx>... types) {
-        return create(types).args(args).start();
+    public static AppRuntime run(Launch launch, ModuleEx... modules) {
+        Objects.requireNonNull(launch, "launch");
+        return create(modules)
+            .args(launch.args().toArray(String[]::new))
+            .autoDiscovery(launch.autoDiscovery())
+            .start();
     }
 
     /** The application with no modules yet — add them on the chain. */

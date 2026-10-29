@@ -733,7 +733,7 @@ class SqlTest {
 
         assertThrows(IllegalStateException.class,
             () -> Sql.insert("users").setColumn("id", 1)
-                .doUpdateSet("name = excluded.name"));
+                .doUpdateSet("name"));
     }
 
     @Test
@@ -755,12 +755,28 @@ class SqlTest {
     void insertWithOnConflictDoUpdateSet() {
         Sql q = Sql.insert("users").setColumn("id", 1).setColumn("name", "john")
             .onConflict("id")
-            .doUpdateSet("name = excluded.name")
+            .doUpdateSet("name")
             .returning("id");
         assertEquals(
-            "INSERT INTO users (id, name) VALUES (?, ?) ON CONFLICT (id) DO UPDATE SET name = excluded.name RETURNING id",
+            "INSERT INTO users (id, name) VALUES (?, ?) ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name RETURNING id",
             q.sql());
         assertArrayEquals(new Object[]{1, "john"}, q.args());
+    }
+
+    @Test
+    void upsertUpdateRendersInTheDialectGrammar() {
+        // One clause, two grammars: the conflict action is declared as columns, so
+        // MySQL gets ON DUPLICATE KEY UPDATE … VALUES(col) from the same Sql value
+        // that renders ON CONFLICT … EXCLUDED.col for PostgreSQL.
+        Sql q = Sql.insert("users").setColumn("id", 1).setColumn("name", "john")
+            .onConflict("id")
+            .doUpdateSet("name");
+        assertEquals(
+            "INSERT INTO users (id, name) VALUES (?, ?) ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name",
+            q.sql());
+        assertEquals(
+            "INSERT INTO users (id, name) VALUES (?, ?) ON DUPLICATE KEY UPDATE name = VALUES(name)",
+            q.sql(new MySqlDialect()));
     }
 
     @Test

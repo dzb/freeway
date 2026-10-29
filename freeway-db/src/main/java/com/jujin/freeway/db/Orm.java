@@ -199,10 +199,17 @@ public final class Orm {
         requireInsertable(columns, plan.type());
         Object[] insertValues = extractValues(plan, entity, columns.properties);
 
-        String sql = "INSERT INTO " + table + " (" + String.join(", ", columns.names) + ") VALUES ("
-            + placeholders(columns.names.size()) + ")" + dialect.upsertClause(idCols, columns.rawNames);
+        // One upsert builder for the whole layer: the conflict clause is declared as
+        // the id columns plus the columns to refresh, and the dialect renders the
+        // grammar (ON CONFLICT / ON DUPLICATE KEY) when the statement is executed.
+        Sql upsert = Sql.insert(table);
+        for (int i = 0; i < columns.names.size(); i++) {
+            upsert = upsert.setColumn(columns.names.get(i), insertValues[i]);
+        }
+        upsert = upsert.onConflict(idCols.toArray(String[]::new))
+            .doUpdateSet(columns.rawNames.toArray(String[]::new));
 
-        ExecuteResult result = db.execute(sql, insertValues);
+        ExecuteResult result = db.execute(upsert);
 
         writeBackGeneratedKey(result, columns, entity, plan);
         return result;

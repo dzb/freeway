@@ -27,7 +27,7 @@ import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
  * with 1013 and reconnects on its backoff, which the mesh treats as normal.</p>
  *
  * <pre>{@code
- * FreewayApp.run(new String[0],
+ * FreewayApp.run(
  *     new AppModule(), new HttpModule(), new CloudEventModule());
  * }</pre>
  *

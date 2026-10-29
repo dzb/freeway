@@ -1,7 +1,7 @@
 /**
  * The routing DSL and its compiled index — application-facing: {@code Route}
  * (method, pattern, handler), {@code RouteGroup} (shared prefix, expanded
- * with {@code PathJoiner}) and {@code RouteHandler}. A route may carry a
+ * with {@link PathPattern}) and {@code RouteHandler}. A route may carry a
  * handler instance or a handler <em>class</em>; the class form is held by
  * {@code ResolvableHandler} until the container supplies an instance, so a missing
  * dependency fails when the index is built rather than on the first request.

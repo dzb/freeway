@@ -1,5 +1,6 @@
 package demo;
 
+import com.jujin.freeway.boot.Launch;
 import com.jujin.freeway.boot.FreewayApp;
 import com.jujin.freeway.cloud.discovery.CloudDiscoveryModule;
 import com.jujin.freeway.cloud.discovery.RegistryServerModule;
@@ -18,7 +19,7 @@ public final class RegistryServer {
     public static void main(String[] args) throws InterruptedException {
         System.setProperty(HttpModule.ConfigKeys.SERVER_PORT, "19090");
 
-        FreewayApp.run(args,
+        FreewayApp.run(Launch.of(args),
             new HttpModule(),
             new CloudDiscoveryModule(),
             new RegistryServerModule());

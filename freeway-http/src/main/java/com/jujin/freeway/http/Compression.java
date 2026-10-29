@@ -2,6 +2,7 @@ package com.jujin.freeway.http;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.util.List;
 import java.util.zip.GZIPOutputStream;
 
@@ -62,6 +63,15 @@ public final class Compression {
             }
         }
         return false;
+    }
+
+    /**
+     * Wraps a stream in a GZIP writer with the shared buffer size — the streaming
+     * counterpart of {@link #gzip(byte[])}. Both compression entry points live here
+     * so a future knob (level, flush policy) has one home.
+     */
+    public static GZIPOutputStream gzipStream(OutputStream out) throws IOException {
+        return new GZIPOutputStream(out, 8192);
     }
 
     /** GZIP-compresses the data. */

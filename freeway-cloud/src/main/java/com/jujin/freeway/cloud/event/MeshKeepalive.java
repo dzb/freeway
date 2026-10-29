@@ -12,12 +12,15 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * pongs, but how long a missing pong means "dead" — and what to do about it —
  * is the mesh's policy, because the mesh is what must unregister and re-dial.
  *
- * <p>Each tick sends a {@link java.net.http.WebSocket}-level ping (via the
- * caller's sender) and arms a budget; a pong arriving within it clears the
- * budget. A tick that finds the previous budget still armed means the peer
- * stopped reading without closing the TCP connection — the case a NAT or load
- * balancer produces silently — and the caller closes the connection, leaving
- * the existing reconnect/unregister path to converge.</p>
+ * <p>Two numbers, not one: {@code intervalMillis} is the probe <em>cadence</em>,
+ * {@code timeoutMillis} the pong <em>budget</em>. When no probe is in flight a
+ * tick sends a ping and records when; while one is in flight further ticks send
+ * nothing, and only a budget that expires declares the peer dead. An earlier
+ * shape used "previous probe still armed at the next tick" as the timeout,
+ * which made the budget equal to the interval — at 50 ms, one JVM pause or
+ * dispatch delay was enough to close a healthy loopback link. The budget is
+ * derived by {@link #timeoutFor(long)}: three intervals, with a one-second
+ * floor for pause-sized stalls.</p>
  *
  * <p>Off by default ({@code freeway.cloud.event.keepalive-ms} unset): liveness
  * probing is traffic, and a deployment that already has TCP keepalive or a
@@ -30,23 +33,38 @@ final class MeshKeepalive implements AutoCloseable {
         boolean ping(String payload);
     }
 
+    /** The timeout budget for an interval: three probes, never under one second. */
+    static long timeoutFor(long intervalMillis) {
+        long triple = intervalMillis > Long.MAX_VALUE / 3
+            ? Long.MAX_VALUE
+            : intervalMillis * 3;
+        return Math.max(triple, 1_000);
+    }
+
     private final ScheduledExecutorService scheduler;
     private final Pinger pinger;
     private final Runnable onTimeout;
     private final long intervalMillis;
+    private final long timeoutMillis;
     private final String payload;
     private final AtomicBoolean awaitingPong = new AtomicBoolean();
     private final AtomicBoolean closed = new AtomicBoolean();
+    /** When the in-flight probe was sent; read only by the tick thread. */
+    private long probeSentNanos;
     /** Volatile so close() can cancel it; a missed cancel would leave a no-op
      *  task firing for the life of the scheduler — one per closed connection. */
     private volatile ScheduledFuture<?> ticker;
 
     MeshKeepalive(ScheduledExecutorService scheduler, Pinger pinger, Runnable onTimeout,
-                  long intervalMillis, String payload) {
+                  long intervalMillis, long timeoutMillis, String payload) {
+        if (intervalMillis <= 0) {
+            throw new IllegalArgumentException("intervalMillis must be positive");
+        }
         this.scheduler = scheduler;
         this.pinger = pinger;
         this.onTimeout = onTimeout;
         this.intervalMillis = intervalMillis;
+        this.timeoutMillis = Math.max(timeoutMillis, intervalMillis);
         this.payload = payload;
     }
 
@@ -70,15 +88,21 @@ final class MeshKeepalive implements AutoCloseable {
         if (closed.get()) {
             return;
         }
-        if (!awaitingPong.compareAndSet(false, true)) {
-            // The previous probe is still unanswered: the peer is not reading.
-            // Close first, so the owner's teardown cannot be raced by our own
-            // next tick.
+        if (awaitingPong.get()) {
+            // One probe in flight — a pong clears it, and only an expired
+            // budget declares the peer dead. Do not stack pings.
+            if (elapsedMillis() < timeoutMillis) {
+                return;
+            }
             if (closed.compareAndSet(false, true)) {
                 onTimeout.run();
             }
             return;
         }
+        if (!awaitingPong.compareAndSet(false, true)) {
+            return;
+        }
+        probeSentNanos = System.nanoTime();
         if (!pinger.ping(payload)) {
             // The transport already refused the probe — the peer is gone.
             awaitingPong.set(false);
@@ -86,6 +110,10 @@ final class MeshKeepalive implements AutoCloseable {
                 onTimeout.run();
             }
         }
+    }
+
+    private long elapsedMillis() {
+        return (System.nanoTime() - probeSentNanos) / 1_000_000;
     }
 
     @Override

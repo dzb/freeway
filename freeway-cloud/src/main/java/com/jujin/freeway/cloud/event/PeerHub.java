@@ -1,5 +1,6 @@
 package com.jujin.freeway.cloud.event;
 
+import com.jujin.freeway.cloud.internal.ConstantTime;
 import com.jujin.freeway.commons.json.JsonArray;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.http.websocket.WebSocketEndpoint;
@@ -14,7 +15,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.LongConsumer;
 import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
@@ -342,7 +342,7 @@ public final class PeerHub implements WebSocketEndpoint {
                         unregister(connection);
                     }
                 },
-                interval, PING_PAYLOAD);
+                interval, MeshKeepalive.timeoutFor(interval), PING_PAYLOAD);
             keepalive = probe;
             probe.start();
         }
@@ -491,12 +491,6 @@ public final class PeerHub implements WebSocketEndpoint {
         return prefixes;
     }
 
-    /** Length-independent comparison so the token cannot be probed by timing. */
-    private static boolean constantTimeEquals(String a, String b) {
-        return MessageDigest.isEqual(
-            a.getBytes(StandardCharsets.UTF_8), b.getBytes(StandardCharsets.UTF_8));
-    }
-
     /**
      * Whether a peer's presented token satisfies {@code expected}. An absent
      * expected token disables peer auth entirely (documented default); an
@@ -506,7 +500,7 @@ public final class PeerHub implements WebSocketEndpoint {
         if (expected == null || expected.isBlank()) {
             return true;
         }
-        return constantTimeEquals(presented == null ? "" : presented, expected);
+        return ConstantTime.isEqual(presented == null ? "" : presented, expected);
     }
 
     /**

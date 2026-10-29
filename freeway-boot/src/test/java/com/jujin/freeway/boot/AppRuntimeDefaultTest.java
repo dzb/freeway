@@ -1,7 +1,6 @@
 package com.jujin.freeway.boot;
 
-import com.jujin.freeway.boot.event.AppStartedEvent;
-import com.jujin.freeway.boot.event.AppStoppingEvent;
+import com.jujin.freeway.boot.event.AppLifecycleEvent;
 import com.jujin.freeway.boot.internal.AppConfigDefault;
 import com.jujin.freeway.boot.internal.BootModule;
 import com.jujin.freeway.boot.internal.AppRuntimeDefault;
@@ -49,7 +48,7 @@ class AppRuntimeDefaultTest {
         // The hook calls close() (reentrant, same thread) while start() is
         // still running the hook phase. start() must not clobber the STOPPED
         // state set by the nested close(): it must not report RUNNING, must
-        // not publish AppStartedEvent, and must not throw a state error.
+        // not publish AppLifecycleEvent(RUNNING), and must not throw a state error.
         assertDoesNotThrow(app::start);
 
         assertFalse(app.isRunning());
@@ -61,11 +60,14 @@ class AppRuntimeDefaultTest {
             IllegalStateException.class, () -> app.get(String.class));
         assertTrue(ex.getMessage().contains("Container is closed"),
             "got: " + ex.getMessage());
-        assertTrue(events.stream().noneMatch(e -> e instanceof AppStartedEvent),
-            "AppStartedEvent must not be published when shutdown happened during startup");
+        assertTrue(events.stream().noneMatch(
+                e -> e instanceof AppLifecycleEvent lifecycle && lifecycle.state() == AppState.RUNNING),
+            "AppLifecycleEvent(RUNNING) must not be published when shutdown happened during startup");
         assertEquals(1, events.stream()
-                .filter(e -> e instanceof AppStoppingEvent).count(),
-            "AppStoppingEvent must be published exactly once (by the reentrant close())");
+                .filter(e -> e instanceof AppLifecycleEvent lifecycle
+                    && lifecycle.state() == AppState.STOPPING)
+                .count(),
+            "AppLifecycleEvent(STOPPING) must be published exactly once (by the reentrant close())");
 
         // Shutdown was already attempted — a later close() is a no-op.
         app.close();
@@ -116,14 +118,14 @@ class AppRuntimeDefaultTest {
 
     @Test
     void startedEventSubscriberFailureKeepsAppRunning() {
-        // AppStartedEvent is a best-effort signal: a throwing subscriber must
+        // AppLifecycleEvent(RUNNING) is a best-effort signal: a throwing subscriber must
         // not abort startup. The EventBus isolates the subscriber exception
         // (logged, counted) and AppRuntimeDefault must not treat it as a
         // startup failure — the app stays RUNNING.
         AppRuntime app = runtime(new ThrowingStartedSubscriberModule());
         app.start();
         assertEquals(AppState.RUNNING, app.state(),
-            "a failing AppStartedEvent subscriber must not abort startup");
+            "a failing AppLifecycleEvent subscriber must not abort startup");
         app.close();
         assertEquals(AppState.STOPPED, app.state());
     }
@@ -131,7 +133,7 @@ class AppRuntimeDefaultTest {
     @Test
     void stoppingEventPublishFailureMarksShutdownFailed() {
         // Shutdown must be reliable: a failure while publishing
-        // AppStoppingEvent marks shutdown FAILED and close() rethrows.
+        // AppLifecycleEvent(STOPPING) marks shutdown FAILED and close() rethrows.
         // (EventBus isolates subscriber exceptions, so the guarded failure
         // class is a publish-level failure — here a closed bus.)
         AppRuntime app = runtime(new NoopModule());
@@ -141,17 +143,17 @@ class AppRuntimeDefaultTest {
 
         RuntimeException ex = assertThrows(
             RuntimeException.class, app::close);
-        assertTrue(ex.getMessage().contains("Failed to publish AppStoppingEvent"),
+        assertTrue(ex.getMessage().contains("Failed to publish AppLifecycleEvent(STOPPING)"),
             "got: " + ex.getMessage());
         assertEquals(AppState.FAILED, app.state());
     }
 
-    /** Subscribes to {@link AppStartedEvent} and throws — startup must not fail. */
+    /** Subscribes to {@link AppLifecycleEvent} and throws — startup must not fail. */
     public static final class ThrowingStartedSubscriberModule implements ModuleEx {
         @Override
         public void bind(Binder binder) {
             binder.contribute(EventSubscriber.class)
-                .add(EventSubscriber.of(AppStartedEvent.class, event -> {
+                .add(EventSubscriber.of(AppLifecycleEvent.class, event -> {
                     throw new IllegalStateException("subscriber boom");
                 }));
         }
@@ -296,8 +298,7 @@ class AppRuntimeDefaultTest {
         @Override
         public void bind(Binder binder) {
             binder.contribute(EventSubscriber.class)
-                .add(EventSubscriber.of(AppStartedEvent.class, events::add))
-                .add(EventSubscriber.of(AppStoppingEvent.class, events::add));
+                .add(EventSubscriber.of(AppLifecycleEvent.class, events::add));
             binder.contribute(RuntimeHook.class).add(new RuntimeHook() {
                 @Override
                 public void start(Container container) {

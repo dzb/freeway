@@ -1,6 +1,7 @@
 package com.jujin.freeway.db;
 
 import com.jujin.freeway.db.dialect.Dialect;
+import com.jujin.freeway.db.dialect.PostgresDialect;
 import com.jujin.freeway.db.util.SqlTextParser;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -62,57 +63,66 @@ public final class Sql {
         String orderBy,
         Integer limit,
         Integer offset,
-        String conflictTarget,
-        String conflictAction,
+        List<String> conflictColumns,
+        List<String> conflictUpdates,
+        boolean conflictDoNothing,
         String returning
     ) {
         static final Clauses NONE =
-            new Clauses(null, null, null, null, null, null, null, null);
+            new Clauses(null, null, null, null, null, null, null, false, null);
 
         Clauses withGroupBy(String value) {
             return new Clauses(value, having, orderBy, limit, offset,
-                conflictTarget, conflictAction, returning);
+                conflictColumns, conflictUpdates, conflictDoNothing, returning);
         }
 
         Clauses withHaving(String value) {
             return new Clauses(groupBy, value, orderBy, limit, offset,
-                conflictTarget, conflictAction, returning);
+                conflictColumns, conflictUpdates, conflictDoNothing, returning);
         }
 
         Clauses withOrderBy(String value) {
             return new Clauses(groupBy, having, value, limit, offset,
-                conflictTarget, conflictAction, returning);
+                conflictColumns, conflictUpdates, conflictDoNothing, returning);
         }
 
         Clauses withLimit(Integer value) {
             return new Clauses(groupBy, having, orderBy, value, offset,
-                conflictTarget, conflictAction, returning);
+                conflictColumns, conflictUpdates, conflictDoNothing, returning);
         }
 
         Clauses withOffset(Integer value) {
             return new Clauses(groupBy, having, orderBy, limit, value,
-                conflictTarget, conflictAction, returning);
+                conflictColumns, conflictUpdates, conflictDoNothing, returning);
         }
 
-        Clauses withConflictTarget(String value) {
+        Clauses withConflictColumns(List<String> columns) {
             return new Clauses(groupBy, having, orderBy, limit, offset,
-                value, conflictAction, returning);
+                List.copyOf(columns), conflictUpdates, conflictDoNothing, returning);
         }
 
-        Clauses withConflictAction(String value) {
+        Clauses withConflictUpdates(List<String> columns) {
             return new Clauses(groupBy, having, orderBy, limit, offset,
-                conflictTarget, value, returning);
+                conflictColumns, List.copyOf(columns), conflictDoNothing, returning);
+        }
+
+        Clauses withConflictDoNothing() {
+            return new Clauses(groupBy, having, orderBy, limit, offset,
+                conflictColumns, conflictUpdates, true, returning);
         }
 
         Clauses withReturning(String value) {
             return new Clauses(groupBy, having, orderBy, limit, offset,
-                conflictTarget, conflictAction, value);
+                conflictColumns, conflictUpdates, conflictDoNothing, value);
         }
 
         boolean isEmpty() {
             return this.equals(NONE);
         }
     }
+
+    /** The dialect used when the caller does not name one: the reference grammar. */
+    private static final Dialect DEFAULT_DIALECT = new PostgresDialect();
 
     private final Clauses clauses;
     /** HAVING's bind values. Kept apart from {@link #args} (WHERE's) so the
@@ -453,15 +463,27 @@ public final class Sql {
         return withClauses(clauses.withReturning(columns));
     }
 
-    /** INSERT ... ON CONFLICT (...)。 */
-    public Sql onConflict(String targetColumns) {
+    /**
+     * INSERT ... ON CONFLICT (…): the conflict target. The columns are names, not a
+     * fragment, so the renderer can quote them and the dialect can choose its own
+     * upsert grammar (PostgreSQL {@code ON CONFLICT}, MySQL {@code ON DUPLICATE KEY}).
+     */
+    public Sql onConflict(String... targetColumns) {
         requireInsert("ON CONFLICT");
         Objects.requireNonNull(targetColumns, "targetColumns");
-        if (clauses.conflictTarget() != null || clauses.conflictAction() != null) {
+        if (targetColumns.length == 0) {
+            throw new IllegalArgumentException(
+                "onConflict needs at least one column — pass the conflict target column names");
+        }
+        if (clauses.conflictColumns() != null || clauses.conflictUpdates() != null
+                || clauses.conflictDoNothing()) {
             throw new IllegalStateException(
                 "ON CONFLICT is already declared — an INSERT has one conflict clause");
         }
-        return withClauses(clauses.withConflictTarget(targetColumns));
+        for (String column : targetColumns) {
+            Objects.requireNonNull(column, "conflict column");
+        }
+        return withClauses(clauses.withConflictColumns(List.of(targetColumns)));
     }
 
     /**
@@ -476,21 +498,34 @@ public final class Sql {
         requireInsert("DO NOTHING");
         requireConflictTarget("DO NOTHING");
         requireNoConflictAction("DO NOTHING");
-        return withClauses(clauses.withConflictAction("DO NOTHING"));
+        return withClauses(clauses.withConflictDoNothing());
     }
 
-    /** INSERT ... ON CONFLICT (…) DO UPDATE SET ...。 */
-    public Sql doUpdateSet(String assignments) {
+    /**
+     * INSERT ... ON CONFLICT (…) DO UPDATE SET …: on conflict, set each named column
+     * to the row's excluded value. The columns are names, not raw assignments, so
+     * the dialect renders the assignment in its own grammar ({@code EXCLUDED.col} on
+     * PostgreSQL, {@code VALUES(col)} on MySQL). An expression that is not simply
+     * "take the incoming value" belongs in raw SQL, not here.
+     */
+    public Sql doUpdateSet(String... updateColumns) {
         requireInsert("DO UPDATE SET");
         requireConflictTarget("DO UPDATE SET");
         requireNoConflictAction("DO UPDATE SET");
-        Objects.requireNonNull(assignments, "assignments");
-        return withClauses(clauses.withConflictAction("DO UPDATE SET " + assignments));
+        Objects.requireNonNull(updateColumns, "updateColumns");
+        if (updateColumns.length == 0) {
+            throw new IllegalArgumentException(
+                "doUpdateSet needs at least one column — pass the columns to update");
+        }
+        for (String column : updateColumns) {
+            Objects.requireNonNull(column, "update column");
+        }
+        return withClauses(clauses.withConflictUpdates(List.of(updateColumns)));
     }
 
     /** The action needs the clause it acts on: an action without a target is invalid SQL. */
     private void requireConflictTarget(String action) {
-        if (clauses.conflictTarget() == null) {
+        if (clauses.conflictColumns() == null) {
             throw new IllegalStateException(
                 action + " needs a conflict target — call onConflict(\"columns\") first; "
                     + "without it the statement has no ON CONFLICT clause to act on");
@@ -499,7 +534,7 @@ public final class Sql {
 
     /** One action per conflict clause: DO NOTHING and DO UPDATE SET are alternatives. */
     private void requireNoConflictAction(String action) {
-        if (clauses.conflictAction() != null) {
+        if (clauses.conflictUpdates() != null || clauses.conflictDoNothing()) {
             throw new IllegalStateException(
                 action + " is already declared — DO NOTHING and DO UPDATE SET are alternatives");
         }
@@ -787,10 +822,10 @@ public final class Sql {
 
     // ====================== output ======================
 
-    /** Produces the complete SQL string. */
+    /** Produces the complete SQL string, rendered in the reference (PostgreSQL) grammar. */
     public String sql() {
         requireNoPendingJoin("render SQL");
-        return buildSql();
+        return buildSql(null);
     }
 
     /**
@@ -800,19 +835,20 @@ public final class Sql {
      */
     public String sql(Dialect dialect) {
         Objects.requireNonNull(dialect, "dialect");
-        String result = sql();
+        String result = buildSql(dialect);
         if (clauses.returning() != null && !dialect.supportsReturning()) {
             throw new SqlException(
                 "Dialect '" + dialect.dialectId() + "' does not support RETURNING");
         }
-        if (clauses.conflictTarget() != null && !dialect.supportsOnConflict()) {
+        if (clauses.conflictDoNothing() && !dialect.supportsOnConflict()) {
             throw new SqlException(
-                "Dialect '" + dialect.dialectId() + "' does not support ON CONFLICT; use upsertClause() or raw SQL");
+                "Dialect '" + dialect.dialectId() + "' does not support ON CONFLICT DO NOTHING; "
+                    + "use doUpdateSet(...) (rendered in the dialect's upsert grammar) or raw SQL");
         }
         return result;
     }
 
-    private String buildSql() {
+    private String buildSql(Dialect dialect) {
         String withClause = renderWithClause();
         if (isInsert()) {
             if (dmlTargets.isEmpty()) {
@@ -823,7 +859,7 @@ public final class Sql {
             var cols = String.join(", ", dmlTargets);
             var placeholders = renderInsertValues(dmlValues);
             return withClause + "INSERT INTO " + dmlTable + " (" + cols + ") VALUES ("
-                + placeholders + ")" + renderClauses();
+                + placeholders + ")" + renderClauses(dialect);
         }
         if (isUpdate() && dmlTargets.isEmpty()) {
             // Emitting "UPDATE t WHERE ..." without SET would silently touch
@@ -844,7 +880,7 @@ public final class Sql {
             sb.append(renderConditions(conditions));
         }
 
-        sb.append(renderClauses());
+        sb.append(renderClauses(dialect));
         return withClause + sb;
     }
 
@@ -987,7 +1023,7 @@ public final class Sql {
      * caller happened to declare them. Fields that were never set render
      * nothing, so an INSERT has no GROUP BY slot to get wrong.
      */
-    private String renderClauses() {
+    private String renderClauses(Dialect dialect) {
         StringBuilder out = new StringBuilder();
         if (clauses.groupBy() != null) {
             out.append(" GROUP BY ").append(clauses.groupBy());
@@ -1004,11 +1040,16 @@ public final class Sql {
         if (clauses.offset() != null) {
             out.append(" OFFSET ").append(clauses.offset());
         }
-        if (clauses.conflictTarget() != null) {
-            out.append(" ON CONFLICT (").append(clauses.conflictTarget()).append(')');
-        }
-        if (clauses.conflictAction() != null) {
-            out.append(' ').append(clauses.conflictAction());
+        if (clauses.conflictColumns() != null) {
+            if (clauses.conflictDoNothing()) {
+                // DO NOTHING has no portable dialect spelling here; the target is a
+                // name list, so it needs no quoting and reads as the author wrote it.
+                out.append(" ON CONFLICT (").append(String.join(", ", clauses.conflictColumns()))
+                    .append(") DO NOTHING");
+            } else {
+                out.append((dialect == null ? DEFAULT_DIALECT : dialect)
+                    .upsertClause(clauses.conflictColumns(), clauses.conflictUpdates()));
+            }
         }
         if (clauses.returning() != null) {
             out.append(" RETURNING ").append(clauses.returning());

@@ -97,7 +97,7 @@ public final class HealthFilter implements HttpFilter {
     @Override
     public void doFilter(HttpContext ctx, RouteHandler next) throws Exception {
         if (enabled && "GET".equalsIgnoreCase(ctx.method())
-                && healthPath.equals(PathPattern.normalizePath(
+                && healthPath.equals(PathPattern.normalize(
                     ctx.path()))) {
             ctx.sendJson(HttpStatus.OK, healthCheck.check());
             return;
@@ -109,6 +109,6 @@ public final class HealthFilter implements HttpFilter {
         if (path == null || path.isBlank()) {
             return DEFAULT_PATH;
         }
-        return PathPattern.normalizePath(path);
+        return PathPattern.normalize(path);
     }
 }

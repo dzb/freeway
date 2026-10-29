@@ -153,9 +153,9 @@ class DeferTest {
     void manualRollbackDiscardsDeferredActions() {
         List<String> log = new ArrayList<>();
 
-        Defer.within(scope -> {
+        Defer.within(() -> {
             Defer.defer(() -> log.add("discarded"));
-            scope.rollback();
+            Defer.rollback();
         });
 
         assertTrue(log.isEmpty());
@@ -164,9 +164,7 @@ class DeferTest {
     @Test
     void manualRollbackWithoutExceptionDoesNotThrow() {
         assertDoesNotThrow(() -> {
-            Defer.within(scope -> {
-                scope.rollback();
-            });
+            Defer.within(Defer::rollback);
         });
     }
 
@@ -602,9 +600,9 @@ class DeferTest {
     @Test
     void withinSupplierRollbackYieldsButDiscards() {
         List<String> order = new ArrayList<>();
-        String result = Defer.within(scope -> {
+        String result = Defer.within(() -> {
             Defer.defer(() -> order.add("commit"));
-            scope.rollback();
+            Defer.rollback();
             return "rolled-back";
         });
         assertEquals("rolled-back", result);

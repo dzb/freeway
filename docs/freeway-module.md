@@ -27,22 +27,22 @@ public final class OrderModule implements ModuleEx {
 Place modules where the application is assembled, in the order they should bind, and hand them to the entry point:
 
 ```java
-FreewayApp.run(
+FreewayApp.create(
     OrderModule.class,                 // declare by class — the normal way
     HttpModule.class,
-    CloudModule.class);                // a bundle: CloudModule + its @SubModule
+    CloudModule.class).start();        // a bundle: CloudModule + its @SubModule
 ```
 
 ### Declaring modules: class by default, instance for configuration
 
 ```java
-FreewayApp.run(OrderModule.class, new TenantModule("acme"));
-Freeway.create(new OrderModule(), CloudModule.class);   // the same shape
+FreewayApp.create(OrderModule.class).add(new TenantModule("acme")).start();
+Freeway.create(OrderModule.class, CloudModule.class);   // the same shape, minus the runtime
 ```
 
 A class is instantiated through its **no-arg constructor** when the composition is resolved, not where the call is written — a call site only ever names declarations. A module's constructor carries configuration, not dependencies: there is nothing to inject before the container exists, so dependencies are declared in `bind(Binder)` as always. A class without a no-arg constructor fails at load, naming itself and the fix (`new X(…)`) — inside the framework the only such module is the internal `BootModule`, which the boot layer constructs itself.
 
-Declaring one class twice is refused whether it was named by class or given as an instance: `run(A.class, A.class)` fails and names the fix — declare the class once. A module **instance** belongs to one place in one composition; sharing one instance across two containers is normal, and a class declaration is resolved per load, so each container builds its own module.
+Declaring one class twice is refused whether it was named by class or given as an instance: `create(A.class, A.class)` fails and names the fix — declare the class once. A module **instance** belongs to one place in one composition; sharing one instance across two containers is normal, and a class declaration is resolved per load, so each container builds its own module.
 
 `FreewayApp.create(...)` + `.add(...)` assembles the same ordered list:
 
@@ -107,8 +107,8 @@ The root line is the application's name: `application` unless the launch names i
 ```java
 Freeway.create(OrderModule.class, HttpModule.class);      // returns the Container
 Freeway.create("order-service", new OrderModule());       // the same, with a named root
-FreewayApp.run(OrderModule.class, CloudModule.class);     // returns the AppRuntime
-FreewayApp.run(new String[]{"--freeway.profile=dev"}, OrderModule.class);
+FreewayApp.create(OrderModule.class, CloudModule.class).start();  // returns the AppRuntime
+FreewayApp.create(OrderModule.class).args("--freeway.profile=dev").start();
 FreewayApp.create(OrderModule.class).name("order-service").start();
 ```
 

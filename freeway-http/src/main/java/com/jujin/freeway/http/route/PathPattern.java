@@ -21,7 +21,7 @@ import java.util.regex.PatternSyntaxException;
  * the router keeps its own trie-based matcher (O(segments) independent of
  * route count) with the same segment semantics. Both share the static
  * utilities here ({@link #splitPath}, {@link #decodeSegment},
- * {@link #normalizePath}, {@link #validateRegistrationPath}, traversal
+ * {@link #normalize}, {@link #validateRegistrationPath}, traversal
  * checks and the length caps).
  */
 public final class PathPattern {
@@ -46,7 +46,7 @@ public final class PathPattern {
     private final boolean wildcard;
 
     public PathPattern(String template) {
-        this.template = PathPattern.normalizePath(template);
+        this.template = PathPattern.normalize(template);
         String[] raw = PathPattern.splitPath(this.template);
         this.segments = new String[raw.length];
         this.paramNames = new String[raw.length];
@@ -96,7 +96,7 @@ public final class PathPattern {
     }
 
     public static void validateRegistrationPath(String path) {
-        String normalized = PathPattern.normalizePath(path);
+        String normalized = PathPattern.normalize(path);
         for (String seg : PathPattern.splitPath(normalized)) {
             if (seg.isEmpty()) {
                 throw new IllegalArgumentException(
@@ -210,7 +210,31 @@ public final class PathPattern {
         }
     }
 
-    public static String normalizePath(String path) {
+    /**
+     * Joins a group prefix and a route path into one normalized path. The root
+     * has exactly one spelling here ({@code "/"}): a prefix or path that is the
+     * root contributes no characters, so {@code join("/api", "/")} is
+     * {@code "/api"} and {@code join("/", "/users")} is {@code "/users"}.
+     *
+     * <p>This is the only path-joining rule: group expansion, static mounts and
+     * health paths all reach it, so a second "normalize" that spells the root as
+     * an empty string cannot drift from this one.</p>
+     */
+    public static String join(String prefix, String path) {
+        String head = normalize(prefix);
+        String tail = normalize(path);
+        String combined = ("/".equals(head) ? "" : head) + ("/".equals(tail) ? "" : tail);
+        return combined.isEmpty() ? "/" : combined;
+    }
+
+    /**
+     * Normalizes one path string: a leading {@code /}, no trailing {@code /}
+     * (except for the root itself), and the root spelled {@code "/"}. Null and
+     * blank both normalize to the root. This is also how a route template is
+     * normalized on construction, so a template and an incoming path compare
+     * under one rule.
+     */
+    public static String normalize(String path) {
         String value = path == null || path.isBlank() ? null : path;
         if (value == null || "/".equals(value)) return "/";
         value = value.startsWith("/") ? value : "/" + value;

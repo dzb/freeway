@@ -3,8 +3,8 @@ package com.jujin.freeway.boot.internal;
 import com.jujin.freeway.boot.AppConfig;
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.AppState;
-import com.jujin.freeway.boot.event.AppStartedEvent;
-import com.jujin.freeway.boot.event.AppStoppingEvent;
+import com.jujin.freeway.boot.event.AppLifecycleEvent;
+
 
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.event.EventBus;
@@ -68,7 +68,7 @@ public final class AppRuntimeDefault implements AppRuntime {
             // A hook may have triggered shutdown (reentrant close()) while
             // startup was still in progress: the nested close() already ran
             // the full shutdown sequence and left the state at STOPPED/FAILED.
-            // Do not override it with RUNNING and do not publish AppStartedEvent.
+            // Do not override it with RUNNING and do not publish AppLifecycleEvent.
             if (shutdownAttempted) {
                 LOG.info(
                     "Application start aborted — shutdown requested during hook startup"
@@ -77,15 +77,15 @@ public final class AppRuntimeDefault implements AppRuntime {
             }
             state = AppState.RUNNING;
             LOG.info("Application started");
-            // AppStartedEvent is a best-effort "you are up" signal, by design:
+            // AppLifecycleEvent is a best-effort "you are up" signal, by design:
             // a subscriber exception is isolated by the EventBus (logged and
             // counted, never propagated), and even a publish-level failure
             // (e.g. a closed bus) is logged below and swallowed. Startup has
             // already succeeded at this point (hooks started, state RUNNING),
             // so the signal must not be able to abort it. Contrast with
-            // AppStoppingEvent in close(), where a publish failure marks
+            // AppLifecycleEvent in close(), where a publish failure marks
             // shutdown FAILED — shutdown must be reliable, startup is not.
-            publish(new AppStartedEvent(container));
+            publish(new AppLifecycleEvent(container, AppState.RUNNING));
         } catch (Throwable ex) {
             // A hook that shut the application down and then threw has already
             // run the whole shutdown sequence, so the state it left (STOPPED,
@@ -103,7 +103,7 @@ public final class AppRuntimeDefault implements AppRuntime {
     }
 
     /**
-     * Stops the application: publishes {@link AppStoppingEvent}, stops
+     * Stops the application: publishes {@link AppLifecycleEvent} for {@link AppState#STOPPING}, stops
      * runtime hooks in reverse order, releases the config, closes the
      * container.
      *
@@ -113,9 +113,9 @@ public final class AppRuntimeDefault implements AppRuntime {
      * double-close the container. Resolve shutdown failures at the source.</p>
      *
      * <p>Lifecycle-event failure semantics are intentionally asymmetric:
-     * publishing {@link AppStoppingEvent} is a reliability point — a publish
+     * publishing {@link AppLifecycleEvent} for {@link AppState#STOPPING} is a reliability point — a publish
      * failure marks shutdown {@code FAILED} and {@code close()} rethrows.
-     * Publishing {@link AppStartedEvent} during {@link #start()} is
+     * Publishing {@link AppLifecycleEvent} for {@link AppState#RUNNING} during {@link #start()} is
      * best-effort — a failure is logged and startup continues.</p>
      */
     @Override
@@ -131,23 +131,23 @@ public final class AppRuntimeDefault implements AppRuntime {
         LOG.info("Application stopping");
         // Lifecycle event and hook stops only make sense for an application
         // that actually ran — a FAILED (startup-aborted) runtime gets no
-        // AppStoppingEvent, but its hooks may have started before the failure
+        // AppLifecycleEvent, but its hooks may have started before the failure
         // and must still be stopped.
         boolean ran = previous == AppState.RUNNING || previous == AppState.STARTING;
         if (ran) {
-            // AppStoppingEvent delivery is a reliability point, by design:
+            // AppLifecycleEvent delivery is a reliability point, by design:
             // shutdown must not silently complete while the stopping signal
             // failed to go out. Any failure to publish — a subscriber
             // exception is normally isolated by the EventBus, but a
             // publish-level failure (e.g. a closed bus) surfaces here — is
             // accumulated and marks the shutdown FAILED below. Contrast with
-            // AppStartedEvent in start(), which is best-effort and can never
+            // AppLifecycleEvent in start(), which is best-effort and can never
             // abort an already-succeeded startup.
             try {
-                container.get(EventBus.class).publish(new AppStoppingEvent(container));
+                container.get(EventBus.class).publish(new AppLifecycleEvent(container, AppState.STOPPING));
             } catch (Exception ex) {
-                failure = accumulate(failure, "Failed to publish AppStoppingEvent", ex);
-                LOG.warn("Failed to publish AppStoppingEvent", ex);
+                failure = accumulate(failure, "Failed to publish AppLifecycleEvent(STOPPING)", ex);
+                LOG.warn("Failed to publish AppLifecycleEvent(STOPPING)", ex);
             }
         }
         if (ran || previous == AppState.FAILED) {
@@ -186,9 +186,9 @@ public final class AppRuntimeDefault implements AppRuntime {
     /**
      * Publishes a lifecycle event, logging (never propagating) any failure.
      *
-     * <p>Used only for the best-effort startup signal ({@link AppStartedEvent}):
+     * <p>Used only for the best-effort startup signal ({@link AppLifecycleEvent} for {@link AppState#RUNNING}):
      * a failure here is logged and startup continues — the event is
-     * advisory. The shutdown signal ({@link AppStoppingEvent}) deliberately
+     * advisory. The shutdown signal ({@link AppLifecycleEvent} for {@link AppState#STOPPING}) deliberately
      * does NOT use this helper: its publish failure marks shutdown FAILED,
      * because shutdown must be reliable while startup is not.</p>
      */

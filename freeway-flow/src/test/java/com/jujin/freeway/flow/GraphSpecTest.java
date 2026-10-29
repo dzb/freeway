@@ -482,11 +482,7 @@ class GraphSpecTest {
             spec.entry("s");
             spec.addStart("s").linkAdd("a");
             spec.addActivity("a")
-                .task(new NamedTaskHandler() {
-                    @Override public String name() { return "inline"; }
-                    @Override public String title() { return null; }
-                    @Override public void run(FlowContext ctx, Node node) { }
-                })
+                .task((TaskHandler) (ctx, node) -> { })
                 .linkAdd("e");
             spec.addEnd("e");
         });

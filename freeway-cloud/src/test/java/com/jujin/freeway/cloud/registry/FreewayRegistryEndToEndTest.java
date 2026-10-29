@@ -64,7 +64,7 @@ class FreewayRegistryEndToEndTest {
     void two_clients_find_each_other_through_a_registry_node_and_mesh_up() throws Exception {
         // The node: holds the table, requires the shared secret.
         System.setProperty(CloudModule.ConfigKeys.REGISTRY_TOKEN, "s3cret");
-        node = FreewayApp.run(new String[0],
+        node = FreewayApp.run(
             new HttpModule(), new CloudDiscoveryModule(), new RegistryServerModule());
         int nodePort = port(node);
 
@@ -80,9 +80,9 @@ class FreewayRegistryEndToEndTest {
             new HttpModule(), new CloudDiscoveryModule(), new CloudEventModule(),
             new RegistryFleetModule()};
         System.setProperty(HttpModule.ConfigKeys.SERVER_PORT, "0");
-        clientA = FreewayApp.run(new String[0], clientModules);
+        clientA = FreewayApp.run(clientModules);
         System.setProperty(HttpModule.ConfigKeys.SERVER_PORT, "0");
-        clientB = FreewayApp.run(new String[0], clientModules);
+        clientB = FreewayApp.run(clientModules);
 
         // The node's table holds both clients — writes crossed the wire. (The node
         // itself is registered too, so the table has three entries; the two client

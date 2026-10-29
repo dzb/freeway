@@ -40,9 +40,8 @@ public final class AppLogSource implements LogConfigSource {
         // The loader's own classpath resolution — the same loader rule the
         // main cascade uses (FreewayApp's resolveClassLoader: TCCL first).
         ClassLoader loader = Thread.currentThread().getContextClassLoader();
-        ConfigSources sources = ConfigCascade.loadLayers(
-            loader != null ? loader : AppLogSource.class.getClassLoader(),
-            new String[0]);
+        ConfigSources sources = ConfigCascade.bootstrapLayers(
+            loader != null ? loader : AppLogSource.class.getClassLoader());
         return logSubset(sources.files());
     }
 

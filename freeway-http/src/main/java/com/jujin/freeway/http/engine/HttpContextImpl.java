@@ -13,7 +13,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.zip.GZIPOutputStream;
 
 import javax.net.ssl.SSLSession;
 
@@ -300,7 +299,7 @@ public class HttpContextImpl extends AbstractHttpContext {
         writer.writeHead(this);
         byte[] buffer = new byte[8192];
         if (gzip) {
-            var gzipOut = new GZIPOutputStream(new OutputStream() {
+            var gzipOut = Compression.gzipStream(new OutputStream() {
                 @Override
                 public void write(int b) throws IOException {
                     write(new byte[]{(byte) b});
@@ -312,7 +311,7 @@ public class HttpContextImpl extends AbstractHttpContext {
                         writer.writeBody(HttpContextImpl.this, b, off, len);
                     }
                 }
-            }, 8192);
+            });
             while (true) {
                 int n = in.read(buffer);
                 if (n < 0) break;

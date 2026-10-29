@@ -194,6 +194,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **作用域收敛为 `ScopeSession`**（`freeway-commons`）：`Defer` 与 `ScopedCache` 共用同一个会话状态和
+  一套关闭算法——先执行延迟动作、再清理值；回滚只丢弃动作，值仍然清理。
+  在 action scope 内打开 value scope 时，值附着到该 action scope（活到它关闭），所以“cache 必须在外”
+  的嵌套方向规则和 WARN 都不再需要。删除 `Scopes`、`DeferScope`、`ScopedCache.Session`，句柄统一为
+  `ScopeSession`，且只读（`isActionScope()` / `isClosed()`）：rollback 由 `Defer.rollback()` 承担，
+  cache 句柄不能再回滚外层 action；`Defer.within` 因此收成 `Runnable`/`Supplier` 两个重载。
+  值的**生命周期**与**访问窗口**分开：`CURRENT` 定作用域，内部 `CACHE` 视图只覆盖 cache 块与
+  action drain——块外 `ScopedCache.isActive()` 为 false、`get` 不缓存，但值仍活到 action 关闭；
+  延迟动作在 drain 期间仍能看到它们。EventBus 的事务延迟不变；`Scoping` 在 action scope 内附着时，
+  bean 活到 action 关闭（访问窗口内可解析）。
+- **半开检测的等待预算与探测间隔分开**（`freeway-cloud`）：`keepalive-ms` 只定探测节奏，pong 的预算
+  按 `max(3 × 间隔, 1 s)` 派生；同一时刻只保留一个在途探测，预算耗尽才走既有的关闭/重连路径。
+  此前"下一次 tick 仍未见 pong"即判死，预算恰好等于 interval——测试里 50 ms，一次 JVM 停顿或
+  调度延迟就会把健康回环连接关闭并重拨（`MeshKeepaliveEndToEndTest` 偶发失败的真实原因）。
+  `MeshKeepaliveTest` 新增"迟到但答了"的用例，旧实现下必红。
+- **冗余收敛（复审之二，见 `docs/audit-redundancy-1.5.7.md`）**：
+  - 注册面 token 比较改用常数时间（`ConstantTime`，与网状 token 同一规则）；`ObjectStorage` 的 etag
+    复用 `Digests.sha256Hex`，删掉内联 SHA-256；cloud 响应统一用 `HttpStatus` 常量（含新增 426）。
+  - `FreewayApp` 的 run 收敛为 `run(ModuleEx...)` + `run(Launch, ModuleEx...)`：删掉 `run(String[] args, …)`
+    与按类的 run 变体；按类声明仍走 `create(Class…).start()` 或 `.add(Class…)`。
+  - `AppStartedEvent`/`AppStoppingEvent` 合并为 `AppLifecycleEvent(Container, AppState)`；订阅侧按
+    `state()` 过滤，传递策略（RUNNING 尽力、STOPPING 可靠性点）不变。
+  - `Node` 删除 `hasMeta/metaAsBool/metaAsNumber/prevNodes`（与 `metaAs`/`prevLinks` 重复且零调用）；
+    `FlowEvaluation.runTask`、`Graph.nodeOrThrow` 删除；`PoolConfig` 的 6 个零调用 wither 经复审恢复，并补 `everyFieldHasAWither` 测试——删掉一半字段的 wither 会让这个配置值失去统一的逐字段入口。
+  - `MediaTypes.JSON` 收编 cloud 4 处硬编码；`Compression.gzipStream` 收编流式 gzip；
+    `CloudHttpClients` 统一 RPC/注册/网格三个出站 HttpClient 的公共构造；
+    `ConfigCascade.bootstrapLayers` 缓存启动期类路径解析（日志侧不再与主级联各解析一遍）；
+    `TaskDesc`/`ConditionDesc` 共享包内 `Ref`（公开 API 不变）；`Scopes` 提供一个按正确顺序打开
+    cache/defer 的入口。
+  - **撤回** R2（`Defer` 的 4 个 `within` 重载）：scope 句柄必须在回调内绑定 `ScopedValue`，
+    无法用 try-with-resources 表达；结果/句柄两条轴各自成立，保留。
+- **`TlsStores`**（`freeway-commons`）：公开的 key/trust store 装载工具——PKCS#12/JKS 探测与空密码规则
+  （`null`/空 → `null`）只有一处，服务端 `SslContexts` 与 RPC 客户端共用它，替代两份各自为政的私有装载。
+- **`PathPattern.join`**、**`PlantUmlSubject`**（`freeway-http`/`freeway-flow`）：替换被删类型之后的对应入口。
+
 - **`CloudHttpClient extends AutoCloseable`**（`freeway-cloud`）：生命周期进入角色接口（与
   `Pool`/`Database`/`HttpServerHandle` 一致）；此前只靠默认实现的 `close()`，外部 `.primary()`
   替换会静默丢掉 in-flight 结算。
@@ -276,6 +311,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   唯一读者是同包 `FlowEvaluation` 的包私有字段）；`SslContexts` 一度被一并收窄，但 `freeway-ext`
 的 Undertow 适配器用它构建 `SSLContext`——干净构建失败后回滚为 public
   降为包私有。`AGENTS.md` 的判据是"另一个包必须装配或替换它才公共"，这两个都不是。
+
+- **`Sql` 的冲突子句改为语义化**（`freeway-db`）：`onConflict(String...)` 与 `doUpdateSet(String...)`
+  收**列名**，渲染交给方言——PostgreSQL `ON CONFLICT … DO UPDATE SET col = EXCLUDED.col`，MySQL
+  `ON DUPLICATE KEY UPDATE col = VALUES(col)`；`Orm.save` 改为组装 `Sql`，upsert 只剩一条路。
+  `sql()` 不带方言时按参考（PostgreSQL）语法渲染；`doNothing()` 仍只支持有 `ON CONFLICT` 的方言，
+  错误信息改为指向 `doUpdateSet`/原始 SQL。**API 破坏**：`doUpdateSet` 不再接受原始的
+  `"col = excluded.col"` 赋值表达式（这类需求走原始 SQL）。
+- **`PathJoiner` 删除、`PathPattern.normalizePath` 改名 `normalize`**（`freeway-http`）：`join` 并入
+  `PathPattern`，根路径只有 `"/"` 一种归一化，`RouteGroup`/`WebSocketGroup` 同步（前缀不再以空串
+  表示）。改名理由：类名已经给出 "Path"，而 `normalizePath` 里的限定词原本只是为了与被删的
+  `PathJoiner.normalize` 区分；现在 `PathPattern.normalize` 与相邻的 `PathPattern.join` 一致。
+- **PlantUML 显示回调改为 `PlantUmlSubject`**（`freeway-flow`）：node/link 是 sealed 的两支，不再用
+  可空联合；回调返回 `String`（`null` 保持默认、空串隐藏、其它文本替换），删除
+  `PlantUmlDisplayContext` 与 `PlantUmlDisplayResult`。**API 破坏**：回调类型与返回值变更。
+- **`NamedTaskHandler` 删除**（`freeway-flow`）：`addActivity(id).title(...).task(handler)` 已能表达，
+  接口继承没有带来多态。
+- **http2 内部类型收口**（`freeway-http`）：`hpack` 子包并入 `engine.http2`，
+  `HPackContext`/`HeaderFields`/`Http2HeaderField`/`ContinuationFrame`/`Http2Exception` 降为包私有。
+- **文档**：新增复审报告 `docs/audit-simplification-1.5.7.md`（各模块评估 + 12 项可简化设计 + 实施
+  记录）；`Route`、`RouteGroup`、`WebSocketRoute`、`WebSocketGroup`、`WebSocketMatch`、`CorsFilter`、
+  `StaticResourceMount`、`Binder`、`Query`、`MigrationRunner`、`JsonArray`、`CloudModule` 补类型级
+  javadoc；`DEVELOPER-GUIDE` 的 SQL Builder 一节写明冲突子句收列名。
 
 ## [1.5.6] - 2026-10-08
 

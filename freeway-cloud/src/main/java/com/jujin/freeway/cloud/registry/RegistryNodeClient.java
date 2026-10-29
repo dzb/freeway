@@ -1,12 +1,14 @@
 package com.jujin.freeway.cloud.registry;
 
+import com.jujin.freeway.cloud.discovery.RegistryServerModule;
+import com.jujin.freeway.cloud.internal.CloudHttpClients;
 import com.jujin.freeway.commons.json.JsonArray;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.commons.json.JsonCodecDefault;
 import com.jujin.freeway.commons.json.JsonUtils;
-import com.jujin.freeway.cloud.discovery.RegistryServerModule;
 import com.jujin.freeway.cloud.discovery.Health;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
+import com.jujin.freeway.http.MediaTypes;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -49,8 +51,7 @@ final class RegistryNodeClient implements AutoCloseable {
 
     RegistryNodeClient(RegistryNodes nodes) {
         this.nodes = Objects.requireNonNull(nodes, "nodes");
-        this.http =
-            HttpClient.newBuilder().connectTimeout(nodes.timeout()).build();
+        this.http = CloudHttpClients.builder(nodes.timeout(), null).build();
     }
 
     /** Writes the instance to every node; every node failing fails loudly. */
@@ -207,7 +208,7 @@ final class RegistryNodeClient implements AutoCloseable {
         HttpRequest.Builder request = HttpRequest.newBuilder()
             .uri(node.resolve(path))
             .timeout(nodes.timeout())
-            .header("Content-Type", "application/json")
+            .header("Content-Type", MediaTypes.JSON)
             .header(RegistryServerModule.PROTO_HEADER,
                 String.valueOf(RegistryServerModule.PROTO));
         if (!nodes.token().isBlank()) {

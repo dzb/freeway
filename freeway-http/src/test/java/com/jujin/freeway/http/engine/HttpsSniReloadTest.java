@@ -66,7 +66,7 @@ class HttpsSniReloadTest {
         System.setProperty(ConfigKeys.SSL_HTTP2, "false");
         System.setProperty(ConfigKeys.SSL_SNI_DIRECTORY, certs.toString());
 
-        app = FreewayApp.run(new String[0], binder ->
+        app = FreewayApp.run(binder ->
             binder.contribute(Route.class).add(
                 Route.get("/", ctx -> ctx.send(200, "ok"))));
 
@@ -94,7 +94,7 @@ class HttpsSniReloadTest {
         System.setProperty(ConfigKeys.SSL_HTTP2, "false");
         System.setProperty(ConfigKeys.SSL_RELOAD_INTERVAL, "200ms");
 
-        app = FreewayApp.run(new String[0], binder ->
+        app = FreewayApp.run(binder ->
             binder.contribute(Route.class).add(
                 Route.get("/", ctx -> ctx.send(200, "ok"))));
 

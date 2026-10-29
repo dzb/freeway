@@ -56,7 +56,7 @@ class CloudEventBusTest extends CloudMeshTest {
         mods.add(new HttpModule());
         mods.add(new CloudEventModule());
         for (ModuleEx m : extra) mods.add(m);
-        return FreewayApp.run(new String[0], mods.toArray(new ModuleEx[0]));
+        return FreewayApp.run(mods.toArray(new ModuleEx[0]));
     }
 
     private static int port(AppRuntime app) {
@@ -180,9 +180,9 @@ class CloudEventBusTest extends CloudMeshTest {
         });
         assertEquals(1, mesh.stats().published(), "commit drains the buffered publish");
 
-        Defer.within(scope -> {
+        Defer.within(() -> {
             mesh.publish("greet.hello", "doomed");
-            scope.rollback();
+            Defer.rollback();
         });
         assertEquals(1, mesh.stats().published(),
             "a rolled-back scope must discard: an uncommitted fact never leaves the JVM");
@@ -220,7 +220,7 @@ class CloudEventBusTest extends CloudMeshTest {
     @Test
     void disabledModuleIsInert() {
         System.setProperty(ConfigKeys.EVENT_ENABLED, "false");
-        nodeA = FreewayApp.run(new String[0], new HttpModule(), new CloudEventModule());
+        nodeA = FreewayApp.run(new HttpModule(), new CloudEventModule());
         var mesh = nodeA.get(CloudEventBus.class);
         // Publish against an unwired mesh: a counted, debug-logged no-op.
         mesh.publish("greet.hello", "bob");

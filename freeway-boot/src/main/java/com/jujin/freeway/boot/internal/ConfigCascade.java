@@ -1,7 +1,6 @@
 package com.jujin.freeway.boot.internal;
 
 import com.jujin.freeway.boot.AppConfig;
-import com.jujin.freeway.commons.logging.LogConfig;
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
 import com.jujin.freeway.commons.util.EnvKeys;
 import java.io.IOException;
@@ -10,9 +9,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.WeakHashMap;
 import java.util.Set;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
@@ -77,6 +78,9 @@ public final class ConfigCascade {
      *  base (profile variants are derived from these names). */
     private static final String APPLICATION_PROPERTIES = "application.properties";
     private static final String APPLICATION_JSON = "application.json";
+    /** The bootstrap log cascade's view, parsed once per class loader. */
+    private static final Map<ClassLoader, ConfigSources> BOOTSTRAP_LAYERS =
+        Collections.synchronizedMap(new WeakHashMap<>());
     private static final List<String> APPLICATION_FILES =
         List.of(APPLICATION_PROPERTIES, APPLICATION_JSON);
 
@@ -192,6 +196,18 @@ public final class ConfigCascade {
      *  bootstrap log cascade reads ({@link AppLogSource}). */
     static ConfigSources loadLayers(ClassLoader loader, String... args) {
         return loadLayers(loader, Map.of(), args);
+    }
+
+    /**
+     * The bootstrap log cascade's view: logging configures itself before the
+     * container exists, so {@link AppLogSource} reads the classpath files
+     * itself; the main cascade later reads the same files again. The classpath
+     * is immutable for a deployment, so the parse is cached (weakly keyed by
+     * loader) rather than done twice — and the two readers cannot drift on what
+     * the files say.
+     */
+    static ConfigSources bootstrapLayers(ClassLoader loader) {
+        return BOOTSTRAP_LAYERS.computeIfAbsent(loader, l -> loadLayers(l, new String[0]));
     }
 
     /**

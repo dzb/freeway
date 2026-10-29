@@ -49,7 +49,7 @@ class MeshKeepaliveEndToEndTest {
         System.setProperty(ConfigKeys.EVENT_PEERS, peers);
         System.setProperty(ConfigKeys.EVENT_BACKOFF_BASE_MS, "100");
         System.setProperty(ConfigKeys.EVENT_BACKOFF_MAX_MS, "300");
-        return FreewayApp.run(new String[0], new HttpModule(), new CloudEventModule());
+        return FreewayApp.run(new HttpModule(), new CloudEventModule());
     }
 
     @Test

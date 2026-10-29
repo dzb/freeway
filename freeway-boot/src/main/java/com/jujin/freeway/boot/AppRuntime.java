@@ -19,16 +19,16 @@ package com.jujin.freeway.boot;
  * <p><b>Closing during {@link AppState#STARTING}.</b> A {@code close()} on the
  * thread that is running {@code start()} unwinds the startup: the hook sees
  * the shutdown, and {@code start()} returns without publishing
- * {@code AppStartedEvent} or overwriting the state the shutdown left behind.
+ * {@code AppLifecycleEvent} for RUNNING or overwriting the state the shutdown left behind.
  * From <em>another</em> thread {@code close()} blocks until startup finishes —
  * {@code start()} holds the runtime monitor for its whole body, so there is no
  * interleaving to race against. That wait is the safe direction: an
  * unwinding startup would leave the runtime briefly {@code STARTING} with its
  * hooks half-run and nothing to close them.</p>
  *
- * <p>Shutdown publishes {@code AppStoppingEvent} as a <b>reliability point</b>
+ * <p>Shutdown publishes {@code AppLifecycleEvent} for STOPPING as a <b>reliability point</b>
  * (hooks that must run before the container closes), while
- * {@code AppStartedEvent} is best-effort: a failing subscriber cannot abort a
+ * {@code AppLifecycleEvent} for RUNNING is best-effort: a failing subscriber cannot abort a
  * startup that already succeeded.</p>
  */
 public interface AppRuntime extends AutoCloseable {

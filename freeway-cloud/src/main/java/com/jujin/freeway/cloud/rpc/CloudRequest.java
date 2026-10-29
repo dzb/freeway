@@ -1,5 +1,6 @@
 package com.jujin.freeway.cloud.rpc;
 
+import com.jujin.freeway.http.MediaTypes;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import java.util.Map;
@@ -44,7 +45,7 @@ public record CloudRequest(
     }
 
     public static CloudRequest post(String path, String jsonBody) {
-        return new CloudRequest("POST", path, Map.of("Content-Type", "application/json"),
+        return new CloudRequest("POST", path, Map.of("Content-Type", MediaTypes.JSON),
             jsonBody.getBytes(StandardCharsets.UTF_8));
     }
 

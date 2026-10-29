@@ -1,6 +1,7 @@
 package com.jujin.freeway.cloud.rpc;
 
 import com.jujin.freeway.commons.json.JsonCodec;
+import com.jujin.freeway.http.MediaTypes;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -38,7 +39,7 @@ public final class RemoteCaller {
     public static final String EXCEPTION_CLASS_HEADER = "X-RPC-Exception";
     /** URL-encoded exception message from the remote handler. */
     public static final String EXCEPTION_MESSAGE_HEADER = "X-RPC-Message";
-    private static final String CONTENT_TYPE = "application/json";
+    private static final String CONTENT_TYPE = MediaTypes.JSON;
 
     private final CloudHttpClient http;
     private final JsonCodec codec;

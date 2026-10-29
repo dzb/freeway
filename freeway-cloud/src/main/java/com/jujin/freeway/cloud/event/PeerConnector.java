@@ -18,6 +18,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
+import com.jujin.freeway.cloud.internal.CloudHttpClients;
 import com.jujin.freeway.cloud.resilience.Backoff;
 
 /**
@@ -233,11 +234,7 @@ final class PeerConnector implements AutoCloseable {
      * {@code null} means the JDK default (system trust, no client identity).
      */
     static HttpClient newClient(Duration connectTimeout, javax.net.ssl.SSLContext sslContext) {
-        HttpClient.Builder builder = HttpClient.newBuilder().connectTimeout(connectTimeout);
-        if (sslContext != null) {
-            builder.sslContext(sslContext);
-        }
-        return builder.build();
+        return CloudHttpClients.builder(connectTimeout, sslContext).build();
     }
 
     /** Records the configured peers and starts dialing everything wanted. */
@@ -689,7 +686,7 @@ final class PeerConnector implements AutoCloseable {
                     LOG.warn("Peer {} stopped answering keepalive — reconnecting", peer);
                     abort();
                 },
-                interval, "fw-keepalive");
+                interval, MeshKeepalive.timeoutFor(interval), "fw-keepalive");
             keepalive = probe;
             probe.start();
         }

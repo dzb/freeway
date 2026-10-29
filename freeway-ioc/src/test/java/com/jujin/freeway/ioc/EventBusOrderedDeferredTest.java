@@ -38,7 +38,7 @@ class EventBusOrderedDeferredTest {
     }
 
     @Test
-    void publishOrderedInsideDeferScopeKeepsOrder() throws Exception {
+    void publishOrderedInsideActionScopeKeepsOrder() throws Exception {
         List<Integer> log = new ArrayList<>();
         EventBus bus = EventBus.create(Freeway.create());
         bus.subscribe(Integer.class, log::add);
@@ -78,7 +78,7 @@ class EventBusOrderedDeferredTest {
     }
 
     @Test
-    void publishInsideDeferScopeIsDeferredUntilCommit() {
+    void publishInsideActionScopeIsDeferredUntilCommit() {
         List<String> log = new ArrayList<>();
         Container container = Freeway.create(
             binder -> binder.contribute(EventSubscriber.class)
@@ -95,7 +95,7 @@ class EventBusOrderedDeferredTest {
     }
 
     @Test
-    void publishInsideDeferScopeDiscardsOnRollback() {
+    void publishInsideActionScopeDiscardsOnRollback() {
         List<String> log = new ArrayList<>();
         Container container = Freeway.create(
             binder -> binder.contribute(EventSubscriber.class)
@@ -138,7 +138,7 @@ class EventBusOrderedDeferredTest {
     @Test
     void zeroSubscriberDeferredEventAfterCloseDoesNotThrow() {
         // Regression: the zero-subscriber DeadEvent publish during a post-close
-        // drain hit requireOpen() and threw inside DeferScope.drain().
+        // drain hit requireOpen() and threw inside ScopeSession.drain().
         EventBus bus = EventBus.create(Freeway.create());
 
         assertDoesNotThrow(() -> Defer.within(() -> {
@@ -208,7 +208,7 @@ class EventBusOrderedDeferredTest {
     }
 
     @Test
-    void stringTopicPublishInsideDeferScopeIsDeferred() {
+    void stringTopicPublishInsideActionScopeIsDeferred() {
         List<String> log = new ArrayList<>();
         EventBus bus = EventBus.create(Freeway.create());
         bus.subscribe("topic", p -> log.add((String) p));

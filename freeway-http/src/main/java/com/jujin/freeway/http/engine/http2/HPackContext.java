@@ -1,4 +1,4 @@
-package com.jujin.freeway.http.engine.http2.hpack;
+package com.jujin.freeway.http.engine.http2;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -30,7 +30,7 @@ import com.jujin.freeway.http.engine.http2.Http2HeaderField;
  *   <li>Variable-length integer encoding/decoding</li>
  * </ul>
  */
-public final class HPackContext {
+final class HPackContext {
     /** Hard local ceiling for memory used by an inbound peer's HPACK table. */
     private static final long MAX_INBOUND_DYNAMIC_TABLE_SIZE = 64 * 1024;
     /**

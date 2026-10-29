@@ -7,6 +7,15 @@ import com.jujin.freeway.commons.validation.BeanValidator;
 import com.jujin.freeway.http.ValidationException;
 import com.jujin.freeway.http.body.BodyHandler;
 
+/**
+ * One HTTP route: method + path template + handler.
+ *
+ * <p>The static factories cover the common verbs ({@code get}, {@code post}, …) in
+ * two forms: an inline {@link RouteHandler}, or a handler <em>class</em> that the
+ * HTTP module resolves at startup (so the class may take injected dependencies).
+ * Paths are validated here, at construction, so a malformed template fails
+ * startup instead of the first request.</p>
+ */
 public record Route(
     String method,
     String path,

@@ -29,7 +29,6 @@ public class Node {
     // publish the computed list across threads instead of silently
     // recomputing per thread.
     private volatile List<Node> nextNodes;
-    private volatile List<Node> prevNodes;
     private volatile List<Link> prevLinks;
 
     public Node(Graph graph, NodeSpec spec, List<Link> links) {
@@ -104,29 +103,6 @@ public class Node {
         return (T) metas.getOrDefault(key, def);
     }
 
-    public boolean hasMeta(String key) {
-        return metas.containsKey(key);
-    }
-
-    public Boolean metaAsBool(String key) {
-        Object tmp = metas.get(key);
-        if (tmp == null) return null;
-        if (tmp instanceof Boolean) return (Boolean) tmp;
-        if (tmp instanceof String) return Boolean.parseBoolean((String) tmp);
-        if (tmp instanceof Number) return ((Number) tmp).doubleValue() > 0;
-        throw new UnsupportedOperationException(
-            "Cannot read meta '" + key + "' as boolean: " + tmp.getClass().getName());
-    }
-
-    public Number metaAsNumber(String key) {
-        Object tmp = metas.get(key);
-        if (tmp == null) return null;
-        if (tmp instanceof String) return Double.parseDouble((String) tmp);
-        if (tmp instanceof Number) return (Number) tmp;
-        throw new UnsupportedOperationException(
-            "Cannot read meta '" + key + "' as number: " + tmp.getClass().getName());
-    }
-
     /**
      * The incoming links, in declaration order of their sources.
      *
@@ -166,21 +142,6 @@ public class Node {
             return nextNodes().get(0);
         }
         return null;
-    }
-
-    public List<Node> prevNodes() {
-        if (prevNodes == null) {
-            List<Node> tmp = new ArrayList<>();
-            if (type() != NodeType.START) {
-                for (Link l : graph.links()) {
-                    if (id().equals(l.nextId())) {
-                        tmp.add(graph.node(l.prevId()));
-                    }
-                }
-            }
-            prevNodes = List.copyOf(tmp);
-        }
-        return prevNodes;
     }
 
     public ConditionDesc when() { return when; }

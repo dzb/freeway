@@ -120,7 +120,7 @@ final class Shutdown {
                     // callback must not abort the drain — closed=true, the
                     // cache clear and the remaining services' cleanup all
                     // depend on drain running to completion. Matches the
-                    // DeferScope/ScopedCache Throwable handling.
+                    // ScopeSession/ScopedCache Throwable handling.
                     failure = accumulateFailure(
                         failure,
                         preDestroy

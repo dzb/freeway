@@ -112,7 +112,7 @@ class FreewayHttpEngineTest {
         System.setProperty(ConfigKeys.SERVER_PORT, String.valueOf(port));
         System.setProperty(ConfigKeys.MAX_BODY_SIZE, "8");
 
-        app = FreewayApp.run(new String[0], binder ->
+        app = FreewayApp.run(binder ->
             binder.contribute(Route.class).add(
                 Route.post("/upload", ctx -> {
                     ctx.body();
@@ -383,7 +383,7 @@ class FreewayHttpEngineTest {
         System.setProperty(ConfigKeys.SERVER_HOST, "127.0.0.1");
         System.setProperty(ConfigKeys.SERVER_PORT, String.valueOf(port));
 
-        app = FreewayApp.run(new String[0], new PingModule());
+        app = FreewayApp.run(new PingModule());
         assertTrue(app.get(HttpServer.class).isRunning());
 
         HttpClient client = HttpClient.newHttpClient();
@@ -404,7 +404,7 @@ class FreewayHttpEngineTest {
         System.setProperty(ConfigKeys.SERVER_HOST, "127.0.0.1");
         System.setProperty(ConfigKeys.SERVER_PORT, String.valueOf(port));
 
-        app = FreewayApp.run(new String[0], new PingModule());
+        app = FreewayApp.run(new PingModule());
         assertTrue(app.get(HttpServer.class).isRunning());
 
         HttpClient client = HttpClient.newHttpClient();
@@ -425,7 +425,7 @@ class FreewayHttpEngineTest {
         System.setProperty(ConfigKeys.SERVER_HOST, "127.0.0.1");
         System.setProperty(ConfigKeys.SERVER_PORT, String.valueOf(port));
 
-        app = FreewayApp.run(new String[0], new PingModule());
+        app = FreewayApp.run(new PingModule());
         assertTrue(app.get(HttpServer.class).isRunning());
 
         HttpClient client = HttpClient.newHttpClient();
@@ -464,7 +464,7 @@ class FreewayHttpEngineTest {
         int port = freePort();
         System.setProperty(ConfigKeys.SERVER_HOST, "127.0.0.1");
         System.setProperty(ConfigKeys.SERVER_PORT, String.valueOf(port));
-        app = FreewayApp.run(new String[0], new PingModule());
+        app = FreewayApp.run(new PingModule());
         assertTrue(app.get(HttpServer.class).isRunning());
 
         try (var sock = new Socket("127.0.0.1", port)) {
@@ -495,7 +495,7 @@ class FreewayHttpEngineTest {
 
         CompletableFuture<Void> serverDone = new CompletableFuture<>();
 
-        app = FreewayApp.run(new String[0], binder ->
+        app = FreewayApp.run(binder ->
             binder.contribute(Route.class).add(
                 Route.get("/sse", ctx -> {
                     try (var emitter = ctx.sse()) {
@@ -534,7 +534,7 @@ class FreewayHttpEngineTest {
         CompletableFuture<Void> opened = new CompletableFuture<>();
         CompletableFuture<Void> errored = new CompletableFuture<>();
 
-        app = FreewayApp.run(new String[0], binder -> {
+        app = FreewayApp.run(binder -> {
             binder.contribute(WebSocketGroup.class).add(WebSocketGroup.of("/ws",
                 WebSocketRoute.of("/lifecycle", session -> new WebSocketListener() {
                     @Override
@@ -581,7 +581,7 @@ class FreewayHttpEngineTest {
         System.setProperty(ConfigKeys.SERVER_HOST, "127.0.0.1");
         System.setProperty(ConfigKeys.SERVER_PORT, String.valueOf(port));
 
-        app = FreewayApp.run(new String[0], binder ->
+        app = FreewayApp.run(binder ->
             binder.contribute(Route.class).add(Route.post("/echo", ctx -> {
                 ctx.setMaxBodySize(3);
                 ctx.send(200, ctx.bodyText());
@@ -609,7 +609,7 @@ class FreewayHttpEngineTest {
         System.setProperty(ConfigKeys.SERVER_HOST, "127.0.0.1");
         System.setProperty(ConfigKeys.SERVER_PORT, String.valueOf(port));
 
-        app = FreewayApp.run(new String[0], binder -> {
+        app = FreewayApp.run(binder -> {
             binder.contribute(StaticResourceMount.class).add(
                 StaticResourceMount.directory("/", tempDir).withFallthrough(true)
             );
@@ -1217,7 +1217,7 @@ class FreewayHttpEngineTest {
         System.setProperty(ConfigKeys.SSL_KEY_STORE_TYPE, "PKCS12");
         System.setProperty(ConfigKeys.SSL_HTTP2, "true");
 
-        app = FreewayApp.run(new String[0], binder ->
+        app = FreewayApp.run(binder ->
             binder.contribute(Route.class).add(
                 Route.get("/tls-module", ctx -> ctx.sendJson(200, Map.of(
                     "secure", ctx.isSecure(),
@@ -1298,7 +1298,7 @@ class FreewayHttpEngineTest {
         System.setProperty(ConfigKeys.SSL_PROTOCOLS, "TLSv1.3");
         System.setProperty(ConfigKeys.SSL_CIPHERS, "TLS_AES_128_GCM_SHA256");
 
-        app = FreewayApp.run(new String[0], binder ->
+        app = FreewayApp.run(binder ->
             binder.contribute(Route.class).add(
                 Route.get("/tls-config", ctx -> ctx.sendJson(200, Map.of(
                     "protocol", ctx.sslSession() != null
@@ -1352,7 +1352,7 @@ class FreewayHttpEngineTest {
         System.setProperty(ConfigKeys.SSL_TRUST_STORE_TYPE, "PKCS12");
         System.setProperty(ConfigKeys.SSL_CLIENT_AUTH, "true");
 
-        app = FreewayApp.run(new String[0], binder ->
+        app = FreewayApp.run(binder ->
             binder.contribute(Route.class).add(
                 Route.get("/mtls", ctx -> ctx.sendJson(200, Map.of(
                     "secure", ctx.isSecure(),
@@ -1523,7 +1523,7 @@ class FreewayHttpEngineTest {
         System.setProperty(ConfigKeys.SERVER_HOST, "127.0.0.1");
         System.setProperty(ConfigKeys.SERVER_PORT, String.valueOf(port));
 
-        app = FreewayApp.run(new String[0], binder -> {
+        app = FreewayApp.run(binder -> {
             binder.bind(GreetingService.class).to(GreetingService.class);
             binder.contribute(Route.class).add(
                 Route.get("/greet/{name}", GreetHandler.class));
@@ -1548,7 +1548,7 @@ class FreewayHttpEngineTest {
         System.setProperty(ConfigKeys.SERVER_HOST, "127.0.0.1");
         System.setProperty(ConfigKeys.SERVER_PORT, String.valueOf(port));
 
-        app = FreewayApp.run(new String[0], binder ->
+        app = FreewayApp.run(binder ->
                 binder.contribute(Route.class).add(
                         Route.get("/h2-error", ctx -> {
                             throw new RuntimeException("forced error");

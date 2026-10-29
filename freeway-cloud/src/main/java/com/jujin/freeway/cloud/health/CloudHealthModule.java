@@ -7,6 +7,7 @@ import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.annotation.Builtin;
 import com.jujin.freeway.ioc.annotation.Marker;
 
+import com.jujin.freeway.http.HttpStatus;
 import java.util.Map;
 
 /**
@@ -43,7 +44,7 @@ public final class CloudHealthModule implements ModuleEx {
         // on content type was a downgrade, not a choice.
         b.contribute(Route.class)
             .add("freeway.cloud.health.live",
-                Route.get(LIVE_PATH, ctx -> ctx.sendJson(200, Map.of("status", "ok"))));
+                Route.get(LIVE_PATH, ctx -> ctx.sendJson(HttpStatus.OK, Map.of("status", "ok"))));
         b.contribute(Route.class)
             .add("freeway.cloud.health.ready", Route.get(READY_PATH, ReadyHandler.class));
     }

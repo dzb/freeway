@@ -2,7 +2,7 @@ package com.jujin.freeway.http.engine.http2;
 
 import java.io.IOException;
 
-public final class Http2Exception extends IOException {
+final class Http2Exception extends IOException {
     private final Http2ErrorCode code;
 
     public Http2Exception(Http2ErrorCode c) {

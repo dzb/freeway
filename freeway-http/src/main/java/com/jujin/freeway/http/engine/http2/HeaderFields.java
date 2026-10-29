@@ -1,4 +1,4 @@
-package com.jujin.freeway.http.engine.http2.hpack;
+package com.jujin.freeway.http.engine.http2;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -12,7 +12,7 @@ import com.jujin.freeway.http.engine.http2.Http2ErrorCode;
 import com.jujin.freeway.http.engine.http2.Http2Exception;
 import com.jujin.freeway.http.engine.http2.Http2HeaderField;
 
-public final class HeaderFields {
+final class HeaderFields {
     private static final Set<String> PROHIBITED = Set.of(
         "connection", "transfer-encoding", "keep-alive",
         "proxy-connection", "upgrade");

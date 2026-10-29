@@ -35,6 +35,13 @@ import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * Applies versioned SQL migrations from a classpath or filesystem directory:
+ * orders them, skips already-applied versions by checksum, takes a lease-based
+ * lock so two instances cannot apply the same migration, and records each
+ * applied version in the migration table. Configured through {@code DbModule},
+ * or constructed directly with {@link #MigrationRunner(Database, Options)}.
+ */
 public final class MigrationRunner {
 
     private static final Logger LOG = LoggerFactory.getLogger(

@@ -1,5 +1,6 @@
 package demo;
 
+import com.jujin.freeway.boot.Launch;
 import com.jujin.freeway.boot.FreewayApp;
 import com.jujin.freeway.cloud.event.CloudEventModule;
 import com.jujin.freeway.http.HttpModule;
@@ -30,7 +31,7 @@ public final class NodeA {
         System.setProperty(ConfigKeys.EVENT_ENABLED, "true");
         System.setProperty(ConfigKeys.EVENT_PEERS, "127.0.0.1:18080");
 
-        var app = FreewayApp.run(args, new HttpModule(), new CloudEventModule(), new ModuleEx() {
+        var app = FreewayApp.run(Launch.of(args), new HttpModule(), new CloudEventModule(), new ModuleEx() {
             @Override
             public void bind(Binder binder) {
                 // The local counterpart: prints to show a LOCAL publish never

@@ -32,7 +32,7 @@ freeway-commons         zero deps
   log's root line.
 - **`AppRuntime`** — application boundary above Container: owns config,
   profiles, startup/shutdown and runtime hooks. Created via
-  `FreewayApp.run(args, ModuleEx...)`, or through the launcher
+  `FreewayApp.run(Launch, ModuleEx...)`, or through the launcher
   `FreewayApp.create(...).name(...).start()`.
 - **`ModuleEx`** — declares its bindings in `bind(Binder)`; how it is placed is
   not its concern. Composition has **two sources**, and they are ordered:

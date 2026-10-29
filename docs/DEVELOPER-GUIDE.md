@@ -17,7 +17,7 @@ import com.jujin.freeway.ioc.ModuleEx;
 // A minimal HTTP application
 public class App {
     public static void main(String[] args) {
-        try (AppRuntime runtime = FreewayApp.run(args, new AppModule())) {
+        try (AppRuntime runtime = FreewayApp.run(Launch.of(args), new AppModule())) {
             // use runtime
         }
     }
@@ -46,7 +46,7 @@ The container creates it and injects its dependencies via the constructor:
 ```java
 public class App {
     public static void main(String[] args) {
-        try (AppRuntime runtime = FreewayApp.run(args, new AppModule())) {
+        try (AppRuntime runtime = FreewayApp.run(Launch.of(args), new AppModule())) {
         }
     }
 
@@ -178,7 +178,7 @@ MyService svc = c.get(MyService.class);
 c.close();
 
 // Full application (config, profiles, hooks, lifecycle)
-AppRuntime runtime = FreewayApp.run(new String[0], new AppModule());
+AppRuntime runtime = FreewayApp.run(new AppModule());
 Container c = runtime.container();
 ```
 
@@ -327,7 +327,7 @@ assembly by adding `.primary()` or a qualifier, rather than making consumers dep
 |-------|----------|
 | `SINGLETON` | Default. One instance per container. Destroyed on `close()`. |
 | `PROTOTYPE` | New instance every resolution. Not retained by the container. |
-| `THREAD` | One instance per **thread**, built as the scope opens and destroyed as it closes. `ScopedValue` does not propagate, so a child thread sees none of it. |
+| `THREAD` | One instance per **scope session**, built as the scope opens and destroyed when its owning session closes; inside a `Defer` action scope it attaches and lives until that action scope closes. `ScopedValue` does not propagate, so a child thread sees none of it. |
 
 ```java
 binder.bind(RequestState.class).to(RequestState.class).scope(Scope.THREAD);
@@ -338,9 +338,10 @@ scoping.within(() -> {
     // same instance reused within this block
 });
 // state destroyed — @PreDestroy + AutoCloseable invoked
+// (inside a Defer action scope, destruction happens when that scope closes)
 ```
 
-`Scoping.within()` uses JDK 25 `ScopedValue`, so there is no `ThreadLocal` overhead on virtual threads. Nesting is supported — inner scopes shadow outer scopes. Internally, thread-scoped services are cached via `ScopedCache` (see [ScopedCache](#scopedcache--scope-bound-value-cache)).
+`Scoping.within()` uses JDK 25 `ScopedValue`, so there is no `ThreadLocal` overhead on virtual threads. Nesting is supported — inner scopes shadow outer scopes. Internally, thread-scoped services are cached via `ScopedCache` (see [Scope primitives](#scope-primitives-defer--scopedcache--scoping)). A value scope opened inside a `Defer` action scope attaches to it: beans are resolvable inside the `Scoping.within` block, live until the action scope closes, and are not resolvable from outside that block.
 
 **Scope compatibility rule:** A singleton cannot directly inject a thread-scoped concrete class. Use an interface with proxy support instead:
 
@@ -356,9 +357,11 @@ binder.bind(ScopedSingleton.class).to(ScopedSingleton.class); // fails
 
 #### Where a `Scope.THREAD` service can be used
 
-The scope is **thread**-level, not request-level: an instance is built as
-`Scoping.within(...)` opens and destroyed as it closes, and `ScopedValue` does
-not propagate, so a child thread inherits nothing. Whatever the unit of work
+The scope is **session**-level, not request-level: an instance is built as
+`Scoping.within(...)` opens and destroyed when its owning session closes — at
+the end of `within`, or at the enclosing `Defer` action scope's close when it
+attached to one. `ScopedValue` does not propagate, so a child thread inherits
+nothing. Whatever the unit of work
 is, that unit is what you wrap.
 
 The framework opens no thread scope on its own, so **the caller opens it**:
@@ -714,15 +717,15 @@ bus.stream(OrderPlaced.class).subscribe(new Flow.Subscriber<>() {
 // cold-lazy: the bus subscription is created on first downstream subscribe
 ```
 
-**Lifecycle events:** Boot publishes `AppStartedEvent` after all hooks start, and `AppStoppingEvent` before shutdown. Subscribe via EventBus instead of implementing `RuntimeHook` for non-critical work:
+**Lifecycle events:** Boot publishes `AppLifecycleEvent` with `AppState.RUNNING` after all hooks start, and with `AppState.STOPPING` before shutdown. Subscribe via EventBus instead of implementing `RuntimeHook` for non-critical work:
 
 ```java
 binder.contribute(EventSubscriber.class)
-    .add(EventSubscriber.of(AppStartedEvent.class,  e -> cache.warmup()))
-    .add(EventSubscriber.of(AppStoppingEvent.class, e -> cache.flush()));
+    .add(EventSubscriber.of(AppLifecycleEvent.class, e -> { if (e.state() == AppState.RUNNING) cache.warmup(); }))
+    .add(EventSubscriber.of(AppLifecycleEvent.class, e -> { if (e.state() == AppState.STOPPING) cache.flush(); }));
 ```
 
-**Transaction-aware:** Events published inside a `db.transaction()` are automatically deferred and fire only after commit. No manual wiring needed — powered by the `Defer` mechanism (see [Defer](#defer--scope-bound-deferred-execution)).
+**Transaction-aware:** Events published inside a `db.transaction()` are automatically deferred and fire only after commit. No manual wiring needed — powered by the `Defer` mechanism (see [Defer](freeway-defer-summary.md)).
 
 **Planes are separate:** the bus never leaves the process — whether a fact
 crosses a boundary is decided at the call site, not by which modules are
@@ -788,12 +791,12 @@ For multi-file logging, per-logger levels, env var support, and the full config 
 ## Boot
 
 ```java
-AppRuntime runtime = FreewayApp.run(new String[0], new AppModule());
+AppRuntime runtime = FreewayApp.run(new AppModule());
 // or with explicit module instances
-AppRuntime runtime = FreewayApp.run(new String[0], new AppModule(), new HttpModule());
+AppRuntime runtime = FreewayApp.run(new AppModule(), new HttpModule());
 ```
 
-`FreewayApp.run(...)` accepts command-line args and module instances. It loads config, discovers SPI modules, creates the container, starts hooks, logs startup time, and registers a JVM shutdown hook.
+`FreewayApp.run(Launch, …)` accepts a `Launch` (command-line args, discovery) plus module instances; `FreewayApp.run(modules)` uses `Launch.defaults()`. It loads config, discovers SPI modules, creates the container, starts hooks, logs startup time, and registers a JVM shutdown hook.
 
 Adding the **same module class twice with two different instances** (e.g.
 `add(new DbModule(), new DbModule())`, or an explicit module that SPI
@@ -1271,10 +1274,10 @@ Built-in mappers in `HttpModule`: `BodyTooLargeException` → 413, `ValidationEx
 
 ```java
 // Default — FreewayHttpEngine
-FreewayApp.run(new String[0], new AppModule(), new HttpModule());
+FreewayApp.run(new AppModule(), new HttpModule());
 
 // Undertow — just add the module, container picks it via .primary()
-FreewayApp.run(new String[0], new AppModule(), new HttpModule(), new UndertowModule());
+FreewayApp.run(new AppModule(), new HttpModule(), new UndertowModule());
 ```
 
 **How it works:**
@@ -1351,7 +1354,7 @@ Orm orm = Orm.of(db);
 ### IoC Usage
 
 ```java
-FreewayApp.run(new String[0], new AppModule(), new DbModule());
+FreewayApp.run(new AppModule(), new DbModule());
 // Database and Orm are now injectable
 ```
 
@@ -1417,6 +1420,21 @@ db.query(sql).list(UserOrderView.class);
 
 Supports: `SELECT`, `INSERT`, `UPDATE`, `DELETE`, CTEs (`WITH`), `JOIN`/`LEFT JOIN`/`INNER JOIN`, `ON`, `WHERE`/`OR WHERE`/`WHERE NOT`, grouped conditions, `GROUP BY`/`HAVING`, `ORDER BY`, `LIMIT`/`OFFSET`, `UNION`/`UNION ALL`, `RETURNING`, `ON CONFLICT DO UPDATE/NOTHING`.
 
+The conflict clause takes **column names**, not raw assignments, so the dialect renders its own spelling:
+
+```java
+// PostgreSQL: ... ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name
+// MySQL:      ... ON DUPLICATE KEY UPDATE name = VALUES(name)
+Sql upsert = Sql.insert("users")
+    .setColumn("id", id).setColumn("name", name)
+    .onConflict("id").doUpdateSet("name");
+db.execute(upsert);
+```
+
+`doUpdateSet` updates each named column to the row's excluded value; an expression that is not that
+("take the incoming value") belongs in raw SQL. `doNothing()` emits `ON CONFLICT … DO NOTHING`,
+which only dialects with `ON CONFLICT` accept — the dialect validation says so at render time.
+
 ### Transactions
 
 ScopedValue-based implicit transactions — no explicit transaction object:
@@ -1436,7 +1454,7 @@ db.transaction(IsolationLevel.SERIALIZABLE, () -> {
 
 Nested transactions are detected and rejected. Auto-commit is restored on exit. Queries inside the transaction automatically use the same connection. The transaction is **thread-bound** (backed by `ScopedValue`, which does not propagate to child threads): DB calls made on a different thread while a transaction is active, or consuming a `Query`/`BatchQuery` created inside a transaction on another thread (or after the transaction ends), throw a `SqlException` — the work would otherwise silently borrow an independent pooled connection and run outside the transaction, breaking atomicity. Cross-`Database` work (e.g. via `DatabaseRegistry`) commits independently and is not rolled back with the transaction.
 
-**Transaction-aware side effects:** EventBus events published inside a transaction are automatically deferred and only fire after commit — no manual wiring needed. This is powered by the `Defer` mechanism (see [Defer](#defer--scope-bound-deferred-execution)):
+**Transaction-aware side effects:** EventBus events published inside a transaction are automatically deferred and only fire after commit — no manual wiring needed. This is powered by the `Defer` mechanism (see [Defer](freeway-defer-summary.md)):
 
 ```java
 db.transaction(() -> {
@@ -1535,10 +1553,10 @@ Database db = Database.create(Database.Wiring.defaults(config).withPool(pool));
 
 ```java
 // Default — PoolDefault
-FreewayApp.run(new String[0], new AppModule(), new DbModule());
+FreewayApp.run(new AppModule(), new DbModule());
 
 // HikariCP — add the module, container selects it via .primary()
-FreewayApp.run(new String[0], new AppModule(), new DbModule(), new HikariPoolModule());
+FreewayApp.run(new AppModule(), new DbModule(), new HikariPoolModule());
 ```
 
 No config keys needed — just add or remove the extension module.
@@ -1802,7 +1820,7 @@ consumer groups, a poison policy and an optional dead-letter topic. Add
 `KafkaModule` and enter the plane by name:
 
 ```java
-FreewayApp.run(new String[0], new AppModule(), new KafkaModule());
+FreewayApp.run(new AppModule(), new KafkaModule());
 ```
 
 Config in `application.properties`:
@@ -2033,7 +2051,26 @@ Commons contains the shared runtime primitives used across Freeway: JSON, coerci
 - JSON parsing, building, and serialization live in `JsonUtils` and `JsonCodec`
 - coercion lives in `Coercer` and `CoerceRule`
 - validation lives in `BeanValidator`
-- scoped primitives are described in [freeway-commons.md](freeway-commons.md)
+- scoped primitives are described in [freeway-commons.md](freeway-commons.md) and below
+
+### Scope primitives (`Defer` / `ScopedCache` / `Scoping`)
+
+`Defer` and `ScopedCache` share one `ScopeSession` (one session state, one close order: actions first, then values). The public session handle is read-only (`isActionScope()`, `isClosed()`); lifecycle control lives on the façade that opened it.
+
+```java
+Defer.within(() -> {
+    Defer.defer(() -> cache.invalidate("posts"));
+    if (bad) { Defer.rollback(); return; }   // discard deferred actions on normal exit
+});
+// no handle overloads: use Defer.within(Runnable|Supplier) + Defer.rollback()
+
+ScopedCache.within(() -> {
+    var conn = ScopedCache.get("conn", () -> dataSource.getConnection());
+    Defer.within(() -> Defer.defer(() -> conn.flush()));  // attaches to the action scope
+});
+```
+
+Nesting is order-independent: a cache scope opened inside an action scope attaches to it, and an action scope opened inside a cache scope can still read the outer values during its drain. The value **lifetime** (until the owning scope closes) and the value **access window** (the cache block / action drain) are separate: outside the window `ScopedCache.isActive()` is false and `get` creates uncached values, but the attached values are still cleaned at the action scope's close. Thread-scoped services (`Scoping.within`) follow the same attach rule.
 
 **JSON parsing limits (enforced by the built-in parser):** a single string
 value is capped at 10 MB, a single number token at 10 MB, and streamed input
@@ -2104,11 +2141,11 @@ summary.
 - **`AppRuntime`** is the application boundary above `Container`. It owns config, profiles, runtime state, startup, shutdown, and runtime hooks. Access services through `app.get(Class)` rather than reaching for the Container.
 - Service ids are **plain strings** and are normalized internally by `ServiceIds`. There is no public `ServiceId` type.
 - Service lifecycle is declared only with `bind().scope(...)`: `SINGLETON`, `PROTOTYPE`, `THREAD`.
-- **`Defer` and `ScopedCache`** are the two scope-bound primitives in Commons. `Defer` buffers actions until the enclosing unit of work commits; `ScopedCache` memoizes values for the lifetime of a scope and closes them on exit. IoC's thread scope is built on `ScopedCache`.
+- **`Defer` and `ScopedCache`** are the two façades over one `ScopeSession` in Commons. `Defer` buffers actions until the enclosing action scope commits; `ScopedCache` memoizes values for the lifetime of a scope and closes them on exit. Inside a `Defer` action scope, `ScopedCache` attaches its values to that scope; the value access window is the cache block plus the action drain, while values themselves are cleaned when the action scope closes.
 - **Decision rule:** if the work should happen only after success, use `Defer`; if a value should be created once per scope and reused until cleanup, use `ScopedCache`.
 - **`Defer` triggers:** DB transaction commit, HTTP request completion, batch/job success boundaries, ordered post-commit side effects such as invalidate → rebuild → notify.
-- **`ScopedCache` triggers:** per-scope lookup tables, connections or handles held for the length of one `within()` block, repeated resolution of `Scope.THREAD` services, values that need one cleanup action when the scope exits.
-- Thread-scoped services use **`Scoping.within()`** to enter an execution boundary; the scope auto-closes when the work lambda completes. Backed by JDK 25 `ScopedValue` — no `ThreadLocal` overhead on virtual threads.
+- **`ScopedCache` triggers:** per-scope lookup tables, connections or handles held for the length of one `within()` block, repeated resolution of `Scope.THREAD` services, values that need one cleanup action when the scope exits. The access window is the block (and the action drain); outside it `isActive()` is false and `get` does not cache, even if an enclosing action scope still holds the values.
+- Thread-scoped services use **`Scoping.within()`** to enter an execution boundary. Backed by JDK 25 `ScopedValue` — no `ThreadLocal` overhead on virtual threads. When nested in a `Defer` action scope, the scope attaches and its beans live until that action scope closes.
 - **`RuntimeHook`** provides start/stop extension points for modules. Ordered via `add(id, value).before()` / `.after()`. HTTP startup uses hook id `"freeway.http.server"` — no longer a side effect of resolving `HttpServer`.
 - **`LoggerSource`** is the built-in logger service. Commons registers a JUL-backed SLF4J provider unconditionally via `META-INF/services`; at startup `LogBootstrap.ensureProvider()` probes the classpath for external SLF4J providers (Logback, Log4j, slf4j-simple) and pins the `slf4j.provider` system property so the external provider wins — the JUL provider is the fallback only when no external provider is present (or the user sets `-Dslf4j.provider` explicitly).
 
