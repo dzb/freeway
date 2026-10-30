@@ -67,9 +67,13 @@ freeway-commons         zero deps
   `PROTOTYPE`, `THREAD`. Thread scope is entered through `Scoping.within(...)`,
   the `Scoping` service obtained from the container.
 - **`Defer` / `ScopedCache`** (`commons.scoped`, built on `ScopedValue`) —
-  `Defer` buffers actions for commit-time drain, `ScopedCache` caches
-  key/value pairs with lifecycle cleanup on scope exit. IoC's thread scope is
-  built on `ScopedCache`.
+  one `ScopeSession`: `Defer` buffers actions for commit-time drain;
+  `ScopedCache` caches key/value pairs with cleanup when the owning session
+  closes. Inside a `Defer` action scope a cache scope attaches to it, so values
+  live until that action scope closes; the cache view (`CURRENT` scope +
+  `CACHE` access window) only opens access during the cache block and the
+  action drain. `ScopeSession` is a read-only token; rollback is
+  `Defer.rollback()`. IoC's thread scope is built on the same value scope.
 - **`RuntimeHook`** — module-level start/stop extension, contributed through
   `Contribution<RuntimeHook>` and ordered with `before/after`; a reference to
   an unknown hook id fails startup. `HttpModule` contributes the server hook

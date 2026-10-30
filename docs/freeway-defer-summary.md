@@ -2,7 +2,7 @@
 
 ## 一句话
 
-**"当前边界成功提交后再执行副作用，翻车就丢弃。"** `Defer` 是 freeway-commons 中的延迟动作门面，基于 JDK 的 `ScopedValue` 实现，零外部依赖；`ScopedCache` 是同一个 `ScopeSession` 的值门面。它负责“提交后再做”的副作用；`ScopedCache` 则负责“作用域内复用、退出时清理”的值缓存。两者是同一个 `ScopeSession` 的两个门面：一个作用域绑定、一套关闭算法（先动作、后值）。
+**"当前边界成功提交后再执行副作用，翻车就丢弃。"** `Defer` 是 freeway-commons 中的延迟动作门面，基于 JDK 的 `ScopedValue` 实现，零外部依赖；`ScopedCache` 是同一个 `ScopeSession` 的值门面。它负责“提交后再做”的副作用；`ScopedCache` 则负责“作用域内复用、退出时清理”的值缓存。两者是同一个 `ScopeSession` 的两个门面：一个会话状态（`CURRENT` 作用域 + `CACHE` 值访问视图）、一套关闭算法（先动作、后值）。
 
 ## 心智模型：提交托盘
 

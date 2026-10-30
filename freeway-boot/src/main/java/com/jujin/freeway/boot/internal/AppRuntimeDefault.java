@@ -192,7 +192,7 @@ public final class AppRuntimeDefault implements AppRuntime {
      * does NOT use this helper: its publish failure marks shutdown FAILED,
      * because shutdown must be reliable while startup is not.</p>
      */
-    private void publish(Object event) {
+    private void publish(AppLifecycleEvent event) {
         try {
             container.get(EventBus.class).publish(event);
         } catch (Exception ex) {

@@ -397,7 +397,7 @@ paired: a service the container realizes through a binding gets both.
 | How the instance is produced | `@PostConstruct` | `@PreDestroy` |
 |---|---|---|
 | `binder.bind(X.class).to(X.class)` (SINGLETON) | yes | yes, on `close()` |
-| `Scope.THREAD` | yes | on scope exit — one instance per `within()` block |
+| `Scope.THREAD` | yes | on owning session close — one instance per `within()` block; attached to an enclosing `Defer` action scope, it closes with that scope |
 | `Scope.PROTOTYPE` | yes | never retained, so never |
 | `contribute(X.class)` | yes | **no** — a contribution is not a binding, so nothing tracks it for shutdown |
 | `container.create(X.class)` | **no** | no |

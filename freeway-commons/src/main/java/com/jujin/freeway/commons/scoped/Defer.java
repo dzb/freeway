@@ -53,7 +53,14 @@ public final class Defer {
 
     // ==================== scope ====================
 
-    /** Returns true if called inside an action scope. */
+    /**
+     * Returns true while the current action scope can still accept deferred
+     * actions — inside {@link #within} and before its drain begins.
+     *
+     * <p>During drain this is false: the scope is closing, so an action
+     * registered from a deferred action runs immediately instead of extending
+     * the drain.</p>
+     */
     public static boolean isActive() {
         ScopeSession current = ScopeSession.current();
         return current != null && current.acceptsActions();
@@ -115,8 +122,8 @@ public final class Defer {
     // ==================== defer ====================
 
     /**
-     * If inside an action scope, enqueues the un-named action. Otherwise runs
-     * it immediately.
+     * If inside an open action scope, enqueues the un-named action. Otherwise
+     * (outside, or while the scope is draining) runs it immediately.
      */
     public static void defer(Runnable action) {
         Objects.requireNonNull(action, "action");
@@ -129,8 +136,8 @@ public final class Defer {
     }
 
     /**
-     * If inside an action scope, enqueues a named action and returns a handle
-     * for ordering via {@link DeferAction#before} / {@link DeferAction#after}.
+     * If inside an open action scope, enqueues a named action and returns a
+     * handle for ordering via {@link DeferAction#before} / {@link DeferAction#after}.
      * Otherwise runs {@code action} immediately and returns a no-op handle.
      */
     public static DeferAction defer(String id, Runnable action) {
@@ -149,7 +156,7 @@ public final class Defer {
     // ==================== supply ====================
 
     /**
-     * If inside an action scope, returns a {@link Supplier} whose
+     * If inside an open action scope, returns a {@link Supplier} whose
      * {@code get()} computes the value on first access and caches it; if it
      * is never accessed, the value is computed when the scope commits.
      * Outside an action scope, the supplier computes on each {@code get()}

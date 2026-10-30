@@ -31,6 +31,22 @@ class DeferTest {
     }
 
     @Test
+    void isActiveIsFalseWhileDrainingAndNestedActionsRunImmediately() {
+        AtomicBoolean activeDuringDrain = new AtomicBoolean(true);
+        List<String> order = new ArrayList<>();
+        Defer.within(() -> Defer.defer(() -> {
+            activeDuringDrain.set(Defer.isActive());
+            order.add("outer");
+            Defer.defer(() -> order.add("nested"));
+        }));
+
+        assertFalse(activeDuringDrain.get(),
+            "the scope stops accepting actions once its drain starts");
+        assertEquals(List.of("outer", "nested"), order,
+            "an action registered from a deferred action runs immediately");
+    }
+
+    @Test
     void isActiveOutsideScopeReturnsFalse() {
         assertFalse(Defer.isActive());
     }
