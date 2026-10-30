@@ -175,6 +175,4 @@ compile errors point the way. Three that need knowing rather than grepping:
 
 Core: 2255 tests, 7 modules — including a new runnable `demo/registry-server`.
 Ext: 199 tests (7 skipped — 5 broker-gated, 2 Consul-agent-gated), including the
-new `freeway-cloud-consul` module. The correctness audit behind this release —
-its criteria, evidence grading, and every withdrawn judgement — is
-[docs/audit-correctness-and-redundancy-1.5.6.md](audit-correctness-and-redundancy-1.5.6.md).
+new `freeway-cloud-consul` module.

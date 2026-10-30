@@ -333,7 +333,7 @@ broken.
 ### Regressions to watch
 
 Structural hazards that have each produced a real defect here, and that no type
-enforces — see `docs/audit-correctness-and-redundancy-1.5.6.md` for the evidence.
+enforces.
 
 - **Static files**: keep resolved paths inside the mount root; disallow symlink
   traversal.
