@@ -1,11 +1,13 @@
 # Changelog
 
-All notable changes to Freeway 2 will be documented in this file.
+All notable changes to Freeway will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [1.5.7] - 2026-11-02
 
 ### Fixed
 
@@ -271,7 +273,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **SPI 发现的模块会打一行 INFO**（`freeway-boot`）：组合的来源是"声明的模块 + classpath 上的
   `META-INF/services`"，启动树里两者同形；`ModuleDiscovery` 现在点名发现的类。`ARCHITECTURE.md`
   与 `AGENTS.md` 写明两个来源、顺序（声明优先、按类去重）、默认值与 opt-out。
-- **demo 跟随核心版本**（`demo/`）：依赖改为 `${freeway.version}` = `1.5.7-SNAPSHOT`，根 POM 增加
+- **demo 跟随核心版本**（`demo/`）：依赖改为 `${freeway.version}` = `1.5.7`，根 POM 增加
   `-Pdemos` 剖面，让这三个仓内消费者随 reactor 一起编译——"编译错误即迁移路径"需要有人去撞。
 - **无体响应的 `Content-Length` 规则上移**（`freeway-http`）：规则原先只写在 HTTP/1.1 的 writer 里，
   于是 handler 给 204 设的 `Content-Length` 在 h2 上照发。现在 `ResponseFraming.suppressesHeader`

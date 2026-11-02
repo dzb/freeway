@@ -18,9 +18,9 @@ Freeway is an exercise in engineering taste: every API should state its intent,
 every concept should pull its weight, and a framework should be **complete
 without being bloated**.
 
-> **Latest release: 1.5.6** · **Main branch: 1.5.7-SNAPSHOT**
-> The examples below follow `main`; see [CHANGELOG.md](CHANGELOG.md) for the
-> 1.5.7 changes.
+> **Latest release: 1.5.7**
+> See the [release notes](docs/RELEASE-NOTES-1.5.7.md) and
+> [CHANGELOG.md](CHANGELOG.md) for what changed.
 
 ## Why Freeway
 
@@ -36,8 +36,7 @@ without being bloated**.
 
 ## Quick Start
 
-Add the modules you need. The examples use the current `main`
-(`1.5.7-SNAPSHOT`); the latest published release is `1.5.6`.
+Add the modules you need. The examples target `1.5.7`.
 
 ```xml
 <dependency>
@@ -229,7 +228,7 @@ mvn -Pdemos test         # core + demos
 - [Configuration keys](docs/freeway-config.md)
 - [Module model](docs/freeway-module.md) · [Commons](docs/freeway-commons.md) · [DB](docs/freeway-db.md) · [Cloud](docs/freeway-cloud.md) · [Flow](docs/freeway-flow-design-decisions.md)
 - [Defer & ScopedCache](docs/freeway-defer-summary.md)
-- [Changelog](CHANGELOG.md) · [Release notes](docs/RELEASE-NOTES-1.5.6.md)
+- [Changelog](CHANGELOG.md) · [Release notes](docs/RELEASE-NOTES-1.5.7.md)
 
 ## Extensions
 

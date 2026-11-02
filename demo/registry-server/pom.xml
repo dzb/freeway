@@ -13,7 +13,7 @@
         <!-- Follows the core version; bump this one line with a release.
              Build from the repository root with -Pdemos so the reactor
              resolves it without an install step. -->
-        <freeway.version>1.5.7-SNAPSHOT</freeway.version>
+        <freeway.version>1.5.7</freeway.version>
         <maven.compiler.source>25</maven.compiler.source>
         <maven.compiler.target>25</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
