@@ -88,7 +88,7 @@ public class AppModule implements ModuleEx {
 | `Binding<T>` | 绑定配置链：`to()` → `scope()` → `id()` → `primary()` → `marker()` → `advise()` |
 | `ModuleEx` | `@FunctionalInterface`，模块入口：`void bind(Binder)` |
 | `Freeway` | 容器启动：`Freeway.create(ModuleEx...)` |
-| `Scoping` | `Scoping.within()` 进入 Thread 作用域 |
+| `ScopeBoundary` | `ScopeBoundary.within()` 进入 Thread 作用域 |
 | `Scope` | 枚举：`SINGLETON`、`THREAD`、`PROTOTYPE` |
 | `Extension<V>` | 框架内部：聚合贡献值，通过 `container.extension(Class)` 访问。应用代码注入 `List<V>` 或 `Map<String, V>` |
 | `EventBus` | 进程内发布-订阅 |
@@ -251,7 +251,7 @@ Primary 解析使用 `binding.primary()` DSL，不是注解。
 | `PROTOTYPE` | 每次解析创建新实例 | 容器不持有，不自动销毁 |
 | `THREAD` | 每个 scope session 一个实例 | 拥有它的 session 关闭时；在 `Defer` action scope 内附着时随该 action scope 关闭 |
 
-`Scoping.within()` 基于 JDK 25 `ScopedValue`，虚拟线程零 overhead，支持嵌套。若在 `Defer.within` 内打开，值/bean 附着到该 action scope，活到它关闭。
+`ScopeBoundary.within()` 基于 JDK 25 `ScopedValue`，虚拟线程零 overhead，支持嵌套。若在 `Defer.within` 内打开，值/bean 附着到该 action scope，活到它关闭。
 
 **作用域兼容规则**：Singleton 不能直接注入 thread-scoped 的具体类。需要用接口 + proxy：
 
@@ -270,8 +270,8 @@ binder.bind(ScopedSingleton.class).to(ScopedSingleton.class); // 容器启动报
 ```java
 binder.bind(RequestState.class).to(RequestState.class).scope(Scope.THREAD);
 
-Scoping scoping = c.get(Scoping.class);
-scoping.within(() -> {
+ScopeBoundary boundary = c.get(ScopeBoundary.class);
+boundary.within(() -> {
     RequestState state = c.get(RequestState.class);
     // 作用域内复用同一实例
     state.set(..);

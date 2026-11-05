@@ -263,6 +263,12 @@ CLI 参数（`--freeway.config.file=...`）同样无效——启动时会打 WAR
 |----|------|------|--------|------|------|
 | `freeway.http.access-log.enabled` | 姿态 | Boolean | `false` | 否 | 启用文本访问日志（stdout 输出 method path status elapsed-ms ip ua）；每个交换一行，含 CORS 预检与健康探针。自定义目的地：关掉该键，贡献自己的 `EventSubscriber<HttpExchangeEvent>` |
 
+#### 请求作用域
+
+| 键 | 档 | 类型 | 默认值 | 必填 | 说明 |
+|----|------|------|--------|------|------|
+| `freeway.http.request-scope.enabled` | 姿态 | Boolean | `false` | 否 | 每个 HTTP 请求打开一个容器 value scope（`ScopeFilter`，order -40，位于 CORS/health 之后、应用 filter 之前），使 `Scope.THREAD` 服务与 scoped cache 值按请求存活、请求结束清理；不向子线程传播，异步工作需 `ContextExecutor` |
+
 #### CORS
 
 | 键 | 档 | 类型 | 默认值 | 必填 | 说明 |

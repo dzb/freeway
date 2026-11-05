@@ -148,7 +148,7 @@ final class ServiceRuntime {
             throw new IllegalStateException(
                 "No open scope for type " + binding.type().getName()
                     + " — wrap the call in"
-                    + " container.get(Scoping.class).within(() -> ...)"
+                    + " container.get(ScopeBoundary.class).within(() -> ...)"
             );
         }
         ServiceKey key = new ServiceKey(binding.type(), binding.id());

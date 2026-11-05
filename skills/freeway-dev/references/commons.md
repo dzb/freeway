@@ -21,7 +21,7 @@ Scope model:
 - A `ScopedCache.within` opened inside `Defer.within` attaches its values to that action scope: values live until the action scope closes, and deferred actions see them.
 - Value **lifetime** and value **access window** differ: values are visible only during the cache block (and the action drain); outside it `ScopedCache.isActive()` is false and `get` creates uncached values, even though attached values are still stored.
 - `ScopeSession` is a read-only handle (`isActionScope()`, `isClosed()`); it cannot roll back or close.
-- `Scoping.within()` uses the same value scope: inside a `Defer` action scope, thread beans attach and live until that action scope closes; outside a cache window they are not resolvable.
+- `ScopeBoundary.within()` uses the same value scope: inside a `Defer` action scope, thread beans attach and live until that action scope closes; outside a cache window they are not resolvable.
 
 ## When To Use
 

@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`ScopeFilter`（`freeway-http`）**：可选的请求级容器 value scope。设
+  `freeway.http.request-scope.enabled=true` 时 `HttpModule` 在 CORS/health 之后、应用 filter
+  之前加入一个 `ScopeFilter`；一次请求内 `Scope.THREAD` 服务与 scoped cache 值复用，请求结束清理。
+  也可自行 `contribute(HttpFilter.class).add(ScopeFilter.class)`；显式贡献时不会重复添加。它不传播到
+  子线程（异步工作用 `ContextExecutor`），也不是事务边界（`Defer` 仍负责提交/回滚）。
+- **`ScopeBoundary.withinChecked`（`freeway-ioc`）**：适配器的受检异常入口；scope 在正常/异常路径
+  都会关闭，原始 `Exception` 原样重抛。
+
+### Changed
+
+- **`Scoping` 改名 `ScopeBoundary`（`freeway-ioc`）**：公共类型、内置服务 id 与报错文本同步；
+  `Scoping.within` → `ScopeBoundary.within`。类型名从“作用域化机制”改为“边界入口”，与
+  `Defer`（动作能力）、`ScopedCache`（值原语）分层一致；行为不变。
+
 ## [1.5.7] - 2026-11-02
 
 ### Fixed

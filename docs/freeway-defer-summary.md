@@ -331,7 +331,7 @@ Defer.within(() -> {
 - **关闭顺序**：动作先执行、值后清理；回滚只丢弃动作，值仍然清理（清理必须发生）。
 - **失败与重复**：每个值的 entry cleanup 先于全局 `onClose` handler；同一值（identity）只处理一次；handler 异常只记日志，不跳过其余值。
 - **只读 token**：`ScopeSession` 不提供 `rollback`/`close`；回滚用 `Defer.rollback()`，关闭由打开它的门面拥有。
-- **Thread 作用域**：`Scoping.within` 基于同一个 value scope；在 `Defer` 内打开时 bean 附着、活到 action 关闭，访问窗口之外不再解析新的 THREAD bean。
+- **Thread 作用域**：`ScopeBoundary.within` 基于同一个 value scope；在 `Defer` 内打开时 bean 附着、活到 action 关闭，访问窗口之外不再解析新的 THREAD bean。
 
 ### 不要用它做
 

@@ -10,7 +10,7 @@ Examples below are minimal snippets. They omit imports and app-specific domain t
 - `Binding<T>` - `to(Class)`, `to(c -> ...)` (provider), `id(String)`, `primary()`, `marker(Annotation...)`, `scope(Scope)`, `advise(...)`; there is no `to(instance)`
 - `ModuleEx` - module entry-point type: `bind(Binder)`
 - `Scope` - `SINGLETON`, `THREAD`, `PROTOTYPE`
-- `Scoping` - `within(...)`
+- `ScopeBoundary` - `within(...)`
 - `Extension<V>` - framework-internal aggregation handle. Access via `container.extension(Class)`. Application code injects `List<V>` or `Map<String, V>`, not `Extension<V>` directly.
 - `Contribution<T>` - contribution DSL from `Binder.contribute(Class)`: `add(T)`, `add(id, T)`, `add(Class)`, `add(id, factory)`; composition-time only — the stores seal when the container is built
 - `Ordering` - handle returned by a named `add`: `before(String...)`, `after(String...)` (bind-time only, same seal)

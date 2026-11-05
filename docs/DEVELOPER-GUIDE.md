@@ -162,7 +162,7 @@ For the full module patterns, see [freeway-module.md](freeway-module.md).
 | `Binding` | Service binding configuration: target, id, primary, scope, advisor |
 | `Freeway` | Container bootstrap for composing modules: `Freeway.create(ModuleEx...)` |
 | `RuntimeHook` | Start/stop lifecycle extension consumed by `AppRuntime` |
-| `Scoping` | Executes work inside a `Scope.THREAD` boundary via `within()` |
+| `ScopeBoundary` | Executes work inside a `Scope.THREAD` boundary via `within()` |
 | `LoggerSource` | Owner-aware logger factory service |
 
 `ServiceId` is intentionally not a public type. String ids keep the API direct. Blank service ids are rejected. Internal normalization is handled by `ServiceIds`.
@@ -332,8 +332,8 @@ assembly by adding `.primary()` or a qualifier, rather than making consumers dep
 ```java
 binder.bind(RequestState.class).to(RequestState.class).scope(Scope.THREAD);
 
-Scoping scoping = container.get(Scoping.class);
-scoping.within(() -> {
+ScopeBoundary boundary = container.get(ScopeBoundary.class);
+boundary.within(() -> {
     RequestState state = container.get(RequestState.class);
     // same instance reused within this block
 });
@@ -341,7 +341,7 @@ scoping.within(() -> {
 // (inside a Defer action scope, destruction happens when that scope closes)
 ```
 
-`Scoping.within()` uses JDK 25 `ScopedValue`, so there is no `ThreadLocal` overhead on virtual threads. Nesting is supported — inner scopes shadow outer scopes. Internally, thread-scoped services are cached via `ScopedCache` (see [Scope primitives](#scope-primitives-defer--scopedcache--scoping)). A value scope opened inside a `Defer` action scope attaches to it: beans are resolvable inside the `Scoping.within` block, live until the action scope closes, and are not resolvable from outside that block.
+`ScopeBoundary.within()` uses JDK 25 `ScopedValue`, so there is no `ThreadLocal` overhead on virtual threads. Nesting is supported — inner scopes shadow outer scopes. Internally, thread-scoped services are cached via `ScopedCache` (see [Scope primitives](#scope-primitives-defer--scopedcache--scopeboundary)). A value scope opened inside a `Defer` action scope attaches to it: beans are resolvable inside the `ScopeBoundary.within` block, live until the action scope closes, and are not resolvable from outside that block.
 
 **Scope compatibility rule:** A singleton cannot directly inject a thread-scoped concrete class. Use an interface with proxy support instead:
 
@@ -358,7 +358,7 @@ binder.bind(ScopedSingleton.class).to(ScopedSingleton.class); // fails
 #### Where a `Scope.THREAD` service can be used
 
 The scope is **session**-level, not request-level: an instance is built as
-`Scoping.within(...)` opens and destroyed when its owning session closes — at
+`ScopeBoundary.within(...)` opens and destroyed when its owning session closes — at
 the end of `within`, or at the enclosing `Defer` action scope's close when it
 attached to one. `ScopedValue` does not propagate, so a child thread inherits
 nothing. Whatever the unit of work
@@ -367,8 +367,8 @@ is, that unit is what you wrap.
 The framework opens no thread scope on its own, so **the caller opens it**:
 
 ```java
-Scoping scoping = container.get(Scoping.class);
-scoping.within(() -> {
+ScopeBoundary boundary = container.get(ScopeBoundary.class);
+boundary.within(() -> {
     RequestState state = container.get(RequestState.class);  // one per within()
     handle(state);
 });
@@ -380,7 +380,7 @@ Two consequences worth knowing before you reach for it:
 - **A class-based route handler cannot take one.** `HttpModule` builds
   handlers at startup, on a thread with no open scope, so a
   thread-scoped constructor argument fails at boot with
-  `No open scope for type X — wrap the call in container.get(Scoping.class).within(() -> ...)`.
+  `No open scope for type X — wrap the call in container.get(ScopeBoundary.class).within(() -> ...)`.
   That refusal is the design working: resolving outside a scope throws rather
   than quietly handing back a process-wide singleton, which is the one
   behaviour that would make a thread-scoped service a lie.
@@ -2053,7 +2053,7 @@ Commons contains the shared runtime primitives used across Freeway: JSON, coerci
 - validation lives in `BeanValidator`
 - scoped primitives are described in [freeway-commons.md](freeway-commons.md) and below
 
-### Scope primitives (`Defer` / `ScopedCache` / `Scoping`)
+### Scope primitives (`Defer` / `ScopedCache` / `ScopeBoundary`)
 
 `Defer` and `ScopedCache` share one `ScopeSession` (one session state, one close order: actions first, then values). The public session handle is read-only (`isActionScope()`, `isClosed()`); lifecycle control lives on the façade that opened it.
 
@@ -2070,7 +2070,14 @@ ScopedCache.within(() -> {
 });
 ```
 
-Nesting is order-independent: a cache scope opened inside an action scope attaches to it, and an action scope opened inside a cache scope can still read the outer values during its drain. The value **lifetime** (until the owning scope closes) and the value **access window** (the cache block / action drain) are separate: outside the window `ScopedCache.isActive()` is false and `get` creates uncached values, but the attached values are still cleaned at the action scope's close. Thread-scoped services (`Scoping.within`) follow the same attach rule.
+Nesting is order-independent: a cache scope opened inside an action scope attaches to it, and an action scope opened inside a cache scope can still read the outer values during its drain. The value **lifetime** (until the owning scope closes) and the value **access window** (the cache block / action drain) are separate: outside the window `ScopedCache.isActive()` is false and `get` creates uncached values, but the attached values are still cleaned at the action scope's close. Thread-scoped services (`ScopeBoundary.within`) follow the same attach rule.
+
+For an HTTP request boundary, enable `freeway.http.request-scope.enabled=true`
+or contribute a `ScopeFilter` yourself. The filter opens one container value
+scope per request (after CORS/health, before application filters), so
+`Scope.THREAD` services and scoped cache values live for the request and are
+released when it completes. It is opt-in: the framework still opens no scope on
+its own, and it does not propagate to async work — use `ContextExecutor` there.
 
 **JSON parsing limits (enforced by the built-in parser):** a single string
 value is capped at 10 MB, a single number token at 10 MB, and streamed input
@@ -2145,7 +2152,7 @@ summary.
 - **Decision rule:** if the work should happen only after success, use `Defer`; if a value should be created once per scope and reused until cleanup, use `ScopedCache`.
 - **`Defer` triggers:** DB transaction commit, HTTP request completion, batch/job success boundaries, ordered post-commit side effects such as invalidate → rebuild → notify.
 - **`ScopedCache` triggers:** per-scope lookup tables, connections or handles held for the length of one `within()` block, repeated resolution of `Scope.THREAD` services, values that need one cleanup action when the scope exits. The access window is the block (and the action drain); outside it `isActive()` is false and `get` does not cache, even if an enclosing action scope still holds the values.
-- Thread-scoped services use **`Scoping.within()`** to enter an execution boundary. Backed by JDK 25 `ScopedValue` — no `ThreadLocal` overhead on virtual threads. When nested in a `Defer` action scope, the scope attaches and its beans live until that action scope closes.
+- Thread-scoped services use **`ScopeBoundary.within()`** to enter an execution boundary. Backed by JDK 25 `ScopedValue` — no `ThreadLocal` overhead on virtual threads. When nested in a `Defer` action scope, the scope attaches and its beans live until that action scope closes.
 - **`RuntimeHook`** provides start/stop extension points for modules. Ordered via `add(id, value).before()` / `.after()`. HTTP startup uses hook id `"freeway.http.server"` — no longer a side effect of resolving `HttpServer`.
 - **`LoggerSource`** is the built-in logger service. Commons registers a JUL-backed SLF4J provider unconditionally via `META-INF/services`; at startup `LogBootstrap.ensureProvider()` probes the classpath for external SLF4J providers (Logback, Log4j, slf4j-simple) and pins the `slf4j.provider` system property so the external provider wins — the JUL provider is the fallback only when no external provider is present (or the user sets `-Dslf4j.provider` explicitly).
 

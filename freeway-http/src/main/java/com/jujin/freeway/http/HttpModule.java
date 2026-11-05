@@ -26,6 +26,7 @@ import com.jujin.freeway.http.filter.ErrorHandler;
 import com.jujin.freeway.http.filter.HealthCheck;
 import com.jujin.freeway.http.filter.HealthFilter;
 import com.jujin.freeway.http.filter.HttpFilter;
+import com.jujin.freeway.http.filter.ScopeFilter;
 import com.jujin.freeway.http.route.ResolvableHandler;
 import com.jujin.freeway.http.route.Route;
 import com.jujin.freeway.http.route.RouteGroup;
@@ -39,6 +40,7 @@ import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.event.EventBus;
 import com.jujin.freeway.ioc.ModuleEx;
+import com.jujin.freeway.ioc.ScopeBoundary;
 import com.jujin.freeway.ioc.RuntimeHook;
 import com.jujin.freeway.ioc.annotation.Builtin;
 import com.jujin.freeway.ioc.annotation.Marker;
@@ -56,6 +58,8 @@ public final class HttpModule implements ModuleEx {
     // the module contributes, not a field of anything — no value type owns it.
     private static final SymbolSpec<Boolean> ACCESS_LOG_ENABLED =
         SymbolSpec.of(ConfigKeys.ACCESS_LOG_ENABLED, Boolean.class, false);
+    private static final SymbolSpec<Boolean> REQUEST_SCOPE_ENABLED =
+        SymbolSpec.of(ConfigKeys.REQUEST_SCOPE_ENABLED, Boolean.class, false);
     // The built-in engine's own knobs: also read here (the module owns the
     // keys), pushed into the engine's Wiring below — HttpServerConfig does not
     // carry fields a third-party engine cannot apply.
@@ -177,6 +181,11 @@ public final class HttpModule implements ModuleEx {
         binder.bind(HttpServer.class).to(container -> {
             var filters = new ArrayList<>(
                 container.extension(HttpFilter.class).all());
+            var symbols = container.get(SymbolSource.class);
+            if (symbols.resolve(REQUEST_SCOPE_ENABLED)
+                    && filters.stream().noneMatch(ScopeFilter.class::isInstance)) {
+                filters.add(new ScopeFilter(container.get(ScopeBoundary.class)));
+            }
             var pipeline = new HttpPipeline(
                 container.get(RouteIndex.class),
                 container.get(WebSocketIndex.class),
@@ -187,8 +196,7 @@ public final class HttpModule implements ModuleEx {
                 container.extension(ErrorHandler.class).all()
             );
             EventBus events = container.get(EventBus.class);
-            boolean accessLogOn = container.get(SymbolSource.class)
-                .resolve(ACCESS_LOG_ENABLED);
+            boolean accessLogOn = symbols.resolve(ACCESS_LOG_ENABLED);
             AccessLog accessLog = accessLogOn ? new AccessLog() : null;
             return HttpServer.create(
                 container.get(HttpEngine.class),
@@ -437,6 +445,9 @@ public final class HttpModule implements ModuleEx {
         public static final String COMPRESSION_ENABLED   = "freeway.http.compression.enabled";
         /** Text access log to stdout (default false). */
         public static final String ACCESS_LOG_ENABLED    = "freeway.http.access-log.enabled";
+        /** Open a container value scope around each HTTP request, so
+         *  {@code Scope.THREAD} services/caches live for the request (default false). */
+        public static final String REQUEST_SCOPE_ENABLED = "freeway.http.request-scope.enabled";
         /** CORS filter on (default true); {@code false} serves no CORS headers. */
         public static final String CORS_ENABLED           = "freeway.http.cors.enabled";
         /** Built-in {@code GET /healthz} endpoint on (default true). */

@@ -64,8 +64,8 @@ freeway-commons         zero deps
 - **`ServiceId`** is intentionally not a public type — service ids are plain
   strings, normalized internally by `ServiceIds`.
 - **Scopes** are declared only through `bind().scope(...)`: `SINGLETON`,
-  `PROTOTYPE`, `THREAD`. Thread scope is entered through `Scoping.within(...)`,
-  the `Scoping` service obtained from the container.
+  `PROTOTYPE`, `THREAD`. Thread scope is entered through `ScopeBoundary.within(...)`,
+  the `ScopeBoundary` service obtained from the container.
 - **`Defer` / `ScopedCache`** (`commons.scoped`, built on `ScopedValue`) —
   one `ScopeSession`: `Defer` buffers actions for commit-time drain;
   `ScopedCache` caches key/value pairs with cleanup when the owning session

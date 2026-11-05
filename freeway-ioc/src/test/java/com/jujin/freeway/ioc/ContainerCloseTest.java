@@ -196,9 +196,9 @@ class ContainerCloseTest {
         ScopeValue.destroyed = 0;
         Container container = Freeway.create(binder ->
             binder.bind(ScopeValue.class).to(ScopeValue.class).scope(Scope.THREAD));
-        Scoping scoping = container.get(Scoping.class);
+        ScopeBoundary boundary = container.get(ScopeBoundary.class);
 
-        scoping.within(() -> {
+        boundary.within(() -> {
             container.get(ScopeValue.class); // realize: container-managed
             container.close();               // close while the scope is open
             return null;

@@ -140,7 +140,7 @@ The scoped primitives are `Defer` (commit-time actions) and `ScopedCache`
 ### IoC
 Explicit `bind`/`to`, named and primary bindings, `SINGLETON`/`PROTOTYPE`/`THREAD`
 scopes, constructor and field injection, `${...}` expansion, contributions with
-ordering, method advisors, and an in-process EventBus. `Scoping.within(...)`
+ordering, method advisors, and an in-process EventBus. `ScopeBoundary.within(...)`
 enters a thread scope on JDK 25 `ScopedValue`.
 
 ### Boot
@@ -154,6 +154,11 @@ Trie-based routing with path parameters, regex constraints and wildcards; typed
 body binding with validation; filters and error handlers; static resources;
 multipart; SSE; WebSocket. The built-in engine speaks HTTP/1.1, HTTP/2 and
 WebSocket; Undertow and Jetty swap in through a module.
+
+Request-scoped services are opt-in: set `freeway.http.request-scope.enabled=true`
+and `Scope.THREAD` services/caches live for one request (after CORS/health,
+before application filters); see
+[ScopeBoundary / ScopeFilter](docs/DEVELOPER-GUIDE.md#scope-primitives-defer--scopedcache--scopeboundary).
 
 ### DB
 `Database` SQL execution, `Orm` CRUD/upsert, schema-less `Row`, a programmatic

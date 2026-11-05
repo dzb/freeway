@@ -10,7 +10,7 @@ Examples below are minimal snippets. They omit imports and app-specific domain t
 - `HttpServer`
 - `HttpContext`
 - `Route`, `RouteGroup`, `WebSocketRoute`, `WebSocketGroup`
-- `HttpFilter`, `ErrorHandler`, `HealthFilter`, `HealthCheck`
+- `HttpFilter`, `ScopeFilter`, `ErrorHandler`, `HealthFilter`, `HealthCheck`
 - `StaticResourceMount`
 
 ## Configuration Keys
@@ -20,6 +20,7 @@ Examples below are minimal snippets. They omit imports and app-specific domain t
 - `freeway.http.server.backlog`
 - `freeway.http.server.shutdown-grace`
 - `freeway.http.cors.*`
+- `freeway.http.request-scope.enabled` (opt-in per-request value scope; `Scope.THREAD` services/caches live for one request)
 - `freeway.http.health.enabled`
 - `freeway.http.health.path`
 - `freeway.http.h2.reset-burst-limit` (default 200, `0` disables; built-in engine only — `HttpModule` wires it into `FreewayHttpEngine.Wiring`)

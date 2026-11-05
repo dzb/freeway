@@ -13,7 +13,7 @@ import com.jujin.freeway.ioc.event.EventBus;
 import com.jujin.freeway.ioc.LoggerSource;
 import com.jujin.freeway.ioc.MissingBindingException;
 import com.jujin.freeway.ioc.ModuleEx;
-import com.jujin.freeway.ioc.Scoping;
+import com.jujin.freeway.ioc.ScopeBoundary;
 import com.jujin.freeway.ioc.annotation.Builtin;
 import com.jujin.freeway.ioc.annotation.Inject;
 import com.jujin.freeway.ioc.extension.Extension;
@@ -156,7 +156,7 @@ public final class ContainerImpl implements Container {
         registerBuiltin(Metrics.class, c -> NoopMetrics.INSTANCE, "Metrics");
         registerBuiltin(Coercer.class, c -> coercer, "Coercer");
         registerBuiltin(LoggerSource.class, c -> LoggerSourceDefault.INSTANCE, "LoggerSource");
-        registerBuiltin(Scoping.class, c -> this::scopedWithin, "Scoping");
+        registerBuiltin(ScopeBoundary.class, c -> this::scopedWithin, "ScopeBoundary");
         // The bus realizes on first resolution — always after every module has
         // bound — so a module-supplied primary Metrics observes its counters
         // instead of the bus freezing the pre-load NoopMetrics builtin. Its

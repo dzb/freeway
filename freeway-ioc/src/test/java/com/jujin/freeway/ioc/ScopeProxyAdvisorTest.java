@@ -305,15 +305,15 @@ class ScopeProxyAdvisorTest {
         Container container = Freeway.create(binder ->
             binder.bind(ScopedCounter.class).to(ScopedCounter.class).scope(Scope.THREAD)
         );
-        Scoping scoping = container.get(Scoping.class);
+        ScopeBoundary boundary = container.get(ScopeBoundary.class);
 
         IllegalStateException noScope = assertThrows(IllegalStateException.class,
             () -> container.get(ScopedCounter.class));
-        assertTrue(noScope.getMessage().contains("container.get(Scoping.class).within"),
+        assertTrue(noScope.getMessage().contains("container.get(ScopeBoundary.class).within"),
             "the message must name the fix, got: " + noScope.getMessage());
 
         AtomicReference<ScopedCounter> firstHolder = new AtomicReference<>();
-        scoping.within(() -> {
+        boundary.within(() -> {
             ScopedCounter first = container.get(ScopedCounter.class);
             firstHolder.set(first);
             ScopedCounter second = container.get(ScopedCounter.class);
@@ -326,7 +326,7 @@ class ScopeProxyAdvisorTest {
 
         assertEquals(1, ScopedCounter.destroyed.get());
 
-        scoping.within(() -> {
+        boundary.within(() -> {
             ScopedCounter third = container.get(ScopedCounter.class);
             assertNotSame(first, third);
             assertEquals(2, ScopedCounter.created.get());
@@ -345,7 +345,7 @@ class ScopeProxyAdvisorTest {
         Container b = Freeway.create(binder ->
             binder.bind(ScopedCounter.class).to(ScopedCounter.class).scope(Scope.THREAD).id("counter"));
 
-        a.get(Scoping.class).within(() -> assertNotSame(
+        a.get(ScopeBoundary.class).within(() -> assertNotSame(
             a.get(ScopedCounter.class, "counter"),
             b.get(ScopedCounter.class, "counter"),
             "each container realizes its own thread-scoped value"));
@@ -361,11 +361,11 @@ class ScopeProxyAdvisorTest {
         Container container = Freeway.create(binder ->
             binder.bind(ScopedCounter.class).to(ScopedCounter.class).scope(Scope.THREAD)
         );
-        Scoping scoping = container.get(Scoping.class);
+        ScopeBoundary boundary = container.get(ScopeBoundary.class);
 
         assertThrows(IllegalStateException.class, () -> container.get(ScopedCounter.class));
 
-        int result = scoping.within(() -> {
+        int result = boundary.within(() -> {
             ScopedCounter first = container.get(ScopedCounter.class);
             ScopedCounter second = container.get(ScopedCounter.class);
             assertSame(first, second);
@@ -376,7 +376,7 @@ class ScopeProxyAdvisorTest {
 
         assertEquals(1, ScopedCounter.destroyed.get());
 
-        scoping.within(() -> {
+        boundary.within(() -> {
             ScopedCounter third = container.get(ScopedCounter.class);
             assertEquals(2, ScopedCounter.created.get());
         });
@@ -392,15 +392,15 @@ class ScopeProxyAdvisorTest {
         Container container = Freeway.create(binder ->
             binder.bind(ScopedCounter.class).to(ScopedCounter.class).scope(Scope.THREAD)
         );
-        Scoping scoping = container.get(Scoping.class);
+        ScopeBoundary boundary = container.get(ScopeBoundary.class);
 
-        scoping.within(() -> {
+        boundary.within(() -> {
             ScopedCounter outer = container.get(ScopedCounter.class);
             assertEquals(1, ScopedCounter.created.get());
             assertEquals(0, ScopedCounter.destroyed.get());
 
             // Nested within() creates a new scope, shadowing the outer
-            scoping.within(() -> {
+            boundary.within(() -> {
                 ScopedCounter inner = container.get(ScopedCounter.class);
                 assertNotSame(outer, inner);
                 assertEquals(2, ScopedCounter.created.get());
@@ -422,9 +422,9 @@ class ScopeProxyAdvisorTest {
         Container container = Freeway.create(binder ->
             binder.bind(ScopedCounter.class).to(ScopedCounter.class).scope(Scope.THREAD)
         );
-        Scoping scoping = container.get(Scoping.class);
+        ScopeBoundary boundary = container.get(ScopeBoundary.class);
 
-        ScopedApi api = scoping.within(() -> container.get(ScopedCounter.class));
+        ScopedApi api = boundary.within(() -> container.get(ScopedCounter.class));
         assertNotNull(api);
     }
 
@@ -436,10 +436,10 @@ class ScopeProxyAdvisorTest {
         Container container = Freeway.create(binder ->
             binder.bind(ScopedCounter.class).to(ScopedCounter.class).scope(Scope.THREAD)
         );
-        Scoping scoping = container.get(Scoping.class);
+        ScopeBoundary boundary = container.get(ScopeBoundary.class);
 
         assertThrows(RuntimeException.class, () ->
-            scoping.within(() -> {
+            boundary.within(() -> {
                 container.get(ScopedCounter.class);
                 assertEquals(1, ScopedCounter.created.get());
                 throw new RuntimeException("boom");
@@ -458,9 +458,9 @@ class ScopeProxyAdvisorTest {
         Container container = Freeway.create(binder ->
             binder.bind(ScopedCounter.class).to(ScopedCounter.class).scope(Scope.THREAD)
         );
-        Scoping scoping = container.get(Scoping.class);
+        ScopeBoundary boundary = container.get(ScopeBoundary.class);
 
-        scoping.within(() -> {
+        boundary.within(() -> {
             container.get(ScopedCounter.class);
         });
 
@@ -497,12 +497,12 @@ class ScopeProxyAdvisorTest {
         Container container = Freeway.create(binder ->
             binder.bind(ScopedCounter.class).to(ScopedCounter.class).scope(Scope.THREAD)
         );
-        Scoping scoping = container.get(Scoping.class);
+        ScopeBoundary boundary = container.get(ScopeBoundary.class);
 
         container.close();
 
         assertThrows(IllegalStateException.class, () ->
-            scoping.within(() -> null)
+            boundary.within(() -> null)
         );
     }
 
@@ -517,10 +517,10 @@ class ScopeProxyAdvisorTest {
         Container container = Freeway.create(binder ->
             binder.bind(ScopedApi.class).to(ScopedCounter.class).scope(Scope.THREAD)
         );
-        Scoping scoping = container.get(Scoping.class);
+        ScopeBoundary boundary = container.get(ScopeBoundary.class);
         ScopedApi api = container.get(ScopedApi.class); // lazy THREAD proxy
 
-        scoping.within(() -> {
+        boundary.within(() -> {
             container.close();
             IllegalStateException ex = assertThrows(IllegalStateException.class, api::id,
                 "invoking a THREAD proxy after close must throw");
@@ -640,18 +640,18 @@ class ScopeProxyAdvisorTest {
                 binder.bind(ScopedSingletonService.class).to(ScopedSingletonService.class);
             }
         );
-        Scoping scoping = container.get(Scoping.class);
+        ScopeBoundary boundary = container.get(ScopeBoundary.class);
 
         ScopedSingletonService service = container.get(ScopedSingletonService.class);
         assertTrue(service.proxied());
 
-        int firstId = scoping.within(() -> {
+        int firstId = boundary.within(() -> {
             int id = service.currentId();
             assertEquals(id, service.currentId()); // same scope, same id
             return id;
         });
 
-        int secondId = scoping.within(service::currentId);
+        int secondId = boundary.within(service::currentId);
         assertNotEquals(firstId, secondId);
 
         assertEquals(2, ScopedCounter.created.get());
