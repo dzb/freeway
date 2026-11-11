@@ -61,7 +61,7 @@ class ConfigCascadeTest {
     }
 
     @Test
-    void autoPrefixesSimpleCliKeysWithFreewayNamespace() {
+    void cliKeysAreLiteralAndNeverEnterTheFrameworkNamespace() {
         Map<String, String> args = ConfigCascade.parseArgs(
             "--profile=dev",
             "--verbose",
@@ -70,26 +70,29 @@ class ConfigCascadeTest {
             "-Dlog.color=always"
         );
 
-        // Simple keys (no dot) get the freeway. prefix
-        assertEquals("dev", args.get("freeway.profile"));
-        assertEquals("true", args.get("freeway.verbose"));
+        // No key is rewritten: a dotless key belongs to the application, even
+        // when it looks like a framework setting.
+        assertEquals("dev", args.get("profile"));
+        assertEquals("true", args.get("verbose"));
+        assertFalse(args.containsKey("freeway.profile"));
+        assertFalse(args.containsKey("freeway.verbose"));
 
-        // Dotted keys are preserved as-is
+        // Dotted keys are literal too.
         assertEquals("Overridden", args.get("app.name"));
         assertEquals("7070", args.get("server.port"));
         assertEquals("always", args.get("log.color"));
 
-        // No unprefixed simple keys leak through
         assertEquals(5, args.size());
     }
 
     @Test
-    void explicitFreewayPrefixStillWorks() {
+    void fullFrameworkKeyIsTakenLiterally() {
         Map<String, String> args = ConfigCascade.parseArgs(
             "--freeway.profile=dev"
         );
 
         assertEquals("dev", args.get("freeway.profile"));
+        assertFalse(args.containsKey("profile"));
         assertEquals(1, args.size());
     }
 
@@ -101,10 +104,10 @@ class ConfigCascadeTest {
             "--ratio", "-2.5"
         );
 
-        assertEquals("-1", args.get("freeway.offset"));
-        assertEquals("-1", args.get("freeway.port"),
+        assertEquals("-1", args.get("offset"));
+        assertEquals("-1", args.get("port"),
             "--port -1 must consume -1 as the value, not treat --port as a boolean");
-        assertEquals("-2.5", args.get("freeway.ratio"));
+        assertEquals("-2.5", args.get("ratio"));
     }
 
     @Test
@@ -167,12 +170,13 @@ class ConfigCascadeTest {
     }
 
     @Test
-    void misspelledFlagBecomesHarmlessUnknownKey() {
+    void misspelledFlagStaysLiteralAndActivatesNothing() {
         // A typo like --profle=dev must not silently activate the wrong
-        // profile; it stays an unknown (harmless) key — frozen behavior.
+        // profile; it stays a literal (harmless) app key.
         Map<String, String> args = ConfigCascade.parseArgs("--profle=dev");
 
-        assertEquals("dev", args.get("freeway.profle"));
+        assertEquals("dev", args.get("profle"));
+        assertFalse(args.containsKey("freeway.profle"));
         assertFalse(args.containsKey("freeway.profile"));
         assertEquals(1, args.size());
     }
@@ -184,7 +188,7 @@ class ConfigCascadeTest {
         Map<String, String> args = ConfigCascade.parseArgs(
             "positional", "--ok=1", "another");
 
-        assertEquals("1", args.get("freeway.ok"));
+        assertEquals("1", args.get("ok"));
         assertEquals(1, args.size());
     }
 
@@ -194,9 +198,9 @@ class ConfigCascadeTest {
             "--port", "--verbose"
         );
 
-        assertEquals("true", args.get("freeway.port"),
+        assertEquals("true", args.get("port"),
             "a following flag must turn the key into a boolean");
-        assertEquals("true", args.get("freeway.verbose"));
+        assertEquals("true", args.get("verbose"));
     }
 
     @Test
@@ -251,15 +255,15 @@ class ConfigCascadeTest {
     }
 
     @Test
-    void propertyStyleAndShortFlagsFollowPrefixingRules() {
+    void propertyStyleAndShortFlagsParseLiterally() {
         Map<String, String> args = ConfigCascade.parseArgs(
             "-Dverbose",
             "-p", "dev",
             "-Dserver.port=9090"
         );
 
-        assertEquals("true", args.get("freeway.verbose"));
-        assertEquals("dev", args.get("freeway.p"));
+        assertEquals("true", args.get("verbose"));
+        assertEquals("dev", args.get("p"));
         assertEquals("9090", args.get("server.port"));
         assertEquals(3, args.size());
     }
@@ -270,7 +274,7 @@ class ConfigCascadeTest {
             "--port", "-1x"
         );
 
-        assertEquals("true", args.get("freeway.port"),
+        assertEquals("true", args.get("port"),
             "a non-numeric dash argument must turn the key into a boolean");
         assertEquals(1, args.size());
     }
@@ -422,9 +426,9 @@ class ConfigCascadeTest {
             "the activation key is stripped from the profile files at load time — "
                 + "only the base layer's value surfaces");
 
-        // Activation via CLI --profile=dev: profiles() and the resolved
-        // freeway.profile value must agree.
-        AppConfig config = ConfigCascade.load(loader, "--profile=dev");
+        // Activation via the full CLI key --freeway.profile=dev: profiles()
+        // and the resolved freeway.profile value must agree.
+        AppConfig config = ConfigCascade.load(loader, "--freeway.profile=dev");
         assertEquals(List.of("dev"), config.profiles());
         assertEquals("dev", value(config, "freeway.profile"),
             "the resolved freeway.profile must agree with config().profiles()");

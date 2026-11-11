@@ -293,7 +293,7 @@ FreewayApp.run(
 | **优先级** | 复杂（多层覆盖） | 中等 | 中等 | **显式声明的 tier** |
 | **热重载** | Spring DevTools（有限） | quarkus:dev（优秀） | 一般 | **WatchService 文件级热重载** |
 | **环境变量映射** | spring.config.import | %prod Profile | 直接映射 | **FREEWAY_* → freeway.*（可配前缀）** |
-| **CLI 参数** | --key=value | --key=value | --key=value | **--key=value + 无点自动加 freeway. 前缀** |
+| **CLI 参数** | --key=value | --key=value | --key=value | **--key=value，键按字面量解析（框架键写全称）** |
 
 ### Freeway 的配置级联（5 个显式 tier）
 

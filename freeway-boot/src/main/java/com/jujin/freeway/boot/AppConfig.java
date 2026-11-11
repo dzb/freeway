@@ -47,7 +47,7 @@ public interface AppConfig extends AutoCloseable {
      * neither is a base layer: a JVM system property
      * ({@code -Dfreeway.profile=dev}) and an extra file named by
      * {@code freeway.config.file}. Use a base file, {@code FREEWAY_PROFILE}
-     * or {@code --profile=dev} to activate one.
+     * or {@code --freeway.profile=dev} to activate one.
      */
     List<String> profiles();
 

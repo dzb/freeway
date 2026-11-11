@@ -98,14 +98,15 @@ CLI 参数（`--freeway.config.file=...`）同样无效——启动时会打 WAR
 
 激活 profile 的只有**基础层**：类路径与工作目录的 `application.properties`/
 `application.json`、映射后的环境变量（`FREEWAY_PROFILE`）、CLI 参数
-（`--profile=dev`）。profile 变体文件里重写 `freeway.profile` 会被剥离，避免
+（`--freeway.profile=dev`）。profile 变体文件里重写 `freeway.profile` 会被剥离，避免
 `profiles()` 与解析值互相矛盾；另外两个渠道只写入普通配置值、**不激活 profile**：
 `-Dfreeway.profile=dev`（JVM 系统属性）与 `freeway.config.file` 附加文件。
 
-### CLI 快捷规则
+### CLI 键规则
 
-- 不含点号的键自动加 `freeway.` 前缀：`--profile=dev` 等价于 `--freeway.profile=dev`
-- 含点号的键透传不变：`--app.name=foo` → `app.name=foo`
+- 键名按**字面量**解析，不加任何前缀：`--app.name=foo` → `app.name=foo`，
+  `--mode=prod` → `mode=prod`（应用键不会被吸进框架命名空间）
+- 框架键必须写全称：`--freeway.profile=dev`、`--freeway.http.server.port=8080`
 
 ### 示例
 
@@ -787,7 +788,7 @@ freeway.http.ssl.key-store-password  →  FREEWAY_HTTP_SSL_KEY-STORE-PASSWORD
 freeway.db.pool.max-size             →  FREEWAY_DB_POOL_MAX-SIZE
 ```
 
-shell 的 `export` 不接受含 `-` 的名字，这是 shell 的限制、不是映射的例外：用 `-D`、`env 'NAME=value'`、systemd `Environment=` 或容器 `-e` 传入。变量名写错（例如用 `_` 代替 `-`）不会被特殊处理——它会映射成另一个键名；若没人声明那个键，这个映射出的键名会进入未知键检测：与词表中某个键相距 ≤2 时启动期 WARN 并给出拼写建议，更远则保持静默（见上一节「未知键检测」）——两种情形下该配置都不生效，CLI 拼错参数同理。
+shell 的 `export` 不接受含 `-` 的名字，这是 shell 的限制、不是映射的例外：用 `-D`、`env 'NAME=value'`、systemd `Environment=` 或容器 `-e` 传入。变量名写错（例如用 `_` 代替 `-`）不会被特殊处理——它会映射成另一个键名；若没人声明那个键，这个映射出的键名会进入未知键检测：与词表中某个键相距 ≤2 时启动期 WARN 并给出拼写建议，更远则保持静默（见上一节「未知键检测」）——两种情形下该配置都不生效。CLI 里拼错完整的 `freeway.*` 键同理；不含 `freeway.` 前缀的键按应用键处理，不进入该检测。
 
 例外（读自 JVM 系统属性，不参与上述级联）：`freeway.cloud.secret.file`、
 `freeway.cloud.secret.keys` —— 两者只能 `-D` 设置，否则静默无效。

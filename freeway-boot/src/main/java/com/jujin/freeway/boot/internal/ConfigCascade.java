@@ -385,11 +385,10 @@ public final class ConfigCascade {
      *   <li>{@code -X value} (short flag, two chars including the dash)</li>
      * </ul>
      *
-     * <p>Keys without a dot are treated as convenience shortcuts for Freeway
-     * framework config and automatically receive the {@code freeway.} prefix.
-     * Dotted keys (like {@code server.port} or {@code freeway.profile}) are
-     * preserved as-is, allowing application-level config to pass through
-     * unchanged.
+     * <p>Every key is taken literally — no prefix is added, dotted or not.
+     * Framework keys are spelled in full ({@code --freeway.profile=dev}), so an
+     * application key such as {@code --mode=prod} reaches the application as
+     * {@code mode} instead of being rewritten into the framework namespace.
      */
     static Map<String, String> parseArgs(String... args) {
         if (args != null) {
@@ -449,7 +448,7 @@ public final class ConfigCascade {
     /**
      * Rejects CLI arguments whose key is empty (bare {@code --} / {@code -D})
      * or contains {@code =} (e.g. {@code --=x}), which would otherwise
-     * produce garbage keys like {@code freeway.} or {@code freeway.=x}.
+     * produce a nameless key nothing can read.
      */
     private static String validateCliKey(String key, String originalArg) {
         if (key.isEmpty()) {
@@ -462,7 +461,7 @@ public final class ConfigCascade {
                 "Invalid command-line argument '" + originalArg
                     + "': option key must not contain '=' (use --key=value)");
         }
-        return applyFreewayPrefix(key);
+        return key;
     }
 
     /**
@@ -473,15 +472,6 @@ public final class ConfigCascade {
     private static boolean isConsumableValue(String next) {
         return !next.startsWith("-")
             || NEGATIVE_NUMBER_PATTERN.matcher(next).matches();
-    }
-
-    /**
-     * If {@code key} contains no dot separator it is treated as a convenience
-     * shortcut for a Freeway framework property and gets the {@code freeway.}
-     * namespace prefix. Dotted keys are returned unchanged.
-     */
-    private static String applyFreewayPrefix(String key) {
-        return key.indexOf('.') < 0 ? "freeway." + key : key;
     }
 
     private static List<String> parseProfiles(String value) {

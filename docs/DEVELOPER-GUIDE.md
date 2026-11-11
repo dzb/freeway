@@ -894,10 +894,9 @@ resolve to `PATH`). To read a raw variable, map it via the prefix or call
 Modules slot their own sources between the framework tiers by declaring an
 `order()` — precedence is declared, never derived from module install order.
 
-CLI keys without a dot (e.g. `--profile=dev`) auto-receive the `freeway.`
-prefix, so `--profile=dev` and `--freeway.profile=dev` are equivalent.
-Dotted keys (`--app.name=foo`) pass through unchanged.
-Activate profiles: `--profile=dev` or `--freeway.profile=dev`.
+CLI keys are taken literally — no prefix is added, dotted or not. An
+application key (`--mode=prod`) stays `mode=prod`, and a framework key is
+written in full: activate profiles with `--freeway.profile=dev`.
 
 Three CLI styles are supported: `--key=value`, `--key value` / `--key`
 (boolean flag, value defaults to `"true"`; a following negative number like

@@ -172,10 +172,10 @@ from module install order:
 | 15 | module-contributed | e.g. the cloud secret store |
 | 20 | config files | classpath baseline + filesystem overrides |
 
-**CLI shortcut:** a key without a dot takes the `freeway.` prefix
-(`--profile=dev` ≡ `--freeway.profile=dev`); dotted keys pass through
-unchanged. A positional argument is ignored with a WARN; a bare `--` / `-D` or
-a key containing `=` is rejected.
+**CLI keys are literal:** no prefix is added, dotted or not — `--app.name=foo`
+is `app.name`, and a framework key is written in full
+(`--freeway.profile=dev`). A positional argument is ignored with a WARN; a bare
+`--` / `-D` or a key containing `=` is rejected.
 
 **Files:** each source merges `application.properties` → `application.json` →
 `application-{profile}.properties` → `application-{profile}.json`, later

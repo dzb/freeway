@@ -19,6 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **CLI 不再自动给无点键加 `freeway.` 前缀**（`freeway-boot`）：键名一律按字面量解析，
+  `--mode=prod` 现在就是应用键 `mode`，不再被改写成 `freeway.mode`——旧行为会把应用配置静默
+  吸进框架命名空间，且拼出的 `freeway.port` 之类键没有任何模块读取、连未知键检测也因根前缀
+  无法点名。框架键写全称（`--freeway.profile=dev`、`--freeway.http.server.port=8080`）；
+  `--profile=dev` 不再激活 profile，它就是普通的应用键 `profile`，没有任何特殊处理。
 - **`Scoping` 改名 `ScopeBoundary`（`freeway-ioc`）**：公共类型、内置服务 id 与报错文本同步；
   `Scoping.within` → `ScopeBoundary.within`。类型名从“作用域化机制”改为“边界入口”，与
   `Defer`（动作能力）、`ScopedCache`（值原语）分层一致；行为不变。

@@ -1135,8 +1135,8 @@ runtime.close();                           // 停止应用
 5. CLI 参数（`--key=value`、`--key value`、`--key`、`-Dkey=value`）
 
 
-Dotted keys（如 `--app.name=foo`）原样透传。不含 `.` 的简单键自动加 `freeway.` 前缀。
-激活 profile：`--profile=dev`（等同于 `--freeway.profile=dev`）
+CLI 键按字面量解析，不加任何前缀：`--app.name=foo` → `app.name`，`--mode=prod` → `mode`。
+框架键写全称：激活 profile 用 `--freeway.profile=dev`。
 
 ## 测试模式
 
