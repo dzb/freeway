@@ -158,7 +158,7 @@ WebSocket; Undertow and Jetty swap in through a module.
 Request-scoped services are opt-in: set `freeway.http.request-scope.enabled=true`
 and `Scope.THREAD` services/caches live for one request (after CORS/health,
 before application filters); see
-[ScopeBoundary / ScopeFilter](docs/DEVELOPER-GUIDE.md#scope-primitives-defer--scopedcache--scopeboundary).
+[ScopeBoundary / ScopeFilter](docs/DEVELOPER-GUIDE.md#request-scoped-services-scopefilter).
 
 ### DB
 `Database` SQL execution, `Orm` CRUD/upsert, schema-less `Row`, a programmatic

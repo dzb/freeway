@@ -1157,6 +1157,78 @@ binder.contribute(HttpFilter.class).add(new AuthFilter());
 
 Built-in filters: `CorsFilter` (configurable CORS via `freeway.http.cors.*` keys) and `HealthFilter` (health endpoint, see below). Request timing is measured by `HttpServer` and published as `HttpExchangeEvent`; the optional text access log (`freeway.http.access-log.enabled`) is an observer of that event, not a filter, so it also covers preflight and health probes.
 
+#### Request-scoped services (`ScopeFilter`)
+
+`ScopeFilter` is the opt-in HTTP boundary for `Scope.THREAD` services and
+`ScopedCache` values. Enable it with
+`freeway.http.request-scope.enabled=true`, or contribute it explicitly:
+
+```java
+binder.contribute(HttpFilter.class).add(ScopeFilter.class);
+```
+
+```properties
+# one container value scope per request
+freeway.http.request-scope.enabled=true
+```
+
+It runs at order **-40** — after the built-in CORS (`-100`) and health (`-50`)
+filters, before application filters (`0`). Each request therefore gets one
+scope; values and `Scope.THREAD` services are reused inside it and released when
+the request finishes, on both the normal and exception paths.
+
+**Use it when the request needs shared, request-lived state:**
+
+| Scenario | Put in the scope |
+|---|---|
+| Tenant / authentication / principal context | tenant id, schema, user, roles, locale |
+| Request-level permission or feature caches | permission set, tenant config, feature flags |
+| Audit / business operation context | actor, operation, resource id, idempotency key |
+| Request-level temporary resources | temp files/directories, parsers, request-scoped collectors |
+| Batch/aggregation APIs | memoized lookups shared by several services in one request |
+| Security policy context | data scope, authorization context, rate-limit context |
+
+Typical composition:
+
+```text
+ScopeFilter (-40)
+  ├── auth/tenant filter (-30)      fills RequestContext (Scope.THREAD)
+  ├── authorization filter (-20)    reads RequestContext + ScopedCache
+  ├── route handler
+  │     ├── singleton service through an interface proxy
+  │     └── db.transaction(...)     // Defer owns commit/rollback
+  └── request end: cleanup, @PreDestroy
+```
+
+`ScopeFilter` is not a transaction boundary: keep commit/rollback and deferred
+events in `Defer`. It also does not propagate to child threads; use
+`ContextExecutor` for async work, and do not hand request-scoped service
+instances to work that outlives the request.
+
+**Do not use it for:**
+
+| Avoid | Why |
+|---|---|
+| Global caches or HTTP session state | the scope ends with the request |
+| DB connections or transactions | use the pool and `Defer`; holding a connection per request can exhaust it |
+| Stateless/high-QPS `/ping`, static or health routes | pure per-request allocation with no scoped state |
+| SSE / WebSocket connections | use a per-message/callback boundary, not the whole connection |
+| Background jobs | the scope is closed when the response completes; pass immutable data |
+| Expensive resources | construction/`@PreDestroy` per request can cost more than it saves |
+
+Two implementation notes:
+
+- A class-based route handler is built at composition time, so it cannot take a
+  `Scope.THREAD` concrete type in its constructor; inject an **interface proxy**
+  into a singleton and call it during the request.
+- `ScopeFilter` is global to the server. For only a subset of routes, contribute
+  a custom filter that decides whether to call `ScopeBoundary.withinChecked(...)`.
+
+The filter is intentionally off by default: the per-request `ScopeSession`
+(including its small maps) and any scoped service construction are costs paid by
+every enabled request, so enable it when at least two consumers share
+request-scoped context — not for a completely stateless API.
+
 ### Health Check
 
 The health endpoint is powered by `HealthFilter` and `HealthCheck`. By default it responds `{"status":"ok"}` at `GET /healthz`. Customize the path via config or replace the check logic:
@@ -2072,12 +2144,7 @@ ScopedCache.within(() -> {
 
 Nesting is order-independent: a cache scope opened inside an action scope attaches to it, and an action scope opened inside a cache scope can still read the outer values during its drain. The value **lifetime** (until the owning scope closes) and the value **access window** (the cache block / action drain) are separate: outside the window `ScopedCache.isActive()` is false and `get` creates uncached values, but the attached values are still cleaned at the action scope's close. Thread-scoped services (`ScopeBoundary.within`) follow the same attach rule.
 
-For an HTTP request boundary, enable `freeway.http.request-scope.enabled=true`
-or contribute a `ScopeFilter` yourself. The filter opens one container value
-scope per request (after CORS/health, before application filters), so
-`Scope.THREAD` services and scoped cache values live for the request and are
-released when it completes. It is opt-in: the framework still opens no scope on
-its own, and it does not propagate to async work — use `ContextExecutor` there.
+For HTTP request boundaries, see [Request-scoped services](#request-scoped-services-scopefilter).
 
 **JSON parsing limits (enforced by the built-in parser):** a single string
 value is capped at 10 MB, a single number token at 10 MB, and streamed input

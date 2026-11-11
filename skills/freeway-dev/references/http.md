@@ -21,6 +21,8 @@ Examples below are minimal snippets. They omit imports and app-specific domain t
 - `freeway.http.server.shutdown-grace`
 - `freeway.http.cors.*`
 - `freeway.http.request-scope.enabled` (opt-in per-request value scope; `Scope.THREAD` services/caches live for one request)
+  Use for tenant/auth context, request-level permission caches, audit context and request-lived resources;
+  not for DB connections/transactions, global state, SSE/WebSocket sessions or background jobs. It does not propagate to child threads.
 - `freeway.http.health.enabled`
 - `freeway.http.health.path`
 - `freeway.http.h2.reset-burst-limit` (default 200, `0` disables; built-in engine only — `HttpModule` wires it into `FreewayHttpEngine.Wiring`)
