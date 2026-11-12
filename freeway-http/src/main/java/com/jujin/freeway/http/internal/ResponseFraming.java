@@ -1,0 +1,57 @@
+package com.jujin.freeway.http.internal;
+
+import com.jujin.freeway.http.HttpServerConfig;
+
+/**
+ * Single source of truth for the response-framing combination rules:
+ * gzip applicability and body suppression (HEAD / 204 / 205 / 304). The
+ * chunked-vs-Content-Length choice stays in the transport writers, but every
+ * shared rule is decided here so a change cannot diverge between HTTP/1.1,
+ * HTTP/2, and the adapters.
+ *
+ * <p>Internal to the HTTP module — not part of the public application API.</p>
+ */
+public final class ResponseFraming {
+
+    private ResponseFraming() {}
+
+    /** gzip applies to buffered bodies only on non-206, body-allowed,
+     *  min-size, client-negotiated, compressible responses. */
+    public static boolean shouldGzip(HttpServerConfig.CompressionConfig compression,
+            int status, boolean bodyAllowed, long bodyLength,
+            boolean acceptsGzip, boolean compressible) {
+        return compression.enabled() && status != 206 && bodyAllowed
+            && bodyLength >= compression.minSize()
+            && acceptsGzip && compressible;
+    }
+
+    /** Streaming variant (also the file path — an unknown-at-decision-time
+     *  length cannot be tested against the min-size gate): the body length is
+     *  not known here, so the min-size gate cannot apply. */
+    public static boolean shouldGzipStream(
+            HttpServerConfig.CompressionConfig compression,
+            int status, boolean bodyAllowed,
+            boolean acceptsGzip, boolean compressible) {
+        return compression.enabled() && status != 206 && bodyAllowed
+            && acceptsGzip && compressible;
+    }
+
+    /** True when the wire must not carry body bytes: HEAD requests and
+     *  204/205/304 statuses (which {@code bodyAllowed} already excludes). */
+    public static boolean suppressBodyBytes(boolean bodyAllowed, String method) {
+        return !bodyAllowed || "HEAD".equalsIgnoreCase(method);
+    }
+
+    /** True when this response header must be omitted from the wire.
+     *
+     *  <p>RFC 9110 §8.6: a response without a body (204/205/304) must not
+     *  carry {@code Content-Length}, regardless of who set it — a handler-set
+     *  value must not leak next to a suppressed body. HEAD keeps it
+     *  (§9.3.2: same headers as GET) because this asks {@code bodyAllowed},
+     *  which is status-based. Both protocol writers call this, so the rule
+     *  cannot hold on one and not the other.</p>
+     */
+    public static boolean suppressesHeader(String name, boolean bodyAllowed) {
+        return !bodyAllowed && "Content-Length".equalsIgnoreCase(name);
+    }
+}

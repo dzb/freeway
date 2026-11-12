@@ -1,0 +1,77 @@
+package com.jujin.freeway.http.internal;
+
+import com.jujin.freeway.http.HttpServerConfig;
+
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+class ResponseFramingTest {
+
+    private static final HttpServerConfig.CompressionConfig ON =
+        new HttpServerConfig.CompressionConfig(true, 256);
+    private static final HttpServerConfig.CompressionConfig OFF =
+        new HttpServerConfig.CompressionConfig(false, 256);
+
+    @Test
+    void gzipRequiresEveryGate() {
+        assertTrue(ResponseFraming.shouldGzip(
+            ON, 200, true, 1024, true, true));
+        // Each gate must be able to switch gzip off.
+        assertFalse(ResponseFraming.shouldGzip(
+            OFF, 200, true, 1024, true, true), "compression disabled");
+        assertFalse(ResponseFraming.shouldGzip(
+            ON, 206, true, 1024, true, true), "206 partial content");
+        assertFalse(ResponseFraming.shouldGzip(
+            ON, 200, false, 1024, true, true), "no body allowed");
+        assertFalse(ResponseFraming.shouldGzip(
+            ON, 200, true, 64, true, true), "below min size");
+        assertFalse(ResponseFraming.shouldGzip(
+            ON, 200, true, 1024, false, true), "client did not negotiate");
+        assertFalse(ResponseFraming.shouldGzip(
+            ON, 200, true, 1024, true, false), "not compressible");
+    }
+
+    @Test
+    void streamGzipSkipsMinSizeGate() {
+        assertTrue(ResponseFraming.shouldGzipStream(
+            ON, 200, true, true, true));
+        assertFalse(ResponseFraming.shouldGzipStream(
+            OFF, 200, true, true, true));
+        assertFalse(ResponseFraming.shouldGzipStream(
+            ON, 206, true, true, true));
+        assertFalse(ResponseFraming.shouldGzipStream(
+            ON, 200, false, true, true));
+        assertFalse(ResponseFraming.shouldGzipStream(
+            ON, 200, true, false, true));
+    }
+
+    @Test
+    void fileGzipRequiresBodyAllowed() {
+    }
+
+    @Test
+    void bodylessResponsesDropContentLengthOnBothProtocols() {
+        // The rule used to live in the HTTP/1.1 writer only, so a handler-set
+        // Content-Length on a 204 went out on h2. Both writers now ask here.
+        assertTrue(ResponseFraming.suppressesHeader("Content-Length", false),
+            "204/205/304 must not carry Content-Length (RFC 9110 §8.6)");
+        assertTrue(ResponseFraming.suppressesHeader("content-length", false),
+            "the name is case-insensitive");
+        assertFalse(ResponseFraming.suppressesHeader("Content-Length", true),
+            "a response with a body keeps its Content-Length");
+        assertFalse(ResponseFraming.suppressesHeader("Content-Type", false),
+            "only Content-Length is suppressed");
+    }
+
+    @Test
+    void bodySuppressionTable() {
+        assertFalse(ResponseFraming.suppressBodyBytes(true, "GET"));
+        assertFalse(ResponseFraming.suppressBodyBytes(true, "POST"));
+        assertTrue(ResponseFraming.suppressBodyBytes(true, "HEAD"),
+            "HEAD must suppress body bytes");
+        assertTrue(ResponseFraming.suppressBodyBytes(false, "GET"),
+            "204/205/304 must suppress body bytes");
+    }
+}

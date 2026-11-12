@@ -41,6 +41,56 @@ public final class HttpHeaders {
         return true;
     }
 
+    /**
+     * Refuses a header name that is not a non-empty RFC 7230 token.
+     *
+     * @throws IllegalArgumentException if the name is null or not a token
+     */
+    public static void requireValidName(String name) {
+        if (name == null) {
+            throw new IllegalArgumentException("Header name must not be null");
+        }
+        if (!isToken(name)) {
+            throw new IllegalArgumentException("Invalid header name: " + name);
+        }
+    }
+
+    /**
+     * Refuses a header value containing control characters other than HTAB,
+     * or one that is not fully encodable as ISO-8859-1.
+     *
+     * <p>The control-character rule is the exact predicate {@code
+     * Http1xParser} enforces on inbound values, so a value accepted on the way
+     * in is one the framework is willing to emit on the way out (preventing
+     * header injection and framing corruption). ISO-8859-1 is the charset the
+     * HTTP/1.1 writers serialize header values with; anything above U+00FF
+     * would otherwise be silently replaced by {@code ?} on the wire.</p>
+     *
+     * @throws IllegalArgumentException if the value contains a forbidden
+     *         control character or one that is not representable in ISO-8859-1
+     */
+    public static void requireValidValue(String value) {
+        if (value == null) return;
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            // Mirrors Http1xParser's inbound rule: CTLs and DEL rejected,
+            // HTAB allowed (RFC 9110 field-value).
+            if ((c < 0x20 && c != '\t') || c == 0x7F) {
+                throw new IllegalArgumentException(
+                    "Header value must not contain control characters (offending char at index "
+                        + i + "): " + value.substring(0, Math.min(i + 10, value.length())) + "...");
+            }
+        }
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (c > 0xFF) {
+                throw new IllegalArgumentException(
+                    "Header value must be ISO-8859-1 encodable (non-Latin-1 character at index "
+                        + i + "): " + value.substring(0, Math.min(i + 10, value.length())) + "...");
+            }
+        }
+    }
+
     /** Merges a token into an existing {@code Vary} value (or returns the
      *  token alone), without duplicating it — case-insensitive. */
     public static String mergeVary(String current, String token) {
