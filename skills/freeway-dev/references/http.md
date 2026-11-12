@@ -9,6 +9,8 @@ Examples below are minimal snippets. They omit imports and app-specific domain t
 - `FreewayHttpEngine`
 - `HttpServer`
 - `HttpContext`
+- `HttpTransport`, `ResponseHead`, `HttpContextSupport` (engine SPI — see below)
+- `WebSocketTransport`, `WebSocketSessionSupport`
 - `Route`, `RouteGroup`, `WebSocketRoute`, `WebSocketGroup`
 - `HttpFilter`, `ScopeFilter`, `ErrorHandler`, `HealthFilter`, `HealthCheck`
 - `StaticResourceMount`
@@ -61,6 +63,39 @@ binder.contribute(StaticResourceMount.class)
     .add(StaticResourceMount.classpath("/", "/public"))
     .add(StaticResourceMount.directory("/uploads", Path.of("/var/uploads")));
 ```
+
+## Writing an engine adapter
+
+An engine plugs into the seam by **composition** — no framework class is
+subclassed (`AbstractHttpContext`/`AbstractWebSocketSession` are gone):
+
+1. Implement `HttpTransport` — the request bytes in (`method`, `path`,
+   `queryParams`, `headers`, `bodyStream`, TLS/remote) and the response bytes
+   out (`writeResponse(head, byte[])`, `openSse`; the stream/file defaults
+   buffer, override them to stream). Contract edges: the request snapshots are
+   immutable with lower-cased names, `bodyStream()` returns the
+   transport-framed stream and translates native limits (e.g. Undertow's
+   `RequestTooBigException`) into `BodyTooLargeException`, and **no body bytes
+   are written when `head.sendsBodyBytes()` is false** — a HEAD keeps the
+   declared `Content-Length` without reading the source.
+2. Build one transport + one `HttpContextSupport` **per request**:
+   `new HttpContextSupport(transport, jsonCodec, coercer, config.maxBodySize(),
+   config.compression(), correlationId)` and pass *that* to
+   `ExchangeHandler.handle`. There is no `reset()` and no pool — per-request
+   state cannot leak, and the support owns status/header validation, `Date`,
+   `Content-Length`, the gzip decision, `Vary`, body limiting and coercion.
+3. Serialize the committed `ResponseHead` (status, `headRequest`, headers in
+   wire order). `Content-Length` is already final in `head.headers()`; add only
+   your protocol's own framing (`Connection`, chunked). Apply headers by
+   replace-per-name so the head's list is the wire's final state.
+4. WebSocket: implement `WebSocketTransport` (frame operations; `close` gets a
+   reason already truncated to 123 bytes) and compose
+   `WebSocketSessionSupport` for the endpoint.
+
+`HttpServer.create(engine, config, pipeline)` is the entry point for the new
+engine; the testkit contracts (`ContextContract`, `CompressionContract`,
+`HeaderBudgetContract`, `RemoteRpcContract`, `WebSocketUpgradeContract`) are
+what it must pass.
 
 ## Notes
 

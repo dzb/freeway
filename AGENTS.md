@@ -55,7 +55,7 @@ transitively) plus JUnit at test scope. Anything else belongs in an ext adapter.
     `FlowDriverDefault`, `FlowEngineDefault` and the twelve cloud defaults.
   - `XImpl` — it cannot: container-internal assembly (`ContainerImpl`,
     `BindingImpl`, `DatabaseImpl`), engine-internal components
-    (`HttpContextImpl`, `ExchangeMetaImpl`), or per-owner types that coexist with
+    (`HttpTransportImpl`, `ExchangeMetaImpl`), or per-owner types that coexist with
     other implementations (`PooledConnectionImpl`). A type stays `XDefault` even
     where the framework wires it concretely.
   - Substituting a role means honoring its whole seam, not just its lookups:
@@ -140,11 +140,12 @@ One criterion, from which most of the rest follow:
 > to *relocate* the fact — into a constructor argument, a single owning type, a
 > shape that cannot express the mistake — not to add the check that was forgotten.
 > `maxBodySize` leaking across keep-alive requests is the shape of it: the
-> configured ceiling became a **final constructor input** (`baseMaxBodySize`), so
-> an engine cannot fail to *set* it, and the mutable value is only the per-request
-> copy, restored by `resetMaxBodySize()` in the one place a reused context
-> resets. The reset did not disappear — what moved is which of the two numbers is
-> a fact. Adding the check is the last resort, not the first.
+> configured ceiling became a **constructor input of the per-request exchange
+> support** (`HttpContextSupport`), so an engine cannot fail to *set* it, and
+> there is no reset left to forget — the object dies with its request. The same
+> defect was first fixed by keeping a base value plus `resetMaxBodySize()` in the
+> one place a reused context reset; relocating the *lifetime* is what finally
+> deleted the reset. Adding the check is the last resort, not the first.
 
 The judgment procedure that makes this usable on code the rules never mention:
 
@@ -187,14 +188,17 @@ nothing.
 
 ### Extending versus composing
 
-- **Composition over inheritance, with four named exceptions.** Extension happens
-  through binding substitution, contribution, `.primary()` and proxy decoration —
-  never by subclassing a framework type. A new `extends` must name its exception:
-  language-mandated (exceptions, JDK callbacks), true is-a (final, closed set),
-  closed protocol hierarchies (invisible outside their package), or implementation
-  shared with third-party adapters. Reusing `internal` logic across modules means
-  promoting the smallest possible interface — copying it requires a comment
-  pointing back at the source.
+- **Composition over inheritance, with three named exceptions.** Extension happens
+  through binding substitution, contribution, `.primary()`, proxy decoration and
+  SPI composition — never by subclassing a framework type. A new `extends` must
+  name its exception: language-mandated (exceptions, JDK callbacks), true is-a
+  (final, closed set), or closed protocol hierarchies (invisible outside their
+  package). Third-party adapters compose the shared policy objects
+  (`HttpContextSupport`, `WebSocketSessionSupport`) over their own transport
+  implementations instead of inheriting them, so "implementation shared with
+  third-party adapters" is no longer an exception that exists. Reusing
+  `internal` logic across modules means promoting the smallest possible
+  interface — copying it requires a comment pointing back at the source.
 - **Who may hold the `Container`.** It is the framework's central abstraction, so
   handing one to a collaborator is an intrusion: that collaborator can reach
   everything, and the boundary the handoff was meant to mark is gone. **The test
@@ -345,13 +349,15 @@ enforces.
   repeated named parameters.
 - **Adapters**: a third-party engine's contract tests must pin the
   contract-typed edges no type enforces — `maxBodySize` accounting through the
-  shared `AbstractHttpContext.readBody` (413), which delegates to the one limiter
-  (`http.internal.LimitedInputStream`) the built-in engine runs, so adapter and
+  composed `HttpContextSupport.body()` (413), which runs the one limiter
+  (`http.internal.LimitedInputStream`) every engine runs, so adapter and
   built-in 413 behaviour are the same code rather than two loops that happen to
-  agree; **`maxBodySize` per-request reset** — a reused context takes the
-  configured limit as a constructor argument and calls `resetMaxBodySize()` from
-  its own `reset()`, so a filter's raised limit cannot become the connection's
-  ceiling; gzip negotiation through the shared `Compression`,
+  agree; the **transport contract** — an adapter's `HttpTransport` returns
+  immutable request snapshots, writes no body bytes when
+  `ResponseHead.sendsBodyBytes()` is false (a HEAD keeps the declared
+  `Content-Length` without reading the source), and translates native body
+  limits (Undertow's `MAX_ENTITY_SIZE`) into `BodyTooLargeException` inside
+  `bodyStream()`; gzip negotiation through the shared `Compression`,
   `ExchangeHandler.websocket` consulted for every upgrade candidate, and every
   `HttpServerConfig` field honored or reported at startup.
 

@@ -114,7 +114,16 @@ freeway-commons         zero deps
   rides `engine.start(config, handler)` down into the engine, the pipeline is
   compiled into the `ExchangeHandler` above it and never crosses intact, and
   `HttpContext` is where both meet per request (writers partitioned by phase).
-  Route path variables use `:name` or
+  The seam is implemented by composition, not inheritance: every engine
+  (built-in, Undertow, Jetty) builds one `HttpTransport` (its request bytes in,
+  response bytes out) per request and hands it to the final
+  `HttpContextSupport`, which implements `HttpContext` and owns the shared
+  policy — status/header validation, `Date`, `Content-Length`, the gzip
+  decision, `Vary`, body limiting, JSON/coercion. An adapter plugs in by
+  implementing `HttpTransport` (and `WebSocketTransport` for upgrades) and
+  composing `WebSocketSessionSupport`; no framework class is subclassed, and
+  `ResponseHead` is the immutable snapshot of the committed response each
+  transport serializes. Route path variables use `:name` or
   `{name}`, with `{name:regex}` for constraints.
 - **DB** — `Database` is the entry point: named params (`:name`/`$name`),
   programmatic transactions, built-in pooling, dialect auto-detection from the

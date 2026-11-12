@@ -19,6 +19,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **HTTP/WebSocket 扩展点改为组合**（`freeway-http`）：删除框架类型之间的实现继承
+  （`AbstractHttpContext`、`AbstractWebSocketSession` 及其子类）。新增 `HttpTransport` /
+  `WebSocketTransport` 两个 SPI 与 final 的 `HttpContextSupport` /
+  `WebSocketSessionSupport`；内建引擎类型 `HttpContextImpl` 改名 `HttpTransportImpl`，
+  `WebSocketSessionImpl` 拆成 `WebSocketConnection`（帧与连接状态）+ support。状态码/头校验、
+  `Date`、`Content-Length`、gzip 决策、`Vary`、body 上限、JSON/强转现在只有一份实现，
+  三个引擎行为一致。行为变化：
+  - `Content-Length` 框架权威：`output(byte[])` 用实际提交的字节数（gzip 后用压缩后长度）
+    覆盖 handler 设置的值；`output(InputStream, len)` 用 `len`，未知时删除；204/205/304 一律
+    删除；HEAD 保留与 GET 相同的长度且不读响应源。
+  - **每请求 exchange**：不再有 `reset`/`resetMaxBodySize`/`ThreadLocal` 池；transport 与
+    support 每请求新建（JMH 端到端多约 64 ns/op），换来复位义务与状态串扰失败模式消失。
+  - SSE 不再写 `Connection: keep-alive`：HTTP/1 writer 写 `Connection: close`，HTTP/2 过滤
+    该头，容器适配器交给容器决定。
+  - WebSocket close reason 统一截断到 123 字节（UTF-8 码点边界），内建引擎不再抛
+    `IllegalArgumentException`。
+  - 适配器迁移路径：`UndertowHttpContext`/`JettyHttpContext` 改为实现 `HttpTransport`，
+    会话改为组合 `WebSocketSessionSupport`；编译错误即迁移。
 - **CLI 不再自动给无点键加 `freeway.` 前缀**（`freeway-boot`）：键名一律按字面量解析，
   `--mode=prod` 现在就是应用键 `mode`，不再被改写成 `freeway.mode`——旧行为会把应用配置静默
   吸进框架命名空间，且拼出的 `freeway.port` 之类键没有任何模块读取、连未知键检测也因根前缀
