@@ -11,13 +11,13 @@ import java.util.function.LongSupplier;
  * The one body-size limiter for engine-owned bodies: a stream that stops at
  * {@code limit} and throws {@link BodyTooLargeException} past it.
  *
- * <p>Single implementation on purpose. {@code AbstractHttpContext#readBody}
- * (the adapter seam) and {@code RequestBody} (the built-in engine) both need
- * "read this body, refuse to exceed the configured size", and having two of
- * them meant the documented cross-engine guarantee — that 413 accounting is
- * identical everywhere — was enforced by nothing. The two happened to agree
- * on every case {@code BodyLimitParityTest} explores, so this was a latent
- * divergence rather than a live bug; what changed is that the guarantee is now
+ * <p>Single implementation on purpose. {@code HttpContextSupport} (the
+ * shared policy object every engine composes) needs "read this body, refuse
+ * to exceed the configured size", and having two of them meant the
+ * documented cross-engine guarantee — that 413 accounting is identical
+ * everywhere — was enforced by nothing. The two happened to agree on every
+ * case {@code BodyLimitParityTest} explores, so this was a latent divergence
+ * rather than a live bug; what changed is that the guarantee is now
  * structural instead of accidental.
  *
  * <p>The scope is the bodies the engine hands over. A multipart part has its
@@ -30,7 +30,7 @@ import java.util.function.LongSupplier;
  * only works where nothing upstream has already capped the read.
  *
  * <p>Lives in {@code http.internal} rather than {@code engine} because the
- * shared party is the root package's {@code AbstractHttpContext}, and Java
+ * shared party is the root package's {@code HttpContextSupport}, and Java
  * has no sub-package visibility — the same reason {@code HttpUtils} sits here.
  *
  * <p>Two details that a naive read loop gets wrong, and that the engines'

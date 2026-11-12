@@ -4,7 +4,7 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
-import com.jujin.freeway.http.StubHttpContext;
+import com.jujin.freeway.http.TestExchange;
 import com.jujin.freeway.http.body.UnsupportedMediaTypeException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -24,7 +24,7 @@ class ErrorHandlerTest {
             return false;
         };
 
-        StubHttpContext ctx = new StubHttpContext();
+        TestExchange ctx = new TestExchange();
         boolean handled = handler.handle(ctx, new IllegalArgumentException("bad"));
 
         assertTrue(handled);
@@ -40,7 +40,7 @@ class ErrorHandlerTest {
             return false;
         };
 
-        StubHttpContext ctx = new StubHttpContext();
+        TestExchange ctx = new TestExchange();
         boolean handled = handler.handle(ctx, new IllegalStateException("nope"));
 
         assertFalse(handled);
@@ -58,7 +58,7 @@ class ErrorHandlerTest {
             return false;
         };
 
-        StubHttpContext ctx = new StubHttpContext();
+        TestExchange ctx = new TestExchange();
         boolean handled = false;
         for (ErrorHandler handler : List.of(first, second, third)) {
             if (handler.handle(ctx, new RuntimeException("test"))) {
@@ -81,7 +81,7 @@ class ErrorHandlerTest {
             return true;
         };
 
-        StubHttpContext ctx = new StubHttpContext();
+        TestExchange ctx = new TestExchange();
         boolean handled = false;
         for (ErrorHandler handler : List.of(broken, fallback)) {
             try {
@@ -101,7 +101,7 @@ class ErrorHandlerTest {
     void noHandlerMatchMeansUnhandled() throws Exception {
         ErrorHandler only = (ctx, ex) -> false;
 
-        StubHttpContext ctx = new StubHttpContext();
+        TestExchange ctx = new TestExchange();
         boolean handled = only.handle(ctx, new RuntimeException("test"));
 
         assertFalse(handled);
@@ -109,7 +109,7 @@ class ErrorHandlerTest {
 
     @Test
     void defaultHandlerMapsUnsupportedMediaTypeTo415() throws Exception {
-        StubHttpContext ctx = new StubHttpContext();
+        TestExchange ctx = new TestExchange();
 
         boolean handled = ErrorHandler.defaults().handle(
             ctx, new UnsupportedMediaTypeException(

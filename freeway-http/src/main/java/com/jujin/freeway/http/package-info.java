@@ -20,7 +20,7 @@
  *       pipeline[, eventSink])} is the one derivation; during assembly the
  *       seam below is compiled away.</li>
  *   <li><strong>The seam's data half</strong> — {@link ExchangeHandler} (the
- *       behaviour) with {@link HttpContext}/{@link AbstractHttpContext} and
+ *       behaviour) with {@link HttpContext}/{@link HttpContextSupport} and
  *       the exchange faces {@link HttpRequest}, {@link HttpResponse},
  *       {@link RequestView} (the read-only projection shared with a
  *       WebSocket session), {@link ExchangeMeta} and its

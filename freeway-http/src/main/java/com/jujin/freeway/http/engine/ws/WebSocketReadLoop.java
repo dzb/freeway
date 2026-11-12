@@ -27,9 +27,9 @@ public final class WebSocketReadLoop {
      * connection closes or an error occurs.
      */
     public static void readLoop(InputStream in, OutputStream out,
-                         WebSocketSessionImpl session,
+                         WebSocketConnection connection,
                          WebSocketListener listener) {
-        session.markOpen();
+        connection.markOpen();
         var textBuf = new ByteArrayOutputStream();
         var binaryBuf = new ByteArrayOutputStream();
         OpCode fragType = null;
@@ -37,21 +37,21 @@ public final class WebSocketReadLoop {
         boolean closeNotified = false;
 
         try {
-            while (session.isOpen()) {
+            while (connection.isOpen()) {
                 var frame = WebSocketFrame.read(in);
                 if (!frame.isMasked()) {
-                    session.close(1002, "Client frame must be masked");
+                    connection.close(1002, "Client frame must be masked");
                     return;
                 }
                 switch (frame.opCode()) {
                     case Text, Binary -> {
                         if (fragType != null) {
-                            session.close(1002, "Continuation expected");
+                            connection.close(1002, "Continuation expected");
                             return;
                         }
                         messageBytes += frame.payload().length;
                         if (messageBytes > MAX_MESSAGE_SIZE) {
-                            session.close(1009, "Message too large");
+                            connection.close(1009, "Message too large");
                             return;
                         }
                         if (frame.isFin()) {
@@ -61,7 +61,7 @@ public final class WebSocketReadLoop {
                                 } catch (Exception e) {
                                     LOG.trace("WebSocket onText error", e);
                                     listener.onError(e);
-                                    session.close(1011, "Handler error");
+                                    connection.close(1011, "Handler error");
                                     return;
                                 }
                             } else {
@@ -70,7 +70,7 @@ public final class WebSocketReadLoop {
                                 } catch (Exception e) {
                                     LOG.trace("WebSocket onBinary error", e);
                                     listener.onError(e);
-                                    session.close(1011, "Handler error");
+                                    connection.close(1011, "Handler error");
                                     return;
                                 }
                             }
@@ -82,17 +82,17 @@ public final class WebSocketReadLoop {
                     }
                     case Continuation -> {
                         if (fragType == null) {
-                            session.close(1002, "Unexpected continuation");
+                            connection.close(1002, "Unexpected continuation");
                             return;
                         }
                         messageBytes += frame.payload().length;
                         if (messageBytes > MAX_MESSAGE_SIZE) {
-                            session.close(1009, "Message too large");
+                            connection.close(1009, "Message too large");
                             return;
                         }
                         appendData(frame, textBuf, binaryBuf, fragType);
                         if (frame.isFin()) {
-                            if (!deliverFragmented(fragType, textBuf, binaryBuf, listener, session)) {
+                            if (!deliverFragmented(fragType, textBuf, binaryBuf, listener, connection)) {
                                 return;
                             }
                             fragType = null;
@@ -101,7 +101,7 @@ public final class WebSocketReadLoop {
                             messageBytes = 0;
                         }
                     }
-                    case Ping -> session.writeFrame(
+                    case Ping -> connection.writeFrame(
                         new WebSocketFrame(OpCode.Pong, true, frame.payload()));
                     case Pong -> {
                         // The answer to a ping this side sent. The payload
@@ -115,12 +115,12 @@ public final class WebSocketReadLoop {
                         }
                     }
                     case Close -> {
-                        session.writeFrame(new WebSocketFrame(OpCode.Close, true,
+                        connection.writeFrame(new WebSocketFrame(OpCode.Close, true,
                             frame.payload()));
                         String reason = frame.closeReason() != null
                             ? frame.closeReason() : "";
                         int code = frame.closeCodeValue();
-                        session.markClosed(code, reason);
+                        connection.markClosed(code, reason);
                         try {
                             listener.onClose(code, reason, true);
                         } catch (Exception ignored) {}
@@ -131,28 +131,28 @@ public final class WebSocketReadLoop {
             }
         } catch (EOFException e) {
             LOG.trace("WebSocket EOF: {}", e.getMessage());
-            if (session.isOpen()) session.markClosed(CloseCode.AbnormalClosure, e.getMessage());
+            if (connection.isOpen()) connection.markClosed(CloseCode.AbnormalClosure, e.getMessage());
             try { listener.onError(e); } catch (Exception ignored) {}
         } catch (WebSocketException e) {
             LOG.trace("WebSocket protocol error: {}", e.getMessage());
             try {
-                session.close(e.closeCode().value(), e.closeReason());
+                connection.close(e.closeCode().value(), e.closeReason());
             } catch (Exception ignored) {
             }
-            session.markClosed(e.closeCode(), e.closeReason());
+            connection.markClosed(e.closeCode(), e.closeReason());
             try { listener.onError(e); } catch (Exception ignored) {}
         } catch (IOException e) {
             LOG.trace("WebSocket I/O error: {}", e.getMessage());
-            if (session.isOpen()) session.markClosed(CloseCode.AbnormalClosure, e.getMessage());
+            if (connection.isOpen()) connection.markClosed(CloseCode.AbnormalClosure, e.getMessage());
             try { listener.onError(e); } catch (Exception ignored) {}
         } finally {
             if (!closeNotified) {
                 try {
-                    listener.onClose(session.closeCode(), session.closeReason(), false);
+                    listener.onClose(connection.closeCode(), connection.closeReason(), false);
                 } catch (Exception ignored) {}
             }
-            if (session.isOpen()) {
-                session.markClosed(CloseCode.InternalServerError,
+            if (connection.isOpen()) {
+                connection.markClosed(CloseCode.InternalServerError,
                     "Handler terminated without closing");
             }
         }
@@ -186,7 +186,7 @@ public final class WebSocketReadLoop {
     private static boolean deliverFragmented(OpCode fragType, ByteArrayOutputStream textBuf,
                                              ByteArrayOutputStream binaryBuf,
                                              WebSocketListener listener,
-                                             WebSocketSessionImpl session) {
+                                             WebSocketConnection connection) {
         try {
             if (fragType == OpCode.Text) {
                 // Decode the reassembled message strictly — fragments may split
@@ -200,12 +200,12 @@ public final class WebSocketReadLoop {
             return true;
         } catch (WebSocketException e) {
             LOG.trace("WebSocket invalid UTF-8 in fragmented message", e);
-            try { session.close(1007, "Invalid UTF-8"); } catch (IOException ignored) {}
+            try { connection.close(1007, "Invalid UTF-8"); } catch (IOException ignored) {}
             return false;
         } catch (Exception e) {
             LOG.trace("WebSocket handler error", e);
             listener.onError(e);
-            try { session.close(1011, "Handler error"); } catch (IOException ignored) {}
+            try { connection.close(1011, "Handler error"); } catch (IOException ignored) {}
             return false;
         }
     }

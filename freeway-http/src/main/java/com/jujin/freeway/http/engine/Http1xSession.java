@@ -7,10 +7,13 @@ import java.net.SocketTimeoutException;
 import java.util.List;
 import java.util.Map;
 
+import javax.net.ssl.SSLSession;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.jujin.freeway.http.ErrorResponses;
+import com.jujin.freeway.http.HttpContextSupport;
 import com.jujin.freeway.http.engine.http2.FrameFlag;
 import com.jujin.freeway.http.engine.http2.FrameHeader;
 import com.jujin.freeway.http.engine.http2.FrameType;
@@ -35,19 +38,17 @@ final class Http1xSession {
             var in = connection.inputStream();
             var out = connection.outputStream();
             var parser = new Http1xParser(in, ctx.config().maxHeaderBytes());
-            var context = new HttpContextImpl(
-                ctx.jsonCodec(), ctx.coercer(), ctx.config().maxBodySize());
-            context.setCompression(ctx.config().compression());
+            HttpTransportImpl.FileSender fileSender = null;
             if (ctx.engine().sslContext() == null
                     && connection.socket().getChannel() != null) {
-                context.setFileSender((channel, offset, length) -> {
+                fileSender = (channel, offset, length) -> {
                     ctx.metrics().sendfileTransfers().increment();
                     connection.transferFile(channel, offset, length);
-                });
+                };
             }
-            context.setSecure(connection.getSSLSession() != null);
-            context.setSslSession(connection.getSSLSession());
-            context.setRemoteAddress(HttpSession.remoteAddress(connection.socket()));
+            boolean secure = connection.getSSLSession() != null;
+            SSLSession sslSession = connection.getSSLSession();
+            String remoteAddress = HttpSession.remoteAddress(connection.socket());
 
             while (!connection.closed) {
                 parser.reset(in);
@@ -98,9 +99,14 @@ final class Http1xSession {
                 InputStream bodyStream = req.isChunked() || req.contentLength() > 0
                     ? parser.bodyStream(bodyLength)
                     : in;
-                context.reset(req.method(), req.path(), req.queryString(),
-                    req.headers(), bodyStream, bodyLength, req.isChunked(),
-                    out, correlationId, req.keepAlive());
+                var transport = new HttpTransportImpl(req.method(), req.path(),
+                    req.queryString(), req.headers(), bodyStream, bodyLength,
+                    req.isChunked(), out, req.keepAlive(),
+                    secure, sslSession, remoteAddress);
+                transport.setFileSender(fileSender);
+                var context = new HttpContextSupport(transport, ctx.jsonCodec(),
+                    ctx.coercer(), ctx.config().maxBodySize(),
+                    ctx.config().compression(), correlationId);
                 // The correlation id is echoed for tracing only — a hostile
                 // value must never break the session. (HTTP/1.1 parsing now
                 // rejects CTL, so this guard is defense-in-depth.)
@@ -121,14 +127,15 @@ final class Http1xSession {
                     }
                 }
 
-                boolean bodyDrained = context.drainUnreadBody();
+                boolean bodyDrained = transport.drainRequestBody(context.bodyLimit());
                 if (req.isChunked() && bodyDrained) {
                     parser.reclaimChunkedPrefix();
                 }
                 if (!bodyDrained) break;
-                context.syncKeepAliveFromResponse();
+                transport.syncKeepAliveFromResponse(
+                    context.responseHeader("Connection"));
                 if (ctx.registry().isStopping()) break;
-                if (!context.isKeepAlive()) break;
+                if (!transport.isKeepAlive()) break;
                 if (req.isHttp10() && !req.keepAlive()) break;
             }
         } catch (SocketTimeoutException e) {

@@ -45,9 +45,8 @@ public interface HttpContext extends ExchangeMeta, HttpRequest, HttpResponse {
      * honor tiers on {@link HttpEngine#start}); a filter may change it, and the
      * change applies to <b>that request only</b> — raising the limit for an
      * upload route must not leave every later request of a keep-alive
-     * connection unbounded. {@link AbstractHttpContext} keeps that base and
-     * restores it in {@code resetMaxBodySize()}, so an engine reusing one
-     * context across requests owes its own per-request reset one call.
+     * connection unbounded. The exchange support is created per request, so
+     * the limit starts fresh with it; there is no base/reset pair.
      * Narrowing works on every engine. Raising it works
      * where the body is read by the framework's own limiter
      * ({@code http.internal.LimitedInputStream}, which reads this value per

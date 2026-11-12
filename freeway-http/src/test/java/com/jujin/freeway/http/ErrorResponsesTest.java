@@ -15,7 +15,7 @@ class ErrorResponsesTest {
 
     @Test
     void notFoundAnswersJson() throws Exception {
-        StubHttpContext ctx = new StubHttpContext();
+        TestExchange ctx = new TestExchange();
         ErrorResponses.notFound(ctx);
 
         assertEquals(404, ctx.status());
@@ -28,7 +28,7 @@ class ErrorResponsesTest {
 
     @Test
     void methodNotAllowedKeepsAllowAndAnswersJson() throws Exception {
-        StubHttpContext ctx = new StubHttpContext();
+        TestExchange ctx = new TestExchange();
         ErrorResponses.methodNotAllowed(ctx, "GET, HEAD");
 
         assertEquals(405, ctx.status());
@@ -41,7 +41,7 @@ class ErrorResponsesTest {
 
     @Test
     void internalErrorAnswersJson() throws Exception {
-        StubHttpContext ctx = new StubHttpContext();
+        TestExchange ctx = new TestExchange();
         ErrorResponses.internalError(ctx);
 
         assertEquals(500, ctx.status());

@@ -2,7 +2,7 @@ package com.jujin.freeway.http.staticfile;
 
 import org.junit.jupiter.api.Test;
 
-import com.jujin.freeway.http.StubHttpContext;
+import com.jujin.freeway.http.TestExchange;
 import com.jujin.freeway.http.staticfile.StaticResourceMount;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -15,7 +15,7 @@ class ClasspathResourceSourceTest {
     void servesFileFromClasspath() throws Exception {
         StaticResourceMount mount = StaticResourceMount.classpath("/assets", "static");
 
-        StubHttpContext ctx = new StubHttpContext("GET", "/assets/test.txt");
+        TestExchange ctx = new TestExchange("GET", "/assets/test.txt");
         assertTrue(mount.serve(ctx, ctx));
         assertEquals(200, ctx.status());
         assertTrue(ctx.responseBody().contains("classpath test content"));
@@ -25,7 +25,7 @@ class ClasspathResourceSourceTest {
     void returns404ForMissingClasspathResource() throws Exception {
         StaticResourceMount mount = StaticResourceMount.classpath("/assets", "static");
 
-        StubHttpContext ctx = new StubHttpContext("GET", "/assets/nonexistent.txt");
+        TestExchange ctx = new TestExchange("GET", "/assets/nonexistent.txt");
         assertTrue(mount.serve(ctx, ctx));
         assertEquals(404, ctx.status());
     }
@@ -35,7 +35,7 @@ class ClasspathResourceSourceTest {
         StaticResourceMount mount = StaticResourceMount.classpath("/assets", "static")
             .withFallthrough(true);
 
-        StubHttpContext ctx = new StubHttpContext("GET", "/assets/missing.txt");
+        TestExchange ctx = new TestExchange("GET", "/assets/missing.txt");
         assertFalse(mount.serve(ctx, ctx));
     }
 
@@ -43,7 +43,7 @@ class ClasspathResourceSourceTest {
     void mountsUnderRootPath() throws Exception {
         StaticResourceMount mount = StaticResourceMount.classpath("/", "static");
 
-        StubHttpContext ctx = new StubHttpContext("GET", "/test.txt");
+        TestExchange ctx = new TestExchange("GET", "/test.txt");
         assertTrue(mount.serve(ctx, ctx));
         assertEquals(200, ctx.status());
     }
@@ -52,7 +52,7 @@ class ClasspathResourceSourceTest {
     void setsCorrectContentType() throws Exception {
         StaticResourceMount mount = StaticResourceMount.classpath("/", "static");
 
-        StubHttpContext ctx = new StubHttpContext("GET", "/test.txt");
+        TestExchange ctx = new TestExchange("GET", "/test.txt");
         mount.serve(ctx, ctx);
         assertEquals("text/plain; charset=utf-8", ctx.responseHeader("Content-Type"));
     }
@@ -61,7 +61,7 @@ class ClasspathResourceSourceTest {
     void setsNosniffHeader() throws Exception {
         StaticResourceMount mount = StaticResourceMount.classpath("/", "static");
 
-        StubHttpContext ctx = new StubHttpContext("GET", "/test.txt");
+        TestExchange ctx = new TestExchange("GET", "/test.txt");
         mount.serve(ctx, ctx);
         assertEquals("nosniff", ctx.responseHeader("X-Content-Type-Options"));
     }

@@ -8,7 +8,7 @@ import java.nio.file.attribute.FileTime;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-import com.jujin.freeway.http.StubHttpContext;
+import com.jujin.freeway.http.TestExchange;
 import com.jujin.freeway.http.staticfile.StaticResourceMount;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -27,14 +27,14 @@ class StaticResourceConditionalTest {
         StaticResourceMount mount = StaticResourceMount.directory("/", tempDir);
 
         // first request — get the ETag
-        StubHttpContext first = new StubHttpContext("GET", "/test.txt");
+        TestExchange first = new TestExchange("GET", "/test.txt");
         assertTrue(mount.serve(first, first));
         assertEquals(200, first.status());
         String etag = first.responseHeader("ETag");
         assertNotNull(etag);
 
         // second request — with matching If-None-Match
-        StubHttpContext second = new StubHttpContext("GET", "/test.txt");
+        TestExchange second = new TestExchange("GET", "/test.txt");
         second.requestHeader("If-None-Match", etag);
         assertTrue(mount.serve(second, second));
         assertEquals(304, second.status());
@@ -47,7 +47,7 @@ class StaticResourceConditionalTest {
 
         StaticResourceMount mount = StaticResourceMount.directory("/", tempDir);
 
-        StubHttpContext ctx = new StubHttpContext("GET", "/data.txt");
+        TestExchange ctx = new TestExchange("GET", "/data.txt");
         ctx.requestHeader("If-None-Match", "\"sha256-wronghash\"");
         assertTrue(mount.serve(ctx, ctx));
         assertEquals(200, ctx.status());
@@ -60,11 +60,11 @@ class StaticResourceConditionalTest {
 
         StaticResourceMount mount = StaticResourceMount.directory("/", tempDir);
 
-        StubHttpContext first = new StubHttpContext("GET", "/weak.txt");
+        TestExchange first = new TestExchange("GET", "/weak.txt");
         mount.serve(first, first);
         String etag = first.responseHeader("ETag");
 
-        StubHttpContext second = new StubHttpContext("GET", "/weak.txt");
+        TestExchange second = new TestExchange("GET", "/weak.txt");
         second.requestHeader("If-None-Match", "W/" + etag);
         assertTrue(mount.serve(second, second));
         assertEquals(304, second.status());
@@ -77,7 +77,7 @@ class StaticResourceConditionalTest {
 
         StaticResourceMount mount = StaticResourceMount.directory("/", tempDir);
 
-        StubHttpContext ctx = new StubHttpContext("GET", "/star.txt");
+        TestExchange ctx = new TestExchange("GET", "/star.txt");
         ctx.requestHeader("If-None-Match", "*");
         assertTrue(mount.serve(ctx, ctx));
         assertEquals(304, ctx.status());
@@ -104,11 +104,11 @@ class StaticResourceConditionalTest {
 
         StaticResourceMount mount = StaticResourceMount.directory("/", tempDir);
 
-        StubHttpContext first = new StubHttpContext("GET", "/cache.txt");
+        TestExchange first = new TestExchange("GET", "/cache.txt");
         mount.serve(first, first);
         String etag1 = first.responseHeader("ETag");
 
-        StubHttpContext second = new StubHttpContext("GET", "/cache.txt");
+        TestExchange second = new TestExchange("GET", "/cache.txt");
         mount.serve(second, second);
         String etag2 = second.responseHeader("ETag");
 
@@ -120,9 +120,9 @@ class StaticResourceConditionalTest {
         Path file = tempDir.resolve("precision.txt");
         Files.writeString(file, "hello");
         StaticResourceMount mount = StaticResourceMount.directory("/", tempDir);
-        StubHttpContext first = new StubHttpContext("GET", "/precision.txt");
+        TestExchange first = new TestExchange("GET", "/precision.txt");
         mount.serve(first, first);
-        StubHttpContext second = new StubHttpContext("GET", "/precision.txt");
+        TestExchange second = new TestExchange("GET", "/precision.txt");
         second.requestHeader("If-Modified-Since", first.responseHeader("Last-Modified"));
         mount.serve(second, second);
         assertEquals(304, second.status());
@@ -142,14 +142,14 @@ class StaticResourceConditionalTest {
 
         StaticResourceMount mount = StaticResourceMount.directory("/files", tempDir);
 
-        StubHttpContext first = new StubHttpContext("GET", "/files/data.txt");
+        TestExchange first = new TestExchange("GET", "/files/data.txt");
         assertTrue(mount.serve(first, first));
         String lastModified = first.responseHeader("Last-Modified");
         assertNotNull(lastModified);
 
         // A client echoing the Last-Modified value in If-Range must still get
         // its range served (206), not a full 200.
-        StubHttpContext range = new StubHttpContext("GET", "/files/data.txt");
+        TestExchange range = new TestExchange("GET", "/files/data.txt");
         range.requestHeader("If-Range", lastModified);
         range.requestHeader("Range", "bytes=0-3");
         assertTrue(mount.serve(range, range));
@@ -158,7 +158,7 @@ class StaticResourceConditionalTest {
         assertEquals("0123", range.responseBody());
 
         // The ETag form of If-Range must be unaffected.
-        StubHttpContext etag = new StubHttpContext("GET", "/files/data.txt");
+        TestExchange etag = new TestExchange("GET", "/files/data.txt");
         etag.requestHeader("If-Range", first.responseHeader("ETag"));
         etag.requestHeader("Range", "bytes=4-5");
         assertTrue(mount.serve(etag, etag));

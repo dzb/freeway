@@ -32,9 +32,7 @@ class WebSocketReadLoopTest {
     @Test
     void concurrentSendsProduceValidFrames() throws Exception {
         var out = new ByteArrayOutputStream();
-        var session = new WebSocketSessionImpl(
-            "GET", "/", null, Map.of(),
-            new ByteArrayInputStream(new byte[0]), out, Map.of(), null);
+        var session = new WebSocketConnection(new ByteArrayInputStream(new byte[0]), out);
         int threads = 8;
         int messagesPerThread = 50;
         ExecutorService executor = Executors.newFixedThreadPool(threads);
@@ -72,9 +70,7 @@ class WebSocketReadLoopTest {
         // with no in-repo caller: the applications that use them live outside
         // this repository, so the wire contract is pinned here.
         var out = new ByteArrayOutputStream();
-        var session = new WebSocketSessionImpl(
-            "GET", "/", null, Map.of(),
-            new ByteArrayInputStream(new byte[0]), out, Map.of(), null);
+        var session = new WebSocketConnection(new ByteArrayInputStream(new byte[0]), out);
 
         session.ping(new byte[] {1, 2, 3});
         session.sendTextBatch(List.of("first", "second"));
@@ -94,9 +90,7 @@ class WebSocketReadLoopTest {
     @Test
     void largeBinaryMessageIsSentFragmented() throws Exception {
         var out = new ByteArrayOutputStream();
-        var session = new WebSocketSessionImpl(
-            "GET", "/", null, Map.of(),
-            new ByteArrayInputStream(new byte[0]), out, Map.of(), null);
+        var session = new WebSocketConnection(new ByteArrayInputStream(new byte[0]), out);
         int maxFrame = 16 * 1024 * 1024;
         byte[] big = new byte[maxFrame + 100];
         for (int i = 0; i < big.length; i++) big[i] = (byte) (i & 0xFF);
@@ -117,9 +111,7 @@ class WebSocketReadLoopTest {
     @Test
     void largeTextMessageSplitAtCodePointBoundaries() throws Exception {
         var out = new ByteArrayOutputStream();
-        var session = new WebSocketSessionImpl(
-            "GET", "/", null, Map.of(),
-            new ByteArrayInputStream(new byte[0]), out, Map.of(), null);
+        var session = new WebSocketConnection(new ByteArrayInputStream(new byte[0]), out);
         // 6M CJK chars × 3 UTF-8 bytes = 18MB, above the 16MB frame cap.
         String big = "中".repeat(6_000_000);
         session.sendText(big);
@@ -176,8 +168,7 @@ class WebSocketReadLoopTest {
 
         var in = new ByteArrayInputStream(wire);
         var out = new ByteArrayOutputStream();
-        var session = new WebSocketSessionImpl(
-            "GET", "/", null, Map.of(), in, out, Map.of(), null);
+        var session = new WebSocketConnection(in, out);
         var texts = new ArrayList<String>();
         WebSocketReadLoop.readLoop(in, out, session, new WebSocketListener() {
             @Override
@@ -198,8 +189,7 @@ class WebSocketReadLoopTest {
 
         var in = new ByteArrayInputStream(wire);
         var out = new ByteArrayOutputStream();
-        var session = new WebSocketSessionImpl(
-            "GET", "/", null, Map.of(), in, out, Map.of(), null);
+        var session = new WebSocketConnection(in, out);
         WebSocketReadLoop.readLoop(in, out, session, WebSocketListener.NOOP);
 
         assertFalse(session.isOpen(),
@@ -212,8 +202,7 @@ class WebSocketReadLoopTest {
         byte[] invalidClose = maskedFrame(0x08, true, new byte[]{3, (byte) 0xED});
         var in = new ByteArrayInputStream(invalidClose);
         var out = new ByteArrayOutputStream();
-        var session = new WebSocketSessionImpl(
-            "GET", "/", null, Map.of(), in, out, Map.of(), null);
+        var session = new WebSocketConnection(in, out);
 
         WebSocketReadLoop.readLoop(in, out, session, WebSocketListener.NOOP);
 
@@ -251,8 +240,7 @@ class WebSocketReadLoopTest {
             }
         };
         var out = new ByteArrayOutputStream();
-        var session = new WebSocketSessionImpl(
-            "GET", "/", null, Map.of(), blockingIn, out, Map.of(), null);
+        var session = new WebSocketConnection(blockingIn, out);
 
         var loopDone = new AtomicBoolean();
         Thread loop = Thread.startVirtualThread(() -> {
@@ -283,8 +271,7 @@ class WebSocketReadLoopTest {
             @Override public void close() { closed = true; }
         };
         var out = new ByteArrayOutputStream();
-        var session = new WebSocketSessionImpl("GET", "/", null, Map.of(),
-            blockingIn, out, Map.of(), null);
+        var session = new WebSocketConnection(blockingIn, out);
         var closeCode = new AtomicInteger();
         Thread loop = Thread.startVirtualThread(() -> WebSocketReadLoop.readLoop(
             blockingIn, out, session, new WebSocketListener() {
@@ -301,8 +288,7 @@ class WebSocketReadLoopTest {
 
     @Test
     void invalidServerCloseDoesNotChangeSessionState() {
-        var session = new WebSocketSessionImpl("GET", "/", null, Map.of(),
-            new ByteArrayInputStream(new byte[0]), new ByteArrayOutputStream(), Map.of(), null);
+        var session = new WebSocketConnection(new ByteArrayInputStream(new byte[0]), new ByteArrayOutputStream());
         assertThrows(IllegalArgumentException.class, () -> session.close(1005, "bad"));
         assertTrue(session.isOpen());
     }

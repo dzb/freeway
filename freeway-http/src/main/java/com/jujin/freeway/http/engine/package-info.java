@@ -5,7 +5,7 @@
  * <p>Placement rule: everything only the built-in engine needs lives here —
  * its wiring and lifecycle ({@code FreewayHttpEngine},
  * {@code HttpServerHandleImpl}, {@code SslReloader}: TLS hot reload is
- * engine-self-driven), the pooled exchange context ({@code HttpContextImpl}),
+ * engine-self-driven), the per-request transport ({@code HttpTransportImpl}),
  * the HTTP/1 stack (parser, sessions, connection registry, streams,
  * metrics) and the protocol bridges that speak both this package and a
  * codec sub-package: {@code Http1xSession} (including the h2c upgrade),
@@ -18,8 +18,8 @@
  * <p>The {@code public} types here are assembly surface, not API:
  * {@code HttpResponseWriter} is the h1/h2 writer seam that
  * {@code engine.http2.Http2ResponseWriter} implements across packages;
- * {@code ResponseFraming} and {@code HttpContextImpl} are mirrored by the
- * ext adapters and benchmarks; {@code FreewayHttpEngine} is what the root
- * {@code HttpModule} binds.</p>
+ * {@code HttpTransportImpl} is the built-in {@code HttpTransport} that
+ * benchmarks exercise across jars; {@code FreewayHttpEngine} is what the
+ * root {@code HttpModule} binds.</p>
  */
 package com.jujin.freeway.http.engine;

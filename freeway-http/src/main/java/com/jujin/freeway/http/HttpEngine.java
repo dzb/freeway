@@ -17,14 +17,12 @@ import java.io.IOException;
  *       has a counterpart (the built-in engine has one for all five).</li>
  *   <li><b>Per-exchange policy</b> — state-shaped: {@code maxBodySize}, which the
  *       engine hands to the {@link HttpContext} it creates as a constructor
- *       argument, so an engine cannot forget to set it at all; one that reuses a
- *       context across requests calls {@code resetMaxBodySize()} from its own
- *       {@code reset()}, enforcement
- *       lives in {@code http.internal.LimitedInputStream} — the one limiter both
- *       paths run, {@link AbstractHttpContext#readBody} being a one-line delegate
- *       to it — so 413 accounting is identical across engines rather than two
- *       loops that happen to agree, and a filter may legitimately narrow the
- *       limit further; wire-adjacent: {@code compression}, whose
+ *       argument, so an engine cannot forget to set it at all; the exchange is
+ *       created per request, so there is no reset to owe, and enforcement
+ *       lives in {@code http.internal.LimitedInputStream} — the one limiter
+ *       every engine runs — so 413 accounting is identical across engines
+ *       rather than two loops that happen to agree, and a filter may
+ *       legitimately narrow the limit further; wire-adjacent: {@code compression}, whose
  *       execution <em>is</em> transport, so it runs in the engine's own output
  *       path over the shared {@link Compression} primitives (q-value
  *       negotiation) — deliberately not a seam setter (that relocates state,

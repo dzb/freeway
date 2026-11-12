@@ -22,6 +22,7 @@ import org.slf4j.LoggerFactory;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.http.ExchangeHandler;
+import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.HttpServerConfig;
 import com.jujin.freeway.http.internal.HttpHeaders;
 
@@ -154,7 +155,7 @@ final class HttpSession implements Runnable {
 
     /** Echoes the correlation id as a response header, ignoring a hostile
      *  value that would otherwise break the response head. */
-    static void echoRequestId(HttpContextImpl ctx) {
+    static void echoRequestId(HttpContext ctx) {
         try {
             ctx.setHeader("X-Request-Id", ctx.correlationId());
         } catch (IllegalArgumentException ignored) {

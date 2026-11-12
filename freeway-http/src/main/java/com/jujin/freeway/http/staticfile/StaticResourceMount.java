@@ -188,12 +188,14 @@ public final class StaticResourceMount {
         response.setHeader("Content-Type", MediaTypes.contentType(meta.name()));
         response.setHeader("X-Content-Type-Options", "nosniff");
         if ("HEAD".equalsIgnoreCase(request.method())) {
-            // No body needed — report the headers (and real size) without
-            // reading the file contents.
-            if (length >= 0) {
-                response.setHeader("Content-Length", Long.toString(length));
-            }
-            response.output(new byte[0]);
+            // HEAD reports the headers and the real size without reading the
+            // file: the declared length goes through the stream API so
+            // Content-Length stays framework-authoritative (a handler-set
+            // header would be overwritten by the bytes actually committed),
+            // and transports must not read the source when the head sends no
+            // body bytes. A negative length means unknown — no
+            // Content-Length, exactly like the GET it mirrors.
+            response.output(java.io.InputStream.nullInputStream(), length);
             return true;
         }
         // sendfile fast path: real files on plain HTTP get transferred

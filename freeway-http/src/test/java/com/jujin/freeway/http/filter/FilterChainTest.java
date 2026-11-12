@@ -7,7 +7,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
 import com.jujin.freeway.http.HttpContext;
-import com.jujin.freeway.http.StubHttpContext;
+import com.jujin.freeway.http.TestExchange;
 import com.jujin.freeway.http.route.RouteHandler;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -33,7 +33,7 @@ class FilterChainTest {
         RouteHandler chain = ctx -> second.doFilter(ctx,
             c -> first.doFilter(c, handler));
 
-        StubHttpContext ctx = new StubHttpContext();
+        TestExchange ctx = new TestExchange();
         chain.handle(ctx);
 
         assertEquals(List.of("second", "first", "handler"), order);
@@ -49,7 +49,7 @@ class FilterChainTest {
         RouteHandler handler = ctx -> handlerCalled.incrementAndGet();
 
         RouteHandler chain = ctx -> blocker.doFilter(ctx, handler);
-        StubHttpContext ctx = new StubHttpContext();
+        TestExchange ctx = new TestExchange();
         chain.handle(ctx);
 
         assertEquals(403, ctx.status());
@@ -75,7 +75,7 @@ class FilterChainTest {
 
         RouteHandler chain = ctx -> outer.doFilter(ctx,
             c -> inner.doFilter(c, handler));
-        StubHttpContext ctx = new StubHttpContext();
+        TestExchange ctx = new TestExchange();
         assertThrows(IllegalStateException.class, () -> chain.handle(ctx));
         assertEquals(1, innerAfterCalled.get());
         assertEquals(1, outerFinally.get());
@@ -96,7 +96,7 @@ class FilterChainTest {
         };
 
         RouteHandler chain = ctx -> filter.doFilter(ctx, handler);
-        StubHttpContext ctx = new StubHttpContext();
+        TestExchange ctx = new TestExchange();
         assertThrows(IllegalArgumentException.class,
             () -> chain.handle(ctx));
         assertEquals(1, filterFinally.get());
@@ -108,7 +108,7 @@ class FilterChainTest {
         RouteHandler handler = ctx -> called.incrementAndGet();
 
         RouteHandler chain = handler; // no filters
-        StubHttpContext ctx = new StubHttpContext();
+        TestExchange ctx = new TestExchange();
         chain.handle(ctx);
 
         assertEquals(1, called.get());

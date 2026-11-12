@@ -14,7 +14,7 @@ import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-import com.jujin.freeway.http.StubHttpContext;
+import com.jujin.freeway.http.TestExchange;
 import com.jujin.freeway.http.staticfile.StaticResourceMount;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -35,7 +35,7 @@ class StaticResourceMountTest {
         createSymlinkOrSkip(root.resolve("outside"), outside);
 
         StaticResourceMount mount = StaticResourceMount.directory("/static", root);
-        StubHttpContext ctx = new StubHttpContext("GET", "/static/outside/secret.txt");
+        TestExchange ctx = new TestExchange("GET", "/static/outside/secret.txt");
 
         mount.serve(ctx, ctx);
 
@@ -51,7 +51,7 @@ class StaticResourceMountTest {
         createSymlinkOrSkip(root.resolve("linked"), assets);
 
         StaticResourceMount mount = StaticResourceMount.directory("/static", root);
-        StubHttpContext ctx = new StubHttpContext("GET", "/static/linked/app.js");
+        TestExchange ctx = new TestExchange("GET", "/static/linked/app.js");
 
         mount.serve(ctx, ctx);
 
@@ -65,7 +65,7 @@ class StaticResourceMountTest {
         Files.writeString(root.resolve("index.html"), "ok");
 
         StaticResourceMount mount = StaticResourceMount.directory("/static", root);
-        StubHttpContext ctx = new StubHttpContext("GET", "/static/%zz");
+        TestExchange ctx = new TestExchange("GET", "/static/%zz");
 
         mount.serve(ctx, ctx);
 
@@ -79,7 +79,7 @@ class StaticResourceMountTest {
         Files.writeString(root.resolve("secret.txt"), "secret");
 
         StaticResourceMount mount = StaticResourceMount.directory("/static", root);
-        StubHttpContext ctx = new StubHttpContext("GET", "/static/%5csecret.txt");
+        TestExchange ctx = new TestExchange("GET", "/static/%5csecret.txt");
 
         mount.serve(ctx, ctx);
 
@@ -93,43 +93,43 @@ class StaticResourceMountTest {
         Files.writeString(root.resolve("data.txt"), "0123456789");
         StaticResourceMount mount = StaticResourceMount.directory("/files", root);
 
-        StubHttpContext prefix = new StubHttpContext("GET", "/files/data.txt");
+        TestExchange prefix = new TestExchange("GET", "/files/data.txt");
         prefix.requestHeader("Range", "bytes=0-3");
         mount.serve(prefix, prefix);
         assertEquals(206, prefix.status());
         assertEquals("bytes 0-3/10", prefix.responseHeader("Content-Range"));
         assertEquals("0123", prefix.responseBody());
 
-        StubHttpContext openEnd = new StubHttpContext("GET", "/files/data.txt");
+        TestExchange openEnd = new TestExchange("GET", "/files/data.txt");
         openEnd.requestHeader("Range", "bytes=5-");
         mount.serve(openEnd, openEnd);
         assertEquals(206, openEnd.status());
         assertEquals("56789", openEnd.responseBody());
 
-        StubHttpContext middle = new StubHttpContext("GET", "/files/data.txt");
+        TestExchange middle = new TestExchange("GET", "/files/data.txt");
         middle.requestHeader("Range", "bytes=2-8");
         mount.serve(middle, middle);
         assertEquals("2345678", middle.responseBody());
 
-        StubHttpContext suffix = new StubHttpContext("GET", "/files/data.txt");
+        TestExchange suffix = new TestExchange("GET", "/files/data.txt");
         suffix.requestHeader("Range", "bytes=-4");
         mount.serve(suffix, suffix);
         assertEquals("6789", suffix.responseBody());
 
-        StubHttpContext head = new StubHttpContext("HEAD", "/files/data.txt");
+        TestExchange head = new TestExchange("HEAD", "/files/data.txt");
         head.requestHeader("Range", "bytes=0-3");
         mount.serve(head, head);
         assertEquals(206, head.status());
         assertEquals("bytes 0-3/10", head.responseHeader("Content-Range"));
         assertEquals("4", head.responseHeader("Content-Length"));
 
-        StubHttpContext unsatisfiable = new StubHttpContext("GET", "/files/data.txt");
+        TestExchange unsatisfiable = new TestExchange("GET", "/files/data.txt");
         unsatisfiable.requestHeader("Range", "bytes=20-");
         mount.serve(unsatisfiable, unsatisfiable);
         assertEquals(416, unsatisfiable.status());
         assertEquals("bytes */10", unsatisfiable.responseHeader("Content-Range"));
 
-        StubHttpContext full = new StubHttpContext("GET", "/files/data.txt");
+        TestExchange full = new TestExchange("GET", "/files/data.txt");
         mount.serve(full, full);
         assertEquals(200, full.status());
         assertEquals("0123456789", full.responseBody());
@@ -143,7 +143,7 @@ class StaticResourceMountTest {
         );
         try {
             StaticResourceMount mount = StaticResourceMount.classpath("/static", "assets");
-            StubHttpContext ctx = new StubHttpContext("GET", "/static/app.js");
+            TestExchange ctx = new TestExchange("GET", "/static/app.js");
 
             IOException ex = assertThrows(IOException.class, () -> mount.serve(ctx, ctx));
 
@@ -169,17 +169,17 @@ class StaticResourceMountTest {
 
         // HEAD reports the real size without reading the file and without a
         // size error (previously meta() threw IOException → 500).
-        StubHttpContext head = new StubHttpContext("HEAD", "/files/big.bin");
+        TestExchange head = new TestExchange("HEAD", "/files/big.bin");
         assertTrue(mount.serve(head, head));
         assertEquals(200, head.status());
         assertEquals(String.valueOf(expected), head.responseHeader("Content-Length"),
             "an oversized file must be streamed by metadata without a size error");
 
         // GET must still be served (200), not 500.
-        StubHttpContext get = new StubHttpContext("GET", "/files/big.bin");
+        TestExchange get = new TestExchange("GET", "/files/big.bin");
         assertTrue(mount.serve(get, get));
         assertEquals(200, get.status());
-        assertEquals(expected, get.body().length);
+        assertEquals(expected, get.responseBodyBytes().length);
     }
 
     @Test
@@ -189,7 +189,7 @@ class StaticResourceMountTest {
             new UnknownSizeClassLoader("assets/app.js"));
         try {
             StaticResourceMount mount = StaticResourceMount.classpath("/static", "assets");
-            StubHttpContext ctx = new StubHttpContext("HEAD", "/static/app.js");
+            TestExchange ctx = new TestExchange("HEAD", "/static/app.js");
 
             assertTrue(mount.serve(ctx, ctx));
             assertEquals(200, ctx.status());
@@ -208,13 +208,13 @@ class StaticResourceMountTest {
 
         StaticResourceMount mount = StaticResourceMount.directory("/static", root);
 
-        StubHttpContext withSlash = new StubHttpContext("GET", "/static/sub/");
+        TestExchange withSlash = new TestExchange("GET", "/static/sub/");
         assertTrue(mount.serve(withSlash, withSlash));
         assertEquals(200, withSlash.status());
         assertEquals("sub index content", withSlash.responseBody(),
             "a trailing-slash directory request must serve sub/index.html");
 
-        StubHttpContext withoutSlash = new StubHttpContext("GET", "/static/sub");
+        TestExchange withoutSlash = new TestExchange("GET", "/static/sub");
         assertTrue(mount.serve(withoutSlash, withoutSlash));
         assertEquals(200, withoutSlash.status());
         assertEquals("sub index content", withoutSlash.responseBody(),
@@ -228,7 +228,7 @@ class StaticResourceMountTest {
         Files.createDirectories(root.resolve("empty"));
 
         StaticResourceMount mount = StaticResourceMount.directory("/static", root);
-        StubHttpContext ctx = new StubHttpContext("GET", "/static/empty/");
+        TestExchange ctx = new TestExchange("GET", "/static/empty/");
 
         assertTrue(mount.serve(ctx, ctx));
         assertEquals(404, ctx.status());
@@ -241,7 +241,7 @@ class StaticResourceMountTest {
         Files.writeString(root.resolve("data.txt"), "data");
 
         StaticResourceMount mount = StaticResourceMount.directory("/static", root);
-        StubHttpContext ctx = new StubHttpContext("GET", "/static/data.txt/");
+        TestExchange ctx = new TestExchange("GET", "/static/data.txt/");
 
         assertTrue(mount.serve(ctx, ctx));
         assertEquals(404, ctx.status(),

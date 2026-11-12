@@ -6,13 +6,16 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
 
-import com.jujin.freeway.http.internal.HttpHeaders;
-import com.jujin.freeway.http.internal.HttpUtils;
-import com.jujin.freeway.http.websocket.AbstractWebSocketSession;
+import com.jujin.freeway.http.websocket.WebSocketTransport;
 
-public final class WebSocketSessionImpl extends AbstractWebSocketSession {
+/**
+ * The built-in engine's {@link WebSocketTransport}: one frame writer over a
+ * socket, owning the open/close state and the write lock. The session view
+ * (metadata, request snapshot) lives in {@code WebSocketSessionSupport},
+ * which composes this object and is what endpoints receive.
+ */
+public final class WebSocketConnection implements WebSocketTransport {
 
     /** Messages larger than this are sent fragmented, so a single frame
      *  never exceeds the receive-side cap (WebSocketFrame.MAX_FRAME_SIZE)
@@ -26,13 +29,7 @@ public final class WebSocketSessionImpl extends AbstractWebSocketSession {
     private volatile String closeReason = "";
     private final Object writeLock = new Object();
 
-    public WebSocketSessionImpl(String method, String path, String rawQuery,
-                         Map<String, List<String>> headers,
-                         InputStream in, OutputStream out,
-                         Map<String, String> pathVariables,
-                         String correlationId) {
-        super(correlationId, method, path, pathVariables,
-            HttpUtils.parseQueryParams(rawQuery), headers);
+    public WebSocketConnection(InputStream in, OutputStream out) {
         this.in = in;
         this.out = out;
     }
@@ -138,7 +135,7 @@ public final class WebSocketSessionImpl extends AbstractWebSocketSession {
         } catch (IOException ignored) {}
     }
 
-    // --- package-private ---
+    // --- package-private, used by the read loop ---
 
     /** Synchronized frame write shared with the read loop's automatic pong/close replies. */
     void writeFrame(WebSocketFrame frame) throws IOException {
@@ -161,11 +158,13 @@ public final class WebSocketSessionImpl extends AbstractWebSocketSession {
     void markClosed(CloseCode code, String reason) {
         markClosed(code.value(), reason);
     }
+
     void markClosed(int code, String reason) {
         closeCode = code;
         closeReason = reason == null ? "" : reason;
         open = false;
     }
+
     int closeCode() { return closeCode; }
     String closeReason() { return closeReason; }
 
@@ -175,10 +174,10 @@ public final class WebSocketSessionImpl extends AbstractWebSocketSession {
         if (!WebSocketFrame.isValidWireCloseCode(code)) {
             throw new IllegalArgumentException("Invalid WebSocket close code: " + code);
         }
-        byte[] reasonBytes = reason.getBytes(WebSocketFrame.TEXT_CHARSET);
-        if (reasonBytes.length > 123) {
-            throw new IllegalArgumentException("WebSocket close reason exceeds 123 bytes");
-        }
+        // The reason arrives pre-truncated from WebSocketSessionSupport;
+        // truncate here too so this frame writer never emits an oversized
+        // payload no matter who calls it (the read loop's protocol closes).
+        byte[] reasonBytes = truncateTo123Bytes(reason);
         byte[] payload = new byte[2 + reasonBytes.length];
         payload[0] = (byte) (code >> 8 & 0xFF);
         payload[1] = (byte) (code & 0xFF);
@@ -186,4 +185,16 @@ public final class WebSocketSessionImpl extends AbstractWebSocketSession {
         return payload;
     }
 
+    /** Truncates on a UTF-8 code-point boundary so a half character never
+     *  re-encodes to three bytes and pushes the payload back over 123. */
+    private static byte[] truncateTo123Bytes(String reason) {
+        if (reason == null) return new byte[0];
+        byte[] bytes = reason.getBytes(WebSocketFrame.TEXT_CHARSET);
+        if (bytes.length <= 123) return bytes;
+        int end = 123;
+        while (end > 0 && (bytes[end] & 0xC0) == 0x80) {
+            end--;
+        }
+        return Arrays.copyOf(bytes, end);
+    }
 }

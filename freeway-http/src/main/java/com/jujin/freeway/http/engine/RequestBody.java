@@ -3,81 +3,69 @@ package com.jujin.freeway.http.engine;
 import com.jujin.freeway.http.body.BodyTooLargeException;
 import com.jujin.freeway.http.internal.LimitedInputStream;
 
+import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.function.LongSupplier;
 
 /**
- * Request-body reading state for one request: the raw stream, the bounded
- * wrapper, full-body caching, the size limit, and the drain decision that
- * controls keep-alive reuse.
+ * Request-body framing state for one request: the raw stream, the chunked or
+ * fixed-length wrapper, and how many bytes have been consumed.
  *
- * <p>Owns all body-size accounting so the connection layer only needs to
- * ask "was the body fully consumed?" and the transport-specific parser
- * (e.g. HTTP/1.1 chunked-prefix reclaim) stays out of the framing logic.</p>
+ * <p>Size limiting and full-body caching live in {@code
+ * HttpContextSupport} — the policy object every engine composes. This class
+ * is the built-in engine's wire framing only, plus the drain decision that
+ * controls keep-alive reuse.</p>
  */
 final class RequestBody {
 
     private final InputStream raw;
     private final long contentLength; // -1 = chunked or unknown
     private final boolean chunked;
-    /** Read dynamically so a handler-raised limit applies mid-request. */
-    private final LongSupplier maxBodySize;
-    private InputStream framed;
-    private LimitedInputStream limited;
-    private byte[] cached;
+    private CountingInputStream framed;
     private final byte[] drainBuffer = new byte[2048];
 
-    RequestBody(InputStream raw, long contentLength, boolean chunked,
-                LongSupplier maxBodySize) {
+    RequestBody(InputStream raw, long contentLength, boolean chunked) {
         this.raw = raw;
         this.contentLength = contentLength;
         this.chunked = chunked;
-        this.maxBodySize = maxBodySize;
     }
 
-    boolean limitExceeded() {
-        return limited != null && limited.limitExceeded();
+    /** Total framed bytes read so far, so a drain can enforce the same
+     *  ceiling the support object's limiter enforces on handler reads. */
+    long consumed() {
+        return framed == null ? 0 : framed.count;
     }
 
-    /** Reads the entire body, enforcing the configured size limit. */
-    byte[] readAll() throws IOException {
-        if (cached == null) {
-            cached = stream().readAllBytes();
-        }
-        return cached;
-    }
-
-    /**
-     * Returns the request body as a streaming input. The returned stream
-     * enforces the dynamic size limit on every read and throws
-     * {@link BodyTooLargeException} once the body exceeds it.
-     */
+    /** Returns the transport-framed stream (chunked or fixed-length),
+     *  counting every byte read for {@link #drain}. */
     InputStream stream() {
-        if (limited == null) {
-            limited = new LimitedInputStream(framed(), maxBodySize);
+        if (framed == null) {
+            framed = new CountingInputStream(frame());
         }
-        return limited;
+        return framed;
     }
 
     /**
      * Drains any unread body bytes so the connection can be reused.
      *
+     * @param limit the body ceiling in force for this request (the support
+     *        object's current {@code maxBodySize})
      * @return true if the body was fully consumed; false when the connection
      *         must not be reused (over-limit body, or draining failed)
      */
-    boolean drain() {
-        if (cached != null) return true;
-        if (limitExceeded()) return false;
-        long limit = maxBodySize.getAsLong();
+    boolean drain(long limit) {
+        if (consumed() > limit) return false;
         if (contentLength > limit) return false;
         if (raw == null || (contentLength <= 0 && !chunked)) return true;
-        InputStream remaining = stream();
-        if (remaining instanceof LimitedInputStream li && li.eof()) return true;
+        // Bytes already consumed by the handler's limiter are still counted,
+        // so this second limiter starts where the first one stopped.
+        long remainingAllowance = limit - consumed();
+        InputStream remaining = new LimitedInputStream(stream(),
+            () -> remainingAllowance);
         try {
             while (remaining.read(drainBuffer) >= 0) {
-                // Keep draining until EOF; the bounded stream enforces the
-                // size limit and throws BodyTooLargeException when exceeded.
+                // Drain until EOF; a body past the ceiling fails the probe
+                // and throws BodyTooLargeException.
             }
             return true;
         } catch (BodyTooLargeException e) {
@@ -88,17 +76,44 @@ final class RequestBody {
         }
     }
 
-    /** Returns the transport-framed stream (chunked or fixed-length). */
-    private InputStream framed() {
-        if (framed != null) return framed;
+    private InputStream frame() {
         InputStream src = raw == null ? InputStream.nullInputStream() : raw;
         if (chunked) {
-            framed = new ChunkedInputStream(src);
-        } else if (contentLength >= 0) {
-            framed = new FixedLengthInputStream(src, contentLength);
-        } else {
-            framed = src;
+            return new ChunkedInputStream(src);
         }
-        return framed;
+        if (contentLength >= 0) {
+            return new FixedLengthInputStream(src, contentLength);
+        }
+        return src;
+    }
+
+    /** Counts bytes crossing the framing boundary for {@link #drain}. */
+    private static final class CountingInputStream extends FilterInputStream {
+        private long count;
+
+        CountingInputStream(InputStream in) {
+            super(in);
+        }
+
+        @Override
+        public int read() throws IOException {
+            int n = in.read();
+            if (n >= 0) count++;
+            return n;
+        }
+
+        @Override
+        public int read(byte[] b, int off, int len) throws IOException {
+            int n = in.read(b, off, len);
+            if (n > 0) count += n;
+            return n;
+        }
+
+        @Override
+        public long skip(long n) throws IOException {
+            long skipped = in.skip(n);
+            if (skipped > 0) count += skipped;
+            return skipped;
+        }
     }
 }
