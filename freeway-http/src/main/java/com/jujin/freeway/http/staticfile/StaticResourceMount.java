@@ -54,33 +54,35 @@ public final class StaticResourceMount {
     private final long cacheMaxAgeSeconds;
     private final boolean immutable;
     private final boolean fallthrough;
+    private final boolean spaIndex;
 
     private StaticResourceMount(
         String mountPath, ResourceSource source,
         long cacheMaxAgeSeconds, boolean immutable,
-        boolean fallthrough
+        boolean fallthrough, boolean spaIndex
     ) {
         this.mountPath = normalizeMount(mountPath);
         this.source = Objects.requireNonNull(source, "source");
         this.cacheMaxAgeSeconds = Math.max(0L, cacheMaxAgeSeconds);
         this.immutable = immutable;
         this.fallthrough = fallthrough;
+        this.spaIndex = spaIndex;
     }
 
     public static StaticResourceMount directory(String mountPath, Path root) {
-        return new StaticResourceMount(mountPath, new DirectoryResourceSource(root), DEFAULT_CACHE_MAX_AGE_SECONDS, false, false);
+        return new StaticResourceMount(mountPath, new DirectoryResourceSource(root), DEFAULT_CACHE_MAX_AGE_SECONDS, false, false, false);
     }
 
     public static StaticResourceMount classpath(String mountPath, String resourceRoot) {
-        return new StaticResourceMount(mountPath, new ClasspathResourceSource(resourceRoot), DEFAULT_CACHE_MAX_AGE_SECONDS, false, false);
+        return new StaticResourceMount(mountPath, new ClasspathResourceSource(resourceRoot), DEFAULT_CACHE_MAX_AGE_SECONDS, false, false, false);
     }
 
     public StaticResourceMount withCacheMaxAgeSeconds(long cacheMaxAgeSeconds) {
-        return new StaticResourceMount(mountPath, source, cacheMaxAgeSeconds, immutable, fallthrough);
+        return new StaticResourceMount(mountPath, source, cacheMaxAgeSeconds, immutable, fallthrough, spaIndex);
     }
 
     public StaticResourceMount withImmutable(boolean immutable) {
-        return new StaticResourceMount(mountPath, source, cacheMaxAgeSeconds, immutable, fallthrough);
+        return new StaticResourceMount(mountPath, source, cacheMaxAgeSeconds, immutable, fallthrough, spaIndex);
     }
 
     /**
@@ -89,7 +91,19 @@ public final class StaticResourceMount {
      * {@code try_files} directive — useful for SPA front-end routing.
      */
     public StaticResourceMount withFallthrough(boolean fallthrough) {
-        return new StaticResourceMount(mountPath, source, cacheMaxAgeSeconds, immutable, fallthrough);
+        return new StaticResourceMount(mountPath, source, cacheMaxAgeSeconds, immutable, fallthrough, spaIndex);
+    }
+
+    /**
+     * SPA index fallback — the missing half of the {@code try_files} analogy:
+     * when {@link #withFallthrough fallthrough} defers a miss to the route
+     * chain and no route handles it either, {@link #serve} serves the mount's
+     * {@code index.html} for GET requests without an extension (nginx's
+     * {@code try_files ... /index.html}). Required for history-mode SPA
+     * routing (deep links like {@code /chat}) in fat-jar deployments.
+     */
+    public StaticResourceMount withSpaIndex(boolean spaIndex) {
+        return new StaticResourceMount(mountPath, source, cacheMaxAgeSeconds, immutable, fallthrough, spaIndex);
     }
 
     public boolean fallthrough() {
@@ -132,6 +146,18 @@ public final class StaticResourceMount {
             return notFound(response);
         }
         AssetMeta meta = source.meta(relative);
+        if (meta == null) {
+            // SPA index fallback（try_files 最后一跳）：spaIndex 时对无扩展名的缺失路径
+            // 回退 index.html——history-mode SPA 深链（/chat）在 fat-jar 部署下必需。
+            // 有扩展名的缺失（/assets/xxx.js 拼错）不回退——避免给 JS 期待方回 HTML。
+            if (spaIndex && !hasFileExtension(relative)) {
+                AssetMeta spa = source.meta("index.html");
+                if (spa != null) {
+                    relative = "index.html";
+                    meta = spa;
+                }
+            }
+        }
         if (meta == null) {
             return notFound(response);
         }
@@ -291,6 +317,13 @@ public final class StaticResourceMount {
      * serves that directory's {@code index.html}. Returns null when the path
      * is outside the mount, malformed, or contains traversal segments.
      */
+    /** 路径最后段含 '.' 即视为带扩展名（/assets/app.js → true；/chat → false）。 */
+    private static boolean hasFileExtension(String relative) {
+        int slash = relative.lastIndexOf('/');
+        String last = slash >= 0 ? relative.substring(slash + 1) : relative;
+        return last.contains(".");
+    }
+
     private String resolveAssetPath(String requestPath) throws IOException {
         String relative = relativePath(requestPath);
         if (relative == null) {
