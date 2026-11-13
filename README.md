@@ -2,7 +2,7 @@
 
 <div align="left">
   <img width="96" src=".github/assets/logo.png" alt="Freeway Framework Logo">
-  <p>Modern · Concise · Clean · Consistent · Solid · Full-Featured · Agentic-Friendly</p>
+  <p>Modern · Concise · Clean · Consistent · Solid · Full-Featured · Composition-Only · Agentic-Friendly</p>
 </div>
 
 [![Maven Central](https://img.shields.io/maven-central/v/com.jujin8.freeway/freeway-parent?label=Maven%20Central&color=blue)](https://central.sonatype.com/artifact/com.jujin8.freeway/freeway-parent)
@@ -33,6 +33,7 @@ a concrete refusal behind it.
 | **Modern** | JDK 25 is the baseline, not a compatibility tax. Freeway uses records, sealed types, pattern switches and `ScopedValue` directly instead of emulating older Java. | `maven.compiler.release=25`; HTTP/1.1, HTTP/2 and WebSocket in the built-in engine; `ScopeBoundary` on `ScopedValue`; sealed `ResponseBody` and `Http2Frame` families. |
 | **Concise** | One accurate verb per action. Aliases and overloads that do different things with the same name make call sites ambiguous and documentation endless. | `find` returns `Optional`, `require` throws; `withX` returns a new value; `HttpResponse.body/text/json/file/sendText`; `Row.asString/asInt/asLong`; no compatibility aliases. |
 | **Clean** | Every fact has one owner. If two layers can decide the same thing, they will eventually disagree. | `ResponsePlan` + `HttpTransport` own response execution; `RequestHead` + `RequestViewSupport` own request reads; `FlowContextState` keeps execution writes out of the public read interface; no scanning or bytecode weaving. |
+| **Composition-only** | A framework should provide contracts, not a base class to inherit from. Subclassing couples callers to implementation history and lets each adapter drift differently. | No Freeway class extends another Freeway class. Extension seams such as `HttpTransport`, `FlowDriver`, `ServiceRegistry` and `ServiceDiscovery` are interfaces; implementations are final and selected by the container. The only class `extends` clauses in `src/main` are standard-library boundary bases (exceptions, streams/collections, TLS, logging, publication). |
 | **Consistent** | A reader should not have to relearn the framework in every module. The same action has the same shape everywhere. | One `find`/`require` contract, one `metadata()`/`putMetadata()` family, one `withX` convention, one `ConfigKeys` per module, one lifecycle, and `ModuleDeclaration` as the single module-composition value. |
 | **Solid** | Safety comes from types and tests, not from comments asking callers to be careful. Failure modes should be unrepresentable or covered. | Sealed pattern switches force exhaustive dispatch; `ErrorMapper` returns data while `HttpServer` owns the only write path; `HttpTransport` owns commit/framing; `mvn clean test` passes 2,443 tests with zero failures, errors or skips. |
 | **Full-featured** | A framework is only useful when the whole application lifecycle is covered without dragging in a second stack. | Seven core modules plus adapters: IoC, boot/config, HTTP, DB/ORM/migrations, Flow, Cloud discovery/RPC/event mesh/observability/resilience/secrets/storage. HTTP includes routing, filters, multipart, SSE, static resources and WebSocket. |
@@ -41,6 +42,29 @@ a concrete refusal behind it.
 **The common thread:** less vocabulary, fewer owners, sharper contracts. A small
 framework is not one with few features; it is one where every feature has one
 obvious place to live.
+
+### Composition, not inheritance
+
+Freeway's own object model is **interface contracts + final implementations**.
+To customize behavior you implement an SPI or contribute an object; you never
+subclass a framework class to reach protected state.
+
+- Swap the HTTP engine by implementing `HttpTransport`; there is no abstract
+  `BaseHttpServer` to inherit and override.
+- Model a response body as a sealed `ResponseBody` variant; there is no response
+  class hierarchy to subclass.
+- Plug a workflow driver with `FlowDriver`, a registry with `ServiceRegistry`,
+  or discovery with `ServiceDiscovery`; the container selects the implementation.
+- Compose request views through `RequestView` / `HttpRequest` / `HttpExchange`
+  interfaces. Interface extension is contract composition, not inherited code.
+
+The few `extends` clauses in `src/main` are deliberate standard-library boundary
+adapters: exceptions (`RuntimeException` / `IOException`), stream and collection
+adapters (`InputStream` / `OutputStream` / `AbstractMap`), TLS managers
+(`X509ExtendedKeyManager` / `X509ExtendedTrustManager`), logging handlers
+(`Formatter` / `Handler`), and `SubmissionPublisher`. They exist because the
+standard library requires those base types — not because Freeway has an
+implementation class hierarchy.
 
 ## Quick Start
 
