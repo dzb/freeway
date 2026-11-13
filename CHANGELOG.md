@@ -916,541 +916,836 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
-- **`freeway-http` 不再产出 `tests` classifier 的测试 jar**：它自 1.0.3 起存在，唯一理由是
-  `freeway-ext` 的两个引擎适配器要复用 core 测试树里的契约测试；ext 已把这些契约收敛进自己的
-  `freeway-http-adapter-testkit`（`746e5b9`），那条依赖被遗下并已核实删除（61 个顶层类对 ext
-  全部源码 0 引用）。**面向发布的形状变更**：仍依赖该 classifier 的外部代码会解析失败——解析
-  错误即迁移提示。
+- **`freeway-http` no longer produces a `tests`-classifier test jar**: it existed
+  since 1.0.3 for the single reason that freeway-ext's two engine adapters reused
+  contract tests from the core's test tree; ext has since gathered those contracts
+  into its own `freeway-http-adapter-testkit` (`746e5b9`), the dependency was left
+  behind, and its deletion has been verified (61 top-level classes, zero references
+  from ext's sources). **Release-facing shape change**: external code still
+  depending on that classifier will fail to resolve — the resolution error is the
+  migration hint.
 
 ### Changed
 
-- **模块组合的公开词汇收敛为"模块 + 入口列表"**：树类型 `ModuleNode` 移入 `ioc.internal`（包私有），
-  删除 `Freeway.create(ModuleNode)`、`FreewayApp.run/create(ModuleNode…)`、
-  `AppBuilder.add(ModuleNode…)`、`Container.moduleTree()`；`AppBuilder` 消融进 `FreewayApp`
-  （`create(...)` 返回它、链式方法返回它、`start()` 返回 `AppRuntime`）；删除
-  `FreewayApp.run(String[])`——唯一一个"应用完全由 classpath 决定"的入口，与"No classpath
-  scanning"相抵。boot 的公开词汇从三个类型收敛为两个，`ContainerImpl` 成为唯一的"声明 → 结构"
-  装配点。迁移就是把树形写法写成 `new OrderModule(), CloudModule.class`。
-- **`@PostConstruct` 只属于受管路径**：`Container.create` 是裸 `new` 加依赖解析，不再跑
-  `@PostConstruct`（此前 `to(c -> c.create(X))` 下静默跑两遍）。四条 realize 路径统一在 binding
-  的 materialize 步执行一次；`contribute(X.class)` 承诺的 `@PostConstruct` 由贡献路径显式发出，
-  其不配对 `@PreDestroy` 是既有约定。见 Migration。
-- **收尾首选 `AutoCloseable`，`@PreDestroy` 收窄为"必须能在 `EventBus` 仍存活时发布"的那一类**
-  （见 `DEVELOPER-GUIDE` 的 Service Lifecycle）。同时标两者时都跑、各一次（去重只在阶段内成立）；
-  `AutoCloseable` 放最后是刻意的，`@PreDestroy` 在它之前。`@PostConstruct` 无替代品：`advise`
-  拦截的是方法调用，而它发生在对象尚不可调用之时。
-- **`/health/ready` 与 RPC 响应的 `Content-Type` 由 `application/json` 改为
-  `application/json; charset=utf-8`**（无编译错误保护的行为变更）：二者统一走 `sendJson`，与
-  `/health/live`、`/healthz` 及框架其余 JSON 响应一致。
-- **`ReadyHandler` 的构造器去掉 `JsonCodec` 参数**（`cloud.internal`，非公开面）：改用 `sendJson`
-  后不再需要自带 codec。
-- **`LazyHandler`/`LazyEndpoint` 更名为 `ResolvableHandler`/`ResolvableEndpoint`**
-  （`freeway-http`，非公开面）：旧名承诺了实现从未有过的惰性——类路线在启动期即全部解析。
-  `Resolvable` 陈述两阶段事实，不对时机作承诺。
-- **`RouteIndex` 恢复未解析类路线的 fail-fast**：与 `WebSocketIndex` 对称，装配期报出哪个路由、
-  哪个类、谁负责解析、以及出路；手工构建索引仍受支持。
-- **未解析包装器的守卫消息对齐**：`ResolvableHandler.handle` 与 `ResolvableEndpoint` 的
-  `open`/`subprotocols` 说同样几件事（类全名、`invoked directly, outside an index`、谁解析、出路）。
-- **`AppRuntime` 的关闭语义改为说真话**：同线程展开、跨线程等待（此前 javadoc 称一律
-  "unwind the startup"）。代码不动。
-- **启动失败不再覆盖已完成的关停状态**：hook 先 `close()` 再抛异常时保留 `close()` 落定的状态，
-  `state()` 不再与 `close()` 的"已关过"互相矛盾。
-- `Sql.Group` 与 `Sql` 共享 group 构建（抽 `Sql.buildGroup`）。两者的 6 个公有条件方法形状相似是
-  接口必然，`addCondition` 同名不同语义（`Sql` 不可变、`Group` 原地追加），不合并。
-- `GraphSpec.create()` 不再重复规范化：`drainNodeLinks()` + `normalize()` 收归 `Graph` 构造器
-  （已规范化 blueprint 的唯一读者）。
-- `Schema.ensure` 的 `@return` 改为说真话：索引 DDL 会执行但不计入返回值。
-- 两处**只改注释**的更正：`PeerConnector.MAX_INBOUND_MESSAGE` 的注释指向一个全仓不存在的常量，
-  且掩盖了单位差异（服务端按字节、mesh 按字符）；`HttpModule` 的 WS 块说明它与 `WebSocketIndex`
-  各展开一次 `WebSocketGroup`（安全，因为 `expand()` 复用 endpoint 实例）。
-- `MultipartForm` 的每分部上限提为具名常量 `DEFAULT_MAX_PART_SIZE`（仅可读性；它与
-  `DEFAULT_MAX_BODY_SIZE` 数值相同但语义不同——每分部 vs 整体——刻意固定）。
+- **Module composition's public vocabulary converges to "modules + entry list"**:
+  the tree type `ModuleNode` moves into `ioc.internal` (package-private), deleting
+  `Freeway.create(ModuleNode)`, `FreewayApp.run/create(ModuleNode…)`,
+  `AppBuilder.add(ModuleNode…)` and `Container.moduleTree()`; `AppBuilder` is
+  absorbed into `FreewayApp` (`create(...)` returns it, its chain methods return
+  it, `start()` returns `AppRuntime`); `FreewayApp.run(String[])` is deleted — the
+  only entry point where "the application is decided entirely by the classpath",
+  contradicting "No classpath scanning". boot's public vocabulary narrows from
+  three types to two, and `ContainerImpl` becomes the only "declaration →
+  structure" assembly point. Migrating means writing the tree form as
+  `new OrderModule(), CloudModule.class`.
+- **`@PostConstruct` belongs only to the managed path**: `Container.create` is a
+  bare `new` plus dependency resolution and no longer runs `@PostConstruct`
+  (previously it ran twice, silently, under `to(c -> c.create(X))`). The four
+  realize paths all run it once, in the binding's materialize step; the
+  `@PostConstruct` promised by `contribute(X.class)` is issued explicitly by the
+  contribution path, whose not pairing with `@PreDestroy` is the existing
+  convention. See Migration.
+- **Prefer `AutoCloseable` for teardown; `@PreDestroy` narrows to the class of
+  things that "must publish while the `EventBus` is still alive"** (see the
+  Service Lifecycle section of the DEVELOPER-GUIDE). When both are marked, both run,
+  once each (deduplication holds only within a phase); `AutoCloseable` deliberately
+  goes last, with `@PreDestroy` before it. `@PostConstruct` has no substitute:
+  `advise` intercepts method calls, while it runs when the object is not yet
+  callable.
+- **`/health/ready` and RPC responses change `Content-Type` from
+  `application/json` to `application/json; charset=utf-8`** (a behaviour change
+  with no compile-error protection): both go through `sendJson` now, matching
+  `/health/live`, `/healthz` and the framework's other JSON responses.
+- **`ReadyHandler`'s constructor drops the `JsonCodec` parameter**
+  (`cloud.internal`, not public surface): with `sendJson` it no longer needs to
+  carry its own codec.
+- **`LazyHandler`/`LazyEndpoint` renamed `ResolvableHandler`/`ResolvableEndpoint`**
+  (`freeway-http`, not public surface): the old names promised a laziness the
+  implementation never had — the class route resolves everything at startup.
+  `Resolvable` states the two-phase fact and promises nothing about timing.
+- **`RouteIndex` restores fail-fast for unresolved class routes**: symmetric with
+  `WebSocketIndex`, reporting at assembly time which route, which class, who is
+  responsible for resolving, and the way out; building the index by hand is still
+  supported.
+- **The guard messages of unresolved wrappers align**: `ResolvableHandler.handle`
+  and `ResolvableEndpoint`'s `open`/`subprotocols` now say the same things (the
+  class's full name, `invoked directly, outside an index`, who resolves, the way
+  out).
+- **`AppRuntime`'s shutdown semantics tell the truth**: same-thread unwind,
+  cross-thread wait (the javadoc previously claimed it always "unwinds the
+  startup"). The code did not change.
+- **A startup failure no longer overwrites a completed shutdown state**: when a
+  hook `close()`es first and then throws, the state `close()` settled is kept, and
+  `state()` no longer contradicts `close()`'s "already closed".
+- `Sql.Group` and `Sql` share group construction (extracting `Sql.buildGroup`). The
+  similar shape of their six public condition methods is inherent to the interface;
+  `addCondition` is same-name, different-semantics (`Sql` is immutable, `Group`
+  appends in place), so they are not merged.
+- `GraphSpec.create()` no longer normalizes twice: `drainNodeLinks()` +
+  `normalize()` fold into the `Graph` constructor (the only reader of a normalized
+  blueprint).
+- `Schema.ensure`'s `@return` tells the truth: index DDL executes but does not
+  count toward the return value.
+- Two **comment-only** corrections: `PeerConnector.MAX_INBOUND_MESSAGE`'s comment
+  pointed at a constant that exists nowhere in the repo and masked a unit
+  difference (server by bytes, mesh by characters); `HttpModule`'s WS block notes
+  that it and `WebSocketIndex` each expand `WebSocketGroup` once (safe because
+  `expand()` reuses the endpoint instance).
+- `MultipartForm`'s per-part ceiling becomes the named constant
+  `DEFAULT_MAX_PART_SIZE` (readability only; it equals `DEFAULT_MAX_BODY_SIZE` in
+  value but not in meaning — per part vs whole — deliberately fixed).
 
 ### Added
 
-- **应用根可以命名**：`FreewayApp.create(...).name("order-service")`，无 boot 时
-  `Freeway.create("order-service", …)`。名字只进启动日志与组合错误，不参与绑定、顺序或身份；
-  空白名字在 `start()` 抛 `IllegalArgumentException`。
-- **`AsyncCarrier`**（`ioc.event`，`@FunctionalInterface`）：提交线程的 ambient 上下文在
-  `publishAsync`/`publishOrdered` 入口捕获、执行线程恢复；无绑定时恒等、无 trace 提交跑裸。
-- **`KnownKeys`**（`ioc.symbol`）：一个模块一张 `ConfigKeys` 表、一条词表，键写成完整字面量
-  （不 `PREFIX + "…"` 组合）；`of(...)` 反射收割并声明命名空间，`admit(...)` 供名字部分动态的
-  命名空间，`suggest(...)` 给拼写建议；表内常量落在声明之外即绑定期失败。`UnknownKeysHook`
-  启动期一次 WARN 点名无人读取的未知 `freeway.*` 键。
-- **反射清单 `docs/freeway-reflection.md`**：全框架反射点的单页台账（站点、缓存形态、路径与规则）。
-  顺带修一处真实缺陷：`BeanIntrospector.selectConstructor` 此前每次实例化都重扫
-  `getDeclaredConstructors`，现按 (type, annotation) 缓存（行为不变）。
+- **The application root can be named**: `FreewayApp.create(...).name("order-service")`,
+  or `Freeway.create("order-service", …)` without boot. The name goes only into the
+  startup log and composition errors — never into bindings, ordering or identity;
+  a blank name throws `IllegalArgumentException` in `start()`.
+- **`AsyncCarrier`** (`ioc.event`, `@FunctionalInterface`): the submitting thread's
+  ambient context is captured at the `publishAsync`/`publishOrdered` entry points
+  and restored on the executing thread; with no binding it is identity, and events
+  published without trace context run bare.
+- **`KnownKeys`** (`ioc.symbol`): one `ConfigKeys` table and one vocabulary per
+  module, with keys spelled as full literals (no `PREFIX + "…"` composition);
+  `of(...)` harvests reflectively and declares the namespaces, `admit(...)` serves
+  namespaces whose names are partly dynamic, and `suggest(...)` offers spelling
+  suggestions; a table constant outside the declared namespaces fails at bind time.
+  `UnknownKeysHook` WARNs once at startup, naming unknown `freeway.*` keys that
+  nobody reads.
+- **The reflection inventory `docs/freeway-reflection.md`**: a one-page ledger of
+  every reflective site in the framework (site, cache shape, path and rules). It
+  also fixed a real defect: `BeanIntrospector.selectConstructor` used to re-scan
+  `getDeclaredConstructors` on every instantiation and now caches per
+  (type, annotation) (behaviour unchanged).
 
 ### Fixed
 
-- **并行分支汇聚的 join 记账改为原子**（`freeway-flow`）：到达计数与临时死胡同标记分属两个结构、
-  更新非一步，偶发"图已跑完却报 dead end"（文案还把记账顺序问题描述成丢分支）。整个 join 转换
-  收进 `ExecState.join`（节点监视器内完成），`resetLoopBodyJoins` 改走 `joinReset`；
-  `ExecState.deadEndClear` 删除——它正是那个不安全操作。
-- **`@Inject`/`@Symbol` 标在方法参数上改为启动期报错**（无编译错误保护的行为变更）：容器只解析
-  构造器参数与字段，方法参数此前能编译却被静默忽略，参数原样收到调用方传的值。报文点名声明类、
-  方法、参数序号、注解与出路。
-- **`/health/live` 的 `Content-Type` 由 `text/plain` 改为 `application/json`**：改用 `sendJson`，
-  body 逐字节不变。
-- **`TracingFilter` 不再自抄探针路径**：改从路径的 owner 取——`HealthFilter.healthPath()`（可配）
-  优先、缺省回退其默认；cloud 两路径提为 `CloudHealthModule.LIVE_PATH`/`READY_PATH` 与
-  `CloudObserveModule.METRICS_PATH`。
-- **JSON 响应收归 `sendJson` 一处产生**：`ReadyHandler`/`RpcEndpoint`/`RegistryApi` 此前手写
-  `Content-Type` 头，导致兄弟探针 `/health/ready` 与 `/health/live` 类型不一致。
-- **关闭与 `get()` 并发不再向封印后的容器发布代理**（`freeway-ioc`）："仍开着？"与"发布进
-  proxyCache"合成锁内一步；PROTOTYPE 分支补上同样的关闭检查。
-- **最终 drain 不再持 realize 锁**（`freeway-ioc`）：`ServiceRuntime.seal` 改为锁内置位 `closed`
-  → 锁外 drain → 锁内清缓存，去掉一个方向的死锁窗口（用户回调 join 一个正等锁的解析方）。
-- **body 限制收敛为单一实现**（`freeway-http`）：`AbstractHttpContext#readBody` 改为委托
-  `LimitedInputStream`（引擎自己用的那个），`AGENTS.md` 的 Adapters 条款随之成立。
-- **`maxBodySize` 的调整不再跨请求存活**（`freeway-http`）：见 Migration。
-- **HTTP/2 帧的 `writeTo` 修好**（`freeway-http`）：`DataFrame` 补帧头，`HeadersFrame` 补
-  pad-length/PRIORITY/padding，`GoawayFrame`/`PushPromiseFrame`/`NotImplementedFrame` 补载荷。
-- **分支跨迭代域混合的 join 在 `load()` 时被拒绝**（`freeway-flow`）：见 Migration。
-- **PlantUML display 函数抛异常不再被静默吞掉**（`freeway-flow`）：改为抛出并点名三种真实结局
-  （`of`/`ofDefault`/`HIDDEN`）。
-- **mesh 重连补上 jitter**：新增 `resilience.Backoff` 供 RPC 与 mesh 共用（配置键各自独立、
-  第一跳语义各自保留）。同批：**`Backoff` 的指数位移按 base 定界，不再回绕成零**；
-  **`PeerConnector.Wiring` 拒绝 `backoffMaxMs < backoffBaseMs`**。
-- **`CloudHttpClient.close()` 的 in-flight 兜底移入 `finally`**。
-- **mesh 帧分类收敛为单一实现** `MeshFrame.classify`（密封接口：Hello/DuplicateHello/Event/
-  EventBeforeHello/Unrecognized/Malformed），两条腿只留各自不同的处置；分类先认保留字段
-  `specversion`（`proto` 只是本框架 hello 的字段，第三方可用作扩展属性）。
-- `BeanIntrospector.selectConstructor` 并发首算返回 map 胜者（选择语义不变）；`UnknownKeysHook`
-  跨词表建议去重；`KnownKeys.of` 空收割即绑定期失败；全空 `InvocationContext` 不再跨执行器传播
-  （并修 `TracerDefault` 用 `Baggage.empty()` 顶替 null 的缺陷）；`ModuleDiscovery` 跳过
-  匿名/synthetic 模块类、`HttpModule` 退役探测改用 dot 边界；`Ordering` 新增
-  `beforeIfPresent`/`afterIfPresent`（缺席的可选伴侣是配置而非错误）；`ScopedCache.get(key,
-  factory, onExit)` 新重载，容器删 JVM-global 旁表与类加载期钩子。
-- 三处私有 `ensureOpen()`/`checkOpen()` 统一为 `requireOpen()`（只统一词干，异常类型不变）；
-  `Orm.ensureInsertable` → `requireInsertable`（它只抛不补救）。**`require*` 一律拒绝、`ensure*`
-  一律幂等补救**，已写进 AGENTS.md。
-- `Sql` 两处形状修正：`where("id in ?", sub)` 裸拼嵌套 `Sql` 改为构建期拒绝（报错点名写成
-  `"(?)"`）；链式 `union` 左侧不再重复包裹（右侧保留，分组不丢）。
+- **The parallel-branch join bookkeeping becomes atomic** (`freeway-flow`): the
+  arrival count and the temporary dead-end marker lived in two structures updated
+  non-atomically, occasionally reporting "dead end" after the graph had actually
+  finished (the message even described the bookkeeping-order problem as a dropped
+  branch). The whole join transform folds into `ExecState.join` (completed inside
+  the node's monitor), `resetLoopBodyJoins` switches to `joinReset`, and
+  `ExecState.deadEndClear` is deleted — it was precisely that unsafe operation.
+- **`@Inject`/`@Symbol` on method parameters fails at startup** (a behaviour change
+  with no compile-error protection): the container resolves constructor parameters
+  and fields only; method parameters compiled and were silently ignored, receiving
+  whatever the caller passed. The message names the declaring class, the method,
+  the parameter index, the annotation and the way out.
+- **`/health/live` changes `Content-Type` from `text/plain` to
+  `application/json`**: it switches to `sendJson`, with the body unchanged byte for
+  byte.
+- **`TracingFilter` no longer copies the probe paths itself**: it takes them from
+  the path's owner — `HealthFilter.healthPath()` (configurable) first, falling back
+  to its default; cloud's two paths become the constants
+  `CloudHealthModule.LIVE_PATH`/`READY_PATH` and `CloudObserveModule.METRICS_PATH`.
+- **JSON responses are produced in one place, `sendJson`**: `ReadyHandler`/
+  `RpcEndpoint`/`RegistryApi` previously hand-wrote the `Content-Type` header,
+  leaving the sibling probes `/health/ready` and `/health/live` inconsistent.
+- **Concurrent close and `get()` no longer publish a proxy into a sealed container**
+  (`freeway-ioc`): "still open?" and "publish into proxyCache" merge into one step
+  under the lock; the PROTOTYPE branch gains the same closed check.
+- **The final drain no longer holds the realize lock** (`freeway-ioc`):
+  `ServiceRuntime.seal` becomes set `closed` under the lock → drain outside the
+  lock → clear caches under the lock, removing one direction of the deadlock window
+  (a user callback joining a resolver waiting for the lock).
+- **The body limit converges to a single implementation** (`freeway-http`):
+  `AbstractHttpContext#readBody` delegates to `LimitedInputStream` (the one the
+  engines already ran), making AGENTS.md's Adapters clause true.
+- **A `maxBodySize` adjustment no longer survives across requests**
+  (`freeway-http`): see Migration.
+- **HTTP/2 frames' `writeTo` is fixed** (`freeway-http`): `DataFrame` writes its
+  frame header, `HeadersFrame` writes pad-length/PRIORITY/padding, and
+  `GoawayFrame`/`PushPromiseFrame`/`NotImplementedFrame` write their payloads.
+- **A join whose branches span iteration domains is rejected at `load()`**
+  (`freeway-flow`): see Migration.
+- **A PlantUML display function throwing is no longer swallowed silently**
+  (`freeway-flow`): it now propagates, naming the three real outcomes
+  (`of`/`ofDefault`/`HIDDEN`).
+- **mesh reconnection gains jitter**: the new `resilience.Backoff` serves RPC and
+  mesh alike (independent config keys; each keeps its own first-hop semantics).
+  Same batch: **`Backoff`'s exponential shift is bounded by the base and no longer
+  wraps to zero**; **`PeerConnector.Wiring` rejects
+  `backoffMaxMs < backoffBaseMs`**.
+- **`CloudHttpClient.close()`'s in-flight fallback moves into a `finally`**.
+- **mesh frame classification converges into `MeshFrame.classify`** (a sealed
+  interface: Hello/DuplicateHello/Event/EventBeforeHello/Unrecognized/Malformed),
+  leaving each leg only its own distinct handling; classification recognizes the
+  reserved field `specversion` first (`proto` is only this framework's hello
+  field, and a third party may use it as an extension attribute).
+- `BeanIntrospector.selectConstructor` returns the map's winner on a concurrent
+  first computation (selection semantics unchanged); `UnknownKeysHook` deduplicates
+  suggestions across vocabularies; `KnownKeys.of` fails at bind time on an empty
+  harvest; an all-empty `InvocationContext` no longer propagates across executors
+  (also fixing `TracerDefault` substituting `Baggage.empty()` for null);
+  `ModuleDiscovery` skips anonymous/synthetic module classes, and `HttpModule`'s
+  retirement probe switches to a dot boundary; `Ordering` gains
+  `beforeIfPresent`/`afterIfPresent` (an optionally absent companion is
+  configuration, not an error); `ScopedCache.get(key, factory, onExit)` gains an
+  overload, and the container drops its JVM-global side table and class-load-time
+  hooks.
+- Three private `ensureOpen()`/`checkOpen()` methods unify as `requireOpen()`
+  (stem only; exception types unchanged); `Orm.ensureInsertable` →
+  `requireInsertable` (it only refuses, never repairs). **`require*` always
+  refuses, `ensure*` always idempotently repairs** — now written into AGENTS.md.
+- Two shape fixes in `Sql`: `where("id in ?", sub)` splicing a nested `Sql` raw is
+  rejected at build time (the error names writing `"(?)"`); a chained `union` no
+  longer re-wraps its left side (the right side is kept, and grouping is not lost).
 
 ### Migration
 
-行为变更（无编译错误保护，务必对照）：
+Behaviour changes (no compile-error protection — check each one):
 
-| 旧行为 | 新行为 | 影响 |
+| Old behaviour | New behaviour | Impact |
 |---|---|---|
-| `Container.create(X)` 跑 `@PostConstruct` | 不跑；只做构造注入 + 字段注入 | 签名不变，但依赖 `create` 跑 `@PostConstruct` 的代码会静默失去该回调。**需要完整生命周期的类型改为绑定**（`binder.bind(X.class).to(X.class)` + `container.get(X.class)`），受管路径两半齐全 |
-| filter 的 `ctx.setMaxBodySize` 调整活到同一 keep-alive 连接上的下一个请求 | 每请求复位为服务端配置值 | 依赖"抬高后长期生效"的 filter 会看到 413——这正是该 javadoc 早已声明的 "for this request only"。要改上限请改 `freeway.http.max-body-size`；复用 context 的适配器在自己的 `reset()` 里调 `resetMaxBodySize()` |
-| `PeerConnector.Wiring` 接受 `backoffMaxMs < backoffBaseMs` | 构造器拒绝 | 上限低于基准会让曲线夹到上限、dial 循环近乎空转。`withBackoff(60_000, 1_000)` 现在抛 `IllegalArgumentException`（`Wiring` 是 record，编译期无感） |
-| 分支落在不同迭代域的 join 可 `load()`，运行末尾报 dead end | `load()` 即拒，点名节点与每个分支的域 | 加载期多一次校验，失败不留已注册的图。所有分支同域（无循环上游，或全在同一个循环体内，含直接由循环节点喂入）、或 join 位于所有循环下游的写法不受影响；无 `$for` 的 LOOP 不算循环 |
-| `Sql.setColumn` 的列名只做 null 检查、裸拼接进语句 | 按名字校验（限定名逐段、裸/引号可组合、拒绝提前闭合） | 此前能用的**会开始抛 `IllegalArgumentException`**；接受面是三种方言引号约定的并集 |
-| `Sql.setColumn` 把 `UNION`／`INSERT`／`UPDATE`／`DELETE` 形态的嵌套 `Sql` 渲染进列槽位 | 拒绝，仅接受纯 `SELECT`（`WITH` 仍可） | 此前渲染出语法无意义但不报错的语句，失败落到数据库、离调用点很远；现在构造点即抛 |
-| `LimitedInputStream.read(b,off,len)` 对非法参数返回 0 或 -1 | 抛 `IndexOutOfBoundsException` / `NullPointerException` | 此前把参数错误报成"body 结束"。该类型是 `public` 且适配器按文档直接构造它 |
-| `GoawayFrame.parse` 原样保留 last-stream-id 的保留位 | 屏蔽（RFC 9113 §6.8 要求接收方忽略），`writeTo` 写回已屏蔽的值 | 线上字节变化；`Http2Connection` 只读 `errorCode`，当前无活路径受害 |
-| 方法参数上的注入注解在构造函数跑完后才被拒 | 构造函数之前即拒（`Container.create` 亦纳入） | 懒 realize 的单例从"先跑完构造器副作用再报错"变成"第一次 `get()` 直接报" |
-| hook 先 `close()` 再抛异常时 `AppRuntime#state()` 报 `FAILED` | 保留 `close()` 落定的状态 | 关停已完成时不再报启动失败，`state()` 可观测 |
-| `MeshFrame.classify` 先判 `proto` 再判 `specversion` | 先判保留字段 `specversion` | 带 `proto` 扩展属性的合法第三方事件不再被当成 hello；本框架自己的帧不受影响 |
+| `Container.create(X)` ran `@PostConstruct` | It does not; only constructor injection + field injection | The signature is unchanged, but code relying on `create` to run `@PostConstruct` silently loses the callback. **Types needing the full lifecycle become bindings** (`binder.bind(X.class).to(X.class)` + `container.get(X.class)`), where the managed path has both halves |
+| A filter's `ctx.setMaxBodySize` adjustment survived into the next request on the same keep-alive connection | Reset per request to the server-configured value | Filters relying on "raised once, effective indefinitely" will see 413 — exactly the "for this request only" the javadoc already declared. Change the ceiling via `freeway.http.max-body-size`; an adapter reusing a context calls `resetMaxBodySize()` in its own `reset()` |
+| `PeerConnector.Wiring` accepted `backoffMaxMs < backoffBaseMs` | The constructor rejects it | A ceiling below the base clamps the curve flat and makes the dial loop nearly idle. `withBackoff(60_000, 1_000)` now throws `IllegalArgumentException` (`Wiring` is a record, so the compiler notices nothing) |
+| A join whose branches landed in different iteration domains could `load()`, reporting a dead end at the end of the run | `load()` rejects immediately, naming the node and each branch's domain | One more validation at load time; a failure leaves no registered graph. Spellings where all branches share a domain (no loop upstream, or all inside one loop body, including fed directly by the loop node), or where the join sits downstream of all loops, are unaffected; a LOOP without `$for` is not a loop |
+| `Sql.setColumn` only null-checked the column name and spliced it raw into the statement | Validated by name (qualified names segment by segment, bare/quoted combinable, premature closure rejected) | Expressions that used to work **will start throwing `IllegalArgumentException`**; the acceptance surface is the union of the three dialects' quoting conventions |
+| `Sql.setColumn` rendered a nested `Sql` of `UNION`/`INSERT`/`UPDATE`/`DELETE` shape into a column slot | Rejected; only a pure `SELECT` is accepted (`WITH` still allowed) | It used to render a syntactically meaningless statement that failed only at the database, far from the call site; now the construction point throws |
+| `LimitedInputStream.read(b,off,len)` returned 0 or -1 for invalid arguments | Throws `IndexOutOfBoundsException` / `NullPointerException` | Invalid arguments used to be reported as "body ended". The type is `public` and adapters construct it directly per the docs |
+| `GoawayFrame.parse` kept the reserved bits of last-stream-id verbatim | Masked (RFC 9113 §6.8 requires receivers to ignore them), and `writeTo` writes back the masked value | Wire bytes change; `Http2Connection` reads only `errorCode`, so no live path is harmed today |
+| Injection annotations on method parameters were rejected only after the constructor ran | Rejected before it (including via `Container.create`) | A lazily realized singleton goes from "run the constructor's side effects, then fail" to "fail on the first `get()`" |
+| When a hook `close()`ed first and then threw, `AppRuntime#state()` reported `FAILED` | The state `close()` settled is kept | A completed shutdown no longer reports a startup failure, observably |
+| `MeshFrame.classify` checked `proto` before `specversion` | The reserved field `specversion` is checked first | A legitimate third-party event carrying `proto` extension attributes is no longer mistaken for a hello; this framework's own frames are unaffected |
 
-面向发布的形状变更（编译错误即迁移路径）：
+Release-facing shape changes (the compile error is the migration path):
 
-| 旧 | 新 | 影响 |
+| Old | New | Impact |
 |---|---|---|
-| `FreewayApp.run(String[])` 与树形入口（`Freeway.create(ModuleNode)`、`FreewayApp.run/create(ModuleNode…)`、`AppBuilder`、`Container.moduleTree()`） | 删除 | 迁移：`run(new String[0])` → `create().start()`；树形写法 → `new OrderModule(), CloudModule.class`；显式声明过 `AppBuilder` 的改为 `FreewayApp launcher = …`。单个 `String[]` 同时匹配两个 varargs，旧写法报"引用不明确"而非点名修法，故迁移写在此处 |
-| `AbstractHttpContext#setMaxBodySize(long)` 可被覆写 | `final` | 覆写过它的适配器编译失败；"每请求复位"这条承诺因此有一个不可绕过的实现点 |
-| `AbstractHttpContext` 构造器 `(codec, coercer)` / `(codec, coercer, correlationId)` | 各多一个 `maxBodySize` 参数 | 适配器的 context 编译失败——配置的上限只有 server 起来后才知，池随之挪到 `start()` 里建；两个引擎改为在 `reset()` 里 `resetMaxBodySize()` |
-| `FrameHeader` 三个入口对超界长度静默截断 | 统一抛 `IllegalArgumentException` | 该类型是 `public`；按算出的长度自行构造 header 的适配器从"写出错帧"变成"抛异常" |
-| `http.engine.http2.hpack.Huffman` / `StaticHeaderTable` 是 `public` | 包私有 | HPACK 实现细节，包外无引用 |
-| `commons.bean.MethodHandleUtils` | `commons.bean.ReflectiveHandles` | 它管的还有 `VarHandle` 字段访问器与构造器句柄，旧名把范围说窄了。纯重命名 |
-| `http.internal.HttpUtils` 的 6 个 header 方法 | `http.internal.HttpHeaders` | header 线格式规则与查询串解析分开；`HttpUtils` 保留查询串。全部包私有 |
-| `http.engine.http2.BinUtils` | `http.engine.http2.Bytes` | 大端整数读写与字节拼接两组，`Utils` 掩盖了它有形状。纯重命名 |
-| `http.engine.ws.WebSocketUtils` | 方法移入 `WebSocketUpgrade.acceptKey` | 只有 1 个方法、1 个调用方，且 `Sec-WebSocket-Accept` 派生本属握手 |
-| `AppConfigDefaultTest` / `BootConfigTierTest` 在 `com.jujin.freeway.boot` | 移到 `boot.internal`，与被测类同包 | 纯测试位置变更 |
+| `FreewayApp.run(String[])` and the tree entry points (`Freeway.create(ModuleNode)`, `FreewayApp.run/create(ModuleNode…)`, `AppBuilder`, `Container.moduleTree()`) | Deleted | Migrate: `run(new String[0])` → `create().start()`; the tree spelling → `new OrderModule(), CloudModule.class`; an explicit `AppBuilder` becomes `FreewayApp launcher = …`. A single `String[]` matched two varargs at once, so the old spelling failed with "reference is ambiguous" rather than naming the fix — hence this migration note |
+| `AbstractHttpContext#setMaxBodySize(long)` was overridable | `final` | Adapters that overrode it fail to compile; "reset per request" thereby has one unbypassable implementation point |
+| `AbstractHttpContext` constructors `(codec, coercer)` / `(codec, coercer, correlationId)` | Each gains a `maxBodySize` parameter | The adapters' contexts fail to compile — the configured limit is only known once the server is up, so the pool moves into `start()`; both engines call `resetMaxBodySize()` in their `reset()` |
+| `FrameHeader`'s three entry points silently truncated over-limit lengths | Uniformly throw `IllegalArgumentException` | The type is `public`; an adapter constructing a header from its own computed length goes from "write a broken frame" to "throw" |
+| `http.engine.http2.hpack.Huffman` / `StaticHeaderTable` were `public` | Package-private | HPACK implementation details, with no reference from outside the package |
+| `commons.bean.MethodHandleUtils` | `commons.bean.ReflectiveHandles` | It also owns `VarHandle` field accessors and constructor handles, so the old name understated its scope. Pure rename |
+| `http.internal.HttpUtils`'s six header methods | `http.internal.HttpHeaders` | Header wire-format rules separate from query-string parsing; `HttpUtils` keeps the query string. All package-private |
+| `http.engine.http2.BinUtils` | `http.engine.http2.Bytes` | Two groups — big-endian integer reads/writes and byte concatenation — and `Utils` hid that it had a shape. Pure rename |
+| `http.engine.ws.WebSocketUtils` | Methods move into `WebSocketUpgrade.acceptKey` | One method, one caller, and deriving `Sec-WebSocket-Accept` belongs to the handshake |
+| `AppConfigDefaultTest` / `BootConfigTierTest` in `com.jujin.freeway.boot` | Move to `boot.internal`, same package as the classes under test | Pure test relocation |
 
-Schema 归开发、migration 归生产，`freeway.db.schema.mode` 三档替代布尔键：
+Schema belongs to development, migration to production; `freeway.db.schema.mode`'s
+three values replace the boolean key:
 
-| 旧 API / 行为 | 新 API / 行为 |
+| Old API / behaviour | New API / behaviour |
 |---|---|
-| `freeway.db.schema.auto=true/false` | `freeway.db.schema.mode=auto/off`，生产再加 `validate`（迁移后比对实体与库，漂移即启动失败）。旧键删除且值不生效：只设旧键时启动失败并点名新键与 true→auto/false→off |
-| Schema 与 migration 启动期都跑（Schema 先） | `auto` 原序不变；`validate` 改为 migration 先、比对后 |
-| `Schema.ensure` 内联检查+应用 | 检查半抽成 `inspect`：`ensure` 执行、`validate` 上报 |
+| `freeway.db.schema.auto=true/false` | `freeway.db.schema.mode=auto/off`, with `validate` added for production (after migration, compares entities against the database and fails startup on drift). The old key is deleted and its value has no effect: setting only the old key fails startup, naming the new key and the true→auto/false→off mapping |
+| Schema and migration both ran at startup (Schema first) | `auto` keeps its order; `validate` runs migration first, then compares |
+| `Schema.ensure` checked and applied inline | The checking half is extracted as `inspect`: `ensure` executes, `validate` reports |
 
-两处**收窄可见性被事实驳回**、已写进 AGENTS.md：`boot.internal.ConfigSources` 必须 `public`
-（`AppConfigDefault` 的 public 构造器以它为参数，`freeway-cloud` 的测试要构造它）、
-`boot.internal.AppLogSource` 必须 `public`（`META-INF/services` 的 provider，由 `ServiceLoader`
-反射构造）。判据是"public 签名够到谁、谁就得可见"，而非"仓内有无调用方"。
+Two **visibility narrowings were overturned by facts** and are now written into
+AGENTS.md: `boot.internal.ConfigSources` must stay `public` (`AppConfigDefault`'s
+public constructor takes it as a parameter, and freeway-cloud's tests construct
+one), and `boot.internal.AppLogSource` must stay `public` (a `META-INF/services`
+provider constructed reflectively by `ServiceLoader`). The criterion is "whoever a
+public signature reaches must be able to see it", not "whether the repo itself has
+a caller".
 
 ## [1.5.5] - 2026-09-24
 
 ### Migration
 
-`WebServer` 更名为 `HttpServer`（见本表末三行），装配收敛成**一个派生点**：
-`HttpServer.create(engine, config, pipeline[, eventSink])`。
-原来并存两条装配路径：`HttpModule`（容器）与 `WebServerBuilder`（"无 IoC 的独立用法"）——
-builder 不是第二个入口而是第二个组装根：自带一份默认值、自己追加 `ErrorHandler.defaults()`、
-自己判 `secure`，于是同一件事有两种答案（内置错误映射在 builder 里排最后、在容器里按贡献
-顺序排最前；类路由在容器里能解析、在 builder 里直接报错）。这一轮把派生规则搬进 `create`，
-两条路都只是"填部件再调用"，**独立构建的能力原样保留且不再需要容器**。
+`WebServer` is renamed `HttpServer` (see the last three rows of the table), and
+assembly converges to **one derivation point**:
+`HttpServer.create(engine, config, pipeline[, eventSink])`.
+Two assembly paths used to coexist: `HttpModule` (the container) and
+`WebServerBuilder` ("standalone use without IoC") — the builder was not a second
+entry point but a second assembly root: it carried its own copy of the defaults,
+appended `ErrorHandler.defaults()` itself and judged `secure` itself, so one
+question had two answers (the built-in error mapping sorted last in the builder
+but first by contribution order in the container; class routes resolvable in the
+container but a hard error in the builder). This round moves the derivation rules
+into `create`, so both paths are just "fill the parts and call", and **standalone
+construction is preserved as-is and needs no container**.
 
-同时删掉 `internal.HttpModuleConfig`：它是键的第二份所有者——13 个 server 旋钮的默认逐个重述
-（只是运气好引用了 `HttpServerConfig.DEFAULT_*`），CORS/health 的默认与 `CorsFilter.defaults()` /
-`HealthFilter.defaults()` 各说两遍，还让 `HttpServerConfig` 有了两条取得通路（`container.get(...)` 与
-`cfg.server()`）。改为既有先例 `SslSettings.from(symbols)` 的形状：**值类型自己读自己的键**。
+At the same time `internal.HttpModuleConfig` is deleted: it was a second owner of
+the keys — the defaults of 13 server knobs restated one by one (by luck they
+referenced `HttpServerConfig.DEFAULT_*`), the CORS/health defaults stated twice
+beside `CorsFilter.defaults()` / `HealthFilter.defaults()`, and it gave
+`HttpServerConfig` two acquisition paths (`container.get(...)` and `cfg.server()`).
+The shape becomes the existing precedent `SslSettings.from(symbols)`:
+**value types read their own keys**.
 
-`DatabaseBuilder` 同轮删除，理由与 `WebServerBuilder` 同构：独立面的组装知识（JDBC coercion 装配、
-`DatabaseImpl` 构造、URL 判型）全挂在一个 builder 上，容器面 `DbModule` 判方言时借的还是它的静态
-工具 `DatabaseBuilder.dialectForUrl`——容器要走的路立在独立面的门牌下。独立装配移进接口本身：
-`Database.create(PoolConfig)` 一步到位；部件差量走 `Database.create(Database.Wiring.defaults(config)
-.withCoercer/withPool/withDialect/withRowMapper(…))`（参数 record + `defaults()` + per-field wither，
-与 `CloudHttpClientDefault.Wiring` 同模板；builder 的旧装配词是裸名词 `coercer(…)`/`pool(…)`，
-调用点连写与读都分不清）。URL 判型归 `Dialect.of(url)`——方言自己回答"这个 URL 是谁"，
-`Database.create` 与 `DbModule.detectDialect` 从此共用一处。两条装配面与 http 完全同形：
-`Database.create`（独立）+ `DbModule`（容器）。
+`DatabaseBuilder` is deleted in the same round, for reasons isomorphic to
+`WebServerBuilder`: the standalone face's assembly knowledge (JDBC coercion
+assembly, `DatabaseImpl` construction, URL typing) all hung off a builder, while
+the container face `DbModule` borrowed the builder's static
+`DatabaseBuilder.dialectForUrl` even when detecting its dialect — the path the
+container must take stood under the standalone face's sign. Standalone assembly
+moves into the interface itself: `Database.create(PoolConfig)` in one step; deltas
+go through `Database.create(Database.Wiring.defaults(config)
+.withCoercer/withPool/withDialect/withRowMapper(…))` (a parameter record +
+`defaults()` + per-field withers, the same template as
+`CloudHttpClientDefault.Wiring`; the builder's old assembly words were bare nouns
+`coercer(…)`/`pool(…)`, indistinguishable as assignment or read at the call site).
+URL typing belongs to `Dialect.of(url)` — the dialect answers "who is this URL"
+itself, and `Database.create` and `DbModule.detectDialect` share one place from
+now on. The two assembly faces are exactly http's shape: `Database.create`
+(standalone) + `DbModule` (container).
 
-| 旧 API / 行为 | 新 API / 行为 |
+| Old API / behaviour | New API / behaviour |
 |---|---|
 | `WebServerBuilder.builder().config(c).route(r).build()` | `HttpServer.create(engine, c, HttpPipeline.of(r))` |
-| `WebServerBuilder.engine(e)` / `.sslContext(ctx, h2)` / `.metrics(m)` | 都是 engine 的事：把 `new FreewayHttpEngine(Wiring.defaults(json, coercer).withSsl(…).withMetrics(…))` 直接交给 `create` |
-| `.route(…)` / `.webSocketRoute(…)` / `.filter(…)` / `.staticFile(…)` / `.errorHandler(…)` / `.cors(…)` / `.health(…)` | `HttpPipeline.of(…).withRoutes/withWebSockets/withFilters/withStaticFiles/withErrorHandlers/withCors/withHealth(…)`（wither 返回新实例） |
-| `.accessLog(out)` | `HttpPipeline.of(…).withFilter(new AccessLogFilter(out))`；容器里是键 `freeway.http.access-log.enabled` |
-| `.eventSink(sink)` | `create` 的第 4 参（`Consumer<Object>`）；三参照旧发布"没人观察就不造事件" |
-| `.jsonCodec(…)` / `.coercer(…)` / `.routeGroup(…)` | 删除（core+ext 零调用点）。builder 里那两个私有 `new JsonCodecDefault()` / `new CoercerDefault()` 正是"容器注册的 `CoerceRule` 到不了 HTTP"的源头 |
-| `internal.HttpModuleConfig`（快照 record + 26 个 SymbolSpec） | 删除：`HttpServerConfig.from(symbols)` / `CompressionConfig.from` / `CorsFilter.from` / `HealthFilter.from` / `SslSettings.from`（已存在），每个键一行 `withX(resolve(SPEC.orDefault(现值)))`；`access-log` 一个布尔键由 `HttpModule` 自己读 |
-| `SslSettings` 只能从 `HttpModuleConfig.ssl()` 拿 | 它自己是绑定服务：`container.get(SslSettings.class)`（引擎与热重载 hook 共用一次解析） |
-| `HttpServerConfig` 由配置键唯一决定，无覆盖缝 | `HttpModule` 以 `.id("builtin")` 绑定，覆盖走 `.primary()`（与 `HttpEngine` 同一套词汇） |
-| `HttpEngine` 实现者不声明传输 | `HttpEngine.secure()` 为实现方法：谁持有密钥谁回答（内置引擎看 `SSLContext`，Undertow/Jetty 看自己的 listener） |
-| `WebServer` 包私有构造器（5 参，含 `secure` 与 `ReadinessProbe`） | `HttpServer.create(...)` 两个重载；构造器仍包私有，probe 只作包内测试缝 |
-| 容器里应用自定义 `ErrorHandler` 排在内置映射**之后** | 内置映射由 `create` 追加在最后，两条路一致：贡献顺序等于放置顺序，而应用总在 `HttpModule` 之后放置，于是 413/415/400 这些"应用想重映射的案例"会被框架先抢走。`HttpModuleErrorHandlerOrderTest` + `HttpServerStandaloneTest` 各钉一半 |
+| `WebServerBuilder.engine(e)` / `.sslContext(ctx, h2)` / `.metrics(m)` | These are the engine's business: hand `new FreewayHttpEngine(Wiring.defaults(json, coercer).withSsl(…).withMetrics(…))` straight to `create` |
+| `.route(…)` / `.webSocketRoute(…)` / `.filter(…)` / `.staticFile(…)` / `.errorHandler(…)` / `.cors(…)` / `.health(…)` | `HttpPipeline.of(…).withRoutes/withWebSockets/withFilters/withStaticFiles/withErrorHandlers/withCors/withHealth(…)` (withers return new instances) |
+| `.accessLog(out)` | `HttpPipeline.of(…).withFilter(new AccessLogFilter(out))`; in the container it is the key `freeway.http.access-log.enabled` |
+| `.eventSink(sink)` | `create`'s fourth parameter (`Consumer<Object>`); the three-argument form keeps publishing "no events when nobody observes" |
+| `.jsonCodec(…)` / `.coercer(…)` / `.routeGroup(…)` | Deleted (zero call sites in core+ext). The builder's two private `new JsonCodecDefault()` / `new CoercerDefault()` were exactly why "the container's registered `CoerceRule`s never reached HTTP" |
+| `internal.HttpModuleConfig` (a snapshot record + 26 SymbolSpecs) | Deleted: `HttpServerConfig.from(symbols)` / `CompressionConfig.from` / `CorsFilter.from` / `HealthFilter.from` / `SslSettings.from` (already existing), one `withX(resolve(SPEC.orDefault(current)))` line per key; the single boolean `access-log` key is read by `HttpModule` itself |
+| `SslSettings` obtainable only via `HttpModuleConfig.ssl()` | It is itself a bound service: `container.get(SslSettings.class)` (one resolution shared by the engine and the hot-reload hook) |
+| `HttpServerConfig` decided solely by config keys, no override seam | `HttpModule` binds it with `.id("builtin")`; overrides go through `.primary()` (the same vocabulary as `HttpEngine`) |
+| `HttpEngine` implementors did not declare transport | `HttpEngine.secure()` is an implementation method: whoever holds the keys answers (the built-in engine reads `SSLContext`; Undertow/Jetty read their own listener) |
+| `WebServer` package-private constructor (5 args, including `secure` and `ReadinessProbe`) | `HttpServer.create(...)` with two overloads; the constructor stays package-private, and the probe is an in-package test seam only |
+| An application's custom `ErrorHandler` in the container sorted **after** the built-in mapping | The built-in mapping is appended last by `create`, so both paths agree: contribution order equals placement order, and the application is always placed after `HttpModule` — so the 413/415/400 cases an application wants to remap would be claimed by the framework first. `HttpModuleErrorHandlerOrderTest` + `HttpServerStandaloneTest` each pin one half |
 | `CorsFilter.builder().allowedOrigins("a,b").allowCredentials(true).build()` | `CorsFilter.defaults().withAllowedOrigins(List.of("a","b")).withAllowCredentials(true)` |
 | `new CorsFilter(false, null, null, null, null, null, false)` / `new HealthFilter(false, …, null)` | `CorsFilter.defaults().withEnabled(false)` / `HealthFilter.defaults().withEnabled(false)` |
-| `CorsFilter.DEFAULT` / `HealthFilter.DEFAULT` | `defaults()`（与 `HttpServerConfig.defaults()`、1.5.3 的 `PlantUmlOptions.defaults()` 同一动词，常量与工厂不留两名） |
-| `StaticResourceMount.cacheMaxAgeSeconds(n)` / `.immutable(b)` / `.fallthrough(b)`（写） | `withCacheMaxAgeSeconds` / `withImmutable` / `withFallthrough`；裸名词只剩读（`fallthrough()`），调用点从此能分辨赋值与取值 |
-| `.builder()` 作为"配置型对象流式装配"的合法示例 | 约定收紧为：builder **不得持有默认值**（`FlowDriverDefault.Builder` 合法：两个必填部件，无一条默认）；差量构造一律 `defaults()` + `withX` |
-| `WebServer`（类型名） | `HttpServer`：与 `HttpServerConfig` / `HttpServerHandle` / `HttpServerStartedEvent` 同族（家族里类型才是异类），`create` 签名与语义不变 |
-| `RequestComponents`（类型名） | `HttpPipeline`：服务器四个锚点之一（`HttpEngine` 能力 / `HttpServerConfig` 传输声明 / `HttpPipeline` 处理声明 / `HttpServer` 派生）——引擎无关的声明，在 `engine.start` 之前被 `create` 编译成 `ExchangeHandler`，三方引擎只见接缝 |
-| `pipeline.withErrorMapper(…)` | `withErrorHandlers(…)`：类型早在 `ExceptionMapper`→`ErrorHandler` 改名时就换了，wither 补齐——两个活名字只剩一个 |
-| `HttpServerConfig.h2ResetBurstLimit` / `h2ResetWindow`（字段与 wither） | `FreewayHttpEngine.Wiring.withH2Reset(burst, window)`：引擎私有旋钮归能力侧；键不变（`freeway.http.h2.*`），容器路径由 `HttpModule` 自动接线，独立路径直传 `Wiring` |
-| `com.jujin.freeway.http.internal.SslReloader` | `com.jujin.freeway.http.engine.SslReloader`：热重载的驱动方由 `HttpModule` 生命周期钩子改为 `FreewayHttpEngine.start` 自驱（输入经 `Wiring.SslReload` 下推），类回引擎包、降包私有 |
-| `DatabaseBuilder.from(cfg).coercer(…).pool(…).dialect(…).rowMapper(…).build()` | `Database.create(cfg)`（部件全取标准默认）或 `Database.create(Database.Wiring.defaults(cfg).withCoercer(…)…)`（record `Wiring` 差量，`withX` 为写） |
-| `DatabaseBuilder.dialectForUrl(url)` | `Dialect.of(url)`：URL 判型归方言本身，独立面 `Database.create` 与容器面 `DbModule` 同走一处 |
-| `import com.jujin.freeway.db.DatabaseBuilder`（含 `new DatabaseBuilder()` 直构） | 类已删除——`Database` 上的 `create` 与 `DbModule` 是仅有的两副装配面孔 |
+| `CorsFilter.DEFAULT` / `HealthFilter.DEFAULT` | `defaults()` (the same verb as `HttpServerConfig.defaults()` and 1.5.3's `PlantUmlOptions.defaults()`; a constant and a factory do not keep two names) |
+| `StaticResourceMount.cacheMaxAgeSeconds(n)` / `.immutable(b)` / `.fallthrough(b)` (writes) | `withCacheMaxAgeSeconds` / `withImmutable` / `withFallthrough`; bare nouns remain reads only (`fallthrough()`), so a call site can always tell assignment from lookup |
+| `.builder()` as a legitimate example of "fluent assembly of a configured object" | The convention tightens: a builder **must not hold defaults** (`FlowDriverDefault.Builder` is legal: two required parts, no stated default); delta construction is uniformly `defaults()` + `withX` |
+| `WebServer` (the type name) | `HttpServer`: one family with `HttpServerConfig` / `HttpServerHandle` / `HttpServerStartedEvent` (the type was the odd one out in its own family); `create`'s signature and semantics unchanged |
+| `RequestComponents` (the type name) | `HttpPipeline`: one of the server's four anchors (`HttpEngine` capability / `HttpServerConfig` transport declaration / `HttpPipeline` handling declaration / `HttpServer` derivation) — an engine-independent declaration compiled by `create` into an `ExchangeHandler` before `engine.start`; third-party engines see only the seam |
+| `pipeline.withErrorMapper(…)` | `withErrorHandlers(…)`: the type had already changed with the `ExceptionMapper`→`ErrorHandler` rename; the wither catches up — of two live names, one remains |
+| `HttpServerConfig.h2ResetBurstLimit` / `h2ResetWindow` (field and wither) | `FreewayHttpEngine.Wiring.withH2Reset(burst, window)`: engine-private knobs belong to the capability side; the keys stay (`freeway.http.h2.*`), the container path is wired automatically by `HttpModule`, and the standalone path passes `Wiring` directly |
+| `com.jujin.freeway.http.internal.SslReloader` | `com.jujin.freeway.http.engine.SslReloader`: hot reload's driver changes from an `HttpModule` lifecycle hook to being self-driven inside `FreewayHttpEngine.start` (inputs pushed down through `Wiring.SslReload`); the class moves back to the engine package and becomes package-private |
+| `DatabaseBuilder.from(cfg).coercer(…).pool(…).dialect(…).rowMapper(…).build()` | `Database.create(cfg)` (all parts at their standard defaults) or `Database.create(Database.Wiring.defaults(cfg).withCoercer(…)…)` (a `Wiring` record delta, `withX` writes) |
+| `DatabaseBuilder.dialectForUrl(url)` | `Dialect.of(url)`: URL typing belongs to the dialect itself, and the standalone `Database.create` and the container `DbModule` go through one place |
+| `import com.jujin.freeway.db.DatabaseBuilder` (including direct `new DatabaseBuilder()`) | The class is deleted — `Database`'s `create` and `DbModule` are the only two assembly faces |
 
-行为变化（无需改调用点，但值得知道）：
+Behaviour changes (no call sites need changing, but worth knowing):
 
-- `HttpServer.secure()` 是引擎的判据，不再重读 `freeway.http.ssl.*`。
-- 事件发布跟着 `create` 的重载走：三参（独立）不发布，四参发布；`HttpModule` 用四参交给 `EventBus`。
-- `HttpPipeline` 的规范构造器不再容忍 `null` 部件：容器绑定返回 `null` 会在**启动时**抛 NPE，
-  而不是静默落到默认 CORS/健康策略；`of(...)` 自己显式声明默认值，规则只此一处。
-- `withRoutes(...)` / `withWebSockets(...)` 变参档的 javadoc 曾写"追加"、实现是替换——
-  文档改为替换语义（`RouteIndex` 是冻结 trie，wither 只能替换；仓库内无追加调用点）。
-- 引擎合同落成文字：`HttpEngine.start` 的 honor 合同分两层（必须 honor / 每 exchange
-  策略，后者再分状态型 maxBodySize 与线旁型 compression）、`ExchangeHandler.websocket`
-  的"每个升级候选请求都必须咨询"——这是 `HttpServerConfig` 与 `HttpPipeline` 能同等地
-  apply 到 Undertow/Jetty 三方引擎的边界依据；`h2Reset*` 收编进 `Wiring` 后"引擎私有"
-  层整个消失，config 的每个字段对每个引擎都适用。
-- `HttpServerConfig` 不再携带 `freeway.http.h2.*`：第三方引擎收到的 config 从此每个
-  字段都对它适用；调优值配非内置引擎在启动时 WARN 点名归属，`from(...)` 对这两键
-  只指路不携带。
-- TLS 热重载自驱：`Wiring.SslReload` 承载被监视的证书材料与重建器，引擎在
-  `start()` 里先于监听端口启动 reloader（材料不可读即启动失败、不占端口），
-  返回的 handle 在 `close()` 时先停观察再排水；`HttpModule` 不再装配 reloader，
-  只在非内置引擎激活且配置了 reload 时打跳过提示。接缝上的 `FreewayHttpEngine`
-  引用由 2 处降为 1 处（仅 `HttpModule` 的 builtin 绑定）。
-- `HealthFilter` 的 `healthCheck` 不再接受 `null`（构造期 `requireNonNull`）：关闭的探针此前会留一个
-  每次请求都可能 NPE 的字段。默认路径成为 `HealthFilter.DEFAULT_PATH`，`normalize` 与 `defaults()`
-  不再各写一个 `"/healthz"`。
+- `HttpServer.secure()` is the engine's verdict and no longer re-reads
+  `freeway.http.ssl.*`.
+- Event publication follows `create`'s overloads: three arguments (standalone)
+  publishes nothing, four arguments publishes; `HttpModule` uses the four-argument
+  form and hands events to the `EventBus`.
+- `HttpPipeline`'s canonical constructor no longer tolerates `null` parts: a
+  container binding returning `null` throws an NPE **at startup** instead of
+  silently falling to default CORS/health policy; `of(...)` states its own defaults
+  explicitly, and the rule lives in exactly one place.
+- The javadoc of `withRoutes(...)` / `withWebSockets(...)`'s varargs overloads said
+  "append" while the implementation replaced — the document now states replace
+  semantics (`RouteIndex` is a frozen trie and withers can only replace; no
+  append call site exists in the repo).
+- The engine contract is written down: `HttpEngine.start`'s honor contract has two
+  tiers (must-honor / per-exchange policy, the latter split into the state-shaped
+  maxBodySize and the wire-adjacent compression), and `ExchangeHandler.websocket`'s
+  "must be consulted for every upgrade candidate" — this is the boundary that lets
+  `HttpServerConfig` and `HttpPipeline` apply equally to the Undertow/Jetty
+  third-party engines; after `h2Reset*` folds into `Wiring`, the "engine-private"
+  tier disappears entirely and every config field applies to every engine.
+- `HttpServerConfig` no longer carries `freeway.http.h2.*`: the config a
+  third-party engine receives now has every field applicable to it; a tuned value
+  paired with a non-built-in engine WARNs at startup naming the owner, and
+  `from(...)` only points at those two keys rather than carrying them.
+- TLS hot reload is self-driven: `Wiring.SslReload` carries the watched
+  certificate material and the rebuilder, and the engine starts the reloader in
+  `start()` before opening the listener port (unreadable material fails startup
+  without taking the port), and the returned handle stops the watcher before
+  draining on `close()`; `HttpModule` no longer assembles the reloader and only
+  logs a skip notice when a non-built-in engine is active with reload configured.
+  On the seam, `FreewayHttpEngine` references drop from 2 to 1 (only `HttpModule`'s
+  builtin binding).
+- `HealthFilter`'s `healthCheck` no longer accepts `null` (`requireNonNull` at
+  construction): a disabled probe used to leave a field that could NPE on every
+  request. The default path becomes `HealthFilter.DEFAULT_PATH`, and `normalize`
+  and `defaults()` no longer each carry their own `"/healthz"`.
 
-EventBus 两处形状变化（record 规范构造器/组件类型随内容迁移，编译器即迁移路径）：
+Two EventBus shape changes (record canonical constructors/component types migrate
+with the content; the compiler is the migration path):
 
-| 旧 API / 行为 | 新 API / 行为 |
+| Old API / behaviour | New API / behaviour |
 |---|---|
-| `new EventBus.EventBusStats(published, delivered, subscriberFailures, deadEvents)` | 规范构造器多一个尾参 `…, deadEvents, streamDrops`；读取方（`stats().delivered()` 等）不受影响。 |
-| `DeadEvent` 记录 `source` 为内部 `EventDispatcher`、组件类型 `Object` | `source` 是发布诊断的 `EventBus` 本身，组件类型收窄为 `EventBus`（record 形状不变，仓内零调用点受影响） |
-| `EventSink` 桥接缝（本地 publish 扇出给已贡献的传输 sink） | `EventSink` 整体删除：本地总线回归进程内概念，不知道有任何传输（`EventBusInbound`/`publishInbound` 同删，入站不再进本地总线）。扇出税（全量序列化、包名否决名单）与"装模块即改 publish 语义"的漂移一并斩断——"事实去哪儿"回到调用点可见 |
-| `Binding` 句柄在模块绑定结束后仍可 `id/marker/to/scope/primary/advise`（晚 `id` 曾孤立已实例、晚 `marker` 曾进不了索引，各由一套迁移/同步机器兜底） | 绑定随其模块的 flush 注册即封印，此后六个 DSL 方法一律 `IllegalStateException`（"is sealed — …accepted only while its module is binding"）。`BindingIndex.updateId/contains`、`ContainerImpl.syncMarkers/updateId`、`ServiceRuntime.rekey` 删除；`lateIdChangeMigratesRealizedInstance` / `markerDeclaredAfterFlushStillResolves` 翻转为拒绝断言 |
-| `@IntermediateType`（两步 coercion：先转中间类型再转目标） | 删除：自定义形状改为一条 `CoerceRule<String, T>` 从原始字符串直接解析（`Endpoint` 测试早已是此形，`Timeout` 测试随之改写）。`InjectionResolver.coerceConfiguredValue` 去 `lookup` 参数、`resolveMarkers` 跳过表减一项 |
-| `@ThreadSafe`（标记，唯一作用是"与 `@NotThreadSafe` 并存即错"与按标记解析） | 删除：`@NotThreadSafe` 独立存在即是完整契约（未标注 = 无契约不校验），冲突检查与 `MarkerIndex` 的 `ThreadSafe` 分支删除；`ScopeProxyAdvisorTest` 的冲突测试与按标记解析测试删除，`ThreadSafeGreeterImpl` 更名 `SafeGreeterImpl` 去注解；`@NotThreadSafe` javadoc 去双标注段、`InjectionResolver` 的修复建议改为"去标记/转 THREAD 作用域/换 holder" |
-| `EventBus` 门面直管桥接（sink 注册表、eventId 铸造、去重窗口、扇出循环全在 bus/dispatcher 身上） | "出 JVM"一半整体随桥拆除：`EventBridge`/`EventBridgePolicy` 删除，去重窗口与之同休——它们服务的"一个事件多副本跨传输"问题在分平面模型里不存在（mesh 是 at-most-once 织物，本无重投；kafka 幂等按既有契约归业务键）。`EventBus.Keyed`、`@Topic`（javadoc 自证"for MQ bridging"的路由注解，违反 cloud-design §7"不往业务类型挂路由注解"）随桥删除——分区键归 Kafka 调用点参数，云生 topic 是门面 publish 的实参 |
-| 传输以密封贡献安装（`contribute(EventSink.class)`）+ `publishInbound` 单漏斗 | 跨 JVM 广播走显式门面 `CloudEventBus`（见 Added）；入站改投门面的订阅表。**订阅即闸门**：`contribute(CloudEventSubscription.class)` 的同一份声明派生 hello 拉取前缀、入站白名单（未声明 topic 丢弃且不触发反射加载——取代 `allowed-types`/`allowed-topics` 两键的结构性安全）与投递路由；`freeway.cloud.event.subscriptions/allowed-types/allowed-topics/dedup.enabled/dedup.capacity` 五键退役（`token`/`peers`/`enabled` 存活），`warnWhenInboundIsUngated` 收敛为 token 告警。旧桥在途的 CLASS 帧照解析、按 channel 弃投并计数（在途兼容、跨版本路由不互保——fabric 升级要求同版本舰队） |
-| scope 校验的属主靠类型猜（`findOwnerBinding`：精确类型→接口递归→超类链） | realize 路径把属主 `BindingImpl` 穿下来读精确 scope，`create()` 传 null 回退启发式。两处行为修正（无签名变化，编译器不报警）：同类型多绑定无 primary 时 singleton 属主曾整段跳过校验（`uniqueOrNull` 吞歧义→"属主未知"→放行），现在按自己绑定的 scope 判；prototype 属主曾被实现的 singleton 接口"认领"而误拦，现在不拦。`Container.create/create/constructInstance/initialize` 与 resolver 全链加 `owner` 参数；`multiBoundSingletonOwnerDoesNotEscapeScopeValidation` / `multiBoundPrototypeOwnerIsNotJudgedByItsSingletonInterface` 各钉一条 |
+| `new EventBus.EventBusStats(published, delivered, subscriberFailures, deadEvents)` | The canonical constructor gains one trailing argument `…, deadEvents, streamDrops`; readers (`stats().delivered()` etc.) are unaffected. |
+| `DeadEvent` recorded `source` as the internal `EventDispatcher`, component type `Object` | `source` is the publishing, diagnostics-facing `EventBus` itself, and the component type narrows to `EventBus` (record shape unchanged; zero call sites in the repo affected) |
+| `EventSink`, the bridging seam (local publish fanning out to contributed transport sinks) | `EventSink` is deleted wholesale: the local bus returns to being an in-process concept that knows of no transport (`EventBusInbound`/`publishInbound` deleted with it; inbound no longer enters the local bus). The fan-out tax (full serialization, a package-name deny list) and the drift of "installing a module changes publish semantics" are cut with it — "where does the fact go" is visible at the call site again |
+| A `Binding` handle could still `id/marker/to/scope/primary/advise` after its module finished binding (a late `id` once orphaned a realized instance, a late `marker` once missed the index, each patched over by its own migration/sync machinery) | A binding seals when its module's flush registers it; afterwards all six DSL methods throw `IllegalStateException` ("is sealed — …accepted only while its module is binding"). `BindingIndex.updateId/contains`, `ContainerImpl.syncMarkers/updateId`, `ServiceRuntime.rekey` are deleted; `lateIdChangeMigratesRealizedInstance` / `markerDeclaredAfterFlushStillResolves` flip to rejection assertions |
+| `@IntermediateType` (two-step coercion: first to an intermediate type, then to the target) | Deleted: custom shapes become one `CoerceRule<String, T>` parsing straight from the raw string (the `Endpoint` test was already in that shape, and the `Timeout` test is rewritten to match). `InjectionResolver.coerceConfiguredValue` drops the `lookup` parameter and `resolveMarkers` skips one table |
+| `@ThreadSafe` (a marker whose only effects were "an error when coexisting with `@NotThreadSafe`" and resolution by marker) | Deleted: `@NotThreadSafe` standing alone is a complete contract (unannotated = no contract, no check); the conflict check and `MarkerIndex`'s `ThreadSafe` branch are deleted, `ScopeProxyAdvisorTest`'s conflict test and by-marker resolution test are deleted, `ThreadSafeGreeterImpl` becomes `SafeGreeterImpl` without the annotation; `@NotThreadSafe`'s javadoc drops the dual-annotation paragraph, and `InjectionResolver`'s fix hint becomes "drop the marker / use a THREAD scope / use a holder" |
+| `EventBus` facade managed bridging directly (the sink registry, eventId minting, the dedup window and the fan-out loop all lived on the bus/dispatcher) | The "out of the JVM" half is dismantled with the bridge: `EventBridge`/`EventBridgePolicy` are deleted, and the dedup window retires with them — the "one event, many copies across transports" problem they served does not exist in the split-plane model (the mesh is an at-most-once fabric with no redelivery; Kafka's idempotency belongs to the business key per the existing contract). `EventBus.Keyed` and `@Topic` (a routing annotation whose javadoc self-identifies as "for MQ bridging", violating cloud-design §7's "no routing annotations on business types") are deleted with the bridge — the partition key becomes a Kafka call-site argument, and the cloud topic is an argument of the facade's publish |
+| Transports installed via a sealed contribution (`contribute(EventSink.class)`) + `publishInbound` as the single funnel | Cross-JVM broadcast goes through the explicit facade `CloudEventBus` (see Added); inbound delivers into the facade's subscription table. **A subscription is the gate**: the same `contribute(CloudEventSubscription.class)` declaration derives the hello fetch prefixes, the inbound allow list (undeclared topics are dropped without triggering reflective loading — structural security replacing the two keys `allowed-types`/`allowed-topics`) and the delivery routing; the five keys `freeway.cloud.event.subscriptions/allowed-types/allowed-topics/dedup.enabled/dedup.capacity` retire (`token`/`peers`/`enabled` survive), and `warnWhenInboundIsUngated` narrows to the token warning. CLASS frames in flight on the old bridge are still parsed, dropped per channel and counted (in-flight compatible; cross-version routing is not mutually guaranteed — a fabric upgrade requires a same-version fleet) |
+| Scope validation guessed the owner by type (`findOwnerBinding`: exact type → interface recursion → superclass chain) | The realize path threads the owning `BindingImpl` down and reads its exact scope, and `create()` passes null to fall back to the heuristic. Two behaviour fixes (no signature change, so the compiler stays silent): with multiple bindings of one type and no primary, a singleton's owner previously skipped validation entirely (`uniqueOrNull` swallowed the ambiguity → "owner unknown" → allowed), and it is now judged by its own binding's scope; a prototype's owner was once wrongly blocked by being "claimed" by a realized singleton interface, and it is no longer blocked. `Container.create/create/constructInstance/initialize` and the resolver gain `owner` parameters end to end; `multiBoundSingletonOwnerDoesNotEscapeScopeValidation` / `multiBoundPrototypeOwnerIsNotJudgedByItsSingletonInterface` each pin one case |
 
 ### Added
 
-- **`CloudEventBus`——云生广播平面门面**：`publish(topic, payload[, subject])` 是唯一出口，
-  Defer 提交耦合（事务内缓冲、提交后出境、回滚即弃——契约测试成对钉死"回滚无帧/提交有帧"）；
-  filter-then-translate（无 interested peer 不再序列化，消灭桥时代的全量税）；自有计数器
-  （published/framesSent/sendFailures/inboundDelivered/droppedLegacy/droppedNoSubscriber——各平面各账，
-  与本地 stats 无合并视图）。`CloudEventSubscription(prefix, Class<T>, handler)` 为订阅申报形且
-  **只有申报形**：运行时注册改不了 peer 侧的 hello 过滤，开运行时口子即造"有 handler 收不到"
-  半死面——订阅表因此同时是 hello 前缀源、入站闸门与投递路由。javadoc 首句写死防复合误读
-  （publish 仅出站；本地事实仍走本地 EventBus）。远端事实回流本地是 app 的显式一行
-  （订阅 handler 里调 `bus.publish`），`demo/cloud-event-mesh` 重写为"门面 + 镜像 + 本地/云生
-  对照"的活演示。CE 1.0 信封、`EventTrace`、PeerHub/connector/origin 自环——wire 一字未动，
-  旧桥时代的信封机器原封搬进新平面。
-- 事件跨 JVM 不再掐断 trace：发送线程持有 trace 时，mesh 帧盖 `traceparent`/`tracestate`
-  扩展、Kafka 记录盖 `ce-traceparent`/`ce-tracestate` 头（无 trace 则两者都不盖章，保持字节一致）；
-  收端在分发周围恢复（mesh `CloudEventBus.deliver`、Kafka `KafkaSubscriber.processRecord`），下游 handler
-  观察到发送方的因果。复用 `TracePropagator` 的注入/抽取（与 HTTP 同一语义），收敛点是新的
-  `cloud.event.EventTrace`（静态、无状态；出站读 ambient、入站缺席/畸形跑裸——绝不清空消费线程既有
-  ambient）。只传 trace：principal/baggage 不从线包恢复（事件路径无认证，身份断言不可伪造）。
-  代价如实记录：kafka 因此依赖 `freeway-cloud`（传输增强 cloud，context 住 cloud；连带拖进 http
-  栈——只用 Kafka桥接的部署会多带用不上的 artifact）；`Parsed` 加两字段（record 变形，编译器即迁移，
-  两处测试构造点跟进）；`publishAsync/publishOrdered` 走执行器线程，trace 在提交线程采集不到——
-  异步通道的 trace 仍是缺口，单列后续。`EventTraceTest` 四条（盖章/解析/恢复/无痕不碰 ambient/畸形跑裸，
-  后三条缺一即漏语义）+ kafka 收发各一条。
-- mesh 入站不包 `Defer.within`：drain 在 scope 绑定之外执行，包了也观察不到；publish 点之后无可抛之处，回滚分支不可达。
-- F4/F5/F6（织物收尾，无行为变化）：自环判断三处各写一遍收成 `cloud.event.EventOrigin::isOwn`
-  （空身份永不算自己，真值表 `EventOriginTest` 三条钉住；kafka 侧同义改写）；`EventSink`
-  补"可靠性画像"与"跨传输无序"两段契约——mesh 是易失织物（失败丢连接连带丢事件），Kafka
-  是持久骨干（重试/消费组/DLQ），扇出不保证跨传输顺序（`eventId` 辨身份不辨先后，有序只存在
-  于各传输自家机制如 Kafka `send` 的 key 参数）；`publishOrdered` 的"全局有序"限定为 JVM 内。
-- `SymbolSpec.orDefault(fallback)`：叠加式读取的默认由**被构建的值**给出，键表因此不必重述默认；
-  `SymbolSource.resolve(spec)` 一行一键（`SymbolSpecTest` 钉住"缺省键留原值、空值留原值、存在则
-  经链的 `Coercer` 解析"）。
-- `HttpServer.create` 两个重载、`HttpPipeline.of/withX`、`HttpServerConfig.from` 与
-  `CompressionConfig.from`、`CorsFilter.from`、`HealthFilter.from`、`HealthFilter` 的
-  `enabled()/healthPath()/healthCheck()` 读取与 `withPath/withCheck`、`CorsFilter` 的七个字段读取。
-- 测试：`HttpServerStandaloneTest`（零容器构建并服务、mapper 优先级、withers 全部生效）、
-  `HttpModuleErrorHandlerOrderTest`（容器路径的同一条优先级）。
-- `freeway-http` 每个包的 `package-info.java`：根包声明合同面四组（装配半、接缝数据半、TLS 契约、
-  共享词表）与稳定性口径，`engine*` 声明放置规则（会话桥归 `engine`、纯帧编解码归 `http2`/`ws`、
-  全部无稳定性承诺），`route`/`filter`/`body`/`websocket`/`sse`/`staticfile`/`event` 声明应用面角色；
-  `internal/package-info` 里早已过期的描述（config snapshot 与 TLS builders 迁走后）一并改正。
-- `RequestViewTest` 钉住 HTTP/WS 共享读面：`HttpRequest` 与 `WebSocketSession` 都 `extends
-  RequestView`，且读面恰好是那 10 个只读访问器——给共享面加方法意味着两个半边同时继承。
-- 角色核验结论（合并/消融/移除评估均不成立）：`engine` 四个 public 全有跨包角色——
-  `HttpResponseWriter` 由 `engine.http2.Http2ResponseWriter` 跨包实现、`ResponseFraming` 与
-  `HttpContextImpl` 被 ext 适配器与 benchmark 复用、`FreewayHttpEngine` 是 `HttpModule` 的绑定物，
-  零降级；`RequestView` 是交换与 WS 会话的共同只读读面（2 个继承者），消融它等于两个接口各自
-  重述 10 个声明（第二个所有者），移除它则 WS 会话要么复制声明、要么谎称自己是 `HttpRequest`；
-  `ErrorResponses` 有 5 个调用点（`HttpServer`×3、`Http1xSession`、`StaticResourceMount`），
-  消融即 404/500 的正文与头在 5 处各写一遍——正是它的防漂移承诺所阻止的事。
-- `MediaTypes.contentType(文件名)`：扩展名 → Content-Type 表收进共享词表（`MediaTypes`
-  javadoc 承诺的唯一分类源），静态资源服务器改从这里读——`StaticResourceMount` 原来私有
-  同一张表，新增扩展名从此只落一处。
-- `Contribution.add(String, Function<Container, ? extends T>)`：命名贡献的**容器工厂形**——
-  与 `Binding.to(Function)` 同一形态。实例形在 bind 期就造值，没有容器把手；工厂形走
-  `add(Class)` 同一条 `pendingCreates` 延迟线（所有模块绑定完再创建），实例化时拿到容器、
-  声明顺序不敏感，`before/after` 经 `DeferredOrdering` 如期落到真实条目（`ContributionWiringTest`
-  三条：容器身份与晚绑定服务、延迟后仍生效的排序、重复 id 报错）。订阅者一类"值要靠服务造"的
-  贡献从此不必借静态容器持有者。**迁移**：`T` 本身是单参函数式接口时，传 lambda 作**值**的
-  调用与工厂形歧义——显式转型回 `T`（cloud 四处测试即此情形，转型即"这个 lambda 是值"）。
-- `WebSocketRoute.of(path, Class<? extends WebSocketEndpoint>)`：类形 WS 路由——与 `Route`
-  的类形完全同构：record 槽位里放 `LazyEndpoint` 包装（`WebSocketRoute` 形状不变），
-  `HttpModule` 建 `WebSocketIndex` 时与 `resolveLazy` 并排 `resolveEndpoint`，容器 `create`
-  构造注入，握手前未解析则响亮失败并点名端点类（`WebSocketIndexTest` 两条：独立索引下延迟
-  匹配 + 未解析即用报错、容器解析 + 构造注入 + `subprotocols` 委托）。WS 端点类从此不必
-  借静态容器持有者。
-- `EventBus.publishOrdered(String topic, Object payload)`：有序通道的 topic 形——与
-  `publishAsync` 的类/话题对称，事务 outbox 按话题串布线时不再只能走无序的
-  `publishAsync(topic, …)`；同一条全局有序单线程队列，Defer 内提交仍在 commit 后按序 drain
-  （`EventBusOrderedDeferredTest` 钉住 + `publishAfterCloseThrows` 补 post-close 拒绝）。
-- `EventBusStats.streamDrops` 计数（`EventBus.EventBusStats` record 加一个尾组件，
-  见迁移表）与对应 Metrics 计数器 `eventbus.stream_drops`：流溢出丢弃原来只落在
-  日志里，运维无法从 `stats()` 看到"哑掉的通道"
-  （`overflowDropsAreCountedNotSwallowedSilently` 钉住）。
+- **`CloudEventBus` — the facade of the cloud-born broadcast plane**:
+  `publish(topic, payload[, subject])` is the only exit, coupled to Defer
+  submission (buffered inside the transaction, leaves after commit, discarded on
+  rollback — contract tests pin "rollback: no frames / commit: frames" as a pair);
+  filter-then-translate (no interested peer means no serialization, ending the
+  bridge era's full-payload tax); its own counters
+  (published/framesSent/sendFailures/inboundDelivered/droppedLegacy/droppedNoSubscriber
+  — each plane keeps its own books, with no merged view into the local stats).
+  `CloudEventSubscription(prefix, Class<T>, handler)` is the declaration form and
+  **only** the declaration form: runtime registration cannot change the peer-side
+  hello filter, so opening a runtime hole would create the half-dead plane of "a
+  handler exists but receives nothing" — the subscription table is therefore also
+  the hello prefix source, the inbound gate and the delivery routing. The javadoc's
+  first sentence pins the compound misreading (publish is outbound only; local
+  facts still go through the local EventBus). Remote facts flowing back local is
+  the application's explicit line (calling `bus.publish` inside a subscription
+  handler), and `demo/cloud-event-mesh` is rewritten as a live demonstration of
+  "facade + mirror + local/cloud-born contrast". The CE 1.0 envelope, `EventTrace`,
+  PeerHub/connector/origin self-loop — the wire is untouched, and the bridge era's
+  envelope machinery moves into the new plane intact.
+- Events crossing a JVM no longer lose trace: when the sending thread holds a
+  trace, mesh frames are stamped with `traceparent`/`tracestate` extensions and
+  Kafka records with `ce-traceparent`/`ce-tracestate` headers (with no trace, both
+  leave the bytes identical); the receiving side restores around dispatch (mesh
+  `CloudEventBus.deliver`, Kafka `KafkaSubscriber.processRecord`), so downstream
+  handlers observe the sender's causality. It reuses `TracePropagator`'s
+  inject/extract (the same semantics as HTTP), and the convergence point is the
+  new `cloud.event.EventTrace` (static, stateless; outbound reads the ambient
+  context, inbound with an absent or malformed header runs bare — it never clears
+  the consuming thread's existing ambient). Only trace propagates: principal and
+  baggage are not restored from the wire (the event path has no authentication,
+  and identity assertions must not be forgeable). The costs are recorded honestly:
+  kafka now depends on `freeway-cloud` (the transport enhances cloud, and context
+  lives in cloud; it drags in the http stack too — a deployment using only Kafka
+  bridging carries artifacts it does not use); `Parsed` gains two fields (a record
+  shape change, the compiler is the migration, with two test construction sites
+  updated); `publishAsync/publishOrdered` run on executor threads where the trace
+  is not captured at submission — async-channel trace remains a gap, listed for
+  later. `EventTraceTest` covers four cases (stamp/parse/restore/no-trace leaves
+  ambient alone/malformed runs bare — the last three are individually
+  load-bearing) plus one each for Kafka send and receive.
+- mesh inbound does not wrap in `Defer.within`: the drain runs outside scope
+  binding, so wrapping would observe nothing; past the publish point there is
+  nowhere to throw, and the rollback branch is unreachable.
+- F4/F5/F6 (fabric finishing, no behaviour change): three hand-written self-loop
+  checks converge into `cloud.event.EventOrigin::isOwn` (an empty identity is
+  never one's own; `EventOriginTest` pins the truth table with three cases; the
+  kafka side is reworded to match); `EventSink` gains two contract paragraphs —
+  "reliability profile" and "no cross-transport ordering" — the mesh being a
+  volatile fabric (failure drops the connection and its events with it), Kafka the
+  durable backbone (retry/consumer group/DLQ), and fan-out guarantees no
+  cross-transport order (`eventId` identifies an event, not a sequence; ordering
+  exists only inside each transport's own mechanisms such as Kafka `send`'s key
+  parameter); `publishOrdered`'s "global ordering" is scoped to within the JVM.
+- `SymbolSpec.orDefault(fallback)`: the default for a layered read is given by
+  **the value being built**, so a key table need not restate defaults;
+  `SymbolSource.resolve(spec)` is one line per key (`SymbolSpecTest` pins "a
+  missing key keeps the original value, a blank keeps the original value, and a
+  present one parses through the chain's `Coercer`").
+- `HttpServer.create`'s two overloads, `HttpPipeline.of/withX`,
+  `HttpServerConfig.from` and `CompressionConfig.from`, `CorsFilter.from`,
+  `HealthFilter.from`, `HealthFilter`'s `enabled()/healthPath()/healthCheck()`
+  reads and `withPath/withCheck`, and `CorsFilter`'s seven field readers.
+- Tests: `HttpServerStandaloneTest` (build and serve with zero containers, mapper
+  precedence, every wither taking effect) and `HttpModuleErrorHandlerOrderTest`
+  (the same precedence on the container path).
+- `freeway-http` gains a `package-info.java` per package: the root package
+  declares the contract surface's four groups (the assembly half, the seam's data
+  half, the TLS contract, the shared vocabulary) and the stability stance;
+  `engine*` declares placement rules (session bridges belong in `engine`, pure
+  frame codecs in `http2`/`ws`, all without a stability promise); and
+  `route`/`filter`/`body`/`websocket`/`sse`/`staticfile`/`event` declare the
+  application-facing roles; the long-stale description inside
+  `internal/package-info` (after the config snapshot and TLS builders moved out)
+  is corrected in the same pass.
+- `RequestViewTest` pins the HTTP/WS shared read face: `HttpRequest` and
+  `WebSocketSession` both `extends RequestView`, and the read face is exactly
+  those 10 read-only accessors — adding a method to the shared face means both
+  halves inherit it.
+- Role-audit conclusions (merge/absorb/remove all evaluated and rejected): the
+  four public types in `engine` all have cross-package roles — `HttpResponseWriter`
+  is implemented across packages by `engine.http2.Http2ResponseWriter`,
+  `ResponseFraming` and `HttpContextImpl` are reused by the ext adapters and the
+  benchmark, and `FreewayHttpEngine` is `HttpModule`'s binding; zero demotions.
+  `RequestView` is the common read-only face of exchanges and WS sessions (2
+  implementors); absorbing it would have both interfaces restate 10 declarations
+  (a second owner), and removing it would leave WS sessions either copying the
+  declarations or falsely claiming to be an `HttpRequest`. `ErrorResponses` has 5
+  call sites (`HttpServer`×3, `Http1xSession`, `StaticResourceMount`); absorbing
+  it means writing the body and headers of 404/500 five times — exactly what its
+  anti-drift promise prevents.
+- `MediaTypes.contentType(fileName)`: the
+  extension → Content-Type table moves into the shared vocabulary (the single
+  classification source `MediaTypes`' javadoc promises), and the static resource
+  server reads from it — `StaticResourceMount` used to keep a private copy of the
+  same table, so new extensions now land in one place.
+- `Contribution.add(String, Function<Container, ? extends T>)`: the **container
+  factory form** of a named contribution — the same shape as
+  `Binding.to(Function)`. The instance form builds the value at bind time with no
+  container handle; the factory form goes through the same `pendingCreates`
+  deferred line as `add(Class)` (created after all modules bind), gets the
+  container at instantiation, is insensitive to declaration order, and its
+  `before/after` land on the real entries via `DeferredOrdering` as intended
+  (`ContributionWiringTest`, three cases: container identity and late-bound
+  services, ordering still effective after deferral, duplicate ids erroring).
+  Subscribers and other contributions whose values require services no longer
+  need a static container holder. **Migration**: when `T` itself is a
+  single-argument functional interface, a call passing a lambda as a **value**
+  collides with the factory form — cast explicitly back to `T` (four cloud tests
+  are exactly this case; the cast says "this lambda is a value").
+- `WebSocketRoute.of(path, Class<? extends WebSocketEndpoint>)`: the class form of
+  a WS route — isomorphic to `Route`'s class form: the record slot holds a
+  `LazyEndpoint` wrapper (`WebSocketRoute`'s shape unchanged), `HttpModule` calls
+  `resolveEndpoint` alongside `resolveLazy` when building the `WebSocketIndex`,
+  container `create` constructor-injects, and resolving before the handshake fails
+  loudly naming the endpoint class (`WebSocketIndexTest`, two cases: deferred
+  matching under a standalone index + error on use-before-resolve; container
+  resolution + constructor injection + `subprotocols` delegation). WS endpoint
+  classes no longer need a static container holder.
+- `EventBus.publishOrdered(String topic, Object payload)`: the topic form of the
+  ordered channel — symmetric with `publishAsync`'s class/topic pair, so a
+  transactional outbox wired per topic no longer has to use the unordered
+  `publishAsync(topic, …)`; the same globally-ordered single-threaded queue, and a
+  submission inside Defer still drains in order after commit
+  (`EventBusOrderedDeferredTest` pins it, plus `publishAfterCloseThrows` adds the
+  post-close rejection).
+- `EventBusStats.streamDrops` counting (a trailing record component on
+  `EventBus.EventBusStats`, see the migration table) and the matching Metrics
+  counter `eventbus.stream_drops`: stream-overflow drops used to land only in
+  logs, invisible to operations via `stats()` as "the channel went mute"
+  (`overflowDropsAreCountedNotSwallowedSilently` pins it).
 
 ### Removed
 
-- **总线桥接缝整体拆除**（事件平面分离）：
-  `EventSink`、`EventBridge`、`EventBridgePolicy`、`EventBusInbound`、`EventBus.Keyed`、
-  `annotation/Topic` 删除；`CloudEventSink` 消失（出站循环住进 `CloudEventBus.publish`）。
-  判例是自家 RPC 域：`CallBus` 之删（`358bbf42`，"hiding the one fact that matters —
-  where the service lives"）同款病灶在广播域的最后一个幸存接缝——桥让"事实是否出境"由
-  模块装载与 peer 订阅决定、调用点不可见。RPC 域两周前已把"悄悄跨进程"关进笼子，这一轮
-  把同一道闸门装回广播域。`EventBus` 的 javadoc 明写新契约："The bus is the in-process
-  plane, and knows no other"。框架生命周期事件（`AppStoppingEvent` 等）随桥不再自动出境，
-  需要即显式镜像。ext kafka 同批改为显式平面：`KafkaEventSink`/`publishInbound` 删除、
-  `KafkaEvents` 接管收发（ext `d0bc985`，与 1.5.5 同车发布，ext 亦已打 `v1.5.5`）。
-- `WebServerBuilder`（209 行）与 `internal.HttpModuleConfig`（151 行）：前者是第二个组装根，后者是
-  第二个默认值所有者；派生规则现在只有 `HttpServer.create` 一处，键与默认只有值类型一处。
-- `DatabaseBuilder`（175 行）：独立面的第二个组装根——coercion 装配、`DatabaseImpl` 构造、
-  URL 判型全在它身上，而容器面 `DbModule` 判方言还得借它的静态 `dialectForUrl`。组装收进
-  `Database.create`（+ `Wiring` 差量），判型收进 `Dialect.of`，与 `HttpServer.create` +
-  `HttpModule` 同形；独立构建的能力原样保留且不需要容器。
-- `CorsFilter.Builder`：它不是"少写几个参数"的糖，而是第二个默认值持有者——methods/headers/maxAge
-  在 `DEFAULT` 之外又硬写一遍，`*` + credentials 的校验判两次且两处异常类型不同，同时它比规范构造器
-  还窄（给不出 `enabled=false`、`exposedHeaders`、`maxAge`）。
+- **The bus bridge seam is dismantled wholesale** (event plane separation):
+  `EventSink`, `EventBridge`, `EventBridgePolicy`, `EventBusInbound`,
+  `EventBus.Keyed`, `annotation/Topic` are deleted; `CloudEventSink` disappears
+  (the outbound loop moves into `CloudEventBus.publish`). The precedent is our own
+  RPC domain: the `CallBus` removal (`358bbf42`, "hiding the one fact that
+  matters — where the service lives") had the same disease in the broadcast
+  domain's last surviving seam — the bridge let module loading and peer
+  subscriptions decide whether a fact left the JVM, invisibly to the call site.
+  The RPC domain caged "quietly crossing processes" two weeks ago; this round
+  installs the same gate on the broadcast domain. `EventBus`'s javadoc states the
+  new contract plainly: "The bus is the in-process plane, and knows no other".
+  Framework lifecycle events (`AppStoppingEvent` etc.) no longer leave the JVM
+  automatically with the bridge; mirror them explicitly when needed. ext's kafka
+  changes to explicit planes in the same batch: `KafkaEventSink`/`publishInbound`
+  are deleted and `KafkaEvents` takes over both directions (ext `d0bc985`,
+  released with 1.5.5; ext is tagged `v1.5.5` too).
+- `WebServerBuilder` (209 lines) and `internal.HttpModuleConfig` (151 lines): the
+  former a second assembly root, the latter a second owner of the defaults; the
+  derivation rules now exist only in `HttpServer.create`, and keys and defaults
+  only in the value types.
+- `DatabaseBuilder` (175 lines): the standalone face's second assembly root —
+  coercion assembly, `DatabaseImpl` construction and URL typing all lived on it,
+  while the container face `DbModule` still borrowed its static `dialectForUrl`.
+  Assembly folds into `Database.create` (+ the `Wiring` delta) and typing into
+  `Dialect.of`, the same shape as `HttpServer.create` + `HttpModule`; standalone
+  construction is preserved and needs no container.
+- `CorsFilter.Builder`: it was not sugar for "fewer arguments" but a second
+  holder of the defaults — methods/headers/maxAge were hard-written again beside
+  `DEFAULT`, the `*` + credentials check ran twice with different exception types,
+  and it was narrower than the canonical constructor (no way to give
+  `enabled=false`, `exposedHeaders`, `maxAge`).
 
 ### Fixed
 
-- **cloud 注册 scheme 判错**：`HttpServiceDeclaration` 用 `WebServer.secure()` 决定 `http`/`https`，
-  而它读的是 freeway 自己的 `freeway.http.ssl.*` 键——由可能忽略这些键的 Undertow/Jetty 适配器终止
-  TLS 时，https 节点被注册成 `http://`。判据上收到 `HttpEngine.secure()` 后，注册的身份与真正提供
-  传输的组件一致。
-- **应用无法重映射框架已映射的异常**（容器路径）：见迁移表倒数第 6 行。
-- **静默失效的 `freeway.web.*` 配置键**：旧前缀在 v1.2.2 改名为 `freeway.http.*`、
-  回退随后被删除（e37ba527），仍写旧前缀的配置从此被无声忽略、服务器一直跑默认值。
-  `HttpModule` 启动时逐键探测"旧前缀键存在而对应新键缺失"这唯一会静默失效的形状，
-  一条 WARN 点名每个死键及改法（`旧键 → 新键`）；新键存在即不报——值无论如何生效，
-  包括以 `${freeway.web.*}` 引用旧键的写法；死键自身的值展开失败也只报不抛。
-- **异常路径的访问日志记 200**：错误映射原来包在整条链外侧，而过滤器的 `finally`
-  （`AccessLogFilter` 在其中读 `ctx.status()`）在异常回卷时先于外层 `catch` 执行，读到的
-  是未映射的默认 200。映射现在下沉到链内（dispatch 与每层 filter 各包一层，映射列表与
-  "先到先映射"规则不变）：handler 抛出的异常不再穿透过滤器链，外层过滤器观察到的即是
-  映射后的终值；请求处理最外层的 catch 保留为兜底。
-  `HttpServerFeatureTest.accessLogRecordsMappedStatusOnHandlerException` 钉住该路径。
-- **`Dialect.of` 判型大小写敏感**：scheme 匹配读原始 URL（`url.contains("jdbc:…")`），
-  `JDBC:POSTGRESQL://` 这样的大写写法直接落进"不支持的数据库"错误；`toUpperCase()` 也没带
-  `Locale`，土耳其语默认 locale 下 `jdbc:sqlite` 的 `i` 变 `İ` 同样判失。匹配统一在
-  `Locale.ROOT` 大写副本上进行，与文档声称的大小写不敏感一致（`DatabaseCreateTest` 钉住两种回归）。
-- **类路由 WebSocket 端点未解析被静默推迟到首个 upgrade**：手工构造 `WebSocketIndex`
-  （不经 `HttpModule`）时 `LazyEndpoint` 永远没人 resolve，直到第一次连接升级才抛——而升级路径的
-  异常只记 TRACE，连接直接断掉、日志一片安静。`WebSocketIndex` 构造期即拒绝未解析的类端点
-  （`HttpModule` 构造前完成解析，只有绕过模块的路径会触发）；升级握手中端点回调
-  （`subprotocols`/`open`/`onOpen`）的失败升为 WARN 并点名端点类，读循环与客户端断开仍留在低级别。
-- **drain 窗口内的延迟排序约束被静默丢弃**：`DeferredOrdering` 只在 seal 之后拒绝
-  `before()`/`after()`，但实例落地（apply）发生在 drain 中、seal 之前——这段窗口里声明的
-  约束进了缓冲却永远无人回放。补 `applied` 标志：落地后再声明与封印后一样大声失败。
-- **inbound 去重在 Defer 回滚后吞掉 MQ 重投（事件永久丢失）**：wire id 在 publish 时就被
-  claim，而 Defer 缓冲的派发随回滚一起丢弃——id 已烧毁、事件没送达，代理带着同一 id 的
-  重投被判"重复"丢掉。claim 移进延迟动作（真正派发的那一刻）：回滚则 id 从未入窗、重投照常
-  接受；commit 后 claim 照旧，双副本仍然只送一次
-  （`EventBusInboundDedupTest` 两条：`rollbackLeavesIdUnclaimedSoRedeliveryIsAccepted`、
-  `committedInboundStillDedupsRedelivery`；`inboundDeduplication` javadoc 同步改述）。
-- **实现类上的 `@Primary` 对按类型解析无效**：`to(Impl.class)` 把 `@Primary` 收进标记集，
-  但 `get(type)` 读的是另一份 `primary` 布尔位——两个绑定一个标了 `@Primary`，按类型取仍报
-  "Multiple services match"，与 `@Primary` javadoc 自称"等价于 `.primary()`"相反。删去布尔位，
-  `isPrimary()` 直接读 `Primary` 标记：`.primary()`、类上 `@Primary`、模块级
-  `@Marker(Primary.class)` 从此是一个答案（`primaryAnnotationOnImplementationSelectsTheBinding`）。
-- **`SymbolSource.resolve(name, default)` 把默认值当表达式读**：默认实现拼成
-  `"${name:default}"` 再走展开语法——`":-"` 吃掉前导横线（`resolve(k, "-1")` 得 `"1"`），默认值里
-  第一个 `}` 提前结束表达式（`"a}b"` 得 `"ab}"`），默认值里的 `${…}` 还会被展开。改为
-  `resolve(name)` 捕获 `UnknownSymbolException` 回退默认值：默认值原样返回，嵌套缺失等展开错误
-  照旧上抛（`lenientResolveReturnsTheDefaultVerbatim`）。副作用是替换源不再需要为 `expand` 是恒等的
-  情形自己重写 `resolve(name, default)`（ext testkit 的 `Symbols` 即此例，可删）。
-- **realize 锁是 JVM 全局的**：`ServiceRuntime.REALIZE_LOCK` 为 `static`，一个容器的慢构造器会挡住
-  另一个容器的首次实例化（1.5.x 只修了缓存命中路径，锁本身没动），一个 provider 若等待另一容器上的
-  实例化还可能跨容器死锁。锁改为每个容器一把（`firstRealizationDoesNotQueueBehindAnotherContainer`）。
-- **THREAD 作用域跨容器串值**：`ScopedCache` 是进程级的，键却只有 `(type, id)`——两个容器以同一
-  显式 id 绑定同一类型，在一个 `within()` 内拿到的是同一个值。键加上所属容器
-  （`threadScopeKeepsTwoContainersApart`）。
+- **cloud registered the wrong scheme**: `HttpServiceDeclaration` used
+  `WebServer.secure()` to decide `http`/`https`, and that read freeway's own
+  `freeway.http.ssl.*` keys — when TLS was terminated by an Undertow/Jetty adapter
+  that may ignore those keys, an https node registered as `http://`. The criterion
+  moves up to `HttpEngine.secure()`, so the registered identity matches the
+  component that actually provides the transport.
+- **Applications could not remap exceptions the framework had already mapped**
+  (container path): see the sixth-from-last row of the migration table.
+- **The `freeway.web.*` config keys that silently did nothing**: the old prefix
+  was renamed to `freeway.http.*` in v1.2.2 and the fallback deleted later
+  (e37ba527), so config still using the old prefix has been silently ignored ever
+  since, with the server running on defaults. `HttpModule` now probes at startup
+  for the one shape that can silently fail — "an old-prefix key exists while the
+  corresponding new key is missing" — and emits one WARN naming each dead key and
+  the fix (`old key → new key`); if the new key exists there is no report — the
+  value takes effect regardless, including via `${freeway.web.*}` references to
+  old keys; an expansion failure in a dead key's own value is reported, not
+  thrown.
+- **The access log recorded 200 on the exception path**: error mapping used to
+  wrap the whole chain from outside, and the filter's `finally` (where
+  `AccessLogFilter` read `ctx.status()`) ran during exception unwind before the
+  outer `catch`, reading the unmapped default 200. Mapping now sinks into the
+  chain (wrapping dispatch and each filter level; the mapper list and the
+  "first mapper wins" rule unchanged): an exception thrown by a handler no longer
+  pierces the filter chain, and outer filters observe the mapped final value; the
+  outermost catch of request handling stays as the last net.
+  `HttpServerFeatureTest.accessLogRecordsMappedStatusOnHandlerException` pins the
+  path.
+- **`Dialect.of` typed URLs case-sensitively**: scheme matching read the raw URL
+  (`url.contains("jdbc:…")`), so an upper-cased `JDBC:POSTGRESQL://` fell straight
+  into the "unsupported database" error; `toUpperCase()` also carried no `Locale`,
+  so under a Turkish default locale `jdbc:sqlite`'s `i` became `İ` and failed the
+  same way. Matching now runs on a `Locale.ROOT` upper-cased copy, consistent with
+  the documented case-insensitivity (`DatabaseCreateTest` pins both regressions).
+- **A class-route WebSocket endpoint's unresolved state was silently deferred to
+  the first upgrade**: with a hand-built `WebSocketIndex` (bypassing `HttpModule`)
+  nobody ever resolved the `LazyEndpoint`, so the first connection upgrade threw —
+  and upgrade-path exceptions logged at TRACE only, dropping the connection in
+  perfect silence. `WebSocketIndex` now rejects unresolved class endpoints at
+  construction (`HttpModule` finishes resolution before construction; only paths
+  bypassing the module can trigger this); endpoint callback failures during the
+  upgrade handshake (`subprotocols`/`open`/`onOpen`) are raised to WARN naming the
+  endpoint class, while read-loop and client disconnects stay at low levels.
+- **Deferred ordering constraints inside the drain window were silently dropped**:
+  `DeferredOrdering` rejected `before()`/`after()` only after seal, but instance
+  application happens during the drain, before seal — constraints declared in
+  that window entered the buffer and were never replayed. An `applied` flag
+  closes it: declaring after application fails as loudly as after seal.
+- **Inbound dedup swallowed MQ redelivery after a Defer rollback (events lost
+  forever)**: the wire id was claimed at publish time, while Defer-buffered
+  dispatch was discarded with the rollback — the id was burned, the event
+  undelivered, and a redelivery carrying the same id was judged "duplicate" and
+  dropped. The claim moves into the deferred action (the moment of actual
+  dispatch): a rollback leaves the id unclaimed and redelivery is accepted as
+  usual; after commit the claim happens as before, and duplicates still deliver
+  exactly once (`EventBusInboundDedupTest`, two cases:
+  `rollbackLeavesIdUnclaimedSoRedeliveryIsAccepted`,
+  `committedInboundStillDedupsRedelivery`; the `inboundDeduplication` javadoc is
+  reworded to match).
+- **`@Primary` on an implementation class had no effect on by-type resolution**:
+  `to(Impl.class)` collected `@Primary` into the marker set, but `get(type)` read
+  a separate `primary` boolean — two bindings, one marked `@Primary`, still
+  reported "Multiple services match" by type, contradicting the `@Primary` javadoc's
+  own "equivalent to `.primary()`". The boolean is deleted and `isPrimary()` reads
+  the `Primary` marker directly: `.primary()`, `@Primary` on the class and
+  module-level `@Marker(Primary.class)` are one answer from now on
+  (`primaryAnnotationOnImplementationSelectsTheBinding`).
+- **`SymbolSource.resolve(name, default)` read the default as an expression**: the
+  default implementation assembled `"${name:default}"` and ran the expansion
+  syntax — `":-"` swallowed a leading dash (`resolve(k, "-1")` produced `"1"`),
+  the first `}` in the default ended the expression early (`"a}b"` produced
+  `"ab}"`), and a `${…}` inside the default got expanded. `resolve(name)` now
+  catches `UnknownSymbolException` and falls back: the default returns verbatim,
+  while expansion errors like a nested missing symbol still propagate
+  (`lenientResolveReturnsTheDefaultVerbatim`). A side effect: replacement sources
+  no longer need to re-implement `resolve(name, default)` for the identity-`expand`
+  case (ext testkit's `Symbols` was one such, now deletable).
+- **The realize lock was JVM-global**: `ServiceRuntime.REALIZE_LOCK` was `static`,
+  so one container's slow constructor blocked another container's first
+  instantiation (1.5.x fixed only the cache-hit path, not the lock), and a
+  provider waiting on an instantiation in another container could deadlock across
+  containers. The lock becomes one per container
+  (`firstRealizationDoesNotQueueBehindAnotherContainer`).
+- **THREAD scope leaked values across containers**: `ScopedCache` is process-level
+  but keyed only on `(type, id)` — two containers binding the same type under the
+  same explicit id got the same value inside one `within()`. The key gains the
+  owning container (`threadScopeKeepsTwoContainersApart`).
 
 ### Changed
 
-- `freeway-http` 的 66 处测试构造改为直接 `HttpServer.create(...)`（零容器，引擎由 `TestHttp.engine()`
-  给出）；只有两个测 `HttpModule` 本身的测试仍走容器。ext testkit 与 benchmark 保持走 `HttpModule`：
-  契约要量"应用真正拿到的那个服务器"，那里 `Metrics`/`CorsFilter`/`HealthFilter` 的默认仍来自键。
-- AGENTS 的命名段改写（builder 不得持有默认值；`withX` 为写、裸名词为读），`docs/ARCHITECTURE.md`
-  与 `freeway-http/README.md`、`docs/DEVELOPER-GUIDE.md`、skills 两份随之更新。
-- 两处失真声明纠正：根包 `package-info` 不再称 `ExchangeMetaDefault` 可替换——两处 `new`
-  直构、容器从不查考它，绑 `.primary()` 不会被尊重；`HttpModule` 的 ACCESS_LOG 注释不再
-  自称"本模块自读的唯一键"（同读的还有 `freeway.http.h2.*` 两键），相邻 spec 注释风格一并统一。
-- `Graph` 的公开构造器收为包私有：全仓唯一的 `new Graph(…)` 是同包的 `GraphSpec.create()`，
-  公开构造器只是第二个派生点；蓝图用法不变（`graphSpec.create()` / `FlowEngine.load(spec)`）。
-- `WebSocketUtil` → `WebSocketUtils`：与同族 `BinUtils` / `HttpUtils` / `JsonUtils` /
-  `ReflectiveHandles` 的 `Utils` 后缀对齐（仓内原为 4:1，唯一调用点 `WebSocketUpgrade` 同批改）。
-- `Tracer` 方法签名中的两处 `com.jujin.freeway.cloud.context.TraceContext` 全限定名改为
-  import（同文件 `InvocationContext` 一并清理）——签名类型不变，无迁移项。
-- `FlowExchanger` → `FlowEvaluation`：该类型是"一次在途求值的状态"（graph/engine/driver/context/
-  execState 的载体，javadoc 原词即 evaluation），自己不执行求值——求值者是 `FlowEngine` +
-  `FlowDriver`；Exchanger 的两方交换语义（`java.util.concurrent.Exchanger`）与 -er 能动者后缀
-  都在误导。它是 `FlowDriver` 全部钩子的参数类型，参数名随之 `exchanger` → `evaluation`。
-- flow 组件族对齐全仓 Handler 惯例（`RouteHandler`/`BodyHandler`/`ErrorHandler`…）：
-  `TaskComponent`/`NamedTaskComponent`/`ConditionComponent` → `TaskHandler`/`NamedTaskHandler`/
-  `ConditionHandler`（方法名 `run`/`test`/`name`/`title` 不变）；衍生标识符一并收词，不留双词表：
-  `TaskDesc`/`ConditionDesc` 的字段与 `component()` 访问器 → `handler()`，`isComponentRef()` →
-  `isHandlerRef()`，`NodeSpec`/`LinkSpec` 的 `whenComponent` 字段与访问器 → `whenHandler`，
-  `resolveComponent` → `resolveHandler`，错误消息与注释中的 "component" → "handler"
-  （`ExprEvaluator` 的 "array component" 是数组元素义，保持原样）。
-- `DatabaseHub` → `DatabaseRegistry`：接口自己的 javadoc 首句就是 "**Registry** for multiple named
-  `Database` instances"，`get/primary/all/of(Map)` 也全是注册表语义，与 cloud 的 `ServiceRegistry`
-  同词同概念；"Hub" 在仓内的既有语义是 `PeerHub`（网格互联），对不上这个职责。
-  `DatabaseHubImpl` → `DatabaseRegistryImpl`、测试名随之。
-- `db.util.Names` 并入 `SqlTextParser`：它仅有的两个公开方法是命名参数标识符的词法校验
-  （`isValidParamStart`/`isValidParamChar`），叫 "Names" 会让人以为是表/列名称工具；唯一消费者
-  本来就是同包词法器，收成其私有方法后概念减一。
-- **贡献机制收敛（freeway-ioc）**，三个决定打包落地：
-  1. **组合期封印**：`Extension` 在装配（bind → drain）结束时 seal，`add`/`before`/`after`
-     之后一律抛 "sealed"。原先"运行时可向已建容器贡献"的能力处在被测试但未被文档承诺的
-     中间态（并发失效协议为此而生），现按 B 方案封死：`Extension` 的专用锁、全部
-     `synchronized`、`version()` 计数与 `EventSubscriptionIndex` 的双检循环一并删除，
-     读侧自封印起无锁；`Extension.get(String)` 生产零引用，同批删除（先例：`Extension.of`）。
-     `EventBusOrderedDeferredTest` 中"首播后贡献订阅者"改为断言拒绝——晚订阅走
-     `EventBus.subscribe`。
-  2. **SymbolProvider 统一走 contribute、删除 register 通道**：贡献 tier 只进扩展存储，
-     `SymbolSource` 拉取（新 `SymbolSource.of(coercer, supplier, tiers…)` 重载接受 live view，
-     排序缓存以 view 身份为失效键）；`SymbolSource.register()` 接口方法、容器的
-     `infrastructureWiring` 推送表、`contributedProviders` 列表、load 后回放、
-     on-demand 谓词与 `LazySymbolProvider` 门面全部删除——五件特殊机器减为零，
-     顺带消掉"替换后、回放前"的读取空窗。替换源的契约改为**自取 view**：
-     `.to(c -> new MySource(c.extension(SymbolProvider.class)))`；原"盲替换启动期 fail-fast"
-     随 register 一起移除，`SymbolSourceReplacementTest` 改钉正面模式。
-  3. **生命周期归一**：新建 `internal/ContributionRegistry` 独占 DSL、扩展存储、延迟队列、
-     drain 与 seal；`BinderImpl` 回归纯 binding 委托。延迟创建改双队列——配置层
-     （`SymbolProvider`/`CoerceRule`）先建，其余随后（原 FIFO 让"配置层晚于消费者声明"
-     碰运气）；`add(Class)` 反糖为 `add(id, factory)`，同一条延迟路径一份实现。
-     仍保留的唯一推送是 `CoerceRule` 进 coercer（commons 的 `Coercer` 在别模块，拉取
-     要动其规则存储与优先级语义，收益不抵风险，留待后续）。
-  同批修正三处文档与实现相反的陈述：skills 两份声称"缺失排序 id 会报错"（实际通用路径
-  WARN+忽略、仅 hook 走 `validateOrdering`），`InjectionResolver` javadoc 首句仍称可注入
-  `Extension<Foo>`（同方法显式拒绝）。
-  **迁移提示**：`add(id, factory)` 重载与 `add(id, value)` 并存后，当扩展点类型 V 本身是
-  函数式接口、调用点又传裸 lambda 作**值**时（`.add("id", c -> …)`）两个重载都"潜在适用"，
-  javac 报歧义——向值语义显式转型（`.add("id", (V) c -> …)`）或把工厂 lambda 先赋给
-  `Function<Container, ? extends V>` 局部变量即可；仓内 cloud 四处测试即此修法。
-- `Contributions<T>` → `Contribution<T>`、排序句柄 `Contribution` → `Ordering`：单复数对读作
-  "一条 vs 一筐"，但两个类型都不持有值——前者是 `contribute()` 返回的写侧 DSL（`add` 门面，
-  自身无状态），后者是命名 `add` 之后声明 `before/after` 的句柄（javadoc 首句本就是 "Ordering
-  handle"，却要靠补一个 "handle" 才能消歧，`ARCHITECTURE` 还一度把它写成
-  `Contribution<RuntimeHook>`）。改名后与 `bind()` → `Binding<T>` 同形：`Binder.contribute`
-  返回 `Contribution<T>`，`.add(id, v)` / `.add(Class)` 返回 `Ordering`（词干取自既有的
-  `validateOrdering` / "Ordering reference" 词族）；`BinderImpl.DeferredContribution` →
-  `DeferredOrdering` 随之。错误消息与散文里的 "contribution"（条目领域词）不动。
-- **EventBus 发布热路径改为全惰性**：本地 publish 不再在入口铸 UUID（SecureRandom）——id 只为
-  出站 sink fan-out 存在，移到 `sendToSinks` 里、守卫判空之后铸造，一次 fan-out 一枚、全体 sink
-  共享（`EventSink` "bus-minted、never null" 契约不变；无 sink、被回滚、inbound 转发的发布零成本）；
-  `@Topic` 解析进 `ClassValue` 缓存（与 `SUPER_TYPES` 同一模式），反射注解查找每类只付一次；
-  sink 空守卫上提到 sink 参数求值之前——没有 sink 就不做 topic 解析；订阅者/失败告警标签改惰性
-  `Supplier`，只有真失败才拼字符串。
-- **类通道索引一次走查**：`EventSubscriptionIndex.classSubs(eventType)` 合并原
-  `classHandlers` + `runtimeClassSubs` 两次 `SUPER_TYPES` 遍历为一次，module+runtime 两组
-  同遍匹配；精确命中直接返回活列表（module 列表封印后不可变、runtime 是 COW，只读迭代安全），
-  删掉原来的无条件 `ArrayList` 拷贝——只有跨超类型合并时才复制。
-- **`EventSinkRegistry` 改 volatile 不可变列表**：add/remove/clear 少见、在监视器下写时拷贝，
-  发布热路径的 `isEmpty()`/`snapshot()` 变成纯字段读——不再每次 publish 抢锁 + `List.copyOf`。
-- **bus 自建执行器有界关停**：`EventExecutorSupport.close()` 不再用无界
-  `ExecutorService.close()` 等到天荒地老——`shutdown()` 后限时等待（默认 5s，超时 WARN 点名
-  阻塞的通道并 `shutdownNow()`）。挂死的订阅者原先会挂死整个容器关停（`internal.Shutdown` 把
-  EventBus 排在全部 `@PreDestroy` 之后）；`setAsyncExecutor` 的所有权同时成文：**自设执行器总不
-  关闭**，生命周期归安装方，只有总线自建的默认执行器随 `close()` 停。
-- `EventBus.close()` 改 `AtomicBoolean` CAS：并发 close 从"读-改-写竞态"变为恰好一个执行者；
-  `DeadEvent.source` 从内部 `EventDispatcher` 改为 `EventBus` 本身（见迁移表）；一次派发内的
-  订阅顺序成文进类 javadoc：module 订阅者（组合期贡献、按其排序）先于 runtime 订阅者（按订阅
-  顺序）。
-- **freeway-ioc 内部收敛**（无公开形状变化，全仓既有测试不改断言即通过）：
-  - `ServiceRuntime` 独占两张缓存与 realize 锁，`ContainerImpl` 不再持有/清理/迁移 map；关停的
-    "置 closed → 末轮 drain → 清缓存"成为 `ServiceRuntime.seal(finalDrain)` 一个原子步。具体类
-    单例不再在 proxy 缓存与 target 缓存各存一份（原 `serviceCache` 只剩接口 proxy，更名 `proxyCache`）。
-  - 实例绑定机器删除：`prebuiltInstance`/`setInstance`/`requireSingletonScope` 与 `scope()` 里的
-    实例校验只为 5 个内置服务存在（公开 DSL 没有 `toInstance`）；内置服务改走 provider，
-    `registerBuiltin`/`registerBuiltinLazy` 合一。
-  - `ServiceRuntime.requireAdviceSupported` 删除：`advise()` 在绑定期已拒绝非接口类型，该检查不可达；
-    `ProxyFactoryImpl` → `ServiceProxy`（无 `ProxyFactory` 接口，`Impl` 后缀名不副实；无状态，改静态），
-    三参 `create` 阶梯与重复的 `Object` 方法守卫、接口守卫一并删除。
-  - 选择规则一处：`BindingIndex.select` 同时服务按类型与按标记查找——"单个即中、多个取唯一 primary、
-    否则歧义"原来在 `BindingIndex.selectUnique` 与 `MarkerIndex.findByMarker` 各写一遍；
-    `findUnique` 多绑定分支不再全表扫描一个 `typeIndex` 早已给出的集合，`ScanResult` 删除。
-  - `@Marker` 读取合一（`extractModuleMarkers`/`extractClassMarkers` 同一个 helper），标记只在进入
-    绑定处校验一次；模块标记每个模块算一次，而不是每次 `bind()` 反射一次。
-  - `EventDispatcher` 构造参数 7 → 4：`isClosed`/`deadEventPublisher`/`topicResolver` 三个都是指回 bus
-    的间接层；`@Topic` 解析（唯一使用者是 sink fan-out）随之迁入；类/话题两通道的派发体合一。
-    `EventBus` 构造器去掉 `@Inject`——`Container` 不可注入，该注解宣传一条走不通的路。
-  - `EventStats` 6×(LongAdder + Counter + 增量 + 读取) 收成一个 `Tally` 记录与 `snapshot()`；
-    包私有类上的 `public` 修饰（`EventStats`/`EventSinkRegistry`/`EventExecutorSupport`）去除；
-    `Subscription` 两个构造器合一。
-  - `SymbolSpec.list` 补键校验（原唯一跳过 `blank` 检查的工厂），`normalizedKey` 的死参数删除。
-  - 过期陈述：`ContainerImpl`"both buses"（早已只剩 `EventBus`）、`@Value`（不存在的注解，3 处）、
-    `@Marker`"builder method annotations"、`Ordering` 只列一个返回它的 `add`、`EventBus` javadoc
-    里十余处 "event" 单复数错。
-- 测试清扫：`EventBusAsyncPublishTest` 两处 `Thread.sleep(200)` 换成仓内统一的 `Await.until`
-  （消灭固定睡量的 flaky 面）；新增回归钉住本批契约——回滚后重投、有界关停不吊死、sink 失败
-  计数与隔离、stream 溢出计数、ordered topic 通道、`DeadEvent.source` 即 bus。
-- **event 类型收进 `ioc.event` 包**：根包 13 个事件类型（`EventBus`、`EventSink`、
-  `EventSubscriber`、`EventBridge`、`Subscription`、`DeadEvent` 等）整体迁入
-  `com.jujin.freeway.ioc.event`——根包回归纯容器面孔，`EventBridge`/`EventDispatcher`/
-  `EventStats` 等包私有机制的可见性域从"整个根包"收窄到事件域自身。纯 import 变化、
-  零语义改动（仓内外 import 与全限定名编译器驱动改写；`EventBusAsyncPublishTest` 里对
-  `EventExecutorSupport` 的白盒关闭测试拆成 `event.EventExecutorSupportTest`，按"测试居
-  其类旁"落位）。同批三处契约文档：`setAsyncExecutor` 写明是封印世界里**刻意的运行时
-  例外**（可热换、生命周期归安装者——组合期数据两头都表达不了）；`deferOrRun` 头上指向
-  已删 dedup 方法的孤儿 javadoc 清除（容量取舍与 claim-at-dispatch 语义迁入
-  `EventBridgePolicy` 参数文档）；`EventSink` 补"fan-out 访问序 = 贡献拓扑序
- （before/after 生效），但只是本 JVM 循环序"一条契约。
+- `freeway-http`'s 66 test constructions switch to direct `HttpServer.create(...)`
+  (zero containers, with the engine supplied by `TestHttp.engine()`); only the two
+  tests of `HttpModule` itself still go through the container. The ext testkit and
+  the benchmark keep using `HttpModule`: contracts must measure "the server an
+  application actually gets", where the defaults of `Metrics`/`CorsFilter`/
+  `HealthFilter` still come from keys.
+- AGENTS' naming section is rewritten (a builder must not hold defaults; `withX`
+  writes and bare nouns read), with `docs/ARCHITECTURE.md`,
+  `freeway-http/README.md`, `docs/DEVELOPER-GUIDE.md` and both skills updated to
+  match.
+- Two inaccurate statements corrected: the root `package-info` no longer claims
+  `ExchangeMetaDefault` is replaceable — two `new`s construct it directly and the
+  container never consults it, so a `.primary()` binding would not be honored; and
+  `HttpModule`'s ACCESS_LOG comment no longer calls itself "the only key this
+  module reads itself" (`freeway.http.h2.*`'s two keys are read alongside), with
+  the adjacent spec comments normalized in style.
+- `Graph`'s public constructor becomes package-private: the repo's only
+  `new Graph(…)` is same-package `GraphSpec.create()`, so the public constructor
+  was a second derivation point; blueprint usage is unchanged
+  (`graphSpec.create()` / `FlowEngine.load(spec)`).
+- `WebSocketUtil` → `WebSocketUtils`: aligned with the family's `BinUtils` /
+  `HttpUtils` / `JsonUtils` / `ReflectiveHandles` `Utils` suffix (the repo stood at
+  4:1; the only caller, `WebSocketUpgrade`, changes in the same batch).
+- Two fully-qualified `com.jujin.freeway.cloud.context.TraceContext` names in
+  `Tracer` method signatures become imports (with `InvocationContext` cleaned up
+  in the same file) — signature types unchanged, no migration item.
+- `FlowExchanger` → `FlowEvaluation`: the type is "the state of one in-flight
+  evaluation" (carrying graph/engine/driver/context/execState; the javadoc's own
+  word was evaluation) and does not evaluate anything itself — the evaluators are
+  `FlowEngine` + `FlowDriver`; `Exchanger`'s two-party swap semantics
+  (`java.util.concurrent.Exchanger`) and the agentive `-er` suffix both misled.
+  It is the parameter type of every `FlowDriver` hook, and the parameter renames
+  `exchanger` → `evaluation` accordingly.
+- flow's component family aligns with the repo's Handler convention
+  (`RouteHandler`/`BodyHandler`/`ErrorHandler`…): `TaskComponent`/
+  `NamedTaskComponent`/`ConditionComponent` → `TaskHandler`/`NamedTaskHandler`/
+  `ConditionHandler` (the method names `run`/`test`/`name`/`title` unchanged);
+  derived identifiers fold too, leaving no second vocabulary: `TaskDesc`/
+  `ConditionDesc`'s fields and the `component()` accessor → `handler()`,
+  `isComponentRef()` → `isHandlerRef()`, `NodeSpec`/`LinkSpec`'s `whenComponent`
+  field and accessor → `whenHandler`, `resolveComponent` → `resolveHandler`, and
+  "component" in error messages and comments → "handler" (`ExprEvaluator`'s
+  "array component" means an array element and stays as is).
+- `DatabaseHub` → `DatabaseRegistry`: the interface's own javadoc first sentence
+  was already "**Registry** for multiple named `Database` instances",
+  `get/primary/all/of(Map)` are all registry semantics, matching cloud's
+  `ServiceRegistry` word for word and concept for concept; "Hub" in this repo
+  already meant `PeerHub` (mesh interconnect), which does not match this role.
+  `DatabaseHubImpl` → `DatabaseRegistryImpl`, with test names following.
+- `db.util.Names` merges into `SqlTextParser`: its only two public methods were
+  lexical validation of named-parameter identifiers (`isValidParamStart`/
+  `isValidParamChar`), and "Names" suggested a table/column-name utility; its only
+  consumer was always the same-package lexer, so folding it in as private methods
+  removes one concept.
+- **The contribution mechanism converges (freeway-ioc)**, three decisions landed
+  together:
+  1. **Seal at composition time**: `Extension` seals when assembly ends
+     (bind → drain), and `add`/`before`/`after` throw "sealed" afterwards. The old
+     "contribute to a built container at runtime" capability sat in an in-between
+     state that tests exercised but no document promised (the concurrent
+     invalidation protocol existed for it); it is now closed under plan B:
+     `Extension`'s dedicated lock, all `synchronized` blocks, the `version()`
+     counter and `EventSubscriptionIndex`'s double-check loop are deleted, and the
+     read side is lock-free from seal onward. `Extension.get(String)` had zero
+     production references and is deleted in the same batch (precedent:
+     `Extension.of`). `EventBusOrderedDeferredTest`'s "contribute a subscriber
+     after the first publish" becomes a rejection assertion — late subscriptions
+     go through `EventBus.subscribe`.
+  2. **SymbolProvider unifies through contribute; the register channel is
+     deleted**: the contributed tier enters the extension store only, and
+     `SymbolSource` pulls (the new
+     `SymbolSource.of(coercer, supplier, tiers…)` overload accepts the live view,
+     with the ordering cache keyed on the view's identity for invalidation);
+     `SymbolSource.register()`'s interface method, the container's
+     `infrastructureWiring` push table, the `contributedProviders` list, the
+     post-load replay, the on-demand predicate and the `LazySymbolProvider` facade
+     are all deleted — five pieces of special machinery go to zero, incidentally
+     removing the read gap between "replacement installed" and "replay runs". A
+     replacement source's contract becomes **taking the view itself**:
+     `.to(c -> new MySource(c.extension(SymbolProvider.class)))`; the old "blind
+     replacement fails fast at startup" goes with register, and
+     `SymbolSourceReplacementTest` re-pins the positive pattern.
+  3. **Lifecycle unification**: the new `internal/ContributionRegistry` owns the
+     DSL, the extension store, the deferred queues, the drain and the seal
+     exclusively; `BinderImpl` returns to being a pure binding delegate. Deferred
+     creation becomes two queues — the config layer (`SymbolProvider`/
+     `CoerceRule`) constructs first and the rest after (the old FIFO left
+     "config layer declared after its consumer" to luck); `add(Class)` desugars to
+     `add(id, factory)`, so one deferred path has one implementation. The only
+     remaining push is `CoerceRule` into the coercer (commons' `Coercer` lives in
+     another module, and pulling would touch its rule store and priority
+     semantics — the benefit does not buy the risk, so it stays for later).
+  Three doc-vs-code contradictions are fixed in the same batch: both skills
+  claimed "a missing ordering id errors" (the general path actually WARNs and
+  ignores; only hooks run `validateOrdering`), and `InjectionResolver`'s javadoc
+  first sentence still claimed `Extension<Foo>` was injectable (the same method
+  explicitly rejects it).
+  **Migration note**: with the `add(id, factory)` overload living beside
+  `add(id, value)`, when the extension-point type V is itself a functional
+  interface and the call site passes a bare lambda as a **value**
+  (`.add("id", c -> …)`), both overloads are "potentially applicable" and javac
+  reports ambiguity — cast explicitly to the value semantics
+  (`.add("id", (V) c -> …)`) or assign the factory lambda to a
+  `Function<Container, ? extends V>` local first; four cloud tests in the repo use
+  exactly that fix.
+- `Contributions<T>` → `Contribution<T>` and the ordering handle `Contribution` →
+  `Ordering`: the singular/plural pair read as "one vs a basket", but neither type
+  holds values — the former is the write-side DSL returned by `contribute()` (an
+  `add` facade, stateless itself), the latter the handle for declaring
+  `before/after` after a named `add` (its javadoc's first sentence was already
+  "Ordering handle", yet disambiguation required appending "handle", and
+  `ARCHITECTURE` once even wrote it as `Contribution<RuntimeHook>`). After the
+  rename it matches `bind()` → `Binding<T>`: `Binder.contribute` returns
+  `Contribution<T>`, and `.add(id, v)` / `.add(Class)` return `Ordering` (the stem
+  from the existing `validateOrdering` / "Ordering reference" word family);
+  `BinderImpl.DeferredContribution` → `DeferredOrdering` follows. The entry-domain
+  word "contribution" in error messages and prose stays.
+- **EventBus's publish hot path goes fully lazy**: local publish no longer mints a
+  UUID (SecureRandom) at the entry — the id exists only for outbound sink fan-out,
+  so minting moves into `sendToSinks` after the emptiness guard, one per fan-out
+  shared by all sinks (`EventSink`'s "bus-minted, never null" contract unchanged;
+  publishing with no sinks, rolled back or forwarded inbound costs zero);
+  `@Topic` parsing enters a `ClassValue` cache (the same pattern as
+  `SUPER_TYPES`), paying reflective annotation lookup once per class; the
+  sinks-empty guard hoists above evaluating the sink parameter — no sinks means no
+  topic parsing; subscriber/failure alert labels become lazy `Supplier`s, and
+  strings are built only on real failures.
+- **The class-channel index walks once**: `EventSubscriptionIndex.classSubs(eventType)`
+  merges the two `SUPER_TYPES` traversals of the old `classHandlers` +
+  `runtimeClassSubs` into one, matching module and runtime sets in the same pass;
+  an exact hit returns the live list directly (the module list is immutable after
+  seal and runtime is COW, so read-only iteration is safe), deleting the old
+  unconditional `ArrayList` copy — copying now happens only when merging across
+  supertypes.
+- **`EventSinkRegistry` becomes a volatile immutable list**: add/remove/clear are
+  rare and copy-on-write under the monitor, so the publish hot path's
+  `isEmpty()`/`snapshot()` become plain field reads — no more locking and
+  `List.copyOf` on every publish.
+- **The bus's own executor shuts down with a bound**: `EventExecutorSupport.close()`
+  no longer uses the unbounded `ExecutorService.close()` and waits forever —
+  after `shutdown()` it waits with a limit (default 5 s; on timeout it WARNs naming
+  the blocked channel and calls `shutdownNow()`). A hung subscriber used to hang
+  the whole container's shutdown (`internal.Shutdown` orders the EventBus after
+  every `@PreDestroy`); `setAsyncExecutor`'s ownership is written down at the same
+  time: **a self-set executor is never closed** — its lifecycle belongs to the
+  installer, and only the bus's own default executor stops with `close()`.
+- `EventBus.close()` switches to an `AtomicBoolean` CAS: concurrent closes go from
+  a read-modify-write race to exactly one executor; `DeadEvent.source` changes from
+  the internal `EventDispatcher` to `EventBus` itself (see the migration table);
+  and the subscriber order within one dispatch is written into the class javadoc:
+  module subscribers (contributed at composition, in their ordering) precede
+  runtime subscribers (in subscription order).
+- **freeway-ioc's internals converge** (no public shape change; all existing tests
+  in the repo pass without assertion changes):
+  - `ServiceRuntime` owns the two caches and the realize lock exclusively, and
+    `ContainerImpl` no longer holds/clears/migrates maps; shutdown's "set closed →
+    final drain → clear caches" becomes one atomic step, `ServiceRuntime.seal(finalDrain)`.
+    Concrete-class singletons no longer occupy both the proxy cache and the target
+    cache (the old `serviceCache` kept only interface proxies and is renamed
+    `proxyCache`).
+  - The instance-binding machinery is deleted: `prebuiltInstance`/`setInstance`/
+    `requireSingletonScope` and the instance check inside `scope()` existed only
+    for 5 built-in services (the public DSL has no `toInstance`); built-ins move to
+    providers, and `registerBuiltin`/`registerBuiltinLazy` merge into one.
+  - `ServiceRuntime.requireAdviceSupported` is deleted: `advise()` already rejects
+    non-interface types at bind time, so the check was unreachable;
+    `ProxyFactoryImpl` → `ServiceProxy` (there is no `ProxyFactory` interface, so
+    the `Impl` suffix named nothing real; it is stateless and becomes static), and
+    the three-argument `create` ladder with its duplicated `Object`-method and
+    interface guards is deleted with it.
+  - One selection rule: `BindingIndex.select` served both by-type and by-marker
+    lookups — "one match wins, several take the unique primary, otherwise
+    ambiguous" was written twice, in `BindingIndex.selectUnique` and
+    `MarkerIndex.findByMarker`; `findUnique`'s multi-binding branch no longer
+    scans a set `typeIndex` had already produced, and `ScanResult` is deleted.
+  - `@Marker` reading unifies (`extractModuleMarkers`/`extractClassMarkers` share
+    one helper), and markers are validated once, where they enter the binding;
+    module markers are computed once per module instead of one reflective read per
+    `bind()`.
+  - `EventDispatcher`'s constructor goes 7 → 4: `isClosed`/`deadEventPublisher`/
+    `topicResolver` were all indirections pointing back at the bus; `@Topic`
+    parsing (whose only user was sink fan-out) moves in with it, and the class and
+    topic channels' dispatch bodies merge. `EventBus`'s constructor drops
+    `@Inject` — `Container` is not injectable, and the annotation advertised a
+    path that could not work.
+  - `EventStats`'s 6×(LongAdder + Counter + increment + read) folds into one
+    `Tally` record and `snapshot()`; the `public` modifiers on package-private
+    classes (`EventStats`/`EventSinkRegistry`/`EventExecutorSupport`) are removed;
+    `Subscription`'s two constructors merge into one.
+  - `SymbolSpec.list` gains key validation (the one factory that skipped the
+    `blank` check), and `normalizedKey`'s dead parameter is deleted.
+  - Stale statements: `ContainerImpl`'s "both buses" (only `EventBus` remained
+    long ago), `@Value` (a nonexistent annotation, 3 places), `@Marker` as
+    "builder method annotations", `Ordering` listing only one `add` that returns
+    it, and a dozen-plus singular/plural "event" slips in `EventBus`'s javadoc.
+- Test hygiene: `EventBusAsyncPublishTest`'s two `Thread.sleep(200)` become the
+  repo's standard `Await.until` (eliminating the fixed-sleep flaky surface); new
+  regressions pin this batch's contracts — redelivery after rollback, bounded
+  shutdown not hanging forever, sink failure counting and isolation, stream
+  overflow counting, the ordered topic channel, and `DeadEvent.source` being the
+  bus.
+- **event types move into the `ioc.event` package**: the root package's 13 event
+  types (`EventBus`, `EventSink`, `EventSubscriber`, `EventBridge`,
+  `Subscription`, `DeadEvent` etc.) move wholesale into
+  `com.jujin.freeway.ioc.event` — the root package returns to a pure container
+  face, and package-private mechanisms like `EventBridge`/`EventDispatcher`/
+  `EventStats` have their visibility domain narrowed from "the whole root
+  package" to the event domain itself. A pure import change with zero semantic
+  change (imports and fully-qualified names in and out of the repo are rewritten
+  compiler-driven; the white-box shutdown test of `EventExecutorSupport` inside
+  `EventBusAsyncPublishTest` splits into `event.EventExecutorSupportTest`,
+  placed beside its class per "tests live beside what they cover"). Three
+  contract documents land in the same batch: `setAsyncExecutor` states it is a
+  **deliberate runtime exception** in a sealed world (hot-swappable, lifecycle
+  owned by the installer — composition-time data cannot express either half);
+  the orphaned javadoc on `deferOrRun` pointing at a deleted dedup method is
+  cleared (the capacity trade-off and the claim-at-dispatch semantics move into
+  `EventBridgePolicy`'s parameter docs); and `EventSink` gains one contract line —
+  "fan-out visit order = the contribution topological order (before/after in
+  effect), but only this JVM's loop order".
 - **Rule ② carve-out (single-transport redelivery suppression)**: the rule kills cross-transport
   identity machinery (shared ids, windows keyed on them, bus coupling) — and stays killed.
   What returns, by explicit exception, is strictly less: an opt-in bounded seen-set inside
