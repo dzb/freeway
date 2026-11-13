@@ -3597,298 +3597,392 @@ Behaviour changes (no call sites need changing, but worth knowing):
 
 ### Added
 
-- **统一配置文件解析器（freeway-boot）** — 新增 `ConfigFileReader`（boot internal）：
-  `.json` 解析为 JSON 并展平为点号键，其余按 properties 解析，全部 UTF-8。
-  classpath 级联与热重载文件层共用同一实现——文件无论位于 classpath、工作目录
-  还是 `freeway.config.file`，启动与每次重载的解析结果完全一致。
+- **A unified config file parser (freeway-boot)** — the new `ConfigFileReader`
+  (boot internal): `.json` parses as JSON and flattens to dotted keys, everything
+  else parses as properties, all UTF-8. The classpath cascade and the hot-reload
+  file layer share the one implementation — whether a file sits on the classpath,
+  in the working directory or under `freeway.config.file`, startup and every
+  reload parse it identically.
 
 ### Changed
 
-- **配置读取统一归框架（freeway-boot，破坏性）** — `ConfigLoaderDefault` 现在返回
-  `AppConfigDefault`（唯一实现，静态/动态两种构造形态）：文件层 = classpath 基线
-  （打包的 `application*.properties/json`，静态）+ 文件系统覆盖（工作目录同名标准文件
-  + `freeway.config.file` 指定的文件，逗号分隔，文件系统压过 classpath、后者压过
-  前者），WatchService 热重载，无覆盖文件时行为与静态配置完全一致。热重载是 pull
-  语义：配置模型直接声明自己的 `SymbolProvider`（`AppConfig.symbolProviders()`），
-  文件源每次 lookup 读实时快照，`@Value`/`@Symbol` 重新解析即见新值。
-  自定义 loader 的静态配置从"顶层（TIER_CLI）"改为"文件层（TIER_FILES）"——
-  env/CLI 与模块源（如 secret）现在正确地压过它。
-- **cloud 配置机制删除（freeway-cloud，破坏性）** — `CloudConfigModule` /
-  `CloudConfigDefault` / `CloudConfigSymbolProvider` / `CloudConfig` / `ConfigRef` /
-  `ConfigSubscription` / `ConfigChangedEvent` 及 `freeway.cloud.config.*` 键全部移除；
-  配置中心文件改用框架键 `freeway.config.file`（旧键 `freeway.cloud.config.file`
-  废弃）；`CloudModule` 不再安装配置模块。
-- **读取入口收敛：SymbolSource（freeway-ioc/boot，破坏性）** — `SymbolSource` 回归
-  纯解析基底（`resolve`/`expand`，String in / String out），不再认识 `SymbolSpec`/
-  `Coercer`；类型化读取改为显式两步——`SPEC.parse(symbols.resolve(SPEC.key(), null)[, coercer])`，
-  键与默认值只在 spec 声明一次。`AppConfig` 不再是读取门面：删除 `get(String)` /
-  `get(SymbolSpec)` / `DefaultCoercer`，仅保留 `profiles()` / `asMap()`（级联快照，
-  永不含 secret）/ `symbolProviders()` / `close()`。`freeway-ioc` 从此零依赖
-  `commons.config`。
-- **类型化解析收敛（freeway-cloud/db/http，破坏性）** — `ConfigValues`（int/long/
-  double 静态工具）删除；`HttpConfig` 的反射式取值 helper、DbModule 的键/默认值
-  双写、cloud 各模块的裸 `Boolean.parseBoolean(symbols.resolve(...))` 全部收敛为
-  声明式 `SymbolSpec`。cloud 的 `*_DEFAULT` 常量升级为类型化值，配置层与库内
-  兜底共享同一来源。
-- **配置层级显式化为 4 个框架层（freeway-ioc，破坏性）** — `SymbolProvider` 常量
-  收拢为 `TIER_CLI(0)` / `TIER_SYS_PROPS(5)` / `TIER_ENV(10)` / `TIER_FILES(20)`；
-  模块槽位由模块自持（cloud secret 声明 order 15，介于 env 与 files 之间）。全部
-  provider 进入单一定序列表：JVM `-D` 升至文件层之上（进程级运维覆盖，对齐
-  Spring Boot 惯例）；raw-env 兜底层删除——环境变量只经声明式前缀映射进入链条，
-  未知符号快速失败而不是静默命中无关变量（Windows 大小写不敏感下的 `path`→`PATH`
-  事故面随之消除）。裸容器（无 boot）的内建来源只剩 system properties。
+- **Config reading unifies under the framework (freeway-boot, breaking)** —
+  `ConfigLoaderDefault` now returns `AppConfigDefault` (the only implementation,
+  with static/dynamic construction forms): the file layer = the classpath baseline
+  (packaged `application*.properties/json`, static) + filesystem overrides
+  (same-named standard files in the working directory + files named by
+  `freeway.config.file`, comma-separated; the filesystem overrides the classpath
+  and the latter overrides the former), with `WatchService` hot reload, and with
+  no override files the behaviour matches the static config exactly. Hot reload
+  is pull semantics: the config model declares its own `SymbolProvider`s directly
+  (`AppConfig.symbolProviders()`), file sources read the live snapshot on every
+  lookup, and re-parsed `@Value`/`@Symbol` see the new values. A custom loader's
+  static config moves from "the top tier (TIER_CLI)" to "the file tier
+  (TIER_FILES)" — env/CLI and module sources (such as secrets) now correctly
+  outrank it.
+- **cloud's config mechanism is deleted (freeway-cloud, breaking)** —
+  `CloudConfigModule` / `CloudConfigDefault` / `CloudConfigSymbolProvider` /
+  `CloudConfig` / `ConfigRef` / `ConfigSubscription` / `ConfigChangedEvent` and
+  the `freeway.cloud.config.*` keys are all removed; the config-centre file uses
+  the framework key `freeway.config.file` (the old key
+  `freeway.cloud.config.file` is retired); and `CloudModule` no longer installs a
+  config module.
+- **The reading entry converges on SymbolSource (freeway-ioc/boot, breaking)** —
+  `SymbolSource` returns to being a pure resolution base (`resolve`/`expand`,
+  String in / String out) that knows nothing of `SymbolSpec`/`Coercer`; typed
+  reads become the explicit two steps
+  `SPEC.parse(symbols.resolve(SPEC.key(), null)[, coercer])`, with the key and
+  default declared once, on the spec. `AppConfig` is no longer a reading facade:
+  `get(String)` / `get(SymbolSpec)` / `DefaultCoercer` are deleted, leaving
+  `profiles()` / `asMap()` (a cascade snapshot that never contains secrets) /
+  `symbolProviders()` / `close()`. `freeway-ioc` henceforth has zero dependency
+  on `commons.config`.
+- **Typed parsing converges (freeway-cloud/db/http, breaking)** —
+  `ConfigValues` (the int/long/double static utilities) is deleted; `HttpConfig`'s
+  reflective read helpers, DbModule's key/default double-writing, and cloud
+  modules' bare `Boolean.parseBoolean(symbols.resolve(...))` all converge into
+  declarative `SymbolSpec`s. cloud's `*_DEFAULT` constants upgrade to typed
+  values, and the config layer and in-library fallbacks share one source.
+- **Config tiers are made explicit as 4 framework tiers (freeway-ioc,
+  breaking)** — `SymbolProvider`'s constants consolidate into `TIER_CLI(0)` /
+  `TIER_SYS_PROPS(5)` / `TIER_ENV(10)` / `TIER_FILES(20)`; the module slot is held
+  by the module (cloud's secret declares order 15, between env and files). All
+  providers enter one ordered list: JVM `-D` rises above the file tier
+  (process-level ops overrides, aligned with Spring Boot's convention); and the
+  raw-env fallback tier is deleted — environment variables enter the chain only
+  through the declared prefix mapping, so unknown symbols fail fast instead of
+  silently hitting an unrelated variable (eliminating the `path`→`PATH` accident
+  surface under Windows' case-insensitivity). A bare container (no boot) keeps
+  system properties as its only builtin source.
 
 ### Removed
 
-- **`EventBus.hasSubscribers(String/Class)`（freeway-ioc，破坏性）** — 全库零消费
-  的查询 API；DeadEvent 诊断与 `EventDispatcher` 内部判断已覆盖需求。
-- **`EventBus.publishOrdered(Object key, Object event)`（freeway-ioc，破坏性）** —
-  key 参数被实现忽略的占位 API；单参 `publishOrdered(event)` 为唯一形态，
-  per-key 排序在未来按真语义实现。
-- **`@RoundRobin` 注解（freeway-cloud，破坏性）** — 单一实现却有策略标记的伪 SPI
-  概念；负载均衡扩展机制是 `LoadBalancer`（@FunctionalInterface）+ primary 绑定。
-  `LoadBalancerDefault` 改标 `@Local`，与全部内置默认实现的选择子一致。
+- **`EventBus.hasSubscribers(String/Class)` (freeway-ioc, breaking)** — a query
+  API with zero consumers in the library; the DeadEvent diagnostics and
+  `EventDispatcher`'s internal checks already covered the need.
+- **`EventBus.publishOrdered(Object key, Object event)` (freeway-ioc,
+  breaking)** — a placeholder API whose key parameter the implementation ignored;
+  the single-argument `publishOrdered(event)` is the only form, and per-key
+  ordering will be implemented with real semantics in the future.
+- **The `@RoundRobin` annotation (freeway-cloud, breaking)** — a pseudo-SPI
+  concept: a strategy marker on a single implementation; the load-balancing
+  extension mechanism is `LoadBalancer` (@FunctionalInterface) + a primary
+  binding. `LoadBalancerDefault` is now marked `@Local`, consistent with the
+  selector on every built-in default implementation.
 
 ### Fixed
 
-- **JSON 覆盖文件按 properties 解析（freeway-boot）** — 热重载文件层此前对所有
-  override 无差别 `Properties.load()`，`application.json` 或 `freeway.config.file`
-  中的 `.json` 文件被解析成 `{"app.name"="..."}` 式垃圾键、真实键全部丢失；
-  统一解析器按扩展名（大小写不敏感）分派后，JSON 覆盖文件启动与热重载均正确。
-- **测试桩契约偏差（freeway-cloud）** — `SecurityTest` 的 `SymbolSource` 桩改为
-  抛出 `UnknownSymbolException`（此前抛普通 `IllegalArgumentException`，
-  `resolve(name, default)` 按类型无法识别 miss）。
+- **JSON override files parsed as properties (freeway-boot)** — the hot-reload
+  file layer used to `Properties.load()` every override indiscriminately, so an
+  `application.json` or a `.json` file under `freeway.config.file` parsed into
+  garbage keys like `{"app.name"="..."}` with all real keys lost; after the
+  unified parser dispatches by extension (case-insensitive), JSON override files
+  work at startup and on hot reload alike.
+- **A test stub's contract deviation (freeway-cloud)** — `SecurityTest`'s
+  `SymbolSource` stub now throws `UnknownSymbolException` (it previously threw a
+  plain `IllegalArgumentException`, so `resolve(name, default)` could not
+  recognize a miss by type).
 
 ## [1.3.11] — 2026-08-30
 
 ### Added
 
-- **`Defer.within` 结果形态（freeway-commons）** — 新增 `within(Supplier<T>)` 与
-  `within(Function<DeferScope, T>)`：作用域产出返回值，提交语义不变（正常
-  返回 drain、rollback/异常 discard 后不产出）。与 `ScopedCache.within` 的
-  三形态对称，另含 `Consumer<DeferScope>` 无返回值形态。
-- **观测 SPI 统一（freeway-commons/cloud）** — `Metrics.Timer` 新增
-  `record(Duration)` 与 `record(Supplier)` 默认重载（nanos 为规范单位），
-  commons 成为全框架唯一观测 SPI。`CloudObserveModule` 的注册表现在以
-  primary 绑定覆盖容器 Noop 内置：安装即把 EventBus/HTTP 引擎等全部
-  框架计数器汇入 `/metrics`（此前 http/ioc 与 cloud 各有一套不兼容的
-  registry，框架计数器默认不可见）。计数器为整数语义
-  （LongAdder），Prometheus 文本中计数值不再带小数点。
-  `/metrics` 经新能力接口 `MetricsSnapshot` 服务于 primary 注册表——
-  ext 后端替换 `Metrics` 且能自行渲染时导出自动跟随，不能则启动期
-  路由解析即失败。
-- **结构化绑定异常（freeway-ioc）** — 新增 `AmbiguousBindingException` 与
-  `UnknownSymbolException`：多命中/双 primary 与符号未命中现在可按类型捕获，
-  无需匹配异常消息文本。两者均继承 `IllegalArgumentException`，既有 catch
-  站点不受影响。`Container.get` 的 javadoc 同步标注两类抛出。
-- **EventBus 订阅查询（freeway-ioc）** — `hasSubscribers(String)` /
-  `hasSubscribers(Class)` 补齐与 `CallBus.handles` 对称的查询面。
-- **迁移锁 TTL（freeway-db）** — `freeway.db.migration.lock-ttl`（默认 PT1H）：
-  进程崩溃残留的锁行超时后自动接管，无需手工 DELETE；设为 0 显式禁用接管。
-- **连接拨号登录超时（freeway-db）** — `PoolDefault` 建连前设置
-  `DriverManager.setLoginTimeout`（取 `freeway.db.pool.health-check-timeout`）：
-  拨号挂死不再无限期占用池许可并阻塞后续借出者。
-- **迁移锁过期判定去时区化（freeway-db）** — 过期检查改为在同一查询内读取
-  锁行 `executed_at` 与数据库自身 `current_timestamp`，两者经同一 JDBC 读
-  路径换算，DB 会话时区 ≠ JVM 时区时的整段时差偏移不再可能提前抢占活锁。
-- **DatabaseHub 重名快速失败（freeway-db）** — `NamedDatabase` 贡献中出现重复
-  名称现在抛 `IllegalStateException`，不再静默后者覆盖前者。
-- **表达式乘除模（freeway-flow）** — 条件表达式支持 `*` `/` `%`
-  （优先级介于加减与一元之间；除零/模零显式报错，不产生 Infinity/NaN）。
-- **跨传输事件身份与入站去重（freeway-ioc/cloud）** — 一次 `publish` 现在由
-  `EventBus` 铸造**一个**事件 id 并交给每一个 bridge，扇出到 N 个传输的同一
-  事件因此携带同一身份。此前每个 bridge 各铸一个 id，同一事件的两份副本无法
-  被任何消费端关联——跨传输去重在结构上是**不可能**的，而非"尚未实现"。
-  `EventBridge` 新增 `send(topic, event, channel, eventId)` 默认方法（默认
-  委托三参形态，既有实现不受影响）；`CloudEventEnvelope.translate` 新增带
-  `eventId` 的重载。入站侧新增 `publishInboundWithId(event, eventId)` /
-  `(topic, payload, eventId)`，配合 `enableInboundDeduplication(capacity)`
-  开启有界窗口后，经两个传输抵达本节点的同一事件只投递一次。去重默认**关闭**：
-  它改变投递语义且占用内存，不应是安装第二个传输的副作用。配置
-  `freeway.cloud.events.dedup.enabled` / `.dedup.capacity`（默认 4096）。
-  该组方法刻意**不**实现为 `publishInbound` 的重载——`(String, String)` 调用
-  无法在三参 topic 形态与泛型两参形态之间消歧。事件 id 为 null/空白时一律
-  投递，旧版生产者不带 id 头不会被丢事件。
-- **`ReflectiveHandles.defaultMethodHandle`（freeway-commons）** — 缓存的
-  非虚派发方法句柄（`findSpecial`）：在代理接收者上调用接口 default 方法
-  的正确句柄形态（`methodHandle` 的虚派发会命中代理自身，无限递归）。
-  按 Method 缓存、Lock-free 读取，与既有句柄缓存同构。
-- **`ConfigValues`（freeway-ioc，`symbol` 包）** — bind 期类型化配置解析：
-  `intValue`/`longValue`/`doubleValue` 以键名+原值报错（如
-  `freeway.cloud.rpc.connect-timeout must be an integer: 'soon'`），取代
-  散落的裸 `Integer.parseInt`。cloud 四个模块与 ext `freeway-mq-kafka`
-  已接入；紧邻其消费的 `SymbolSource`，所有解析配置的模块均可直接使用。
+- **`Defer.within` result forms (freeway-commons)** — new `within(Supplier<T>)`
+  and `within(Function<DeferScope, T>)`: the scope produces a return value with
+  the commit semantics unchanged (normal return drains; rollback/exception
+  discards and produces nothing). Symmetric with `ScopedCache.within`'s three
+  forms, plus a `Consumer<DeferScope>` void form.
+- **A unified observability SPI (freeway-commons/cloud)** — `Metrics.Timer` gains
+  `record(Duration)` and `record(Supplier)` default overloads (nanos as the
+  canonical unit), making commons the framework's single observability SPI.
+  `CloudObserveModule`'s registry now covers the container's Noop builtin with a
+  primary binding: installing it routes all the framework counters (EventBus,
+  HTTP engine and friends) into `/metrics` (previously http/ioc and cloud each
+  had an incompatible registry, so the framework counters were invisible by
+  default). Counters are integer-semantics (LongAdder), so counts in the
+  Prometheus text no longer carry decimal points. `/metrics` serves the primary
+  registry through the new capability interface `MetricsSnapshot` — an ext
+  backend that replaces `Metrics` and can render itself is followed
+  automatically, and one that cannot fails at startup during route resolution.
+- **Structured binding exceptions (freeway-ioc)** — the new
+  `AmbiguousBindingException` and `UnknownSymbolException`: multi-match/dual
+  primary and a missing symbol can now be caught by type instead of matching
+  exception message text. Both extend `IllegalArgumentException`, so existing
+  catch sites are unaffected, and `Container.get`'s javadoc documents both.
+- **EventBus subscription queries (freeway-ioc)** — `hasSubscribers(String)` /
+  `hasSubscribers(Class)` complete the query face symmetric with
+  `CallBus.handles`.
+- **Migration lock TTL (freeway-db)** — `freeway.db.migration.lock-ttl` (default
+  PT1H): a lock row left by a crashed process is taken over automatically after
+  the timeout, with no manual DELETE; `0` explicitly disables takeover.
+- **Connection dialing login timeout (freeway-db)** — `PoolDefault` sets
+  `DriverManager.setLoginTimeout` before connecting (from
+  `freeway.db.pool.health-check-timeout`): a hung dial no longer holds a pool
+  permit indefinitely and blocks later borrowers.
+- **Migration lock expiry loses its timezone dependence (freeway-db)** — the
+  expiry check now reads the lock row's `executed_at` and the database's own
+  `current_timestamp` inside one query, both converted through the same JDBC read
+  path, so a DB session timezone ≠ JVM timezone can no longer pre-empt a live
+  lock by the whole offset between them.
+- **DatabaseHub fails fast on duplicate names (freeway-db)** — a duplicate name
+  among `NamedDatabase` contributions now throws `IllegalStateException` instead
+  of silently letting the latter overwrite the former.
+- **Expression multiply/divide/modulo (freeway-flow)** — condition expressions
+  support `*` `/` `%` (precedence between additive and unary; divide/mod by zero
+  errors explicitly rather than producing Infinity/NaN).
+- **Cross-transport event identity and inbound dedup (freeway-ioc/cloud)** — one
+  `publish` now has the `EventBus` mint **one** event id handed to every bridge,
+  so an event fanning out to N transports carries one identity across them.
+  Previously each bridge minted its own id, and two copies of the same event
+  could not be correlated by any consumer — cross-transport dedup was
+  structurally **impossible**, not "not yet implemented". `EventBridge` gains the
+  `send(topic, event, channel, eventId)` default method (defaulting to the
+  three-argument form, so existing implementations are unaffected), and
+  `CloudEventEnvelope.translate` gains an overload with `eventId`. The inbound
+  side gains `publishInboundWithId(event, eventId)` /
+  `(topic, payload, eventId)`, which with
+  `enableInboundDeduplication(capacity)`'s bounded window delivers an event that
+  reached this node via two transports exactly once. Dedup defaults **off**: it
+  changes delivery semantics and costs memory, and must not be a side effect of
+  installing a second transport. Config:
+  `freeway.cloud.events.dedup.enabled` / `.dedup.capacity` (default 4096). The
+  group is deliberately **not** implemented as overloads of `publishInbound` — a
+  `(String, String)` call cannot be disambiguated between the three-arg topic
+  form and the generic two-arg form. A null/blank event id always delivers, so
+  old producers without the id header do not lose events.
+- **`ReflectiveHandles.defaultMethodHandle` (freeway-commons)** — a cached
+  non-virtual dispatch method handle (`findSpecial`): the correct handle form for
+  calling an interface default method on a proxy receiver (`methodHandle`'s
+  virtual dispatch would hit the proxy itself and recurse forever). Cached per
+  Method with lock-free reads, isomorphic to the existing handle caches.
+- **`ConfigValues` (freeway-ioc, the `symbol` package)** — bind-time typed config
+  parsing: `intValue`/`longValue`/`doubleValue` error with the key name and the
+  raw value (e.g. `freeway.cloud.rpc.connect-timeout must be an integer: 'soon'`),
+  replacing scattered bare `Integer.parseInt`s. cloud's four modules and ext's
+  `freeway-mq-kafka` are wired; it sits beside its consumer `SymbolSource`, so
+  every module parsing config can use it directly.
 
 ### Changed
 
-- **跨线程事务守卫报错澄清（freeway-db）** — `checkNoForeignTransaction` 的
-  异常信息现在明确"另一线程持有本 Database 的事务"并给出两条出路（在事务
-  线程上执行、或用独立 Database 实例并发），不再让无关线程的调用者误读为
-  自身用法错误。
-- **`Orm.of(db)` 补齐 JDBC 强制规则（freeway-db）** — 默认 Coercer 现在与
-  `DatabaseBuilder`/IoC 路径一致地携带 Date/Timestamp/Time → java.time 规则，
-  generated-key 回写等 Orm 内部转换行为不再因构建路径而异。
-- **命名清晰化（freeway-commons/ioc）** — `ReflectiveHandles` 的
-  `invoke(handle, receiver, args)` 更名 `invokeOn(...)`：与位置参数形态
-  `invoke(handle, args...)` 在调用点不可区分，Lifecycle 曾以
-  `invoke(handle, instance)` 表达接收者语义、靠无参句柄的巧合才正确；
-  `JULLoggerAdapter.fixCallerInfo` → `applyCallerInfo`（"fix" 预设破损，
-  实为设置）；`JsonLeaves.leaf` → `stringForm`。
-- **CallBus 注册为容器内置服务（freeway-ioc）** — 开箱即用，与 EventBus 同样
-  延迟到全部 @PreDestroy 之后关闭。此前手动 `bind(CallBus.class).to(CallBus::new)`
-  的代码会与之形成二义性，需删除该手动绑定或改为 `.primary()`。
-- **熔断器/限流器按服务分片（freeway-cloud）** — 注入型实例现作为配置模板：
-  每个 serviceId 经 `newShard()` 获得同策略独立状态；一个服务的失败不再污染
-  其他服务。自定义实现经接口默认方法保持共享语义。HALF_OPEN 探针超时重置
-  收敛到单探针不变量（probeLock）。
-- **Tracer span 时长入指标（freeway-cloud）** — span 关闭时冻结时长并写入
-  `tracer.span.duration` timer，`/metrics` 可见；`Span.elapsedNanos()` 可编程读取。
-- **响应侧 header 校验对齐解析侧（freeway-http）** — `validateHeaderValue`
-  拒绝除 HTAB 外的全部 CTL 与 DEL，与 Http1xParser 入站规则完全一致。
-- **性能冒烟断言改为地板阈值（freeway-cloud）** — CloudPerformanceTest 各场景
-  统一为可通过 `-Dcloud.bench.floor` 调整的数量级守门线（默认 1k ops/s），
-  实测数值照常打印，慢 CI 不再误报。
-- **`EventBridge.send(topic, event)` 默认通道统一（freeway-cloud/ext）** —
-  `CloudEventBridge` 默认 `Channel.CLASS`、`KafkaEventBridge` 默认
-  `Channel.TOPIC`，两者不一致；统一为 `CLASS`（两参形态收到的是具体事件对象、
-  topic 由类型推导，本就是 class 通道）。总线始终传显式通道，故仅影响直接
-  调用 SPI 的代码。
-- **CallBus 派发走缓存方法句柄（freeway-ioc）** — 热路径从裸
-  `Method.invoke` 切换为注册期解析的 `ReflectiveHandles.invokeOn`，与
-  AOP/Lifecycle 的既有惯例一致；业务异常不再经
-  `InvocationTargetException` 拆包（方法句柄直接抛原异常），DeadCall
-  时的 default 方法降级改用共享缓存的非虚句柄。行为差异仅一处：直接
-  `call(topic, payload)` 参数个数/类型不匹配时失败类型由
-  `IllegalArgumentException` 变为 `WrongMethodTypeException`/
-  `ClassCastException`（同为 RuntimeException，无契约依赖）。
+- **The cross-thread transaction guard's error clarified (freeway-db)** —
+  `checkNoForeignTransaction`'s message now says "another thread holds this
+  Database's transaction" and gives the two ways out (run on the transaction's
+  thread, or use a separate Database instance for concurrency), instead of
+  letting an unrelated thread's caller misread it as their own mistake.
+- **`Orm.of(db)` completes the JDBC coercion rules (freeway-db)** — the default
+  Coercer now carries the Date/Timestamp/Time → java.time rules just like the
+  `DatabaseBuilder`/IoC path, so Orm's internal conversions such as generated-key
+  write-back no longer differ by construction path.
+- **Naming clarity (freeway-commons/ioc)** — `ReflectiveHandles`'
+  `invoke(handle, receiver, args)` is renamed `invokeOn(...)`: it was
+  indistinguishable at the call site from the positional form
+  `invoke(handle, args...)`, and Lifecycle had been expressing receiver semantics
+  with `invoke(handle, instance)`, working only by the coincidence of a no-arg
+  handle; `JULLoggerAdapter.fixCallerInfo` → `applyCallerInfo` ("fix" presumes
+  breakage when it sets); and `JsonLeaves.leaf` → `stringForm`.
+- **CallBus registers as a container builtin (freeway-ioc)** — usable out of the
+  box, closing after all `@PreDestroy`s just like EventBus. Code that manually
+  bound `bind(CallBus.class).to(CallBus::new)` now creates an ambiguity and must
+  drop that binding or make it `.primary()`.
+- **Breakers/rate limiters shard per service (freeway-cloud)** — an injected
+  instance now acts as a configuration template: each serviceId gets independent
+  state with the same policy via `newShard()`, so one service's failures no
+  longer poison the others. Custom implementations keep shared semantics through
+  the interface default methods. HALF_OPEN probe timeout reset converges to the
+  single-probe invariant (probeLock).
+- **Tracer span durations enter the metrics (freeway-cloud)** — a span freezes
+  its duration at close and records it into the `tracer.span.duration` timer,
+  visible on `/metrics`; `Span.elapsedNanos()` reads it programmatically.
+- **Response-side header validation aligns with the parse side (freeway-http)** —
+  `validateHeaderValue` rejects all CTLs except HTAB plus DEL, exactly matching
+  Http1xParser's inbound rules.
+- **Performance smoke assertions become floor thresholds (freeway-cloud)** —
+  CloudPerformanceTest's scenarios uniformly use an order-of-magnitude guard
+  adjustable via `-Dcloud.bench.floor` (default 1k ops/s); measured values still
+  print, and slow CIs stop misreporting.
+- **`EventBridge.send(topic, event)`'s default channel unifies
+  (freeway-cloud/ext)** — `CloudEventBridge` defaulted to `Channel.CLASS` and
+  `KafkaEventBridge` to `Channel.TOPIC`, disagreeing; both are now `CLASS` (the
+  two-argument form receives a concrete event object and derives the topic from
+  the type — inherently the class channel). The bus always passes an explicit
+  channel, so only code calling the SPI directly is affected.
+- **CallBus dispatch goes through cached method handles (freeway-ioc)** — the hot
+  path switches from bare `Method.invoke` to registration-time-resolved
+  `ReflectiveHandles.invokeOn`, matching AOP/Lifecycle's existing convention;
+  business exceptions no longer unwrap through `InvocationTargetException` (the
+  method handle throws the original directly), and the DeadCall default-method
+  fallback uses the shared cached non-virtual handle. One behavioural difference:
+  when a direct `call(topic, payload)` mismatches argument counts/types, the
+  failure type changes from `IllegalArgumentException` to
+  `WrongMethodTypeException`/`ClassCastException` (both RuntimeExceptions; no
+  contract depends on it).
 
 ### Removed
 
-- **设计冗余清理（freeway-db）** — 删除 `Orm` 的 `insert/save/update/delete(T, Class<T>)`
-  五个 typed 重载与 `BatchQuery.rows(List<Object[]>)`（均无使用点；varargs
-  形态已是超集）；删除 `DatabaseStats.averageBorrowWaitNanos()/averageBorrowWait()`。
-  同批性能微优化：`Schema.ensure` 每个实体只反射解析一次，命名参数批量执行
-  的结构校验只做首行一次。
-- **`EventBus.setEventBridge`（freeway-ioc，破坏性）** — 单槽 setter 与多
-  bridge 扇出不可共存：后启动的模块会静默卸载先前模块已安装的通道（正是文档
-  所述"静默分区"的成因）。`addEventBridge`/`removeEventBridge` 现为唯一的
-  通道 API，安全性质由 API 形状结构性保证，不再依赖运行期拒绝。调用方改用
-  `addEventBridge`。
-- **`EventBus(Container, EventBridge)` 双参构造函数（freeway-ioc）** — 最后
-  一个单槽接缝，两仓库零调用点（容器用 `new EventBus(this)`）；与新定的
-  多 bridge API 自相矛盾，一并删除。
-- **`fwtimes` 信封扩展（freeway-cloud，线格式）** — 恒为 1、两仓库零读取方，
-  且它要承担的两个用途已被取代：mesh 内不存在转发（入站走
-  `publishInbound`、不回桥），跨传输的两份副本代数同为 1，故它无法用于幂等
-  判断；死信诊断实际走 Kafka 的 `X-DLQ-Original-Offset`/`X-DLQ-Reason`。
-  幂等现由总线铸造的共享事件 id 加 `EventBus` 入站去重窗口承担。
-  **线上兼容**：`parse` 只按需读取已知键、忽略其余扩展属性（必填为
-  `specversion`/`id`/`source`/`type`/`fwchannel`），因此未升级节点发来的帧
-  仍带 `fwtimes` 也能正常解析，新旧节点可混跑。
+- **Design redundancy cleanup (freeway-db)** — `Orm`'s five typed overloads
+  `insert/save/update/delete(T, Class<T>)` and `BatchQuery.rows(List<Object[]>)`
+  are deleted (no usage sites; the varargs forms are supersets), along with
+  `DatabaseStats.averageBorrowWaitNanos()/averageBorrowWait()`. The same batch's
+  micro-optimizations: `Schema.ensure` reflects each entity once, and named-param
+  batch execution validates structure only on the first row.
+- **`EventBus.setEventBridge` (freeway-ioc, breaking)** — a single-slot setter
+  cannot coexist with multi-bridge fan-out: a later-starting module silently
+  unmounted the channel an earlier module had installed (the very cause of the
+  documented "silent partition"). `addEventBridge`/`removeEventBridge` are now
+  the only channel API, the safety property guaranteed structurally by the API's
+  shape rather than by runtime rejection. Callers switch to `addEventBridge`.
+- **`EventBus(Container, EventBridge)` two-arg constructor (freeway-ioc)** — the
+  last single-slot seam, with zero call sites in both repos (the container used
+  `new EventBus(this)`); it also contradicted the newly settled multi-bridge API,
+  so it goes with it.
+- **The `fwtimes` envelope extension (freeway-cloud, wire format)** — always 1,
+  read by nobody in either repo, and its two intended purposes were already
+  superseded: no forwarding exists inside the mesh (inbound goes through
+  `publishInbound` and never re-bridges), and both copies of a cross-transport
+  event have generation 1, so it cannot serve idempotency; dead-letter
+  diagnostics actually use Kafka's `X-DLQ-Original-Offset`/`X-DLQ-Reason`.
+  Idempotency is now carried by the bus-minted shared event id plus `EventBus`'s
+  inbound dedup window. **Wire compatibility**: `parse` reads only the known keys
+  it needs and ignores other extension attributes (required are
+  `specversion`/`id`/`source`/`type`/`fwchannel`), so frames from un-upgraded
+  nodes that still carry `fwtimes` parse normally and old and new nodes can mix.
 
 ### Fixed
 
-- **freeway-db** — 删除 `DatabaseImpl.startsWithInsert` 单行包装：其名字
-  描述朴素前缀匹配，实际语义是顶层 INSERT 检测（跳过 CTE/注释），调用点
-  直接使用名字准确的 `SqlTextParser.hasTopLevelInsert`；query/execute/
-  batch 三处重复的事务绑定表达式提取为 `currentTx()`。
-- **freeway-ioc** — 注入点同时携带服务注入与配置注解时的错误消息改带
-  owner 类型名（此前输出匿名对象 `InjectResolver$1@...`，诊断信息为零）；
-  `normalizedId` 签名收窄为 `Inject`（原 `Annotation` 形态的 else 分支按
-  构造不可达）；`ContainerImpl` 三个 get 重载的 closed 双查与缺失绑定
-  报错提取为 `requireOpen()`/`missingOrClosed()`（命中路径保持零分配）；
-  `BindingIndex.duplicateMessage` 更名 `duplicateBinding`（返回的是异常
-  不是消息）。
-- **freeway-boot** — `AppConfig.get(SymbolSpec)` 不再每次调用分配新
-  `CoercerDefault`（嵌套 holder 共享单例）；`loadJson` 复用已解码文本直接
-  解析，去掉二次字节流包装；负数 CLI 值识别扩展到指数形式
-  （`--port -1e5`）；`openBoundedStream` 更名 `findBoundedStream`（可空
-  语义）、`putAllIgnoringProfileActivationKey` 缩名并提取
-  `PROFILE_KEY` 常量；FreewayApp 头部格式对齐。新增
-  `HookLifecycleTest` 覆盖启动失败回滚、Error 透传与抑制链。
-- **freeway-commons** — `SymbolSpec.parse(raw, coercer)` 在无 parser 且
-  coercer 为 null 时不再裸 NPE，改为带键名的 `IllegalStateException`
-  （附首个 config 包专属测试类 SymbolSpecTest）；`Defer` 延迟供给的
-  compute/get 双份执行逻辑合并（失败缓存与恰好一次语义不变）；
-  `ScopedCache.onClose` 清理叠置的残留 javadoc。
-- **freeway-commons（logging）** — `LogBootstrap.ensureProvider()` 在 SLF4J 已被
-  过早的静态 logger 绑定为 JUL 兜底时，不再打印误导性的 "pinning so it wins"，
-  而是绑定后核验实际生效的 provider 并给出可操作的 WARN（指认检测到的外部
-  provider、说明成因、给出 `-Dslf4j.provider=` 修复指引）；
-  `freeway.log.console.enabled=false` 不再移除用户定制的 ConsoleHandler
-  （formatter 非原版 SimpleFormatter 即视为用户配置），只移除 freeway 自有与
-  JVM 原生态的 handler——所有权契约三级化并文档化（自有/原生态/定制）；
-  env 反解对带连字符键的折叠失配修复（`FREEWAY_LOG_FILE_MAX_SIZE` 现能对账回
-  `freeway.log.file.max-size`）；`configure()` 中强制 LogManager 初始化失败
-  不再中断整个日志配置。
-- **freeway-cloud**：注入路径的熔断/限流分片失效（容器代理导致 instanceof
-  失败，所有服务共享同一实例——一个服务打熔断即拒答健康服务）；HALF_OPEN
-  探针丢失后的并发重置竞态。
-- **freeway-ioc**：EventBus 流桥在"取 publisher 后、首次订阅前总线关闭"
-  的窗口内挂死订阅者或让 ISE 冲出 subscribe()（Flow 规范要求不抛）；桥关闭
-  后迟到订阅者现在按 onError 结算。
-- **freeway-flow**：PARALLEL 分支在 executor 已 shutdown 时的 RejectedExecution
-  使 join latch 泄漏（await 永挂）；现记录首个错误并释放对应槽位，后续分支
-  快速跳过。嵌套 PARALLEL + 定长池的死锁风险写入 FlowDriverDefault 文档。
-- **freeway-db**：同一 Database 实例上并行事务互相覆盖线程守卫注册表；
-  BatchQuery autoCommit 恢复失败现销毁物理连接而非归还脏连接；迁移锁重复键
-  判定从 "23xxx 前缀 + 宽泛关键词" 收紧为精确状态码（23505/23000/40001）+
-  窄关键词，check/not-null 违规不再误报为锁竞争（附表驱动回归测试）。
-- **freeway-http**：HPACK header 名校验改用 Locale.ROOT（土耳其语环境不再误判）。
-- **freeway-commons**：AOP 热路径的全局同步 MethodHandle 缓存改为 ClassValue
-  分层并发缓存（读无锁），AdvisedHandler 另加每代理句柄缓存；Coercer 重注册
-  在 assignable-source 索引中留下重复条目；JSON 解析器 BOM 判定的裸 U+FEFF
-  字符改为转义写法。
-- **freeway-ioc**：EventBus/CallBus 从容器构造期急切实例化改为**首次解析时
-  惰性 realize**（标准单例路径）——此前构造期 `container.get(Metrics)`
-  冻结预加载的 NoopMetrics，模块供给的 primary 注册表永远收不到
-  `eventbus.*`/`callbus.*` 计数（与观测模块的文档承诺相悖）；Shutdown
-  语义不变（未解析的总线无需关闭，close 期间解析的仍走延迟关闭）。
-  新增 `BuiltinMetricsWiringTest` 固化行为。
-- **freeway-cloud**（审计修复批）——`ObjectStorageDefault`：`delete` 仅在
-  真实移除对象时发 `ObjectDeletedEvent`（此前对不存在的键也发幽灵删除
-  事件，违背接口 no-op 契约）；`put` 改为临时文件 + 原子替换
-  （ATOMIC_MOVE 降级 REPLACE_EXISTING），目标处 symlink 被替换链接本身
-  而非被跟随，检查与写入间不再有 TOCTOU 窗口；`list` 跳过指向根外的
-  symlink（与 get 的拒绝语义对齐，不再泄露外部文件名）。
-  `BaggagePropagator`：键值百分号编码（RFC 3986 unreserved 之外的
-  UTF-8 字节全转义），含 `,`/`=`/空格/非 ASCII 的 baggage 无损往返，
-  不再损坏线上结构；提取对畸形转义容忍降级。`CloudHttpClientDefault`：
-  派发期非预期本地异常（坏 URL/头、discovery 后端缺陷）统一映射为
-  `CloudException.dispatch`（retryable=false）——半开探针不再因异常
-  逃逸而丢失结局；限流/熔断拒绝计入 `cloud.rpc.failures` 与 duration。
-  `Endpoint`：构造期校验 URI 可渲染性并规范化 basePath（补 `/` 前缀、
-  去尾斜杠、IPv6 括号容忍），client 侧相应移除尾斜杠兼容拼接。
-  `PeerConnector`：peer 地址解析支持 IPv6（方括号/裸字面量）并校验端口，
-  新增握手看门狗（socket 打开 10s 未完成 hello/ack 即中止重连）。
-  `CloudConfigDefault`：变更通知改为专用单线程按序投递——`reload()`
-  换快照不再被慢监听器阻塞。`CloudObserveModule`：primary `Metrics`
-  不实现 `MetricsSnapshot` 时启动期报命名错误（原为裸 ClassCastException）。
-  `ReadyHandler`：贡献者重名改为构造期失败（原先每次健康探测 500）。
-  `HttpServiceDeclaration`：注册 bind-all 地址（`0.0.0.0`/`::`）时启动
-  告警提示 service-host 覆盖；WebServer 缺绑定判定精确捕获
-  `MissingBindingException`。
+- **freeway-db** — `DatabaseImpl.startsWithInsert`, a one-line wrapper, is
+  deleted: its name described naive prefix matching while the real semantics were
+  top-level INSERT detection (skipping CTEs/comments); call sites use the
+  accurately-named `SqlTextParser.hasTopLevelInsert` directly, and the
+  transaction-binding expressions duplicated across query/execute/batch are
+  extracted as `currentTx()`.
+- **freeway-ioc** — the error message when an injection point carries both a
+  service injection and a config annotation now names the owner type (it used to
+  print the anonymous `InjectResolver$1@...`, worth zero diagnostics);
+  `normalizedId`'s signature narrows to `Inject` (the `Annotation` form's else
+  branch was unreachable by construction); `ContainerImpl`'s three `get`
+  overloads' duplicated closed double-checks and missing-binding errors are
+  extracted into `requireOpen()`/`missingOrClosed()` (the hit path stays
+  zero-allocation); and `BindingIndex.duplicateMessage` is renamed
+  `duplicateBinding` (it returns an exception, not a message).
+- **freeway-boot** — `AppConfig.get(SymbolSpec)` no longer allocates a fresh
+  `CoercerDefault` per call (the nested holder shares a singleton); `loadJson`
+  reuses the already-decoded text to parse directly, dropping the second byte
+  stream wrapper; negative CLI value recognition extends to exponential forms
+  (`--port -1e5`); `openBoundedStream` is renamed `findBoundedStream` (nullable
+  semantics), `putAllIgnoringProfileActivationKey` shortens and extracts the
+  `PROFILE_KEY` constant; and FreewayApp's header format aligns. A new
+  `HookLifecycleTest` covers startup-failure rollback, Error passthrough and
+  suppression chains.
+- **freeway-commons** — `SymbolSpec.parse(raw, coercer)` no longer bare-NPEs when
+  there is no parser and the coercer is null, throwing an
+  `IllegalStateException` with the key name instead (with the config package's
+  first dedicated test class, SymbolSpecTest); `Defer`'s deferred supply merges
+  its duplicated compute/get logic (failure caching and exactly-once semantics
+  unchanged); and `ScopedCache.onClose`'s stacked leftover javadoc is cleaned.
+- **freeway-commons (logging)** — when SLF4J has already been pinned to the JUL
+  fallback by a prematurely-created static logger, `LogBootstrap.ensureProvider()` no longer
+  prints the misleading "pinning so it wins" and instead verifies the effective
+  provider after binding with an actionable WARN (naming the detected external
+  provider, explaining the cause, and pointing at `-Dslf4j.provider=` as the fix);
+  `freeway.log.console.enabled=false` no longer removes a user-customized
+  ConsoleHandler (any formatter other than the stock SimpleFormatter counts as
+  user configuration) and only removes freeway's own and the JVM's stock handlers
+  — the ownership contract is tiered (own/stock/customized) and documented; the
+  env reverse-mapping's fold mismatch for hyphenated keys is fixed
+  (`FREEWAY_LOG_FILE_MAX_SIZE` now reconciles back to
+  `freeway.log.file.max-size`); and a forced LogManager initialization failure
+  inside `configure()` no longer aborts the whole logging setup.
+- **freeway-cloud**: the injected-path breaker/rate-limiter sharding was broken
+  (the container proxy defeated instanceof, so all services shared one instance —
+  one service tripping its breaker refused healthy services too); plus the
+  concurrent reset race after losing the HALF_OPEN probe.
+- **freeway-ioc**: EventBus's stream bridge, in the window between "taking the
+  publisher" and "the first subscription", either hung subscribers or let an ISE
+  escape `subscribe()` (the Flow spec requires no throw); late subscribers after
+  the bridge closed now settle via onError.
+- **freeway-flow**: a PARALLEL branch hitting a shutdown executor threw
+  RejectedExecution and leaked the join latch (await hanging forever); the first
+  error is now recorded, its slot released, and later branches skip fast. The
+  nested-PARALLEL + fixed-pool deadlock risk is documented on
+  FlowDriverDefault.
+- **freeway-db**: parallel transactions on one Database instance overwrote each
+  other's thread-guard registry; BatchQuery's autoCommit restore failure now
+  destroys the physical connection instead of returning a dirty one; and the
+  migration lock's duplicate-key detection narrows from "23xxx prefix + broad
+  keywords" to exact status codes (23505/23000/40001) + narrow keywords, so
+  check/not-null violations no longer misreport as lock contention (with a
+  table-driven regression test).
+- **freeway-http**: HPACK header-name validation switches to `Locale.ROOT` (no
+  more misdetection under a Turkish locale).
+- **freeway-commons**: AOP's hot-path global synchronized MethodHandle cache
+  becomes a layered concurrent ClassValue cache (lock-free reads), with
+  AdvisedHandler gaining a per-proxy handle cache; Coercer re-registration left
+  duplicate entries in the assignable-source index; and the JSON parser's BOM
+  check uses an escaped literal instead of a bare U+FEFF character.
+- **freeway-ioc**: EventBus/CallBus switch from eager instantiation during
+  container construction to **lazy realize at first resolution** (the standard
+  singleton path) — construction-time `container.get(Metrics)` used to freeze the
+  preloaded NoopMetrics, so a module-supplied primary registry never received the
+  `eventbus.*`/`callbus.*` counters (contradicting the observability module's
+  documented promise); Shutdown semantics are unchanged (an unresolved bus needs
+  no close, and one resolved during close still gets the deferred close). The new
+  `BuiltinMetricsWiringTest` pins the behaviour.
+- **freeway-cloud** (the audit-fix batch) — `ObjectStorageDefault`: `delete`
+  emits `ObjectDeletedEvent` only when an object was actually removed (it used to
+  emit ghost delete events for nonexistent keys, violating the interface's no-op
+  contract); `put` switches to a temp file + atomic replace (ATOMIC_MOVE degrading
+  to REPLACE_EXISTING), so a symlink at the target is replaced as a link rather
+  than followed, with no TOCTOU window between check and write; and `list` skips
+  symlinks pointing outside the root (aligned with `get`'s refusal semantics, no
+  longer leaking external file names). `BaggagePropagator`: key/value
+  percent-encoding (all UTF-8 bytes outside RFC 3986 unreserved escaped), so
+  baggage containing `,`/`=`/spaces/non-ASCII round-trips losslessly instead of
+  corrupting the wire structure, with extraction degrading tolerantly on
+  malformed escapes. `CloudHttpClientDefault`: unexpected local exceptions during
+  dispatch (bad URLs/headers, discovery backend defects) map uniformly to
+  `CloudException.dispatch` (retryable=false) — half-open probes no longer lose
+  their outcome to an escaping exception, and rate-limited/rejected calls count
+  into `cloud.rpc.failures` and duration. `Endpoint`: construction validates URI
+  renderability and normalizes basePath (adding the `/` prefix, dropping the
+  trailing slash, tolerating IPv6 brackets), and the client side drops its
+  trailing-slash compatibility splicing. `PeerConnector`: peer address parsing supports IPv6
+  (bracketed or bare literals) and validates the port, and a handshake watchdog
+  is added (aborting reconnection when a socket stays open 10 s without
+  hello/ack). `CloudConfigDefault`: change notifications move to a dedicated
+  single-threaded ordered deliverer — `reload()`'s snapshot swap is no longer
+  blocked by slow listeners. `CloudObserveModule`: a primary `Metrics` not
+  implementing `MetricsSnapshot` errors at startup with a named error (previously
+  a bare ClassCastException). `ReadyHandler`: duplicate contributor names fail at
+  construction (previously every health probe 500ed). `HttpServiceDeclaration`:
+  registering a bind-all address (`0.0.0.0`/`::`) warns at startup suggesting a
+  service-host override; and the server-missing check catches
+  `MissingBindingException` precisely.
 
 ### Removed
 
-- **freeway-cloud**：`observe.MeterRegistry` 接口删除（与 commons `Metrics`
-  双轨并存、类型语义漂移 long/double 与 nanos/Duration）；实现类
-  `MeterRegistryDefault` 更名 `MetricsDefault` 并改为实现 commons
-  `Metrics`，快照访问器与 Prometheus 文本导出不变。自定义观测后端请直接
-  实现 `com.jujin.freeway.commons.metrics.Metrics`。
-- **freeway-ioc**：`Extension.of(...)`（全仓零引用）；`Contributions.add(Class)`
-  的 default-throw 实现改为抽象方法（唯一实现方 BinderImpl 本就重写）；
-  internal 的 InstanceFactory 类折叠进 ContainerImpl。
+- **freeway-cloud**: the `observe.MeterRegistry` interface is deleted (it
+  coexisted with commons' `Metrics` as a second track with drifting type
+  semantics — long/double, nanos/Duration); the implementation
+  `MeterRegistryDefault` is renamed `MetricsDefault` and implements commons'
+  `Metrics`, with the snapshot accessors and Prometheus text export unchanged.
+  Custom observability backends implement
+  `com.jujin.freeway.commons.metrics.Metrics` directly.
+- **freeway-ioc**: `Extension.of(...)` (zero references repo-wide);
+  `Contributions.add(Class)`'s default-throw implementation becomes abstract (its
+  only implementor, BinderImpl, already overrode it); and the internal
+  InstanceFactory class folds into ContainerImpl.
 
 ### Test
 
-- **freeway-cloud**：`PrincipalPropagationTest` 的 `@AfterEach` 未清除
-  `freeway.cloud.auth.extract.enabled`，系统属性泄漏到后续测试类，
-  `SecurityTest.authPropagatorIgnoresInboundIdentityByDefault` 在全量套件
-  中按类顺序稳定误报（单独跑通过）——补齐清理。
-- **freeway-ioc 测试重组** — 2900 行的 FreewayTest 单文件按域拆分为 9 个测试
-  类 + FreewayFixtures/FreewayTestSupport；1000 行的 EventBusTest 拆分为 6 个；
-  流式视图的关闭竞态、SSE 泵的取消竞态各补确定性回归测试。
+- **freeway-cloud**: `PrincipalPropagationTest`'s `@AfterEach` did not clear
+  `freeway.cloud.auth.extract.enabled`, leaking the system property into later
+  test classes, so `SecurityTest.authPropagatorIgnoresInboundIdentityByDefault`
+  failed deterministically in the full suite by class order (passing alone) —
+  the cleanup is added.
+- **freeway-ioc test reorganization** — the 2900-line single-file FreewayTest
+  splits by domain into 9 test classes plus FreewayFixtures/FreewayTestSupport;
+  the 1000-line EventBusTest splits into 6; and the streaming views' close race
+  and the SSE pump's cancellation race each gain deterministic regression tests.
 
 
 ## [1.3.9] — 2026-08-24
