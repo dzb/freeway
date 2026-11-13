@@ -1760,846 +1760,1435 @@ with the content; the compiler is the migration path):
 
 ### Migration
 
-模块组合从"树包装 + 假模块"收敛为单一 `ModuleNode`：结构只有应用根与模块节点，bundle 由
-`@SubModule` 声明，class 声明改为加载期实例化。升级时按下表替换：
+Module composition converges from "tree wrapper + fake modules" to a single
+`ModuleNode`: the structure has only an application root and module nodes, bundles
+are declared with `@SubModule`, and class declarations switch to load-time
+instantiation. Replace per the table when upgrading:
 
-| 旧 API / 行为 | 新 API / 行为 |
+| Old API / behaviour | New API / behaviour |
 |---|---|
-| `ModuleNode.tree()` → `TreeNode<ModuleEx>` | `ModuleNode.children()`（`List<ModuleNode>`）与 `ModuleNode.render()` |
+| `ModuleNode.tree()` → `TreeNode<ModuleEx>` | `ModuleNode.children()` (`List<ModuleNode>`) and `ModuleNode.render()` |
 | `ModuleNode.children()` → `List<TreeNode<ModuleEx>>` | `List<ModuleNode>` |
-| `ModuleNode.module()` | 节点自带声明：`type()` / `instance()` / `resolve()` |
-| `ModuleNode.bindOrder()` → `List<ModuleEx>` | `List<ModuleNode>`（模块节点），只含模块，应用根不再出现 |
-| `ModuleNode.group(name, …)` | 删除；bundle 用 `@SubModule`（子模块仍可单独 `of(...)` 放置取子集） |
-| `ModuleNode.of(module, children…)`（显式带子节点） | 删除；模块节点用 `ModuleNode.of(class \| module)`，bundle 由 `@SubModule` 声明 |
-| `ModuleNode.of(TreeNode<ModuleEx>)` | 删除；树值本身就是 `ModuleNode` |
-| `CloudModules.standard()` | `ModuleNode.of(CloudModule.class)`（或 `.add(CloudModule.class)`） |
+| `ModuleNode.module()` | The node carries its own declaration: `type()` / `instance()` / `resolve()` |
+| `ModuleNode.bindOrder()` → `List<ModuleEx>` | `List<ModuleNode>` (module nodes), containing modules only; the application root no longer appears |
+| `ModuleNode.group(name, …)` | Deleted; bundles use `@SubModule` (a submodule can still be placed alone via `of(...)` for a subset) |
+| `ModuleNode.of(module, children…)` (explicit children) | Deleted; a module node uses `ModuleNode.of(class \| module)`, and bundles are declared with `@SubModule` |
+| `ModuleNode.of(TreeNode<ModuleEx>)` | Deleted; the tree value is itself a `ModuleNode` |
+| `CloudModules.standard()` | `ModuleNode.of(CloudModule.class)` (or `.add(CloudModule.class)`) |
 | `Freeway.create(Collection<? extends ModuleEx>)` | `Freeway.create(modules.toArray(ModuleEx[]::new))` |
-| `EventBus.enableInboundDeduplication(int)` / `disableInboundDeduplication()` | `EventBus.inboundDeduplication(int)`（容量 ≤0 即关闭） |
+| `EventBus.enableInboundDeduplication(int)` / `disableInboundDeduplication()` | `EventBus.inboundDeduplication(int)` (capacity ≤0 disables) |
 | `FreewayApp.run()` | `FreewayApp.run(new String[0])` |
-| `AppBuilder` 中第二个应用根被静默嵌套 | `IllegalStateException`；要合并请显式构造单个 `ModuleNode.app(...)` |
-| class 声明在 `of(Class)` 时实例化 | 加载期（容器创建）实例化；无参构造缺失的报错时机随之推迟，信息不变 |
-| `freeway-flow` 的 52 个属性访问器 `getXxx()` | bare accessor：`getNodes()` → `nodes()`、`getTitle()` → `title()`（Spec 的 `title()` 读 / `title(String)` 写为同名重载）；`FlowContext` 的 keyed lookup 保持 Map 词汇 `get` / `getAs` / `getOrDefault` |
-| `PlantumlOptions` / `PlantumlDisplayContext` / `PlantumlDisplayResult`、`Graph.toPlantuml(…)` | `PlantUmlOptions` / `PlantUmlDisplayContext` / `PlantUmlDisplayResult`、`toPlantUml(…)` |
-| `CloudHttpClientDefault.Wiring(…, 9 参)` | 规范构造器 10 参（末位 `shutdownGrace`，传 `null` 取默认）；不再保留旧 arity 的委托构造器 |
-| `Sql.insert(…).set("col", v)` / `Sql.update(…).set("expr", v)` | `setColumn("col", v)` / `setExpression("expr", v)`——模式写在方法名上，用错模式抛 `IllegalStateException` 并指名另一个方法 |
-| `new HttpServerConfig(host, port, backlog, grace[, …])` | `HttpServerConfig.defaults().withPort(…).withBacklog(…)…`（测试代码用 `TestServerConfig.loopback()` / ext testkit 的 `EngineFixture.defaultConfig()`） |
+| A second application root in `AppBuilder` was silently nested | `IllegalStateException`; to merge, construct one `ModuleNode.app(...)` explicitly |
+| A class declaration instantiated at `of(Class)` | Instantiated at load time (container creation); the error timing for a missing no-arg constructor moves accordingly, with the same message |
+| `freeway-flow`'s 52 property accessors `getXxx()` | Bare accessors: `getNodes()` → `nodes()`, `getTitle()` → `title()` (on Spec, `title()` reads / `title(String)` writes as same-name overloads); `FlowContext`'s keyed lookups keep the Map vocabulary `get` / `getAs` / `getOrDefault` |
+| `PlantumlOptions` / `PlantumlDisplayContext` / `PlantumlDisplayResult`, `Graph.toPlantuml(…)` | `PlantUmlOptions` / `PlantUmlDisplayContext` / `PlantUmlDisplayResult`, `toPlantUml(…)` |
+| `CloudHttpClientDefault.Wiring(…, 9 args)` | The canonical constructor takes 10 (trailing `shutdownGrace`; pass `null` for the default); the old-arity delegating constructor is not kept |
+| `Sql.insert(…).set("col", v)` / `Sql.update(…).set("expr", v)` | `setColumn("col", v)` / `setExpression("expr", v)` — the mode is written in the method name, and using the wrong one throws `IllegalStateException` naming the other method |
+| `new HttpServerConfig(host, port, backlog, grace[, …])` | `HttpServerConfig.defaults().withPort(…).withBacklog(…)…` (tests use `TestServerConfig.loopback()` / ext testkit's `EngineFixture.defaultConfig()`) |
 | `HttpServerConfig.builder()…build()` | `HttpServerConfig.defaults().withX(…)` |
-| `new WebServer(engine, config, sink, pipeline)` | `WebServerBuilder.builder().engine(…).config(…).route(…)….build()`（ext 测试经 testkit 的 `TestServers.start(engine, config, pipelines)`） |
-| `FreewayApp.of(…)` | `FreewayApp.create(…)`（入口点统一用 `create`；`of` 留给"由给定部件造值"的记录工厂） |
+| `new WebServer(engine, config, sink, pipeline)` | `WebServerBuilder.builder().engine(…).config(…).route(…)….build()` (ext tests go through the testkit's `TestServers.start(engine, config, pipelines)`) |
+| `FreewayApp.of(…)` | `FreewayApp.create(…)` (entry points uniformly use `create`; `of` stays with the record factories that "build a value from given parts") |
 | `FlowEngine.newInstance(…)` | `FlowEngine.create(…)` |
-| classpath 根的 `freeway-log.properties` | 不读（启动打一行 stderr 提示改名）；改名为 `freeway-logging.properties` |
-| `SymbolSource.systemProperties()`（无容器的独立来源） | 删除；独立装配用同一条链 `SymbolSource.of(coercer, SymbolProvider.systemProperties())`（`coercer` 自备 `new CoercerDefault()`），系统属性这一 tier 用 `SymbolProvider.systemProperties()` |
-| `PlantUmlOptions.DEFAULT` + `isShowGatewayType()` / `showGatewayType(boolean)`（可变） | `PlantUmlOptions.defaults()`（record 值）；读 `showGatewayType()` / `showIdInTitle()`，改 `withShowGatewayType(…)` / `withShowIdInTitle(…)` |
-| flow "No driver found" 的修法文字指向 `newInstance(Map…)` | 指向 `FlowEngine.create(Map…)`（该测试断言同步钉住"不得指向已删 API"） |
-| RPC 以 POJO / List / Map 作 handler 参数 | 直接可调用：服务端按声明参数类型重绑定（此前以 `ClassCastException` 出现，且被当作业务异常回报） |
-| RPC 参数个数与导出签名不符 | 派发前判为 `Kind.REJECTED`（400 + reject reason）；此前落到业务异常分类 |
-| singleton holder 经接口注入 `@NotThreadSafe` 实现 | 启动期拒绝（与直接注入具体类同等）：单例代理恰好缓存一个 target，隔一层接口并不洗掉标记 |
-| flow 图 `"version": 2`、`task: "$metaKey"`、`task: "!marker"` | 升到 `3`；静态值写节点 `data` 字段，标记匹配改为带 id 的 contribute + `@name`——旧写法在 `GraphSpec.create()` 报错并指路 |
-| `engine.register(TaskComponent)` / `engine.markerIndex()` / `@FlowMarker` | 删除；任务解析只走 `@name` → `container.get(TaskComponent.class, name)` |
-| `FlowContainer` 适配缝 | 删除；`FlowDriverDefault` 直接持 `Container` |
-| `engine.addInterceptor(i[, index])` / `removeInterceptor` / `FlowOptions.interceptorAdd` / `FlowInvocation` | `FlowInterceptor` 经 `binder.contribute(FlowInterceptor.class)` 贡献，加载成链、之后不可变；`interceptFlow(context, graph, chain)` 收 `FlowChain` |
-| `eval(graph, steps, ctx)` / `recordNode` / `FlowTrace` / `ctx.trace()/enableTrace/lastRecord/lastNodeId/interrupt()` / `FlowContext.exchanger()` | 删除——回放-跳过不是耐用执行；停止用 `ctx.stop()`，早完成合法；序列化 `toJson()` 只用于诊断 |
-| `NodeType.UNKNOWN` / `NodeType.code()` | 删除；解析为全函数，未知类型名当场报错列出合法值 |
+| `freeway-log.properties` at the classpath root | Not read (startup prints one stderr notice about the rename); rename it to `freeway-logging.properties` |
+| `SymbolSource.systemProperties()` (the standalone source without a container) | Deleted; standalone assembly uses the same chain `SymbolSource.of(coercer, SymbolProvider.systemProperties())` (supply your own `new CoercerDefault()` as the coercer), and the system-properties tier is `SymbolProvider.systemProperties()` |
+| `PlantUmlOptions.DEFAULT` + `isShowGatewayType()` / `showGatewayType(boolean)` (mutable) | `PlantUmlOptions.defaults()` (a record value); read `showGatewayType()` / `showIdInTitle()`, change with `withShowGatewayType(…)` / `withShowIdInTitle(…)` |
+| flow's "No driver found" fix text pointing at `newInstance(Map…)` | Points at `FlowEngine.create(Map…)` (the test asserting it also pins "must not point at a deleted API") |
+| RPC taking POJOs / Lists / Maps as handler parameters | Directly callable: the server rebinds by the declared parameter types (previously it surfaced as a `ClassCastException` and was reported as a business failure) |
+| RPC argument count mismatching the exported signature | Judged `Kind.REJECTED` before dispatch (400 + reject reason); previously it fell into business-failure classification |
+| A singleton holder injecting an `@NotThreadSafe` implementation through an interface | Rejected at startup (same as injecting the concrete class directly): the singleton proxy caches exactly one target, and one layer of interface does not wash off the marker |
+| flow graphs with `"version": 2`, `task: "$metaKey"`, `task: "!marker"` | Bump to `3`; static values go in the node's `data` field, and marker matching becomes a contribute with an id + `@name` — the old spellings error in `GraphSpec.create()` with directions |
+| `engine.register(TaskComponent)` / `engine.markerIndex()` / `@FlowMarker` | Deleted; task resolution goes only through `@name` → `container.get(TaskComponent.class, name)` |
+| The `FlowContainer` adapter seam | Deleted; `FlowDriverDefault` holds the `Container` directly |
+| `engine.addInterceptor(i[, index])` / `removeInterceptor` / `FlowOptions.interceptorAdd` / `FlowInvocation` | `FlowInterceptor` is contributed via `binder.contribute(FlowInterceptor.class)`, loaded into a chain and immutable afterwards; `interceptFlow(context, graph, chain)` takes a `FlowChain` |
+| `eval(graph, steps, ctx)` / `recordNode` / `FlowTrace` / `ctx.trace()/enableTrace/lastRecord/lastNodeId/interrupt()` / `FlowContext.exchanger()` | Deleted — replay-and-skip is not durable execution; stopping uses `ctx.stop()`, early completion is legal; serialization via `toJson()` is diagnostic only |
+| `NodeType.UNKNOWN` / `NodeType.code()` | Deleted; parsing becomes total, and an unknown type name errors on the spot listing the legal values |
 
-行为变化（无需改调用点，但值得知道）：
+Behaviour changes (no call sites need changing, but worth knowing):
 
-- flow 执行改为迭代前沿行走：路径长度不再消耗 JVM 栈（实测 20,000 节点链正常运行），
-  `MAX_EXECUTION_DEPTH` 守卫与 `StackOverflowError` 兜底删除；构建期的环检测 DFS 同步改迭代（它此前会在
-  同样的深度上先炸栈）。
-- flow 的构建门禁扩大：所有 `when` 表达式在 `create()` 编译；`join` 键只允许 PARALLEL、取值限
-  `merge`/`shared`；`data` 键非空白。这些过去在运行期才暴露的错误如今 boot 即报。
-- flow PARALLEL 默认 `join: "merge"`：分支写入线程本地缓冲、干净结束时合并、写写冲突报错——共享可变
-  context 从"文档里的道歉"变成图上声明；`shared` 显式退回旧行为。
-- `@graph` 子图未达 END 现在在调用节点抛错，不再静默 interrupt 父流程。
-- flow join 计数、loop 迭代器、死端标记收进 `ExecState` 引擎私有命名空间；custom driver 不再有与引擎
-  monitor 键同池的字符串袋（`vars()`/root 计数器/泛型 `stack()` 等测试外零调用者的面删除）。
+- flow execution switches to an iterative frontier walk: path length no longer
+  consumes the JVM stack (a 20,000-node chain runs fine in testing), and the
+  `MAX_EXECUTION_DEPTH` guard and its `StackOverflowError` fallback are deleted;
+  build-time cycle detection's DFS is also made iterative (it would have blown the
+  stack at the same depths first).
+- flow's build gate widens: all `when` expressions compile in `create()`; `join`
+  keys are allowed only on PARALLEL with values restricted to `merge`/`shared`;
+  the `data` key must be non-blank. Errors that used to surface only at runtime now
+  report at build.
+- flow PARALLEL defaults to `join: "merge"`: branch writes buffer thread-locally,
+  merge on clean completion, and write-write conflicts error — shared mutable
+  context goes from "an apology in the docs" to a declaration on the graph;
+  `shared` opts back into the old behaviour explicitly.
+- An `@graph` subgraph that never reaches END now throws at the calling node
+  instead of silently interrupting the parent flow.
+- flow's join counters, loop iterators and dead-end markers move into `ExecState`'s
+  engine-private namespace; custom drivers no longer get a string bag sharing the
+  pool with the engine's monitor keys (`vars()`/root counters/the generic
+  `stack()` — surfaces with zero callers outside tests — are deleted).
 
-- 接口单例代理的稳态方法调用不再争抢 JVM 级 realize 锁：锁只护首次构造与关闭密封，命中缓存即无锁返回——注释里
-  的"cached lookups are lock-free"自此为真（实测此前一次无关慢构造可阻塞其它容器已建单例的调用 1.2s）。
-- `Pool.borrow()` 每次返回新的借出句柄（池内对象不变）：对已消费句柄的迟到 `release`/`invalidate` 是静默 no-op，
-  不再从当前持有者手里拿走连接；foreign 对象仍拒绝，文案不变。
-- enum 参数按 `name()` 绑定（读侧本就 `valueOf`）；此前写侧把原始 enum 交给 `setObject`，H2/PostgreSQL 抛类型转换错误。
-- mesh 重连的指数退避按"握手失败"推进、只在 hello ack 通过后清零——接受 socket 但拒绝 hello 的对等节点不再全速重拨。
-- 负载均衡器读 `ServiceInstance.weight()`：权重即周期份额，0/负值按 1；zone/canary 仍属自定义策略。
-- JSON 数字 token 上限 1000 字符（原 ≤10MiB 合法，而 BigDecimal 解析超线性，单个 token 可占核数分钟）；
-  JUL 大小估算对环形 cause 链不再在 handler monitor 内死循环。
-- hook 在自己的 `start()` 中调用 `close()`：该 hook 停干净后中止启动，其后的 hook 不再启动（此前 closer 不被停、
-  后续 hook 在已关容器上启动且无人再停）。
-- provider 返回 null 报 `Provider returned null for X@id`（此前是 `targetCache.put` 的匿名 NPE）。
-- HTTP/2 对 HEADERS 后立即到来的 RST_STREAM：流输入先标记结束再拆除，连接读循环不再停摆；stream dispatch 里的
-  死 RST 分支删除，复位只有一条路径。
+- An interface singleton proxy's steady-state method calls no longer contend on
+  the JVM-level realize lock: the lock protects only first construction and the
+  shutdown seal, and a cache hit returns lock-free — the comment's "cached lookups
+  are lock-free" is finally true (measured before: one unrelated slow construction
+  could block calls on another container's already-built singletons for 1.2 s).
+- `Pool.borrow()` returns a fresh borrowed handle each time (the pooled object is
+  unchanged): a late `release`/`invalidate` on an already-consumed handle is a
+  silent no-op and no longer takes the connection away from its current holder;
+  foreign objects are still rejected with the same message.
+- enum parameters bind by `name()` (the read side already used `valueOf`); the
+  write side previously handed the raw enum to `setObject`, which H2/PostgreSQL
+  rejected with a conversion error.
+- mesh reconnection's exponential backoff advances on "handshake failure" and
+  clears only after a hello ack — a peer that accepts the socket but rejects the
+  hello is no longer re-dialed at full speed.
+- The load balancer reads `ServiceInstance.weight()`: weight is a share of the
+  cycle, with 0/negative treated as 1; zone/canary remain custom-policy territory.
+- JSON number tokens are capped at 1000 characters (up to 10 MiB used to be legal,
+  and BigDecimal parsing is super-linear — a single token could occupy a core for
+  minutes); JUL's size estimation no longer loops forever inside the handler
+  monitor on a cyclic cause chain.
+- A hook calling `close()` inside its own `start()`: that hook stops cleanly and
+  startup aborts, and later hooks no longer start (previously the closer was never
+  stopped, and subsequent hooks started on an already-closed container with nobody
+  to stop them again).
+- A provider returning null reports `Provider returned null for X@id` (previously
+  an anonymous NPE from `targetCache.put`).
+- HTTP/2 for an RST_STREAM arriving right after HEADERS: the stream input is
+  marked ended before teardown and the connection's read loop no longer stalls;
+  the dead RST branch in stream dispatch is deleted, leaving reset exactly one
+  path.
 
-- class 声明是**声明**：同一棵 class-only 树加载进多个容器，每个容器得到新模块；实例/lambda 声明仍是组合期已有的那一个，跨容器共享。
-- 模块节点的 `name()` 在 resolve 前是 class 的 simple name，覆盖了 `name()` 的模块只在实例放置时显示自定义名。
-- `TreeNode` 随本次收敛删除（Unreleased 新增、从未发布）；应用若直接调 `moduleTree().tree()`，迁移到 `children()` / `render()`。
-- 独立装配（无容器）现在是真正的链：`SymbolSource.of(...)` 会展开 `${...}`，`SymbolSpec` 用你传入的 `Coercer`
-  解析，`register(SymbolProvider)` 可用 —— 旧的扁平来源三项都不是。含未知 `${...}` 的 `-D` 值现在与容器路径
-  一致地报错，而不是原样返回。
+- A class declaration is a **declaration**: loading the same class-only tree into
+  several containers gives each container fresh modules; instance/lambda
+  declarations remain the one object from composition time, shared across
+  containers.
+- A module node's `name()` is the class's simple name before resolve; only a
+  module whose `name()` is overridden shows a custom name when placed as an
+  instance.
+- `TreeNode` is deleted with this convergence (added in Unreleased, never
+  released); an application calling `moduleTree().tree()` directly migrates to
+  `children()` / `render()`.
+- Standalone assembly (no container) is now a real chain: `SymbolSource.of(...)`
+  expands `${...}`, `SymbolSpec` parses with the `Coercer` you pass, and
+  `register(SymbolProvider)` works — none of the three was true of the old flat
+  source. A `-D` value containing an unknown `${...}` now errors like the
+  container path instead of returning verbatim.
 
 ### Changed
 
-- **freeway-flow 再设计：从"移植的引擎"到"freeway 的图解释器"（schema 升级 v2→v3）** —
-  模块此前自称"port of solon-flow 4.0.2"，注释把"保持上游行为"当目标；机制层还随身带着独立小框架的
-  配件（自带 DI 缝 `FlowContainer`、自带标记表 `FlowMarkerIndex`、自带拦截器链 `FlowOptions`+可变
-  注册、自带回放-跳过"持久性" `FlowTrace`）。这一轮把所有"自制迷你机制"换成 freeway 已有的答案，
-  只留图解释本身：
-  - **执行**：递归下降改迭代前沿行走；删 `MAX_EXECUTION_DEPTH` 与 `StackOverflowError` 兜底；深度守卫的
-    递归构建期环检测同步迭代化。构建期校验姿态不变式（死端响亮、task_exec 恰一对齐、失败分类）逐条保留并有测试。
-  - **机制归位**：拦截器=贡献的 `Extension<FlowInterceptor>`（加载成链，启动后不可变，删
-    `addInterceptor/removeInterceptor/FlowOptions/FlowInvocation` 与 COW 排序竞态）；`@name` 直接走
-    `container.get(TaskComponent|ConditionComponent, name)`（删 `FlowContainer` 适配缝）；`!marker` 整条删除；
-    `ExecState` 收为引擎私有的 (graph,node) 键空间（删 `vars()`、root 计数器、泛型 `stack()`——均无仓内调用者）；
-    solon 式公共死面 `Node.TAG`、`TaskDesc/ConditionDesc.isNotEmpty`、`ConditionDesc.attachment` 一并删除
-    （迁移即 `node.type()` 与 `!desc.isEmpty()`）。
-  - **语义诚实**：pause/resume/`FlowTrace`/`steps`/`reverting`/`interrupt()` 删除（回放-跳过不是耐用执行，
-    demo 与仓内零使用）；子图未达 END 改为在调用点报错；`FlowContext.put(null)` 从静默丢弃改为清除语义，
-    LOOP 的 remove 变通随之删除；`toJson()` 文档改口为诊断用。
-  - **schema v3**：task 词汇表封闭为 `@name`/`#graphId`/内联组件 + 节点 `data` 字段（替 `$meta` 魔法键）；
-    `when` 表达式在 `create()` 编译；`PARALLEL` 节点新增 `join` 声明（`merge` 缺省：分支写隔离+冲突报错，
-    `shared` 显式退回）；`NodeType.UNKNOWN` 哨兵与 `code()` 删除。v1/v2 文档格式与旧词汇命中即构建期报错并指路。
-  - **文档**：`package-info` 与 README 从"移植说明文"改写为语义规格（保留 Apache 2.0 来源标注）；
-    现行 schema 规格落在 `freeway-flow/docs/graph-v3.md`，`graph-v2.md` 标注为历史提案；
-    `migration-notes/assessment/plan` 保留为带日期的轨迹记录。
-- **SymbolSource 收敛为一条链，系统属性成为一个 SymbolProvider（freeway-ioc）** — 此前 SYS tier 在 ioc 内部
-  有两个实现，而且语义不同：容器链里是一个 `SymbolProvider`（`order()=TIER_SYS_PROPS`，由
-  `SymbolSourceDefault.standard()` 匿名构造），独立来源 `SymbolSource.systemProperties()` 则是另一份扁平实现
-  —— 它不展开 `${...}`（javadoc 还把这个差异写成"没有可展开的对象"，可一条只有一个 tier 的链照样能对 `-D`
-  做展开）、自带一个与容器无关的 `CoercerDefault`、`register()` 直接抛异常。现在 tier 只有一处定义：
-  `SymbolProvider.systemProperties()`；链也只有一处实现：`SymbolSource.of(Coercer, SymbolProvider...)`
-  （`SymbolSourceDefault` 随之从 `ioc.internal` 移入 `ioc.symbol`，保持包私有，改为构造时接收 `Coercer`，
-  删掉事后注入的 `coercer(...)` setter 与只服务于它的 `standard()`）。
-  `ContainerImpl` 用 `SymbolSource.of(coercer, SymbolProvider.systemProperties())` 起链，传入的就是容器自己
-  那个 `Coercer`，于是模块贡献的 `CoerceRule` 对 `resolve(SymbolSpec)` 同样生效（这条路径此前没有任何测试，
-  新增 `SymbolSourceSpecTest`：容器路径的 `resolve(SymbolSpec)` 与贡献规则各一例）。
-  独立装配不再有第二种语义，ext 的 Jetty / Undertow / Hikari 三个无容器构造器各改一行，API 面因此变小而不是
-  变大 —— 删掉一个"看起来像 source、其实关掉了半条链"的入口。
+- **freeway-flow redesigned: from "a ported engine" to "freeway's graph
+  interpreter" (schema v2→v3)** — the module used to call itself "port of
+  solon-flow 4.0.2" and the comments made "preserving upstream behaviour" the
+  goal; the mechanism layer carried a small independent framework's accessories
+  (its own DI seam `FlowContainer`, its own marker table `FlowMarkerIndex`, its
+  own interceptor chain `FlowOptions` + mutable registration, its own
+  replay-and-skip "durability" `FlowTrace`). This round swaps every
+  self-built mini mechanism for freeway's existing answer, leaving only the graph
+  interpretation itself:
+  - **Execution**: recursive descent becomes an iterative frontier walk; the
+    `MAX_EXECUTION_DEPTH` guard and the `StackOverflowError` fallback are deleted;
+    the depth-guarded recursive build-time cycle detection is made iterative in the
+    same pass. The build-time validation posture's invariants (dead ends loud,
+    task_exec aligned exactly once, failure classification) are kept one by one,
+    with tests.
+  - **Mechanisms come home**: interceptors = a contributed
+    `Extension<FlowInterceptor>` (loaded into a chain, immutable after startup,
+    deleting `addInterceptor/removeInterceptor/FlowOptions/FlowInvocation` and the
+    COW ordering race); `@name` goes straight to
+    `container.get(TaskComponent|ConditionComponent, name)` (deleting the
+    `FlowContainer` adapter seam); `!marker` is deleted wholesale; `ExecState`
+    narrows to the engine-private (graph,node) key space (deleting `vars()`, the
+    root counter and the generic `stack()` — none had callers in the repo); and
+    solon-style public dead surface `Node.TAG`, `TaskDesc/ConditionDesc.isNotEmpty`,
+    `ConditionDesc.attachment` are deleted with them (migration is `node.type()`
+    and `!desc.isEmpty()`).
+  - **Semantic honesty**: pause/resume/`FlowTrace`/`steps`/`reverting`/`interrupt()`
+    are deleted (replay-and-skip is not durable execution, and the demo and the
+    repo made zero use of them); a subgraph that never reaches END errors at the
+    call site; `FlowContext.put(null)` changes from silently dropping to clear
+    semantics, and LOOP's remove workaround goes with it; `toJson()`'s docs are
+    reworded to diagnostic-only.
+  - **schema v3**: the task vocabulary is closed to `@name`/`#graphId`/inline
+    components + the node's `data` field (replacing the `$meta` magic keys); `when`
+    expressions compile in `create()`; PARALLEL nodes gain a `join` declaration
+    (`merge` by default: branch writes isolated + conflicts error; `shared` opts
+    back explicitly); the `NodeType.UNKNOWN` sentinel and `code()` are deleted. A
+    v1/v2 document format or an old vocabulary hit errors at build time with
+    directions.
+  - **Docs**: the `package-info` and README are rewritten from "porting notes"
+    into a semantic specification (keeping the Apache 2.0 attribution); the current
+    schema spec lives in `freeway-flow/docs/graph-v3.md`, with `graph-v2.md` marked
+    as a historical proposal; `migration-notes/assessment/plan` stay as dated
+    trajectory records.
+- **SymbolSource converges to one chain, and system properties become a
+  SymbolProvider (freeway-ioc)** — the SYS tier previously had two implementations
+  inside ioc with different semantics: in the container chain it was a
+  `SymbolProvider` (`order()=TIER_SYS_PROPS`, constructed anonymously by
+  `SymbolSourceDefault.standard()`), while the standalone source
+  `SymbolSource.systemProperties()` was another flat implementation — it did not
+  expand `${...}` (the javadoc even recorded the difference as "nothing to
+  expand", though a one-tier chain can expand `-D` values just fine), carried its
+  own container-independent `CoercerDefault`, and its `register()` simply threw.
+  Now the tier is defined in exactly one place: `SymbolProvider.systemProperties()`;
+  and the chain has one implementation: `SymbolSource.of(Coercer, SymbolProvider...)`
+  (`SymbolSourceDefault` accordingly moves from `ioc.internal` to `ioc.symbol`,
+  staying package-private, taking its `Coercer` at construction, and dropping the
+  set-after-the-fact `coercer(...)` setter plus the `standard()` that served only
+  it). `ContainerImpl` starts its chain with
+  `SymbolSource.of(coercer, SymbolProvider.systemProperties())`, passing the
+  container's own `Coercer`, so a module-contributed `CoerceRule` now takes effect
+  for `resolve(SymbolSpec)` too (this path had no test before; the new
+  `SymbolSourceSpecTest` covers the container path's `resolve(SymbolSpec)` and the
+  contributed rules, one case each). Standalone assembly no longer has a second
+  semantics, and ext's Jetty / Undertow / Hikari container-less constructors each
+  change by one line — the API surface shrinks instead of growing, deleting an
+  entry point that "looked like a source but had half the chain switched off".
 
-- **批次 B（第六批）：入口工厂统一到 `create`（freeway-boot / freeway-flow）** — 审计 B3。框架入口此前用两个
-  动词：`Freeway.create(...)` 与 `FreewayApp.of(...)` 是并列入口却各叫各的，`FlowEngine.newInstance()` 又是
-  第三种。现在按角色分工并把规则写进 `AGENTS.md`：**`of` 造"值"**（记录工厂：`Endpoint.of`、
-  `ServiceInstance.of`、`SymbolSpec.of`、`ModuleNode.of`，对齐 `List.of`）；**`create` 是框架入口**，交给你
-  一个待配置或待运行的东西（`Freeway.create`、`FreewayApp.create`、`FlowEngine.create`、`Graph.create`）；
-  **`.builder()`** 是配置型对象的流式装配（`WebServerBuilder.builder()`）。
-  改名：`FreewayApp.of(...)` → `FreewayApp.create(...)`（4 个重载 + 69 处调用点）、
-  `FlowEngine.newInstance(...)` → `FlowEngine.create(...)`（2 个重载 + 24 处）。选这一侧而不是把
-  `Freeway.create`（306 处调用点）改名为 `of`：同样的结果，三分之一的改动量，而且 `Graph.create`/
-  `GraphSpec.create` 本来就已是"入口用 create"。
+- **Batch B (sixth): entry-point factories unify on `create` (freeway-boot /
+  freeway-flow)** — audit B3. The framework's entry points previously used two
+  verbs: `Freeway.create(...)` and `FreewayApp.of(...)` were parallel entry points
+  with different names, and `FlowEngine.newInstance()` was a third. The roles are
+  now divided and the rule written into `AGENTS.md`: **`of` builds a "value"**
+  (the record factories: `Endpoint.of`, `ServiceInstance.of`, `SymbolSpec.of`,
+  `ModuleNode.of`, aligned with `List.of`); **`create` is the framework entry
+  point**, handing you something to configure or run (`Freeway.create`,
+  `FreewayApp.create`, `FlowEngine.create`, `Graph.create`); and **`.builder()`**
+  is fluent assembly of a configured object (`WebServerBuilder.builder()`).
+  Renames: `FreewayApp.of(...)` → `FreewayApp.create(...)` (4 overloads + 69 call
+  sites), `FlowEngine.newInstance(...)` → `FlowEngine.create(...)` (2 overloads +
+  24 call sites). Renaming this side rather than `Freeway.create` (306 call sites)
+  to `of`: the same result for a third of the churn, and `Graph.create`/
+  `GraphSpec.create` were already "entry points use create".
 
-- **批次 B（第五批）：`Orm.findAll` 的位置哨兵收成 `FindOptions`（freeway-db）** — 原签名
-  `findAll(Class, String orderBy, int limit, int offset)` 的两个相邻 `int` 在调用点可互换：
-  `findAll(type, "id ASC", 20, 0)` 与 `(…, 0, 20)` 都能编译而语义相反；`""`/`0` 还同时兼任"未设置"。
-  现在 `Orm.FindOptions.defaults()` + `withOrderBy`/`withLimit`/`withOffset`（一个 wither 只动一个字段），
-  空白 `orderBy` 归一为"无 ORDER BY"，**负的 limit/offset 当场抛**（旧实现用 `limit > 0` 判断，负值被
-  静默当成"不限"，一次笔误就变成全表返回）。`findAll(Class)` 保留为 `defaults()` 的便捷形态；
-  11 处调用点按编译错误迁移（db 测试 10 处 + ext benchmark 1 处）。
+- **Batch B (fifth): `Orm.findAll`'s positional sentinels become `FindOptions`
+  (freeway-db)** — the old signature
+  `findAll(Class, String orderBy, int limit, int offset)` had two adjacent `int`s
+  that were interchangeable at the call site: `findAll(type, "id ASC", 20, 0)` and
+  `(…, 0, 20)` both compiled with opposite meanings; `""`/`0` also doubled as
+  "unset". Now `Orm.FindOptions.defaults()` + `withOrderBy`/`withLimit`/`withOffset`
+  (one wither touches one field), a blank `orderBy` normalizes to "no ORDER BY",
+  and **a negative limit/offset throws on the spot** (the old implementation
+  judged with `limit > 0`, so a negative was silently treated as "unlimited" — one
+  typo became a full-table return). `findAll(Class)` remains as the convenient
+  form of `defaults()`; 11 call sites migrated via the compile errors (10 in db
+  tests + 1 in the ext benchmark).
 
-- **批次 B（第四批）：`PeerConnector` 的 7 位置参数收成 `Wiring`，`PoolConfig` 补 wither（freeway-cloud / freeway-db）**：
-  - `PeerConnector(PeerHub, Duration connectTimeout, String scheme, Duration handshakeTimeout, long backoffBaseMs, long backoffMaxMs, SSLContext)`
-    换成 `PeerConnector(PeerHub, Wiring)`。原签名里有**两对相邻同类型参数**（两个 `Duration`、两个 `long`），
-    互换任意一对都能编译，代价是网格按错误的节奏超时或退避。`Wiring.defaults()` 的每个默认值都取自
-    `freeway.cloud.event.*` 的声明默认（新增 `CONNECT_TIMEOUT` 常量，与配置键同源），
-    `withBackoff(base, max)` 一次给两个值——互换在调用点不再可表达；唯一的装配点
-    `CloudEventLifecycleHook` 收敛成一条 wither 链。
-  - `PoolConfig`（12 组件）补 12 个 `withX`，类 javadoc 的示例从"12 个位置参数"改成
-    `defaults(url, user, pass).withMaxSize(20)…`；删掉 `DEFAULT_HEALTH_CHECK_QUERY = null`
-    （"不设查询"不需要一个 null 常量，规范构造器传 `null` 即可，注释说明 `isValid` 决定）。校验仍在紧凑
-    构造器里，所以每个 wither 都会重新校验。
-- **测试补两条契约**：`PeerConnector.Wiring` 的默认值/归一化/`withBackoff`，以及 `PoolConfig` 的
-  "defaults 说全 + wither 只动一个字段 + 每次都重新校验"（含反向用例：互换/串改即红）。
+- **Batch B (fourth): `PeerConnector`'s 7 positional parameters become `Wiring`,
+  and `PoolConfig` gains withers (freeway-cloud / freeway-db)**:
+  - `PeerConnector(PeerHub, Duration connectTimeout, String scheme, Duration
+    handshakeTimeout, long backoffBaseMs, long backoffMaxMs, SSLContext)` becomes
+    `PeerConnector(PeerHub, Wiring)`. The old signature had **two pairs of
+    adjacent same-typed parameters** (two `Duration`s, two `long`s), so swapping
+    either pair compiled — at the price of the mesh timing out or backing off at
+    the wrong cadence. Every default in `Wiring.defaults()` comes from the
+    declared defaults of `freeway.cloud.event.*` (a new `CONNECT_TIMEOUT`
+    constant, sourced with the config key), and `withBackoff(base, max)` takes
+    both values at once — a swap is no longer expressible at the call site; the
+    only assembly point, `CloudEventLifecycleHook`, converges into one wither
+    chain.
+  - `PoolConfig` (12 components) gains its 12 `withX`s, and the class javadoc's
+    example changes from "12 positional parameters" to
+    `defaults(url, user, pass).withMaxSize(20)…`; `DEFAULT_HEALTH_CHECK_QUERY =
+    null` is deleted ("no query" does not need a null constant — pass `null` to
+    the canonical constructor, with a comment noting that `isValid` decides).
+    Validation stays in the compact constructor, so every wither re-validates.
+- **Two contract tests added**: `PeerConnector.Wiring`'s defaults/normalization/
+  `withBackoff`, and `PoolConfig`'s "defaults says it all + a wither touches one
+  field + every step re-validates" (with counter-cases: a swap or a hand-mutated
+  field turns red).
 
-- **批次 B（第三批）：两处"位置参数矩阵"收成参数记录（freeway-db / freeway-http）**：
-  - `MigrationRunner` 的两个构造器（4 参与 5 参，后者只多一个 `lockTtl`）换成
-    `MigrationRunner(Database, Options)`；`Options` 记录持有 `enabled`/`path`/`table`/`lockTtl`，
-    `defaults()` 是**唯一**的默认值出处（此前 `DbModule` 把 `"db/migration/"`、`"_migrations"` 又写了一遍），
-    归一化（反斜杠、尾斜杠、表名白名单）搬进紧凑构造器，`withLockTtl(null)` 恢复默认租约。24 处调用点按
-    编译错误迁移，`new MigrationRunner(db, true, "db/migration", "_migrations")` 变成
-    `new MigrationRunner(db, Options.defaults())`——位置布尔 `enabled` 不再需要读者去数参数。
-  - `FreewayHttpEngine` 的 5 个位置构造器换成 `FreewayHttpEngine.Wiring`：它不是"每步加一项"的梯子，而是
-    可选参数矩阵——第 3 档加 metrics，第 4 档 `(codec, coercer, ssl, http2)` 又把 metrics 悄悄重置成 noop。
-    现在 `Wiring.defaults(jsonCodec, coercer)` + `withSsl`/`withSslParameters`/`withMetrics`，一个 wither 只动
-    一个字段；`WebServerBuilder` 的三元表达式与 `HttpModule` 的两条路径随之收敛成一条链。
-- **测试补两条契约**：`MigrationRunner.Options` 的默认值/归一化/`withLockTtl(null)`，以及 `Wiring` 的
-  "wither 互不覆盖"（用非 noop 的 metrics 替身，否则"被重置"与"被保留"无法区分——这条断言最初正是
-  因为传了 `NoopMetrics` 而形同虚设）。
+- **Batch B (third): two "positional parameter matrices" become parameter records
+  (freeway-db / freeway-http)**:
+  - `MigrationRunner`'s two constructors (4-arg and 5-arg, the latter only adding
+    `lockTtl`) become `MigrationRunner(Database, Options)`; the `Options` record
+    holds `enabled`/`path`/`table`/`lockTtl`, `defaults()` is the **only** source
+    of the defaults (`DbModule` previously restated `"db/migration/"` and
+    `"_migrations"`), normalization (backslashes, trailing slashes, the table-name
+    allowlist) moves into the compact constructor, and `withLockTtl(null)` restores
+    the default lease. 24 call sites migrated via compile errors, with
+    `new MigrationRunner(db, true, "db/migration", "_migrations")` becoming
+    `new MigrationRunner(db, Options.defaults())` — the reader no longer counts
+    arguments to learn what the positional boolean `enabled` was.
+  - `FreewayHttpEngine`'s five positional constructors become
+    `FreewayHttpEngine.Wiring`: it was not a ladder of "add one per step" but a
+    matrix of optional parameters — tier 3 added metrics, and tier 4
+    `(codec, coercer, ssl, http2)` silently reset metrics to noop. Now
+    `Wiring.defaults(jsonCodec, coercer)` + `withSsl`/`withSslParameters`/
+    `withMetrics`, one wither per field; `WebServerBuilder`'s ternary and
+    `HttpModule`'s two paths converge into one chain accordingly.
+- **Two contract tests added**: `MigrationRunner.Options`'s defaults/normalization/
+  `withLockTtl(null)`, and `Wiring`'s "withers do not overwrite each other" (using
+  a non-noop metrics stand-in — otherwise "was reset" and "was kept" are
+  indistinguishable; this assertion was initially toothless precisely because a
+  `NoopMetrics` was passed).
 
-- **批次 B（第二批）：旧 arity 便捷构造器与只被测试引用的 internal public 类型（freeway-commons / boot / cloud）**：
-  - `JULFileHandler(String, long, int, boolean)` 删除：它是"比规范构造器少一个 `flushIntervalMs`"的便捷形态，
-    与前面几轮删掉的同类构造器是一回事；21 处测试调用点改传
-    `JULFileHandler.DEFAULT_FLUSH_INTERVAL_MS`（语义完全一致，只是把默认值写在调用点上）。
-  - `HookLifecycle`、`ConfigFileReader`（boot）与 `ServiceIdentity`（cloud）由 public 收成包私有：按
-    `AGENTS.md` 的判据（"另一个包必须装配或替换它才是 public"），它们只有同包使用者——先前的引用计数把
-    `AppRuntimeDefaultTest` 里的一句**注释**当成了引用。
-  - `ConfigSources` 保持 public，并在 `boot/internal/package-info.java` 写明理由：跨模块测试
-    （`CloudSymbolPrecedenceTest`）需要直接装配分层来源来钉住级联优先级，这是"测试装配"而非"容器装配"的
-    唯一一处例外。
+- **Batch B (second): old-arity convenience constructors and internal public types
+  referenced only by tests (freeway-commons / boot / cloud)**:
+  - `JULFileHandler(String, long, int, boolean)` is deleted: it was the
+    convenience form "one `flushIntervalMs` short of the canonical constructor" —
+    the same kind of constructor removed in earlier rounds; 21 test call sites
+    switch to passing `JULFileHandler.DEFAULT_FLUSH_INTERVAL_MS` (semantically
+    identical, just stating the default at the call site).
+  - `HookLifecycle`, `ConfigFileReader` (boot) and `ServiceIdentity` (cloud)
+    narrow from public to package-private: by `AGENTS.md`'s criterion ("another
+    package must assemble or substitute it to justify public"), they had only
+    same-package users — the earlier reference count had mistaken a **comment**
+    in `AppRuntimeDefaultTest` for a reference.
+  - `ConfigSources` stays public, with the reason written in
+    `boot/internal/package-info.java`: a cross-module test
+    (`CloudSymbolPrecedenceTest`) needs to assemble the layered sources directly
+    to pin cascade precedence — the one exception where "test assembly" rather
+    than "container assembly" reaches it.
 
-- **批次 B（第一批）：导出面、别名、bind 期校验、JSON 访问器与缓存泄漏（freeway-cloud / http / ioc / commons）** —
-  审计 §6 批次 B 的前五项：
-  - **RPC 导出面以申报类型为准**（cloud）：`RpcTarget` 原先进 `handler.getClass().getMethods()`，于是
-    `bind(窄接口).to(宽实现)` 会把实现类多出来的 public 方法一并导出——与"导出即申报"的姿态相反。现在读
-    `export.type()` 的方法面；`RpcExport` 的 javadoc 统一成"类型即边界"（想要更小的面就声明 facade 类型）。
-    新增用例直接断言"不在申报类型上的方法不进方法表"。
-  - **`ResponseFraming.shouldGzipFile` 删除**（http）：它是 `shouldGzipStream` 的纯转发，而 javadoc 声称
-    多一道 `body-allowed` 闸门（`shouldGzipStream` 本来就查）——一个没有行为的别名配一段不成立的说明。
-    唯一 core 调用点改名，测试里重复的那组断言删除。
-  - **`.advise()` 在 bind 期校验接口约束**（ioc）：约束在 `bind(GreeterImpl.class).advise(...)` 当场就已知，
-    原先拖到首次 `get()` 才抛，错误信息落在一个与起因无关的调用点上；现在抛在 binding 调用处并给出修法
-    （"bind X to an interface to use .advise()"）。`Scoping` 补 `default void within(Runnable)`，测试里 8 处
-    `within(() -> { …; return null; })` 的尾巴随之消失。
-  - **构造器缓存不再钉住类加载器**（commons）：`BeanIntrospector` 用
-    `WeakHashMap<Constructor, BeanConstructor>` 存包装器，而 value 强引用 key——条目永不回收，凡走过的类
-    与其类加载器都被静态 map 钉住。改为按声明类分片的 `ClassValue<Map<…>>`（与 `JsonCoercions` 的做法一致），
-    类加载器卸载即可回收；新增用例钉住"同一 Constructor 只包装一次"。
-  - **JSON 写方法改名、类型不符不再静默**（commons）：`JsonObject.object(key)`/`array(key)` 与
-    `JsonArray.object()`/`array()` 是**写**操作（建子节点并挂上去），却与读方法 `getObject`/`getArray` 只差
-    一个 `get`；改为 `newObject`/`newArray`/`addObject`/`addArray`。`JsonAccessors.object/array` 原先在
-    "键不存在"与"键存在但类型不符"两种情况下都返回 `null`，现在只有缺失返回 `null`，类型不符抛
-    `IllegalArgumentException`（与其数值/布尔兄弟一致，错误信息用 `JsonUtils.typeName` 说出实际类型）。
+- **Batch B (first): export surface, aliases, bind-time validation, JSON
+  accessors and a cache leak (freeway-cloud / http / ioc / commons)** — the first
+  five items of audit §6's batch B:
+  - **The RPC export surface follows the declared type** (cloud): `RpcTarget` used
+    to go into `handler.getClass().getMethods()`, so
+    `bind(narrow interface).to(broad implementation)` exported the
+    implementation's extra public methods too — the opposite of the
+    "exporting is declaring" stance. It now reads `export.type()`'s method
+    surface; `RpcExport`'s javadoc is unified on "the type is the boundary"
+    (declare a facade type when you want a smaller one). A new case asserts
+    directly that "a method not on the declared type does not enter the method
+    table".
+  - **`ResponseFraming.shouldGzipFile` deleted** (http): it was a pure forward to
+    `shouldGzipStream` while its javadoc claimed an extra `body-allowed` gate
+    (which `shouldGzipStream` already checked) — an alias with no behaviour
+    paired with an untrue description. The only core call site is renamed, and
+    the duplicated assertion group in the tests is deleted.
+  - **`.advise()` validates the interface constraint at bind time** (ioc): the
+    constraint is knowable right at `bind(GreeterImpl.class).advise(...)`, but the
+    error used to wait for the first `get()` and land on an unrelated call site;
+    it now throws at the binding call with the fix ("bind X to an interface to
+    use .advise()"). `Scoping` gains `default void within(Runnable)`, and the
+    tests' eight `within(() -> { …; return null; })` tails disappear.
+  - **The constructor cache no longer pins class loaders** (commons):
+    `BeanIntrospector` kept wrappers in a `WeakHashMap<Constructor,
+    BeanConstructor>` whose values strongly referenced their keys — entries were
+    never reclaimed, and every class that passed through, with its class loader,
+    was pinned by a static map. It becomes a `ClassValue<Map<…>>` sharded by
+    declaring class (the same approach as `JsonCoercions`), reclaimable when the
+    loader unloads; a new case pins "the same Constructor is wrapped once".
+  - **JSON write methods renamed, and type mismatches stop being silent**
+    (commons): `JsonObject.object(key)`/`array(key)` and `JsonArray.object()`/
+    `array()` were **write** operations (creating and attaching a child node) that
+    differed from the readers `getObject`/`getArray` by one `get`; they become
+    `newObject`/`newArray`/`addObject`/`addArray`. `JsonAccessors.object/array`
+    used to return `null` both when the key was missing and when it existed with
+    the wrong type; now only a missing key returns `null` and a type mismatch
+    throws `IllegalArgumentException` (consistent with its numeric/boolean
+    siblings, with the actual type stated via `JsonUtils.typeName`).
 
-- **ioc：可替换的角色按"外部能否 `.primary()` 替换"命名，贡献链也按被解析的实例走（freeway-ioc）** — 审计 A8：
-  - `SymbolSourceImpl` → `SymbolSourceDefault`，`LoggerSourceImpl` → `LoggerSourceDefault`：两者都能被模块用
-    `.primary()` 顶掉（`InjectionResolver` 的注释原本就这么写着），按判据它们是 `XDefault`，不是 `XImpl`。
-    `AGENTS.md` 把这把尺子写成一句话——"模块 `.primary()` 绑定后容器是否认账"，并明确"框架自己具体装配它"
-    不构成 `XImpl` 的理由。
-  - **替换 `SymbolSource` 不再静默丢掉配置链**：容器原先把 `SymbolProvider` 贡献注册进自己的内建实例，而
-    注入端走 `container.get(SymbolSource.class)`——模块一旦替换源，boot 的整条级联（CLI/env/文件）就落进
-    一个没人读的实例。现在贡献会记入一份有序清单，并在**所有模块绑定完成后**（模块自己的绑定要等 `bind`
-    体跑完才注册，声明期看不到）回放进真正被解析的那个源；内建实例仍在声明期即时收到，bind 期查询不受影响。
-  - `SymbolSource.register(SymbolProvider)` 成为接口上的贡献 seam，默认实现**抛错**：接不了贡献的替换实现
-    在启动时就报出来，而不是安静地少一条链。`SymbolSourceReplacementTest` 两半都钉住。
+- **ioc: substitutable roles are named by "can the outside `.primary()` it", and
+  the contribution chain follows the resolved instance (freeway-ioc)** — audit A8:
+  - `SymbolSourceImpl` → `SymbolSourceDefault`, `LoggerSourceImpl` →
+    `LoggerSourceDefault`: both can be displaced by a module's `.primary()`
+    (`InjectionResolver`'s comment already said so), so by the criterion they are
+    `XDefault`, not `XImpl`. `AGENTS.md` writes the test as one sentence — "after
+    a module binds with `.primary()`, does the container honour it" — and states
+    explicitly that "the framework wires it concretely itself" does not make an
+    `XImpl`.
+  - **Replacing `SymbolSource` no longer silently drops the config chain**: the
+    container used to register `SymbolProvider` contributions into its own built-in
+    instance while the injection side went through
+    `container.get(SymbolSource.class)` — the moment a module replaced the source,
+    boot's whole cascade (CLI/env/files) landed in an instance nobody read.
+    Contributions are now recorded into an ordered list and replayed into the
+    source that is actually resolved **after all modules finish binding** (a
+    module's own bindings register only after its `bind` body runs, invisible at
+    declaration time); the built-in instance still receives them immediately at
+    declaration time, so bind-time queries are unaffected.
+  - `SymbolSource.register(SymbolProvider)` becomes a contribution seam on the
+    interface whose default implementation **throws**: a replacement that cannot
+    accept contributions reports at startup instead of quietly losing a chain.
+    `SymbolSourceReplacementTest` pins both halves.
 
-- **`HttpServerConfig` 收成一种写法：规范构造器 + `defaults()` + 每字段 wither（freeway-http）** — 13 组件
-  记录此前同时挂着**4 级委托构造器阶梯**与一个内嵌 `Builder`，而且默认值声明了三遍并已漂移：`Builder` 说
-  port 0 / grace 0，模块声明的 `freeway.http.*` 与 `WebServerBuilder` 说 8080 / 2s。现在只剩规范构造器
-  （校验仍在一处）+ `defaults()`（host 127.0.0.1、port 8080、backlog 0、grace 2s 加各库默认值）+
-  13 个 `withX`；`HttpModuleConfig` 的键默认与 `WebServerBuilder` 都改为引用它，构造器阶梯、`Builder`
-  与字符启发式判定全部删除。调用点按编译错误迁移（core 测试约 60 处、ext 约 25 处），测试专用形状收进
-  `freeway-http` 测试源的 `TestServerConfig.loopback()` 与 ext testkit 的 `EngineFixture.defaultConfig()`。
-- **`WebServer` 只剩一个构造器，且它按真实判据回答 `secure()`（freeway-http）** — 原来的 public 4 参构造器
-  把 `secure` 写死为 `false`：任何经它建起来的 TLS 服务器，`secure()` 都会回答"不是 TLS"——ext 的 TLS 测试
-  正踩在这条上（生产路径走 `HttpModule` 的 6 参，所以线上没受影响）。现在唯一公开装配路径是
-  `WebServerBuilder`（按传入的 `SSLContext` 判定 `secure`）。ext 的 6 个适配器测试文件随之改为走 testkit 的
-  `TestServers` + `Pipelines`（原先手搭 `RequestComponents`，与真实装配路径不同）；`Pipelines` 扩展出 error handler 一档，避免迁移时丢掉 413 映射与异常捕获这两类断言。
+- **`HttpServerConfig` converges to one spelling: canonical constructor +
+  `defaults()` + per-field withers (freeway-http)** — the 13-component record
+  previously carried a **4-tier delegating constructor ladder** and an embedded
+  `Builder` at once, and its defaults were declared three times and had drifted:
+  `Builder` said port 0 / grace 0, while the module's declared `freeway.http.*`
+  and `WebServerBuilder` said 8080 / 2s. Only the canonical constructor remains
+  (validation still in one place) + `defaults()` (host 127.0.0.1, port 8080,
+  backlog 0, grace 2s plus the libraries' defaults) + 13 `withX`s;
+  `HttpModuleConfig`'s key defaults and `WebServerBuilder` now reference it, and
+  the constructor ladder, the `Builder` and the character-heuristic detection are
+  all deleted. Call sites migrated via compile errors (about 60 in core tests,
+  about 25 in ext), with the test-only shapes gathered into `freeway-http`'s
+  `TestServerConfig.loopback()` and ext testkit's `EngineFixture.defaultConfig()`.
+- **`WebServer` keeps one constructor, and it answers `secure()` by the real
+  criterion (freeway-http)** — the old public 4-arg constructor hard-wired
+  `secure` to false: any TLS server built through it answered "not TLS" to
+  `secure()` — ext's TLS tests stood exactly on this (production went through
+  `HttpModule`'s 6-arg form, so live was unaffected). The only public assembly
+  path is now `WebServerBuilder` (judging `secure` from the provided
+  `SSLContext`). ext's six adapter test files switch to the testkit's `TestServers`
+  + `Pipelines` (they previously hand-assembled `RequestComponents`, a different
+  path from real assembly); `Pipelines` grows an error-handler tier so migration
+  does not lose the 413-mapping and exception-capture assertions.
 
-- **flow：v1 残留清干净、失败信息给出修法、快照语义对齐（freeway-flow）** — 审计 P1/P2：
-  - `NodeType` 的"缺/空 type 默认为 ACTIVITY"删除：v2 解析器先经 `requireString` 保证非空，这个默认
-    分支不可达，留着只会让未来的调用方得到一个静默错误的节点类型；同时按工厂命名把 `nameOf` 改名为
-    `of`（未知类型抛错并列出合法值），`code()` 补上用途说明。
-  - `FlowMarkerIndex.register` 对**空标记集**从静默 `return` 改为一行 WARN 并点名修法：lambda 与匿名类
-    拿不到 `@FlowMarker`，这正是丢 handler 的常见方式，而失败原本要到 eval 才以"没有组件匹配"暴露。
-    `freeway-flow/README.md` 的示例也据此改成 `engine.markerIndex().register(component, Set.of(...))`
-    ——原示例用 lambda 注册却引用 `!marker` 任务，照抄必然失败。
-  - 组件解析、`$in` 解析、`Graph.nodeOrThrow`、`GraphSpec.validateEntry` 的错误信息补上节点/图上下文与
-    期望形态（原先有 `"The task component 'x' not exist"` 这类不成句且不给修法的消息）。
-  - `GraphSpec.fromDom` 收成包私有（`fromText` 是唯一版本门禁）；`FlowEngineDefault.graphs()` 返回
-    `List.copyOf` 快照，与 `FlowTrace`/`FlowMarkerIndex` 的快照约定一致；`FlowTrace` 的
-    `setRootGraphId`/`enable` 改为 `rootGraphId(...)`/`enabled(...)`，与模块内 bare 写方法一致。
-  - 文档：README 的快速开始补 `version: 2`（原示例缺该字段，门禁直接拒绝）并删掉"v1 仍兼容"的说法；
-    `migration-notes.md`、`graph-v2.md` 标注 v1 已删除；`docs/freeway-flow-design-decisions.md` 的 AST
-    缓存条目改为现状（`synchronizedMap`，并写明为什么读写锁被撤回）。
-  - **有意保留并写进设计决策**：flow 状态文档里 `trace` 的字符串形态仍可读——那是应用已经持久化的
-    历史数据（与迁移表里旧版本写入的行同类），不是 API 兼容；附了移除条件。
+- **flow: v1 leftovers cleared, failure messages name the fix, snapshot semantics
+  aligned (freeway-flow)** — audit P1/P2:
+  - `NodeType`'s "missing/empty type defaults to ACTIVITY" is deleted: the v2
+    parser already guaranteed non-empty via `requireString`, so the branch was
+    unreachable and its only effect was handing a future caller a silently wrong
+    node type; following factory naming, `nameOf` is renamed `of` (an unknown type
+    throws and lists the legal values), and `code()` gains a purpose note.
+  - `FlowMarkerIndex.register` changes from a silent `return` on an **empty marker
+    set** to one WARN line naming the fix: lambdas and anonymous classes cannot
+    carry `@FlowMarker`, which is precisely the common way to lose a handler, and
+    the failure used to surface only at eval as "no component matched".
+    `freeway-flow/README.md`'s example is corrected to
+    `engine.markerIndex().register(component, Set.of(...))` — the original
+    registered a lambda while referencing a `!marker` task, so copying it verbatim
+    was guaranteed to fail.
+  - The error messages of component resolution, `$in` parsing, `Graph.nodeOrThrow`
+    and `GraphSpec.validateEntry` gain node/graph context and the expected shape
+    (they previously included messages like `"The task component 'x' not exist"`,
+    ungrammatical and fixless).
+  - `GraphSpec.fromDom` becomes package-private (`fromText` is the only version
+    gate); `FlowEngineDefault.graphs()` returns a `List.copyOf` snapshot,
+    consistent with `FlowTrace`/`FlowMarkerIndex`'s snapshot conventions; and
+    `FlowTrace`'s `setRootGraphId`/`enable` become `rootGraphId(...)`/`enabled(...)`,
+    matching the module's bare write methods.
+  - Docs: README's quick start gains `version: 2` (the example lacked the field and
+    the gate rejected it outright) and drops the "v1 still supported" claim;
+    `migration-notes.md` and `graph-v2.md` note that v1 is deleted; the AST cache
+    entry in `docs/freeway-flow-design-decisions.md` is updated to the present
+    (`synchronizedMap`, with why the read-write lock was withdrawn).
+  - **Deliberately kept and recorded in the design decisions**: the string form of
+    `trace` in flow's state documents remains readable — it is historical data
+    applications have already persisted (the same kind as rows written by old
+    versions in the migration table), not API compatibility; the removal
+    condition is attached.
 
-- **文档：改正与实现相反的 17 处说明（全仓）** — 审计里最普遍的一类问题不是设计错误而是"文档说假话"，
-  逐条改正：http 的 `HttpResponse` 两处叠置 javadoc（悬空那段声称 `contentLength` 必须已知，实际允许
-  `-1` 走 chunked）与指向不存在方法（`request()`/`response()`/`status(s)`）的引用；cloud 的事件网格
-  hook **排序三处说反**（注释说 before，代码是 after，且理由写在代码里）与 readiness 的"always healthy"
-  （实现有三种非健康答案）；db 的 `DatabaseHub` "unmodifiable view"（实际是构造期快照）；ioc 的
-  `ServiceRuntime` "64 段锁条带化"（实际单锁，同文件自述相反）与 `Contributions` 的 id 形态（实际
-  `snake@package`）；boot 的级联 javadoc 少列 `-D` 层、`AppRuntime`/`AppState` 补上生命周期契约；
-  commons 的 `JsonUtils` 补契约（含"会关闭入参流"这条隐式副作用）；`AGENTS.md` 的 SLF4J 声明口径与实测
-  对齐（6/7 模块显式声明，只有 ioc 继承）。
+- **Docs: 17 statements contradicting the implementation corrected (whole repo)**
+  — the most common audit finding was not design errors but "the documentation
+  lies", corrected item by item: http's `HttpResponse` had two stacked javadoc
+  blocks (the dangling one claimed `contentLength` must be known, when `-1` for
+  chunked is allowed) and references to nonexistent methods
+  (`request()`/`response()`/`status(s)`); cloud's event mesh hook had its
+  **ordering stated backwards in three places** (the comment said before, the code
+  runs after, with the reason written in the code) and readiness's "always
+  healthy" (the implementation has three unhealthy answers); db's `DatabaseHub`
+  "unmodifiable view" (in fact a construction-time snapshot); ioc's `ServiceRuntime`
+  "64-way lock striping" (a single lock, with the same file's own text saying
+  otherwise) and `Contributions`' id shape (in fact `snake@package`); boot's
+  cascade javadoc missing the `-D` tier, and `AppRuntime`/`AppState` gaining their
+  lifecycle contracts; commons' `JsonUtils` gaining its contract (including the
+  implicit "closes the input stream" side effect); and `AGENTS.md`'s SLF4J
+  declaration aligned with reality (6/7 modules declare it explicitly; only ioc
+  inherits).
 
-- **boot：配置文件层的读失败只剩一种口径，profile 变体不再能改写激活键，组合期失败也清理 config（freeway-boot）**
-  — 三条审计 P1：
-  - 同一个"读不到文件"此前有三种命运：类路径与工作目录 base 硬失败；工作目录 profile 变体与
-    `freeway.config.file` 附加文件只 WARN、随后整份文件的键消失；显式声明的路径不存在则完全无声。现在：
-    **文件存在但读不出来 → `IllegalStateException`**（点名路径与修法），热重载期由 watcher 保留旧快照；
-    `freeway.config.file` 声明却不存在的路径 → 一行 WARN 点名；可选的工作目录文件缺失仍按常态静默。
-  - `overrideFiles` 改为带**角色**（`BASE` / `PROFILE_VARIANT` / `DECLARED`）：profile 变体的
-    `freeway.profile` 与类路径侧一样被剥离，`profiles()` 与解析值不再可能分叉——`AppConfig` 的
-    "cannot disagree" 承诺此前只兑现了一半（只做了类路径侧）。
-  - `AppBuilder.start()` 的**组合段移进 try**：同模块类声明两次、或坏 SPI provider 抛出时，同样会
-    `config.close()`；否则调用方每次"捕获后重试"都会泄漏一个热重载 watcher（线程 + `WatchService`）。
+- **boot: file-read failures have one policy, profile variants can no longer
+  rewrite activation keys, and composition-time failures also close the config
+  (freeway-boot)** — three audit P1s:
+  - One "unreadable file" previously had three fates: classpath and
+    working-directory base hard-failed; working-directory profile variants and
+    `freeway.config.file` additional files only WARNed and then the whole file's
+    keys vanished; an explicitly declared missing path was completely silent. Now:
+    **a file that exists but cannot be read → `IllegalStateException`** (naming
+    the path and the fix), with the watcher keeping the old snapshot during hot
+    reload; a path declared by `freeway.config.file` but missing → one WARN line;
+    optional working-directory files missing remain silently normal.
+  - `overrideFiles` becomes **role-tagged** (`BASE` / `PROFILE_VARIANT` /
+    `DECLARED`): a profile variant's `freeway.profile` is stripped just like the
+    classpath side, so `profiles()` and the resolved values can no longer diverge —
+    `AppConfig`'s "cannot disagree" promise had only been half-kept (classpath
+    side only).
+  - `AppBuilder.start()`'s **composition section moves into the try**: declaring
+    the same module class twice or a bad SPI provider throwing now also runs
+    `config.close()`; otherwise every "catch and retry" by the caller leaked a hot
+    reload watcher (thread + `WatchService`).
 
-- **`Coercer`：Number→boolean 不再按 `int` 截断判真假（freeway-commons）** — `0.5`、`0.9`、
-  `4294967296L`（2³²）这类"非零但整数部分为零"的值此前静默变成 `false`（实现是 `n.intValue() != 0`），
-  而同一文件的整数路径恰好把这个模式列为 corrupting data 并明令禁止。现在按精确十进制量值判定；两个非
-  有限来源保持已声明行为（NaN 为 false、±Infinity 为 true，后者原先靠饱和恰好为 true，现在显式写出）。
-  **行为变化**：`0.5` 由 `false` 变 `true`——这是一次静默错值的修正，不是口味调整。
-- **日志：读值策略统一、键名集中、MDC 不再预设应用字段（freeway-commons）** — 三处：
-  - 同一批 `freeway.log.file.*` 键此前在两条读路径上策略相反：框架路径把非法值静默换成默认值，原生注册的
-    `JULFileHandler` 直接抛。现统一为"**报出并回落**"：一行 `logEarly` 点名键名、原值与实际采用的默认值；
-    既不抛（抛会在 `LogManager` 实例化时丢掉整个 handler），也不静默（静默是笔误活过一周的方式）。
-  - `freeway.log.*` 的键名集中到 package-private `LogKeys`：此前 23 处字面量散在五个类，改名只会静默失配，
-    现在改一处、漏改即编译失败。
-  - `freeway.log.mdc.priority` 的默认值清空：框架不再把某个应用的字段名（`code,market,diagId`）当作自己的
-    默认值发布进文档；未配置时所有 MDC 键按字母序，要突出的键由应用用 `-D`/env 声明。
+- **`Coercer`: Number→boolean no longer judges truth by `int` truncation
+  (freeway-commons)** — values like `0.5`, `0.9` and `4294967296L` (2³²) —
+  "non-zero but with a zero integer part" — silently became `false` (the
+  implementation was `n.intValue() != 0`), while the same file's integer path
+  lists exactly this pattern as corrupting data and forbids it. The decision now
+  uses the exact decimal magnitude; the two non-finite sources keep their declared
+  behaviour (NaN false, ±Infinity true — the latter was true only by saturation
+  before, now stated explicitly). **Behaviour change**: `0.5` goes from `false` to
+  `true` — a fix of a silently wrong value, not a taste adjustment.
+- **Logging: one read policy, keys centralized, MDC no longer presumes
+  application fields (freeway-commons)** — three places:
+  - The same `freeway.log.file.*` keys previously had opposite policies on two
+    read paths: the framework path silently swapped invalid values for defaults,
+    while the natively-registered `JULFileHandler` threw outright. Unified as
+    "**report and fall back**": one `logEarly` line naming the key, the original
+    value and the default actually applied; neither throwing (which would lose the
+    whole handler at `LogManager` instantiation) nor silence (which is how a typo
+    survives a week).
+  - `freeway.log.*`'s key names centralize into the package-private `LogKeys`: 23
+    literals were previously scattered across five classes where a rename could
+    only silently misbind; now change one place, and a missed one fails to compile.
+  - `freeway.log.mdc.priority`'s default is emptied: the framework no longer
+    publishes some application's field names (`code,market,diagId`) as its own
+    default in the docs; unconfigured, all MDC keys sort alphabetically, and an
+    application declares the keys to highlight via `-D`/env.
 
-- **设计规则修订：兼容不是目标（全仓）** — 上一轮写进 `AGENTS.md` 的"记录作为适配器装配点时保留旧 arity 的
-  委托构造器"删除：它保护的是**已编译的调用点**，代价是每个新组件都在规范构造器旁留一条旧路径，读者永远
-  要问"该用哪个"。规则反过来——新增组件直接改变规范构造器的形状，**编译错误就是迁移路径**，`freeway-ext`
-  同批适配。随之清掉两处已发现的残留：
-  - `CloudHttpClientDefault.Wiring` 的 9 参委托构造器（"shutdown grace 之前的那一版形状"）删除，唯一调用点
-    （ext 的 `RemoteRpcContract`）改传 10 参。
-  - `freeway-log.properties` 的过渡读取删除：旧名只被**检测**、不被加载，`JULEnhancer.renamedFileNotice()`
-    在启动时打印改名提示——配置不被采纳，但绝不静默失效。契约由 `JULEnhancerLogSourceTest` 钉住。
-  同时明确**不删**的两处，因为它们不是 API 兼容，而是外部世界里已经存在的事实：迁移校验的双轨 checksum
-  （库里已记录的行、CRLF 检出）、`CoercerDefault` 的时长输入形式。
-  - **稳定的定义随之写明**（`AGENTS.md`）：稳定性落在**语义**上，不落在**形态**上——冻结的签名配上漂移的
-    行为是最坏的不稳定，它绕过编译器直达生产；适配是个"读得见"的问题，使用方（或 agent）只要能看到改了
-    什么就能跟上，所以变更记录属于变更本身。三条判据：行为变化必须在 CHANGELOG 里有"为什么"；形态变化必须
-    在编译器里响（**只有 clean 编译算验证**，陈旧 `target/` 会把它吞掉，`Wiring` 那次就是先假绿）；值得付
-    代价的破坏让调用方代码**更少或不变**，只换名字、加参数、搬概念的破坏是抖动而非进化。
+- **Design rule revision: compatibility is not a goal (whole repo)** — the
+  "records used as adapter assembly points keep an old-arity delegating
+  constructor" rule written into `AGENTS.md` last round is deleted: it protected
+  **already-compiled call sites** at the price of every new component leaving an
+  old path beside the canonical constructor, with readers forever asking "which
+  one should I use". The rule flips — adding a component changes the canonical
+  constructor's shape directly, **the compile error is the migration path**, and
+  `freeway-ext` adapts in the same batch. Two known residues are cleaned with it:
+  - `CloudHttpClientDefault.Wiring`'s 9-arg delegating constructor ("the shape
+    before shutdown grace") is deleted, and its only call site (ext's
+    `RemoteRpcContract`) passes 10 arguments.
+  - `freeway-log.properties`' transitional read is deleted: the old name is only
+    **detected**, never loaded, and `JULEnhancer.renamedFileNotice()` prints the
+    rename notice at startup — the config is not adopted, but it never fails
+    silently. The contract is pinned by `JULEnhancerLogSourceTest`.
+  Two things are explicitly **not** deleted, because they are not API
+  compatibility but facts that already exist in the outside world: migration
+  validation's dual-track checksum (rows already recorded in the database, CRLF
+  checkouts) and `CoercerDefault`'s duration input forms.
+  - **The definition of stability is written down alongside** (`AGENTS.md`):
+    stability lives in **semantics**, not in **shape** — a frozen signature with
+    drifting behaviour is the worst instability, bypassing the compiler straight
+    into production; adapting is a "visible" problem, since a consumer (or an
+    agent) can keep up as long as it can see what changed, so the change record
+    belongs to the change itself. Three criteria: a behaviour change must carry
+    its "why" in the CHANGELOG; a shape change must ring in the compiler (**only a
+    clean compile counts as verification** — a stale `target/` swallows it, as the
+    `Wiring` episode's false green showed); and a break worth paying for leaves
+    the caller's code **smaller or unchanged** — rename-only, add-an-argument,
+    move-a-concept breaks are churn, not evolution.
 
-- **`WebServer` 的构造器阶梯由 4/5/6 收成 4/6** — 包私有的 5 参构造器（只比 4 参多一个
-  `readinessProbe`）在仓库内已无任何调用者：core 的装配点（`HttpModule`、`WebServerBuilder`）都直接走
-  6 参，4 参为外部适配器保留。删掉它不改变任何行为，也让"公开 4 参 / 内部 6 参"的边界更清楚；
-  其余两项复核结论见 docs 审计记录（`HttpContextImpl.reset` 的 10 参与 `ServiceRegistry.drainWindow()`
-  经核实仍应保留）。
+- **`WebServer`'s constructor ladder narrows from 4/5/6 to 4/6** — the
+  package-private 5-arg constructor (one `readinessProbe` more than the 4-arg)
+  had no callers left in the repo: core's assembly points (`HttpModule`,
+  `WebServerBuilder`) all use the 6-arg form, and the 4-arg is kept for external
+  adapters. Deleting it changes no behaviour and makes the "public 4-arg /
+  internal 6-arg" boundary clearer; the other two review conclusions are in the
+  docs audit record (`HttpContextImpl.reset`'s 10-arg form and
+  `ServiceRegistry.drainWindow()` verified as still worth keeping).
 
 ### Added
 
 
-- **`@SubModule`（freeway-ioc）** — bundle 声明：模块类上列出随它一起放置的子模块（前序、按声明
-  顺序），构建树时展开成 `ModuleNode` 子树。`ModuleNode.of(Bundle.class)` 即整包；子模块是普通
-  模块，`ModuleNode.of(SubModule.class)` 即子集，因此不需要排除 API。`@SubModule` 成环在构建树
-  时报错。`CloudModule`（freeway-cloud）用它声明 8 个标准云模块，取代 `CloudModules.standard()`
-  工厂。
-- **`SslSettings` / `SslContexts`（freeway-http 根包）** — `freeway.http.ssl.*` 现在只声明一次：
-  `SslSettings.from(SymbolSource)` 读取全部 TLS 键（enabled / key-store(+password/type) /
-  trust-store(+password/type) / client-auth / protocols / ciphers / sni-directory / reload-interval /
-  http2）并做同一个三态判定（显式 true/false 优先，未设则看 keystore 是否存在，全空即明文）；
-  `SslContexts` 由内部 `SslContextFactory` 提升而来，公开 `build(SslSettings)` 与
-  `parameters(SslSettings)`（keystore/truststore 装载、SNI 多证书、协议与密码套件限制）。
-  此前这段"键读取 + 三态"在内置引擎的 `HttpModuleConfig` 与两个适配器里各写一遍；现在内置引擎、
-  Jetty、Undertow 共用同一份，`internal.HttpModuleConfig.Ssl` 与 `internal.SslContextFactory` 删除
-  （`SniKeyManager` 移入根包）。适配器只保留各自独有的键（Jetty 的 `ssl.key-password`/`key-alias`）。
-- **修复 `SymbolSource.systemProperties()` 的 SymbolSpec 解析**：该独立来源此前只有
-  `resolve(String)`，遇到按 `SymbolSpec` 读取的适配器会抛"has no parser"——容器路径正常、直接构造
-  失败。现在与容器链一致，内部接一个 `CoercerDefault` 走 `spec.parse(raw, coercer)`。
-- **给外部适配器复用的三个 core 缝隙** — 两个 HTTP 适配器（Jetty/Undertow）的归一化对比显示，
-  它们的重复里有三块并不含引擎 API，只是 core 对自家公开面缺少支撑，于是同一段逻辑存在三份
-  （含内置引擎一份）。现在下沉到 core：
-  - **`Compression`（freeway-http）** — `acceptsGzip(List<String>)` / `acceptsGzip(String)` +
-    `gzip(byte[])`。放在根包 `MediaTypes` 旁边（同样的理由：让内置引擎与外部适配器共用一份判定，
-    而不是各写一份字符串扫描）。语义统一为：缺头即"无偏好"不压缩、`gzip` 开启、`gzip;q=0` 拒绝、
-    `q` 参数名大小写不敏感、畸形 `q` 视为接受。此前内置引擎、Jetty 适配器、Undertow 适配器各有一份
-    `acceptsGzip`/`qValueIsZero`/`gzip`。
-  - **`AbstractWebSocketSession`（freeway-http.websocket）** — 会话的"请求标识 + exchange 元数据"
-    半边：correlationId/startTime/principal/attributes、method/path/pathVar(s)/queryParam(s)/header(s)，
-    映射一律做不可变深拷贝。实现者只再实现引擎相关的帧操作。与 `AbstractHttpContext` 对 HTTP 交换
-    的分工完全同构；内置引擎的 `WebSocketSessionImpl` 与两个适配器的会话都改继承它。
-  - **`SymbolSource.systemProperties()`（freeway-ioc）** — 只读 JVM 系统属性的独立来源（缺键时严格
-    访问器抛 `UnknownSymbolException`、宽松访问器回落默认值、`expand` 原样返回）。只有机制、不含任何
-    键名，因此放在 `SymbolSource` 上，而不是让每个"既有容器路径又要能独立构造"的适配器各写一遍
-    （此前 Jetty/Undertow/HikariCP 三份）。
-- **修复 `closeReason` 的 UTF-8 截断**：把关闭原因裁到 123 字节时按字节硬切，可能切在多字节字符中间，
-  替换字符（U+FFFD）回编码后是 3 字节，于是"裁到 123"反而可能重新超过 123 字节（实测 125 字节），
-  严格的对端会拒收。现在回退到码点边界，结果保证 ≤123 字节且不出现替换字符。两个适配器此前都有这个
-  缺陷，随共享实现一并修掉。
-- **`ModuleNode`（freeway-ioc）** — 模块组合的值类型：`app(name, …)` 应用根、`of(class | module)`
-  模块节点（自带声明：class 或实例）；一个模块类用 `@SubModule` 声明子模块时，`of` 展开为 bundle
-  子树，子模块仍可单独 `of` 放置取子集。
-  **常规写法是给 class**：`of(OrderModule.class)`、`app("orders", OrderModule.class,
-  HttpModule.class)`、`FreewayApp.run(OrderModule.class)`、`AppBuilder.add(Class…)` —— 类由组合
-  显式点名（没有任何扫描），经**无参构造在加载时**实例化；构造器带参数的模块才传实例
-  （`of(new TenantModule("acme"))`），因为模块的构造器承载的是配置而不是依赖（容器尚不存在，
-  没有东西可注入）。没有无参构造却按 class 声明时，在加载时报错并同时点名类与修法；同一个
-  class 声明两次与"同 class 两个实例"同样报错（修法：只声明一次，共享请用同一棵节点值）。
-  `bindOrder()` 给出模块节点的前序（节点自带 `type()` / `instance()` / `resolve()`），
-  `render()` / `children()` 给出结构，`classes()` 给 SPI 发现看"哪些 class 已在树里"，
-  `isApplication()` 让入口复用调用方建好的根。
-- **`Pool.invalidate(PooledConnection)`（freeway-db）** — 连接池 SPI 上的"销毁"语义：池必须物理
-  关闭该连接并释放它占用的槽位，而不是回收给下一个借用者。此前"这个连接不能再用了"无处表达，
-  只能 `conn.connection().close()`：对自建池恰好等于销毁，对交出代理的池（HikariCP）却只是
-  "回滚 + 重置状态 + 回收"，于是"状态无法复原的连接必须销毁"的三条路径（`Database.transaction`
-  的状态复原、`BatchQuery` 的 autoCommit 复原）在适配器下退化为静默回收。现在这三处改调
-  `invalidate`：`PoolDefault` 销毁并释放配额，`HikariPool` 走
-  `HikariDataSource.evictConnection`。已归还/已销毁的句柄是幂等空操作（清理路径可以放心调用），
-  外来句柄与 `release` 同样报错。`Pool` 的替代实现需跟进该方法。
+- **`@SubModule` (freeway-ioc)** — the bundle declaration: a module class lists
+  the submodules placed along with it (pre-order, in declaration order), expanded
+  into a `ModuleNode` subtree when the tree is built. `ModuleNode.of(Bundle.class)`
+  is the whole bundle; a submodule is an ordinary module, and
+  `ModuleNode.of(SubModule.class)` is the subset, so no exclusion API is needed. A
+  `@SubModule` cycle errors when the tree is built. `CloudModule` (freeway-cloud)
+  uses it to declare the 8 standard cloud modules, replacing the
+  `CloudModules.standard()` factory.
+- **`SslSettings` / `SslContexts` (freeway-http root package)** —
+  `freeway.http.ssl.*` is now declared once: `SslSettings.from(SymbolSource)`
+  reads all the TLS keys (enabled / key-store(+password/type) /
+  trust-store(+password/type) / client-auth / protocols / ciphers / sni-directory
+  / reload-interval / http2) and makes the same three-state decision (explicit
+  true/false wins; unset falls to keystore presence; all empty is plaintext);
+  `SslContexts` is promoted from the internal `SslContextFactory`, publishing
+  `build(SslSettings)` and `parameters(SslSettings)` (keystore/truststore loading,
+  SNI multi-certificate, protocol and cipher restriction). This "key reading +
+  three-state" block used to be written once in the built-in engine's
+  `HttpModuleConfig` and once in each of the two adapters; now the built-in engine,
+  Jetty and Undertow share one copy, and `internal.HttpModuleConfig.Ssl` and
+  `internal.SslContextFactory` are deleted (`SniKeyManager` moves into the root
+  package). Adapters keep only their own exclusive keys (Jetty's
+  `ssl.key-password`/`key-alias`).
+- **Fixed `SymbolSource.systemProperties()`'s SymbolSpec parsing**: the standalone
+  source previously had only `resolve(String)`, so an adapter reading via
+  `SymbolSpec` hit "has no parser" — the container path worked while direct
+  construction failed. It now matches the container chain, internally wiring a
+  `CoercerDefault` and going through `spec.parse(raw, coercer)`.
+- **Three core seams for external adapters to reuse** — a normalization comparison
+  of the two HTTP adapters (Jetty/Undertow) showed that three of their duplicated
+  blocks contained no engine API at all, only core lacking support for its own
+  public surface, so the same logic existed in three copies (the built-in engine's
+  included). They now sink into core:
+  - **`Compression` (freeway-http)** — `acceptsGzip(List<String>)` /
+    `acceptsGzip(String)` + `gzip(byte[])`. It sits beside the root package's
+    `MediaTypes` (the same reason: one negotiation shared by the built-in engine
+    and external adapters instead of each writing its own string scan). The
+    semantics unify as: a missing header means "no preference" and no compression,
+    `gzip` enables, `gzip;q=0` refuses, the `q` parameter name is case-insensitive,
+    and a malformed `q` counts as accepting. The built-in engine, the Jetty adapter
+    and the Undertow adapter each previously carried their own
+    `acceptsGzip`/`qValueIsZero`/`gzip`.
+  - **`AbstractWebSocketSession` (freeway-http.websocket)** — the session's
+    "request identification + exchange metadata" half: correlationId/startTime/
+    principal/attributes and method/path/pathVar(s)/queryParam(s)/header(s), with
+    maps always deep-copied immutably. Implementors add only the engine's frame
+    operations. It mirrors `AbstractHttpContext`'s division of labour for HTTP
+    exchanges exactly; the built-in engine's `WebSocketSessionImpl` and both
+    adapters' sessions switch to extending it.
+  - **`SymbolSource.systemProperties()` (freeway-ioc)** — a standalone source
+    reading only JVM system properties (strict accessors throw
+    `UnknownSymbolException` on a missing key, lenient accessors fall back to the
+    default, `expand` returns verbatim). Mechanism only, no key names, so it lives
+    on `SymbolSource` rather than being re-written by every adapter that has both
+    a container path and a standalone one (previously Jetty/Undertow/HikariCP, three
+    copies).
+- **Fixed `closeReason`'s UTF-8 truncation**: cutting the close reason to 123
+  bytes hard-split on bytes, which can land mid-multibyte-character; the
+  replacement character (U+FFFD) re-encodes to 3 bytes, so "cut to 123" could
+  itself exceed 123 bytes again (measured at 125), and a strict peer would reject
+  it. It now backs off to a code-point boundary, guaranteeing ≤123 bytes with no
+  replacement characters. Both adapters carried this defect, fixed along with the
+  shared implementation.
+- **`ModuleNode` (freeway-ioc)** — the value type of module composition:
+  `app(name, …)` for the application root, `of(class | module)` for module nodes
+  (each carrying its declaration: class or instance); when a module class declares
+  submodules with `@SubModule`, `of` expands the bundle subtree, and submodules can
+  still be placed alone via `of` for a subset.
+  **The conventional spelling is the class**: `of(OrderModule.class)`,
+  `app("orders", OrderModule.class, HttpModule.class)`,
+  `FreewayApp.run(OrderModule.class)`, `AppBuilder.add(Class…)` — the class is
+  named explicitly by composition (no scanning of any kind) and instantiated via
+  its **no-arg constructor at load time**; only a module whose constructor takes
+  parameters is placed as an instance (`of(new TenantModule("acme"))`), because a
+  module's constructor carries configuration, not dependencies (the container does
+  not exist yet, so there is nothing to inject). Declaring by class without a
+  no-arg constructor errors at load, naming the class and the fix; declaring the
+  same class twice, and two instances of one class, error the same way (the fix:
+  declare once, and share the same node value for reuse). `bindOrder()` gives the
+  module nodes' pre-order (each node carries `type()` / `instance()` /
+  `resolve()`), `render()` / `children()` give the structure, `classes()` shows
+  SPI discovery which classes are already in the tree, and `isApplication()` lets
+  entry points reuse a root the caller built.
+- **`Pool.invalidate(PooledConnection)` (freeway-db)** — the "destroy" semantics
+  on the connection-pool SPI: the pool must physically close the connection and
+  release its slot rather than recycle it to the next borrower. "This connection
+  can no longer be used" previously had no way to be expressed — the only option
+  was `conn.connection().close()`, which for a self-built pool happened to equal
+  destruction but for a pool handing out proxies (HikariCP) was only "rollback +
+  reset state + recycle", so the three paths that must destroy a connection whose
+  state cannot be restored (`Database.transaction`'s state restore, `BatchQuery`'s
+  autoCommit restore) degraded to silent recycling under adapters. All three now
+  call `invalidate`: `PoolDefault` destroys and releases the permit, and
+  `HikariPool` goes through `HikariDataSource.evictConnection`. Handles already
+  returned or destroyed are idempotent no-ops (cleanup paths may call freely), and
+  foreign handles error just like `release`. Alternative `Pool` implementations
+  need to follow with the method.
 
 ### Changed
 
-- **模块树收敛为单一类型 `ModuleNode`，bundle 由 `@SubModule` 声明，class 声明改为加载期实例化
-  （freeway-ioc + freeway-boot + freeway-cloud）** — 此前同一棵树有三套表示：
-  `ModuleNode` 包装通用 `TreeNode<ModuleEx>`，结构节点由实现 `ModuleEx` 的假模块 `GroupModule`
-  充当（`isStructural`、`classes()` 剔除、`bindOrder` 计入分组等补丁随之而来）；且 class 形态在
-  `of(Class)` 当场实例化，树里存的永远是实例。现在 `ModuleNode`
-  自己就是不可变树，只有两种节点：应用根（命名、不绑定）与模块节点（自带声明：class 或实例，
-  `type()` / `instance()` / `resolve()`），不再经过 `TreeNode`，也不再有假模块与"命名分组"——
-  一个库要打包多个模块时，bundle 类用 `@SubModule` 声明子模块，构建树时展开（静态元数据，不是
-  回调模块）；子模块是普通模块，可单独放置取子集，因此没有排除 API。`bindOrder()` 只含模块节点
-  （应用根不绑定，启动日志的模块数因此准确），结构展示由 `render()` 负责。class 声明不再在组合期
-  实例化：容器加载时（`BinderImpl.load`）对每个节点调 `resolve()` 才构造，此后才 `bind`。由此结构
-  校验（重复声明、双路径报错、`@SubModule` 环）先于任何用户构造器完成，class-only 的树/片段可被
-  多个容器重复加载、每次得到新模块；lambda/匿名模块是实例声明（捕获状态无法重建），照旧只按
-  identity 去重、不参与 class 身份规则。`ModuleNode.group(...)`、`of(…)` 三个工厂与 `tree()`
-  访问器删除，`ModuleNode.module()` 由 `type()` / `instance()` / `resolve()` 取代，无参构造失败
-  的报错从组合期移到加载期（信息不变）；`Freeway.create(Collection)`（仓库内无调用者）一并删除。
-  cloud 侧 `CloudModules.standard()` 工厂删除，恢复为 `CloudModule` + `@SubModule`（绑定全在子模块，
-  bundle 本身留作共享面）。`AppBuilder` 不再"攒 composed 列表再重建树"：直接累积子节点，应用根
-  最多一个（第二个显式失败，过去是静默嵌套），名字与子节点各归其位。发现路径的
+- **The module tree converges to the single type `ModuleNode`, bundles are
+  declared with `@SubModule`, and class declarations switch to load-time
+  instantiation (freeway-ioc + freeway-boot + freeway-cloud)** — the same tree
+  previously had three representations: `ModuleNode` wrapped a generic
+  `TreeNode<ModuleEx>`, structural nodes were played by the fake module
+  `GroupModule` implementing `ModuleEx` (with the `isStructural`, `classes()`
+  exclusion and `bindOrder`-counts-groups patches that followed); and the class
+  form instantiated at `of(Class)` immediately, so the tree always stored
+  instances. `ModuleNode` is now itself the immutable tree with exactly two node
+  kinds: the application root (named, binds nothing) and module nodes (each
+  carrying its declaration: class or instance, via `type()` / `instance()` /
+  `resolve()`) — no more `TreeNode`, no fake modules, no "named groups". A library
+  packaging several modules declares its submodules on the bundle class with
+  `@SubModule`, expanded at tree build (static metadata, not a callback module);
+  submodules are ordinary modules that can be placed alone for a subset, so there
+  is no exclusion API. `bindOrder()` contains only module nodes (the application
+  root binds nothing, so the startup log's module count is accurate), and
+  structural display belongs to `render()`. Class declarations no longer
+  instantiate at composition time: container load (`BinderImpl.load`) calls
+  `resolve()` per node to construct, and only then `bind`. Structural validation
+  (duplicate declarations, two-path errors, `@SubModule` cycles) therefore
+  completes before any user constructor runs, and class-only trees/fragments can
+  be loaded repeatedly by several containers, getting fresh modules each time;
+  lambda/anonymous modules are instance declarations (captured state cannot be
+  rebuilt) and keep being deduplicated by identity only, outside the class
+  identity rules. `ModuleNode.group(...)`, the three `of(…)` factories and the
+  `tree()` accessor are deleted, `ModuleNode.module()` is replaced by
+  `type()` / `instance()` / `resolve()`, and the no-arg-constructor failure moves
+  from composition time to load time (same message); `Freeway.create(Collection)`
+  (no callers in the repo) is deleted with them. On the cloud side the
+  `CloudModules.standard()` factory is deleted, restored to `CloudModule` +
+  `@SubModule` (all bindings live in the submodules; the bundle itself stays as
+  the shared face). `AppBuilder` no longer "accumulates a composed list and
+  rebuilds a tree": it accumulates children directly, with at most one application
+  root (a second fails explicitly, where it used to nest silently), and name and
+  children each keep their own place. The discovery path's
   `ServiceConfigurationError`
-  捕获范围同时修正：过去只包住循环体，而 provider 加载失败发生在 `hasNext()` / `next()`，带
-  classloader 上下文的报错在最常见失败路径上不会生效。
-- **`freeway-flow` 访问器命名 Freeway 化（破坏性）** — 移植自 solon-flow 的 52 个属性
-  JavaBean `getXxx()` 改为 bare accessor：`graph.nodes()` / `spec.title()` /
-  `node.meta(key)`；`FlowContext` 的 keyed lookup 保持 JDK `Map` 词汇
-  （`get` / `getAs` / `getOrDefault`）；`Plantuml*` 统一为
-  `PlantUml*`（含 `Graph.toPlantUml`）。JSON/图定义格式与运行时行为不变，纯命名对齐；上游
-  来源与署名保留在 `package-info`，并在其中注明"属性访问器已 Freeway 化"的有意分叉。
-- **公共面边缘清理（freeway-commons + freeway-ioc + freeway-boot）** — 随模块树收敛一起删掉
-  已无角色的公开成员：`TreeNode`（Unreleased 新增，模块树改值后 core 与 freeway-ext 零引用）
-  及其测试；`EventBus` 的 `enableInboundDeduplication(int)` / `disableInboundDeduplication()`
-  合并为 `inboundDeduplication(int)`（容量 ≤0 即关闭并释放窗口）；`FreewayApp.run()`（无参）
-  删除，用 `run(new String[0])`。`ModuleNode.app(String)` 保留：它是一参形式的歧义消解
-  （`app(String, ModuleNode...)` 与 `app(String, Class...)` 无法单靠 varargs 区分）。
-- **配置分类规则 + 逐键档位，并修正 16 处文档/样例不一致（docs/freeway-config.md）** — 配置面此前只有"决策键 /
-  默认最优 / 高级"三档，把声明键、机制键和静默调优键混在同一档里。现在写明规则本身：四个判据（没有合理默认？
-  默认只是开发姿态？只在关特性时才写？纯调优数字？）落到六档（**必填 / 决策 / 姿态 / 调优 / 声明 / 机制**），
-  再用形态后缀标注值从哪来（`·auto` / `·presence` / `·哨兵` / `·聚合闸`），126 行键表新增"档"列；新增
-  "配置文件怎么组织"一节：默认单文件 + profile 作环境轴，按模块拆分是可选约定（三条纪律，配 `ConfigMaps`
-  的跨文件重复键告警）。修正的不一致里三处照抄即错：日志文件调优键写成 `freeway.log.max-size`（真名在
-  `log.file.*` 下，静默失效）、prod JSON 样例的 `freeway.cloud.events.*`（真名
-  `freeway.cloud.event.*`，8 个键静默
-  失效）、dev 样例 `allowed-origins=*` 配 `allow-credentials=true`（`CorsFilter` 构造即抛异常）；prod
-  properties 样例的空 `db.username` 改为占位值。其余为类型与标注修正：`cors.max-age` 是 Integer、四个 CORS
-  键是 `List(String)`、`log.file.flush-interval` 是 Long；`ssl.key-store-password` 的"生产是必填"改为
-  "启用 TLS 时"（代码不预检）；删掉重复的 `db.query-timeout` 行；补上 `freeway.app.name` 与三个进程级键
-  （`-D app.name`、`-D slf4j.provider`、`NO_COLOR`）。日志章节改成实话：`log.color` / `log.mdc` /
-  `log.mdc.priority` / `log.caller-info` 只在 `-D`/环境变量生效，写进两个文件家都静默无效。
-- **新增 `ConfigDocsConsistencyTest`（freeway-boot）** — 从两个方向钉住配置面：样例里出现的每个 `freeway.*` 键
-  必须在 `docs/freeway-config.md` 有键行；文档里的每个键必须被某个模块的源码读得到（键的发现方式与框架一致：
-  字符串字面量，加 `PREFIX + "suffix"` 拼接的常量）。前者会在写下 `freeway.log.max-size` 这类名字时失败，
-  后者会在文档承诺一个没人读的旋钮时失败。仓库内运行时生效，模块单独构建时自动跳过。
+  catch scope is corrected at the same time: it used to wrap only the loop body,
+  while provider loading fails inside `hasNext()` / `next()`, so the
+  classloader-context error never fired on the most common failure path.
+- **`freeway-flow`'s accessors get Freeway naming (breaking)** — the 52 JavaBean
+  `getXxx()` property accessors ported from solon-flow become bare accessors:
+  `graph.nodes()` / `spec.title()` / `node.meta(key)`; `FlowContext`'s keyed
+  lookups keep the JDK `Map` vocabulary (`get` / `getAs` / `getOrDefault`); and
+  `Plantuml*` unifies as `PlantUml*` (including `Graph.toPlantUml`). The JSON/graph
+  definition format and runtime behaviour are unchanged — pure naming alignment;
+  the upstream source and attribution stay in `package-info`, which also notes the
+  deliberate fork of "property accessors have been Freeway-ized".
+- **Public-surface edge cleanup (freeway-commons + freeway-ioc + freeway-boot)** —
+  public members that lost their role go with the module-tree convergence:
+  `TreeNode` (added in Unreleased; zero references from core and freeway-ext once
+  the tree became values) and its tests; `EventBus`'s
+  `enableInboundDeduplication(int)` / `disableInboundDeduplication()` merge into
+  `inboundDeduplication(int)` (capacity ≤0 disables and releases the window); and
+  the no-arg `FreewayApp.run()` is deleted in favour of `run(new String[0])`.
+  `ModuleNode.app(String)` stays: it disambiguates the one-argument form
+  (`app(String, ModuleNode...)` and `app(String, Class...)` cannot be told apart
+  by varargs alone).
+- **Config classification rules + per-key tiers, and 16 doc/sample inconsistencies
+  fixed (docs/freeway-config.md)** — the config surface previously had only three
+  tiers ("decision keys / best default / advanced"), mixing declared keys,
+  mechanism keys and silent tuning keys in the same tier. The rule itself is now
+  written down: four questions (no reasonable default? the default is only a
+  development stance? only written when disabling a feature? a pure tuning
+  number?) map to six tiers (**required / decision / stance / tuning / declared /
+  mechanism**), with shape suffixes marking where a value comes from
+  (`·auto` / `·presence` / `·sentinel` / `·aggregate gate`) and a new "tier"
+  column on the 126-row key table; a new "how to organize config files" section:
+  one file by default + profiles as the environment axis, splitting per module is
+  an optional convention (three disciplines, paired with `ConfigMaps`' cross-file
+  duplicate-key warning). Three of the fixed inconsistencies were wrong when
+  copied verbatim: the log file tuning key was written as `freeway.log.max-size`
+  (the real name lives under `log.file.*`, silently ineffective), the prod JSON
+  sample's `freeway.cloud.events.*` (the real name is `freeway.cloud.event.*`;
+  8 keys silently dead), and the dev sample pairing `allowed-origins=*` with
+  `allow-credentials=true` (`CorsFilter` throws at construction); the prod
+  properties sample's empty `db.username` becomes a placeholder. The rest are type
+  and annotation fixes: `cors.max-age` is an Integer, the four CORS keys are
+  `List(String)`, `log.file.flush-interval` is a Long; `ssl.key-store-password`'s
+  "required in production" becomes "when TLS is enabled" (the code does not
+  pre-check); the duplicated `db.query-timeout` row is deleted; and
+  `freeway.app.name` plus three process-level keys (`-D app.name`,
+  `-D slf4j.provider`, `NO_COLOR`) are added. The logging section now tells the
+  truth: `log.color` / `log.mdc` / `log.mdc.priority` / `log.caller-info` work
+  only via `-D`/environment variables and are silently ineffective in either file
+  home.
+- **The new `ConfigDocsConsistencyTest` (freeway-boot)** — pins the config surface
+  from two directions: every `freeway.*` key appearing in a sample must have a key
+  row in `docs/freeway-config.md`, and every key in the doc must be readable by
+  some module's source (keys are discovered the same way the framework reads them:
+  string literals, plus constants composed as `PREFIX + "suffix"`). The former
+  fails when someone writes a name like `freeway.log.max-size`; the latter fails
+  when the document promises a knob nobody reads. It runs inside the repo and
+  skips automatically when a module builds alone.
 
-- **注册身份的 `auto` 推导：scheme / host / drain（freeway-cloud + freeway-http）** — 三个键的默认值都改成
-  `auto`，因为它们的正确值在这台机器上才成立、静态写不出来；三者都在启动日志里说明选了哪个：
-  - **`registry.service-scheme`**：新增 `WebServer.secure()`（`HttpModule` 传入解析后的 SSL 判决，
-    `WebServerBuilder` 传入是否提供了 `SSLContext`），`auto`（默认）跟随 HTTP 服务器是否启用 TLS。
-    注册的 `http/https` 与事件网格拨号的 `ws/wss` 现在出自**同一次推导**（网格读的是 `HttpServiceDeclaration`
-    解析出的实例端点）——此前默认硬编码 `http`，启用 TLS 后忘改这个键就会注册 `http://` 并且网格明文拨号，
-    只有"配了 token 又用 ws"这一种组合会告警。显式值只接受 `http`/`https`，其它值启动失败点名键。
-  - **`registry.service-host`**：`auto`（默认）在服务器绑定具体地址时就用该地址（它只在那里监听），绑定
-    `0.0.0.0`/`::` 时优先 `POD_IP`、其次首个可路由本地地址（IPv4，排除回环/链路本地/any），都没有才回落
-    绑定地址并保留原有的不可路由告警。多网卡主机显式点名，推导不猜。
-  - **`registry.shutdown-drain`**：`auto`（默认）由注册表后端回答——新增
-    `ServiceRegistry.drainWindow()` 默认方法（默认 `0s`）：内置进程内注册表答 0，适配器答自己的传播窗口。
-    此前文档只能要求"用注册中心时手配 5s"，现在由真正知道这个数的后端回答；显式时长优先，负值启动失败。
-  - 破坏性：无（三者都是默认值变更 + 新增默认方法与访问器；显式配置行为不变）。
+- **`auto` derivation of registered identity: scheme / host / drain
+  (freeway-cloud + freeway-http)** — three keys' defaults become `auto`, because
+  their correct values only hold on this machine and cannot be written statically;
+  all three say which choice they made in the startup log:
+  - **`registry.service-scheme`**: the new `WebServer.secure()` (`HttpModule`
+    passes the resolved SSL verdict; `WebServerBuilder` passes whether an
+    `SSLContext` was provided), and `auto` (the default) follows whether the HTTP
+    server has TLS. The registration's `http/https` and the event mesh's dial
+    `ws/wss` now come from **one derivation** (the mesh reads the instance
+    endpoint resolved by `HttpServiceDeclaration`) — the default used to be
+    hard-coded `http`, so enabling TLS and forgetting this key registered
+    `http://` and dialed the mesh in plaintext, with only the "token configured
+    but using ws" combination warning. Explicit values accept only
+    `http`/`https`; anything else fails startup naming the key.
+  - **`registry.service-host`**: `auto` (the default) uses the bound address when
+    the server binds a specific one (it listens only there); for `0.0.0.0`/`::`
+    bindings it prefers `POD_IP`, then the first routable local address (IPv4,
+    excluding loopback/link-local/any), falling back to the bound address with the
+    original not-routable warning only when neither exists. Multi-NIC hosts name
+    it explicitly; the derivation does not guess.
+  - **`registry.shutdown-drain`**: `auto` (the default) is answered by the
+    registry backend — the new `ServiceRegistry.drainWindow()` default method
+    (default `0s`): the built-in in-process registry answers 0, and adapters
+    answer their own propagation window. The docs previously could only demand
+    "hand-configure 5s when using a registry"; now the backend that actually knows
+    the number answers. An explicit duration wins, and a negative fails startup.
+  - Breaking: none (all three are default changes + new default methods and
+    accessors; explicit configuration behaves as before).
 
-- **日志专用配置文件更名：`freeway-log.properties` → `freeway-logging.properties`（freeway-commons）** — 新名是唯一
-  正式名字，放在 classpath 根；旧名**不再被读取**——文件仍留在 classpath 根时启动打一行 stderr 告警并指明改名
-  （配置不被采纳，但也不静默失效）。参考模板同步更名 `docs/freeway-logging.properties.reference`。同时改正"所有日志键都能住进
-  文件"的说法：`freeway.log.color` / `.mdc` / `.mdc.priority` / `.caller-info` 四项只在 `-D`/环境变量生效
-  （它们在类加载期读取，早于文件解析），模板与文档都按此标注。
+- **The log-specific config file is renamed: `freeway-log.properties` →
+  `freeway-logging.properties` (freeway-commons)** — the new name is the only
+  official one, at the classpath root; the old name is **no longer read** — while
+  the file remains at the classpath root, startup prints one stderr warning naming
+  the rename (the config is not adopted, but it does not fail silently either).
+  The reference template is renamed to
+  `docs/freeway-logging.properties.reference` in step. The "every log key can live
+  in a file" claim is corrected too: `freeway.log.color` / `.mdc` /
+  `.mdc.priority` / `.caller-info` work only via `-D`/environment variables (they
+  are read at class-load time, before any file parsing), and both the template and
+  the docs say so.
 
-- **文档：freeway-cloud 四份设计文档合并为 `docs/freeway-cloud-design.md`** — `freeway-cloud-unified-design.md`
-  （总设计）、`freeway-cloud-events-design.md`、`freeway-cloud-rpc-design.md`、`freeway-cloud-implementation-plan.md`
-  四份文档互有重复且已出现实质矛盾（总设计头部宣布"不做方法级 RPC"、§10 又把它排除在排除之外；hook 顺序与
-  events/rpc 两份及代码不符；去重位置写成拦截器而非 `EventBus.publishInbound`；错误映射表缺
-  `INTERRUPTED`/`DISPATCH`/`OTHER`）。现在合成一份设计基线：定位与原则、模块与装配、核心对象、九项能力设计
-  （含线上协议表与 `kind()` 全表）、配置键形态、明确不做、路线图、修订记录；四份旧文档删除，仓库内引用
-  （`DEVELOPER-GUIDE`、`freeway-config`、`RemoteCaller`/`RpcExport` javadoc）改指新文档。逐键清单不再复制，
-  统一指向 `docs/freeway-config.md` 以免两处漂移；已交付的 Phase 0–8 任务清单只保留交付标准与回归清单，
-  仍然有效的排除项（MQ 语义、全局成员视图、webhook 出站、`@CloudEvent` 注解实体）与 core 后续项并入
-  §7/§8；同时补上此前未记录的能力边界（无应用层心跳、网格无背压、指标无标签、readiness 未发布到注册表）。
+- **Docs: freeway-cloud's four design documents merge into
+  `docs/freeway-cloud-design.md`** — `freeway-cloud-unified-design.md` (the master
+  design), `freeway-cloud-events-design.md`, `freeway-cloud-rpc-design.md` and
+  `freeway-cloud-implementation-plan.md` overlapped heavily and had drifted into
+  real contradictions (the master design declared "no method-level RPC" at the top
+  while §10 excluded it from the exclusions; hook ordering disagreed with both
+  other documents and the code; dedup was placed in the interceptor rather than
+  `EventBus.publishInbound`; the error mapping table lacked
+  `INTERRUPTED`/`DISPATCH`/`OTHER`). They now merge into one design baseline:
+  positioning and principles, modules and assembly, core objects, nine capability
+  designs (including the wire protocol table and the full `kind()` table), config
+  key shape, explicit non-goals, roadmap, revision log; the four old documents are
+  deleted and in-repo references (`DEVELOPER-GUIDE`, `freeway-config`,
+  `RemoteCaller`/`RpcExport` javadoc) point at the new one. The per-key list is no
+  longer duplicated and uniformly points at `docs/freeway-config.md` so the two
+  cannot drift; the delivered Phase 0–8 task lists keep only their acceptance
+  criteria and regression lists, the still-valid exclusions (MQ semantics, a
+  global membership view, webhook outbound, the `@CloudEvent` annotation entity)
+  and core follow-ups fold into §7/§8, and the previously unrecorded capability
+  boundaries are added (no application-layer heartbeat, no mesh backpressure, no
+  metric labels, readiness not published to the registry).
 
-- **文档：AGENTS.md 成为唯一约定源，架构下沉 docs/ARCHITECTURE.md（仓库根）** — `CLAUDE.md` 与
-  `AGENTS.md` 此前是两份自动加载的指导文件，内容互有重叠。现在分成两层，每层一个家：
-  **`AGENTS.md`**＝仓库级**约定**（构建、模块地图、命名、设计规则、测试、回归清单、提交规则、阅读清单）；
-  **`docs/ARCHITECTURE.md`**＝**架构与内部机制**（依赖图、各模块边界、注入注解、配置级联机制、生命周期），
-  README/AGENTS/指南按需指向它，**不自动加载**以免每次对话都带上。配套清理：DEVELOPER-GUIDE 的
-  "Naming Rules"/"Code Style" 两节（同一批规则的第三份副本）合并为一行指向 AGENTS.md 的指针，并修掉
-  其中引用的不存在类型 `RequestContext`；设计文档与 README 中"遵循 CLAUDE.md"的引用改指
-  ARCHITECTURE.md/AGENTS.md。`CLAUDE.md` 最终删除，见 Removed。
+- **Docs: AGENTS.md becomes the single convention source, and architecture sinks
+  into docs/ARCHITECTURE.md (repo root)** — `CLAUDE.md` and `AGENTS.md` were both
+  auto-loaded guidance files with overlapping content. They now split into two
+  layers, one home each: **`AGENTS.md`** = repo-level **conventions** (build,
+  module map, naming, design rules, testing, regression watchlist, commit rules,
+  further reading); **`docs/ARCHITECTURE.md`** = **architecture and internals**
+  (dependency graph, module boundaries, injection annotations, the config cascade
+  mechanism, lifecycle), pointed to as needed by README/AGENTS/guides and **not
+  auto-loaded**, so conversations do not carry it every time. Accompanying
+  cleanup: DEVELOPER-GUIDE's "Naming Rules"/"Code Style" sections (a third copy of
+  the same rules) merge into a one-line pointer to AGENTS.md, fixing the
+  nonexistent `RequestContext` type they referenced; the "follow CLAUDE.md"
+  references in design docs and READMEs now point at
+  ARCHITECTURE.md/AGENTS.md. `CLAUDE.md` is ultimately deleted — see Removed.
 
-- **API 审计落实：失败判别、注册表心跳契约、网格 TLS（freeway-cloud）** — 三处 API 设计问题与一条
-  成文规则：
-  - **`CloudException.Kind`**：`noInstance`/`circuitOpen`/`rateLimited` 此前字段完全相同，只有 message
-    文本不同——调用方要区分"服务没部署"与"熔断打开"（运维动作不同）只能做字符串匹配，设计文档 §6
-    那张错误表在代码里不可达。现每个失败带 `kind()`（`NO_INSTANCE`/`CIRCUIT_OPEN`/`RATE_LIMITED`/
-    `CONNECT`/`TIMEOUT`/`TRANSPORT`/`INTERRUPTED`/`HTTP`/`BUSINESS`/`REPLY_UNREADABLE`/`REJECTED`/
-    `DISPATCH`/`OTHER`，一个值对应一种调用方动作），并由 `business(...)`/`unreadableReply(...)`/
-    `rejected(...)` 三个具名工厂取代原先三处 `of(...)` 的通用调用。破坏性：无（新增访问器与工厂，
-    `of(...)` 保留给扩展作者，kind 为 `OTHER`）。
-  - **`ServiceRegistry.renew` 返回 boolean**（SPI 破坏性）：此前返回 void 且在条目已被淘汰时**静默
-    无操作**（契约未说明），于是心跳 hook 只能额外发一次 discovery 查询自检——适配器后端每 10s 多
-    一次网络往返。现 `renew` 回答"注册表是否仍然持有该实例"，hook 据此自愈（不在了就重新注册并计入
-    readiness 打击数），不再发第二次查询。实现者必须如实回答：返回 true 而实际不持有，等于让调用方
-    以为自己可达。ext 无该 SPI 实现，无需改动。
-  - **网格出站 TLS**：`TransportSecurity` 自称 outbound transport security，但此前只有 RPC 客户端
-    遵守它，事件网格自建 `HttpClient` 不接 TLS 配置——于是 wss 拨号拿不到客户端身份。现
-    `PeerConnector` 用同一份 `TransportSecurity` 的 `SSLContext` 建客户端（可选依赖：不装 RPC 模块
-    时退回 JDK 默认），角色文档写明"两条出站腿共用一个身份"与"启动期解析一次，轮换需重启"。
-  - **文档**：API 形状规则写入 `AGENTS.md` 的设计规则（当时还在 `CLAUDE.md`）——一到两个可选参数用
-    逐级 javadoc 的重载阶梯，三个以上用参数记录（`defaults()` + withers）。同批写入的"记录作为适配器装配点
-    时保留旧 arity 的委托构造器"（ext 引擎测试被这一点打断过一次）**已被推翻**：保留旧形状的代价是每个新
-    组件都多一条路径，见 Changed 首条的规则修订。
+- **API audit landed: failure discrimination, the registry heartbeat contract, and
+  mesh TLS (freeway-cloud)** — three API design issues and one written rule:
+  - **`CloudException.Kind`**: `noInstance`/`circuitOpen`/`rateLimited` previously
+    had identical fields and differed only in message text — a caller telling
+    "the service is not deployed" from "the circuit is open" (different
+    operational actions) had to string-match, and the design doc §6 error table
+    was unreachable in code. Every failure now carries a `kind()`
+    (`NO_INSTANCE`/`CIRCUIT_OPEN`/`RATE_LIMITED`/`CONNECT`/`TIMEOUT`/`TRANSPORT`/
+    `INTERRUPTED`/`HTTP`/`BUSINESS`/`REPLY_UNREADABLE`/`REJECTED`/`DISPATCH`/
+    `OTHER`, one value per caller action), and three named factories
+    `business(...)`/`unreadableReply(...)`/`rejected(...)` replace the three
+    generic `of(...)` calls. Breaking: none (new accessor and factories;
+    `of(...)` stays for extension authors, with kind `OTHER`).
+  - **`ServiceRegistry.renew` returns boolean** (an SPI break): it used to return
+    void and **silently no-op** when the entry was already evicted (the contract
+    did not say), forcing the heartbeat hook to spend an extra discovery query to
+    self-check — one more network round trip every 10 s per adapter backend. Now
+    `renew` answers "does the registry still hold this instance", the hook heals
+    from it (re-registering when gone, counting it against the readiness strikes),
+    and no second query is sent. Implementors must answer honestly: returning true
+    while not holding the entry tells the caller it is reachable when it is not.
+    ext has no implementation of this SPI, so nothing to change.
+  - **Mesh outbound TLS**: `TransportSecurity` calls itself outbound transport
+    security, but only the RPC client honoured it — the event mesh built its own
+    `HttpClient` without TLS config, so wss dials had no client identity.
+    `PeerConnector` now builds its client from the same `TransportSecurity`'s
+    `SSLContext` (an optional dependency: without the RPC module it falls back to
+    the JDK default), and the role doc states "both outbound legs share one
+    identity" and "resolved once at startup; rotation needs a restart".
+  - **Docs**: the API shape rule enters `AGENTS.md`'s design rules (then still in
+    `CLAUDE.md`) — one or two optional parameters use a documented overload
+    ladder, three or more use a parameter record (`defaults()` + withers). The
+    same batch's "records used as adapter assembly points keep an old-arity
+    delegating constructor" (which once broke ext's engine tests) **is later
+    overturned**: keeping old shapes costs a path per new component — see the rule
+    revision in Changed's first item.
 
-- **API 一致性：贡献 id 命名空间、网格内部面收窄、`@Local` 覆盖补齐（freeway-cloud）** — 三处
-  与框架既有规则不一致的地方：
-  - **贡献 id**：控制器/路由 id 此前混用裸名（`metrics`、`health-live`、`health-ready`、
-    `cloud-event`、`trace`、`baggage`、`http`）与点分名（`freeway.cloud.rpc`）。id 是**每种扩展类型
-    一个全局命名空间**且重复即启动失败，裸名会让应用给一条**不同路径**的路由起名 `metrics` 时莫名
-    启动失败。现框架侧一律 `freeway.cloud.*`（`freeway.cloud.metrics`、`freeway.cloud.health.live`、
-    `freeway.cloud.event`、`freeway.cloud.propagation.trace`/`.baggage`、
-    `freeway.cloud.declaration.http`）；"抢占框架路由"的意图仍由**重复路径**与**重复主绑定**响亮拒绝
-    （`Duplicate route detected: GET /metrics` / `AmbiguousBindingException`），语义比"重复 id"清楚。
-    破坏性：以裸 id 作 `before`/`after` 锚点的代码需改名（仓库内无此类锚点）。
-  - **网格内部面**：`PeerConnector`、`CloudEventSink` 收窄为包私有；`PeerHub`/`PeerConnection` 只保留
-    **检查面**为 public——`connections()`/`origin()`/`serviceId()` 与连接的只读访问器加 `close()`——
-    `wire`/`addInterceptor`/`register`/`unregister`/`token`/`subscriptions`/`receive`/`codec`/`send`/
-    `matches` 全部回到包内（此前它们只是顺带 public）。类文档写明公开面就是检查面。
-  - **`@Local` 标记**：凡"有内置实现、可被适配器 `.primary()` 替换"的角色都应带该标记（它同时是
-    注入点限定符与后端守卫的判据）。`Metrics` 与 `TransportSecurity` 此前漏了，现补上。
-- **停机收尾：drain 窗口 + 在飞调用优雅结束 + 网格告别帧（freeway-cloud）** — 此前摘除注册与关闭
-  socket 之间没有任何间隔，滚动更新时仍持有该端点的负载均衡会打到已关闭的连接；出站在飞调用则被
-  `close()` 直接以异常失败（对端可能已经执行）。现在：
-  - `freeway.cloud.registry.shutdown-drain`（Duration，默认 `0s`）：停机时**先发信号**——readiness 置
-    `draining`（探针驱动的 LB 立刻把实例摘出）并摘除注册（注册中心驱动的 LB 同样立刻停止投递）——
-    然后继续服务这段时间再让 HTTP 服务停止。默认 `0s` 对内置进程内注册表是正确的（同一 JVM 内
-    没有传播延迟），适配器部署把它设成后端传播窗口；
-  - `freeway.cloud.rpc.shutdown-grace`（Duration，默认 `5s`）：`CloudHttpClient.close()` 先停止接纳
-    新调用（同步与异步一视同仁），再等已在飞的调用结束，超过窗口仍未完结的才以
-    `CloudHttpClient is closed` 失败并 WARN 记录剩余数量。空转进程立即关闭——没有在飞调用就没有等待；
-  - 网格客户端停机时先发 WebSocket `1001 going away`（最多等 200ms，对端已消失则由 abort 兜底），
-    对端据此区分"节点要走了"与"连接坏了"（服务端 session 本就发 close 帧）。
-  - 破坏性：无（只新增两个高级档配置键）。
+- **API consistency: contribution id namespaces, the mesh's internal surface
+  narrows, and `@Local` coverage completes (freeway-cloud)** — three places
+  inconsistent with the framework's existing rules:
+  - **Contribution ids**: controller/route ids mixed bare names (`metrics`,
+    `health-live`, `health-ready`, `cloud-event`, `trace`, `baggage`, `http`) with
+    dotted names (`freeway.cloud.rpc`). An id is **one global namespace per
+    extension type** and a duplicate fails startup, so a bare name meant an
+    application naming a **different path's** route `metrics` would fail startup
+    inexplicably. The framework side is now uniformly `freeway.cloud.*`
+    (`freeway.cloud.metrics`, `freeway.cloud.health.live`, `freeway.cloud.event`,
+    `freeway.cloud.propagation.trace`/`.baggage`,
+    `freeway.cloud.declaration.http`); the intent of "pre-empting a framework
+    route" is still rejected loudly by a **duplicate path** and a **duplicate
+    primary binding** (`Duplicate route detected: GET /metrics` /
+    `AmbiguousBindingException`), clearer semantics than "duplicate id".
+    Breaking: code anchoring `before`/`after` on bare ids needs renaming (no such
+    anchors exist in the repo).
+  - **The mesh's internal surface**: `PeerConnector` and `CloudEventSink` narrow to
+    package-private; `PeerHub`/`PeerConnection` keep only the **inspection face**
+    public — `connections()`/`origin()`/`serviceId()` and the connections' read-only
+    accessors plus `close()` — while `wire`/`addInterceptor`/`register`/
+    `unregister`/`token`/`subscriptions`/`receive`/`codec`/`send`/`matches` all
+    return to the package (they had only been public incidentally). The class docs
+    state that the public face is the inspection face.
+  - **The `@Local` marker**: every role with "a built-in implementation that an
+    adapter can `.primary()` away" should carry it (it is both an injection-point
+    qualifier and the backend guard's criterion). `Metrics` and `TransportSecurity`
+    had been missing it; now added.
+- **Shutdown finishing: a drain window + graceful in-flight calls + the mesh's
+  goodbye frame (freeway-cloud)** — there used to be no gap between deregistering
+  and closing the socket, so a load balancer still holding the endpoint during a
+  rolling update hit closed connections; outbound in-flight calls failed outright
+  with an exception from `close()` (the peer may already have executed). Now:
+  - `freeway.cloud.registry.shutdown-drain` (Duration, default `0s`): shutdown
+    **signals first** — readiness flips to `draining` (probe-driven LBs pull the
+    instance immediately) and the registration is removed (registry-driven LBs
+    also stop routing at once) — then serves for this window before the HTTP
+    server stops. The default `0s` is right for the built-in in-process registry
+    (no propagation delay within one JVM); adapter deployments set it to the
+    backend's propagation window.
+  - `freeway.cloud.rpc.shutdown-grace` (Duration, default `5s`):
+    `CloudHttpClient.close()` first stops accepting new calls (sync and async
+    alike), then waits for in-flight calls to finish; anything still unfinished
+    past the window fails with `CloudHttpClient is closed` and a WARN logs the
+    remaining count. An idle process closes immediately — no in-flight calls, no
+    wait.
+  - The mesh client sends WebSocket `1001 going away` at shutdown (waiting up to
+    200 ms, with abort as the fallback when the peer is already gone), so the peer
+    can tell "this node is leaving" from "the connection broke" (the server's
+    session already sends a close frame).
+  - Breaking: none (only two advanced-tier config keys are added).
 
-- **`@Local` 去掉类级位置（freeway-cloud，编译期收紧）** — 与 `@Marker`/`@Primary`/`@Builtin` 同一
-  判据：`@Local` 的 `TYPE` 没有任何读取方（类上的框架 marker 由 ioc 的 `MarkerIndex` 读取，而它
-  不能认识 cloud 的注解），写在实现类上会**编译通过却静默无效**。现只保留注入点位置
-  （`PARAMETER`/`FIELD`，经 marker 索引读取）；标记实现请用绑定侧
-  `.marker(Local.class)` 或模块级 `@Marker(Local.class)`。加测试钉住位置集合。
-- **文档：区分"声明键"与"选择键"（freeway-cloud）** — `freeway.cloud.*.type` 四个键保留，但
-  文档此前没有说清它们**不选择实现**：框架不做类名反射加载、不做 classpath 扫描，真正决定实现的
-  是 `.primary()` 绑定 / `@Local` 标记 / 适配器模块；`*.type` 只是"我期望用哪个后端"的声明，由
-  适配器消费，并在"声明了外部后端而本地实现仍活跃"时启动告警一次（`BackendTypeGuard`）。
-  `freeway-config.md`（两类键对照表）、DEVELOPER-GUIDE、cloud 设计文档三处同步。
-- **文档：静态文件的校验器契约（freeway-http）** — 缓存头取自请求开始时的探测、正文在其后打开，
-  因此并发替换的窗口里可能"正文与 ETag 不同代"。这是 stat-then-sendfile 的固有 TOCTOU，本框架
-  **有意保留**（路径在使用时重新解析以守住挂载根，防符号链接换链）；它会自洽收敛：下一次
-  `If-None-Match`/`If-Range` 对照的是当时的文件。契约现已写在 `serve(...)` 的 javadoc 里，
-  不再是一句无法兑现的注释。
+- **`@Local` drops the class-level placement (freeway-cloud, a compile-time
+  tightening)** — the same criterion as `@Marker`/`@Primary`/`@Builtin`: nothing
+  reads `@Local`'s `TYPE` (framework markers on classes are read by ioc's
+  `MarkerIndex`, which cannot know cloud's annotations), so on an implementation
+  class it **compiled and silently did nothing**. Only the injection-point
+  placements remain (`PARAMETER`/`FIELD`, read through the marker index); to mark
+  an implementation use the binding-side `.marker(Local.class)` or the module-level
+  `@Marker(Local.class)`. A test pins the placement set.
+- **Docs: distinguishing "declared keys" from "selection keys" (freeway-cloud)** —
+  the four `freeway.cloud.*.type` keys stay, but the docs never made clear that
+  they **do not select implementations**: the framework does no reflective
+  class-name loading and no classpath scanning; what actually decides the
+  implementation is a `.primary()` binding / the `@Local` marker / the adapter
+  module; `*.type` is only a declaration of "which backend I expect", consumed by
+  the adapter, which warns once at startup when "an external backend is declared
+  while the local implementation is still active" (`BackendTypeGuard`). Three
+  places sync: `freeway-config.md` (the two-key-kind comparison table), the
+  DEVELOPER-GUIDE and the cloud design doc.
+- **Docs: the static file validator contract (freeway-http)** — the cache headers
+  come from the probe taken at the start of the request and the body opens
+  afterwards, so in the concurrent-replacement window "the body and the ETag can
+  be from different generations". This is the inherent TOCTOU of
+  stat-then-sendfile, which the framework **deliberately keeps** (the path is
+  re-resolved at use time to hold the mount root, defending symlink swaps); it
+  converges on its own: the next `If-None-Match`/`If-Range` compares against the
+  file as it is then. The contract is now in `serve(...)`'s javadoc rather than a
+  comment that could not be honored.
 
-- **远程调用收敛为一条显式通道（freeway-cloud，破坏性）** — provider 声明导出、consumer
-  在组合根绑类型化客户端，位置（本地实现还是远端）是**组合**的事实而不是运行期的猜测：
-  - 导出是一条数据贡献：`binder.contribute(RpcExport.class).add(RpcExport.of("user",
-    UserHandlers.class))`（可选 `.propagateMessages()`）；框架贡献**一条**
-    `/rpc/{mapping}/{method}` 通配路由与一个 `.before(HTTP_SERVER)` 装配 hook，hook 从容器解析
-    handler（注入、单例、生命周期归容器）并建方法派发表，请求直接调用它——中间没有注册表，
-    也就没有"端点查一条、客户端查另一条"的可能；
-  - 启动期能查的全查并**点名失败**：重复 mapping、导出类型未绑定（消息给出要补的
-    `binder.bind(...)`）、handler 方法重载（位置参数无法区分重载）；
-  - consumer 侧：`RemoteProxyFactory.of(caller).serviceId(..).mapping(..).build(Api.class)`
-    绑到接口上，业务代码照旧 `@Inject Api`；`RemoteCaller` 仍由框架绑定，直接调用与每调用
-    预算走它的 `invoke` 重载；
-  - 线协议不变（路径、位置参数数组、版本头、异常头全不动），幂等门/错误映射/韧性/传播不变。
-  - 破坏性：`RpcEndpoint.of(mapping, bus, codec[, propagateMessage])` 删除（v2 起）；
-    `RemoteProxyFactory.of(callBus, caller)` → `of(caller)`，`Mode`/`localFirst()`/`remoteOnly()`
-    删除（只剩远端一种模式）；独立组装（ext 引擎的 `RouteIndex`、自定义挂载）改用容器无关的
-    `RpcEndpoint.route(RpcExport, handler, JsonCodec)`——它接收已拿到的 handler 实例，不再需要
-    假容器或总线。freeway-ext 的 Undertow/Jetty RPC 集成测试同步迁移；应用迁移见 DEVELOPER-GUIDE。
-- **路由重复规则统一（freeway-http，行为变更）** — WebSocket 路由此前在 `WebSocketIndex` 里按 path 去重，
-  规则是"显式路由覆盖组展开的同名路由"，而 HTTP 路由在 `RouteIndex` 里对同 method+path 直接
-  **启动失败**——同一个框架、同一棵 trie，两条相反的规则。现统一为**重复即失败**：组展开的与显式声明的
-  路由撞 method+path 时抛 `IllegalStateException`，不再有一方静默胜出（与"启动失败而不是静默跳过"的
-  既有原则、以及 RPC 导出重复 mapping 的处理一致）。`WebSocketIndex` 因此退化为薄适配——组先展开、
-  个体随后，一起进同一个 trie——少一个概念、少一处特例；两侧各加一个测试钉住碰撞行为。
-- **注解 `@Target` 只声明有读取方的位置（freeway-ioc，编译期收紧）** — `@Marker`/`@Primary` 的 METHOD、
-  `@Builtin` 的 TYPE 没有任何读取方（容器没有 producer-method 绑定；`@Builtin` 的落点是模块级
-  `@Marker(Builtin.class)` 或 `.marker(...)`）：写在方法上、类上此前**编译通过但静默无效**。现从
-  `@Target` 移除，误用变成编译错误；新增测试把三个注解的位置集合钉住，避免再长出无读取方的位置。
-- **`StaticAsset` 去掉只写不读的 meta 组件（freeway-http）** — 缓存头来自服务前的 `ResourceSource.meta()`
-  探测，`load()` 返回的 meta 从未被读取；`DirectoryResourceSource.load` 里"文件在探测与读取之间变了就
-  刷新元数据，好让 ETag/Last-Modified 与所发字节一致"的注释因此是假的（刷新出的 meta 立刻被丢弃）。
-  删掉该组件与刷新逻辑，代码不再承诺做不到的事。
-- **`CloudEventEnvelope.translate` 补齐参数文档（freeway-cloud）** — `topic` 在 CLASS 通道不参与组帧
-  （CloudEvents `type` 是事件类名），此前只被 `requireNonNull` 检查而没有任何说明；现按通道写明它的角色，
-  `@param` 覆盖全部参数。
-- **`CorsFilter` 收敛为单一构造器（freeway-http，破坏性）** — 两个 7 参构造器只差元素类型
-  （`List<String>` 与逗号字符串），既是"同一条规则的两种说法"，也让传 `null` 的调用点直接编译不过
-  （`new CorsFilter(false, null, null, null, null, null, false)` 两个重载都匹配——freeway-ext 的引擎
-  测试正是这样被卡住的）。保留列表形态这一个：它是精确形态，模块装配把配置的列表原样传入，
-  逗号拼写只在确实持有字符串的边界解码（`CorsFilter.DEFAULT` 与 `Builder.build()` 显式调用
-  `SymbolSpec.splitList`）。迁移：字符串形态改用 `CorsFilter.builder().allowAllOrigins()/.allowedOrigins(s)
-  .allowCredentials(b).build()`，或把逗号串换成 `SymbolSpec.splitList(s)` / `List.of(...)`。
-- **应用面 API 补钉测试 + 状态码词汇表统一（freeway-http）** — 新增两组端到端测试，钉住此前零覆盖、
-  但**应用开发者会用**的公共面（仓库内没有调用者只说明用它的应用在仓库之外）：
-  `TypedRequestApiTest` 覆盖 `HttpRequest` 的类型化读取族（`queryParam/header/pathVar` 带 `Class`：
-  正常解析、缺省为空、非法值报错而非放行垃圾）、类型化 body 工厂（`post/put/patch(path, type, handler)`
-  的反序列化与路由顺序）、**bean 校验失败 → 400**（`Route.wrapBody` 的校验分支此前被判定"仓库内不可达"），
-  以及 `Route.head/options` 的动词语义；`WebSocketReadLoopTest` 新增用例钉住 `WebSocketSession.ping`
-  与 `sendTextBatch` 的帧序列（PING 载荷原样、批量保持顺序、恰好发送给定条数）。
-  同时把四处硬编码状态码改用 `HttpStatus` 常量（`StaticResourceMount` 的 416/206、`CorsFilter` 的 204、
-  `HealthFilter` 的 200）——常量是给用户的状态码词汇表，**保留**，缺的是模块自己用它。
-- **删除 cloud 侧同类成员（freeway-cloud）** — 判据同上一批（"定义处 + 调用处"逐个看，两仓库确认）：
-  `PeerConnector` 的两个委托构造器、无参 `start()`，以及**永远为空的 `staticPeers`**（唯一的构造点传
-  `List.of()`，配置里的 peers 走 `start(peers)`/`setPeers`）——peers 因此只剩一条入口；
-  `PeerConnection` 的 3 参构造器与 `remotePrefixes()`；`CloudEventEnvelope` 的 6 参 `translate`
-  （自带铸造 UUID 的第二条翻译路径）；`RemoteProxyFactory` 里 catch 后原样重抛的空操作；
-  `ActiveBindingProbe.hasMarker`（唯一调用者只是转发，内联进 `isLocal`）；
-  `SecretStoreDefault.reload()` 降为 private（只在构造器调用）；
-  `MetricsDefault.TimerData` 降为 private（实现内部持有结构）。
-  另修一处**文档过度承诺**：`CloudEventEnvelope` 的 javadoc 写 `subject` = `Keyed#key()` 而未限定通道，
-  实际只在 CLASS 通道写入（topic 载荷对总线不透明，没有排序键）——新增测试
-  `keyedEventCarriesItsKeyAsTheWireSubject` 把两个通道的行为都钉住（CLASS 带 subject 与类名 type、
-  TOPIC 无 subject 且 type 即 topic），并同步收窄 javadoc。这条测试在写的时候就先失败了一次，
-  正是"未钉住的线上契约"的实证。
-- **删除引擎内触达不到的成员（freeway-http）** — 逐项判别"定义处 + 调用处"的分布后才删，
-  并在 workspace 与 `freeway-ext` 两处确认零引用：
-  - 只写不读的状态：`HttpContextImpl` 的 `http10` 字段与 `isHttp10()`（HTTP/1.0 keep-alive 由
-    `Http1xParser` 的 `keepAlive = !isHttp10` 决定，上下文里的副本从未被读）——`reset(...)` 随之
-    少一个参数；`ParsedRequest.httpVersion` 组件（解析用局部变量仍在，组件无读者）；
-    `WebSocketFrame.closeCode` 字段与访问器（`CloseCode` 枚举**保留**：它是用户传给
-    `session.close(int, String)` 的协议词汇表，与 `HttpStatus` 同理）。
-  - 无调用者的成员：`Headers.size()`、`Http1xParser` 的 `CR`/`LF` 常量（代码用 `'\r'`/`'\n'` 字面量）、
-    `FrameHeader` 实例 `encode()`（静态重载才是真源）、`WebServer.notFound`（并入 `ErrorResponses` 调用）、
-    `DataFrame.padLength()`、`MultipartForm.part(String)`、`PathPattern.template()`、
-    `StaticResourceMount` 的三个无调用 getter（setter 是文档化 API，保留）。
-  - 无调用者的重载构造器：`HttpSession` 7 参、`HttpConnection` 1/2 参、`SessionBufferedOutputStream`
-    1 参、`SettingsFrame()`/`HeadersFrame()` 无参、`WebSocketException` 3 参；以及
-    `HttpConnection`/`Http2Connection` 各一对地址访问器（地址一律经
-    `HttpSession.remoteAddress(connection.socket())` 取得）。
-- **模块组合改为数据（freeway-ioc）** — 容器在绑定任何模块之前一次性解析整棵模块树：父模块
-  先于其子模块、同级按声明顺序；同一实例被到达两次（共享子模块或互相引用）只绑定一次，
-  同 class 的两个实例启动即失败。`subModules()` 必须是稳定视图，被读取多次。
-- **SPI 发现只补空缺（freeway-boot）** — 类已在模块树中声明（含作为子模块）时不再被自动发现
-  重复加入，因此"`subModules()` 里声明 `new HttpModule()`"与"开启 autoDiscovery"不再冲突。
-- **bootstrap 键通道统一（freeway-boot，行为变更）** — `freeway.env.prefix` /
-  `freeway.config.file` 统一为 `-D<键>` 或 `FREEWAY_<键>`；写进配置文件
-  不再静默忽略，启动时 WARN 点名。
-- **配置文件读取上限统一（freeway-boot，行为变更）** — 16 MiB 上限从"仅类路径资源"扩展到
-  所有来源：工作目录覆盖文件、`freeway.config.file` 附加文件与热重载重读一视同仁。
-- **`AppConfigDefault` 构造方式变更（freeway-boot，破坏性）** — 静态形态改用
-  `AppConfigDefault.of(Map<String,String>, List<String>)`；级联形态改为
-  `AppConfigDefault(ConfigSources, List<Path>)`。
-- **`AppConfigModule` → `BootModule`（freeway-boot）** — 改名并收窄职责：该模块只做一件事，
-  把加载好的 `AppConfig`（及其声明的 symbol source）接入容器。runtime hook 生命周期与配置
-  释放归 `AppRuntimeDefault` 自己的协作者所有，`HookLifecycle` 不再注册为容器服务，
-  `"freeway.config"` 这个 hook id 随之消失（以它为 `before`/`after` 锚点的代码会在启动时
-  报到未知 hook id）。（位于 `boot.internal`，无稳定性承诺）
-- **CloudEventBus 命名统一为单数（freeway-cloud，破坏性）** — 包名 `cloud.events` →
-  `cloud.event`、WS 端点 `/cloud/events` → `/cloud/event`、配置键
-  `freeway.cloud.events.*` → `freeway.cloud.event.*`、常量 `CloudConfigKeys.EVENTS_*` →
-  `EVENT_*` 与 `CloudHooks.EVENTS` → `EVENT`，boot 的事件类移入 `boot.event`。配置语义
-  不变，仅命名；引用常量的代码与配置文件/env 中的键名需同步改名。
+- **Remote invocation converges onto one explicit channel (freeway-cloud,
+  breaking)** — the provider declares exports and the consumer binds a typed
+  client at the composition root; the location (local implementation or remote)
+  is a fact of **composition**, not a runtime guess:
+  - An export is a data contribution:
+    `binder.contribute(RpcExport.class).add(RpcExport.of("user",
+    UserHandlers.class))` (optionally `.propagateMessages()`); the framework
+    contributes **one** `/rpc/{mapping}/{method}` wildcard route and one
+    `.before(HTTP_SERVER)` assembly hook, and the hook resolves the handler from
+    the container (injected, singleton, lifecycle owned by the container) and
+    builds the method dispatch table that requests call directly — no registry in
+    between, hence no possibility of "the endpoint looking up one thing, the
+    client another";
+  - Everything checkable at startup is checked and **fails naming the problem**:
+    duplicate mappings, an exported type with no binding (the message gives the
+    `binder.bind(...)` to add), overloaded handler methods (positional arguments
+    cannot distinguish overloads);
+  - The consumer side: `RemoteProxyFactory.of(caller).serviceId(..).mapping(..).build(Api.class)`
+    binds to the interface, and business code keeps `@Inject Api`; `RemoteCaller`
+    is still bound by the framework, and direct calls and per-call budgets use its
+    `invoke` overloads;
+  - The wire protocol is unchanged (path, the positional argument array, the
+    version header and the exception header untouched), as are the idempotency
+    gate, error mapping, resilience and propagation.
+  - Breaking: `RpcEndpoint.of(mapping, bus, codec[, propagateMessage])` is deleted
+    (since v2); `RemoteProxyFactory.of(callBus, caller)` → `of(caller)`, and
+    `Mode`/`localFirst()`/`remoteOnly()` are deleted (remote-only remains);
+    standalone assembly (ext engines' `RouteIndex`, custom mounts) uses the
+    container-free `RpcEndpoint.route(RpcExport, handler, JsonCodec)` — it takes
+    an already-obtained handler instance and no longer needs a fake container or a
+    bus. freeway-ext's Undertow/Jetty RPC integration tests migrate in step;
+    application migration is in the DEVELOPER-GUIDE.
+- **The duplicate-route rule unifies (freeway-http, behaviour change)** —
+  WebSocket routes were deduplicated by path inside `WebSocketIndex` with the rule
+  "explicit routes override same-named routes from group expansion", while HTTP
+  routes in `RouteIndex` failed **at startup** on the same method+path — one
+  framework, one trie, two opposite rules. It unifies as **duplicate = failure**:
+  when a group-expanded route and an explicit one collide on method+path, an
+  `IllegalStateException` is thrown and neither side silently wins (consistent
+  with the existing "fail startup rather than silently skip" principle and with
+  the handling of duplicate RPC export mappings). `WebSocketIndex` consequently
+  becomes a thin adapter — groups expand first, individuals follow, and all enter
+  the same trie — one concept and one special case fewer; each side gains a test
+  pinning the collision behaviour.
+- **Annotations' `@Target` declares only placements with a reader (freeway-ioc, a
+  compile-time tightening)** — `@Marker`/`@Primary`'s METHOD and `@Builtin`'s TYPE
+  had no reader (the container has no producer-method bindings; `@Builtin` lands
+  as the module-level `@Marker(Builtin.class)` or `.marker(...)`): on a method or
+  a class they **compiled and silently did nothing**. They are removed from
+  `@Target`, making misuse a compile error; new tests pin all three annotations'
+  placement sets so readerless placements do not grow back.
+- **`StaticAsset` drops its write-only meta component (freeway-http)** — cache
+  headers come from the `ResourceSource.meta()` probe before serving, and the meta
+  returned by `load()` was never read; the comment in
+  `DirectoryResourceSource.load` about "refreshing the metadata when the file
+  changed between probe and read, so ETag/Last-Modified match the served bytes"
+  was therefore false (the refreshed meta was discarded immediately). The
+  component and the refresh logic are deleted; the code no longer promises what it
+  cannot do.
+- **`CloudEventEnvelope.translate` gains full parameter docs (freeway-cloud)** —
+  `topic` takes no part in framing on the CLASS channel (the CloudEvents `type` is
+  the event class name) and was previously only `requireNonNull`-checked with no
+  explanation; its role is now documented per channel, with `@param` covering all
+  parameters.
+- **`CorsFilter` converges to one constructor (freeway-http, breaking)** — the two
+  7-arg constructors differed only in element type (`List<String>` vs a
+  comma-separated string), both "two spellings of one rule" and both making
+  call sites passing `null` fail to compile outright
+  (`new CorsFilter(false, null, null, null, null, null, false)` matched both
+  overloads — freeway-ext's engine tests were stuck on exactly this). The list
+  form is the one kept: it is the precise form, module assembly passes the
+  configured list through unchanged, and the comma spelling decodes only at
+  boundaries that genuinely hold strings (`CorsFilter.DEFAULT` and
+  `Builder.build()` call `SymbolSpec.splitList` explicitly). Migration: the string
+  form switches to
+  `CorsFilter.builder().allowAllOrigins()/.allowedOrigins(s).allowCredentials(b).build()`,
+  or replaces the comma string with `SymbolSpec.splitList(s)` / `List.of(...)`.
+- **Application-facing API gains pinning tests + a unified status-code vocabulary
+  (freeway-http)** — two new end-to-end test groups pin public surface that had
+  zero coverage but that **application developers use** (no callers in the repo
+  only means the applications using it live outside the repo):
+  `TypedRequestApiTest` covers `HttpRequest`'s typed read family
+  (`queryParam/header/pathVar` with a `Class`: parsing normally, empty on
+  absence, erroring on illegal values instead of letting garbage through), the
+  typed body factories (`post/put/patch(path, type, handler)`'s deserialization
+  and route ordering), **bean validation failure → 400** (`Route.wrapBody`'s
+  validation branch had been judged "unreachable in the repo"), and
+  `Route.head/options`' verb semantics; `WebSocketReadLoopTest` gains cases
+  pinning `WebSocketSession.ping` and `sendTextBatch`'s frame sequences (the PING
+  payload verbatim, batches keeping order, exactly the given count sent).
+  Four hard-coded status codes also switch to `HttpStatus` constants
+  (`StaticResourceMount`'s 416/206, `CorsFilter`'s 204, `HealthFilter`'s 200) —
+  the constants are the user-facing status-code vocabulary and **stay**; what was
+  missing was the modules using them.
+- **cloud-side same-kind members deleted (freeway-cloud)** — the criterion is the
+  previous batch's ("definition site + call sites", checked one by one, confirmed
+  in both repos): `PeerConnector`'s two delegating constructors and the no-arg
+  `start()`, plus the **always-empty `staticPeers`** (the only constructor passed
+  `List.of()`, and config peers go through `start(peers)`/`setPeers`) — peers
+  thus have one entry point; `PeerConnection`'s 3-arg constructor and
+  `remotePrefixes()`; `CloudEventEnvelope`'s 6-arg `translate` (a second
+  translation path minting its own UUID); `RemoteProxyFactory`'s
+  catch-and-rethrow no-op; `ActiveBindingProbe.hasMarker` (its only caller just
+  forwarded, inlined into `isLocal`); `SecretStoreDefault.reload()` narrows to
+  private (called only from the constructor); and `MetricsDefault.TimerData`
+  narrows to private (an internal structure of the implementation).
+  One **doc over-promise** is also fixed: `CloudEventEnvelope`'s javadoc wrote
+  `subject` = `Keyed#key()` without limiting the channel, but it is only written
+  on the CLASS channel (a topic payload is opaque to the bus and has no ordering
+  key) — the new test `keyedEventCarriesItsKeyAsTheWireSubject` pins both
+  channels' behaviour (CLASS carries a subject and the class-name type; TOPIC has
+  no subject and its type is the topic), and the javadoc narrows in step. This
+  test failed once as it was written — the living proof of "an unpinned wire
+  contract".
+- **Engine members unreachable from the engine deleted (freeway-http)** — each
+  item judged by its "definition site + call sites" distribution before deletion,
+  with zero references confirmed in both the workspace and `freeway-ext`:
+  - Write-only state: `HttpContextImpl`'s `http10` field and `isHttp10()`
+    (HTTP/1.0 keep-alive is decided by `Http1xParser`'s
+    `keepAlive = !isHttp10`; the context's copy was never read) — `reset(...)`
+    loses one parameter accordingly; `ParsedRequest.httpVersion` (the parsing
+    local remains; the component had no reader); `WebSocketFrame.closeCode`'s
+    field and accessor (the `CloseCode` enum **stays**: it is the protocol
+    vocabulary users pass to `session.close(int, String)`, same reasoning as
+    `HttpStatus`).
+  - Uncalled members: `Headers.size()`, `Http1xParser`'s `CR`/`LF` constants (the
+    code uses `'\r'`/`'\n'` literals), `FrameHeader`'s instance `encode()` (the
+    static overload is the source of truth), `WebServer.notFound` (folded into an
+    `ErrorResponses` call), `DataFrame.padLength()`, `MultipartForm.part(String)`,
+    `PathPattern.template()`, and `StaticResourceMount`'s three uncalled getters
+    (the setters are documented API and stay).
+  - Uncalled overload constructors: `HttpSession`'s 7-arg, `HttpConnection`'s 1/2-arg,
+    `SessionBufferedOutputStream`'s 1-arg, `SettingsFrame()`/`HeadersFrame()`'s
+    no-arg, `WebSocketException`'s 3-arg; plus one pair of address accessors each
+    on `HttpConnection`/`Http2Connection` (addresses always come from
+    `HttpSession.remoteAddress(connection.socket())`).
+- **Module composition becomes data (freeway-ioc)** — the container resolves the
+  whole module tree in one pass before binding any module: parents before their
+  children, siblings in declaration order; an instance reached twice (shared
+  submodules or mutual references) binds once, and two instances of one class
+  fail at startup. `subModules()` must be a stable view, read multiple times.
+- **SPI discovery fills only gaps (freeway-boot)** — a class already declared in
+  the module tree (including as a submodule) is no longer added a second time by
+  auto-discovery, so "declaring `new HttpModule()` inside `subModules()`" and
+  "enabling autoDiscovery" no longer conflict.
+- **bootstrap key channels unify (freeway-boot, behaviour change)** —
+  `freeway.env.prefix` / `freeway.config.file` are set via `-D<key>` or
+  `FREEWAY_<key>` only; putting them in config files is no longer silently
+  ignored — startup WARNs naming the key.
+- **Config file read limits unify (freeway-boot, behaviour change)** — the 16 MiB
+  cap extends from "classpath resources only" to every source: working-directory
+  override files, `freeway.config.file` additional files and hot-reload re-reads
+  alike.
+- **`AppConfigDefault`'s construction changes (freeway-boot, breaking)** — the
+  static form becomes `AppConfigDefault.of(Map<String,String>, List<String>)`;
+  the cascade form becomes `AppConfigDefault(ConfigSources, List<Path>)`.
+- **`AppConfigModule` → `BootModule` (freeway-boot)** — renamed with narrowed
+  duties: the module does one thing, wiring the loaded `AppConfig` (and its
+  declared symbol source) into the container. The runtime hooks' lifecycle and
+  config release belong to `AppRuntimeDefault`'s own collaborators,
+  `HookLifecycle` is no longer registered as a container service, and the
+  `"freeway.config"` hook id disappears with it (code anchoring `before`/`after`
+  on it will report an unknown hook id at startup). (Lives in `boot.internal`,
+  no stability promise.)
+- **CloudEventBus's naming unifies on the singular (freeway-cloud, breaking)** —
+  the package `cloud.events` → `cloud.event`, the WS endpoint `/cloud/events` →
+  `/cloud/event`, the config keys `freeway.cloud.events.*` →
+  `freeway.cloud.event.*`, the constants `CloudConfigKeys.EVENTS_*` → `EVENT_*`
+  and `CloudHooks.EVENTS` → `EVENT`, and boot's event classes move into
+  `boot.event`. Config semantics are unchanged, naming only; code referencing the
+  constants and key names in config files/env rename in step.
 
 ### Removed
 
-- **`CLAUDE.md` 删除（仓库根）** — 它此前只剩一行 `@AGENTS.md`（Claude Code 的原生 import，因为 Claude
-  Code 不原生读 `AGENTS.md`）。删掉的理由：仓库里"每个约定只有一个家"已经成立，再留一个只为某个工具
-  存在的转发文件，就是同一份规则的第二条入口。用 Claude Code 的话，二选一即可——放一个一行的
-  `@AGENTS.md` 文件，或用读 `AGENTS.md` 的插件；其他 agent（Codex、DSH 等）本就读 `AGENTS.md`，行为不变。
+- **`CLAUDE.md` deleted (repo root)** — it had shrunk to a single `@AGENTS.md`
+  line (Claude Code's native import, because Claude Code does not read
+  `AGENTS.md` natively). The reason for deletion: the repo already holds "one
+  home per convention", and keeping a forwarding file that exists only for one
+  tool is a second entrance to the same rules. With Claude Code, pick one — a
+  one-line `@AGENTS.md` file, or a plugin that reads `AGENTS.md`; other agents
+  (Codex, DSH and friends) already read `AGENTS.md`, so their behaviour is
+  unchanged.
 
-- **`CallBus` 及其卫星类型删除（freeway-ioc，破坏性）** — 删除 `CallBus`、`CallTargetRegistry`、
-  `CallAdviceChain`、`CallProxyFactory`、`CallStats`、`DeadCallException` 六个公开类型（core 主体
-  718 行、测试 1076 行），容器不再注册 `CallBus` 内置服务。理由：同进程调用能力与 IoC 注入重合
-  （互相依赖的服务容器能直接解析），"可选能力缺席即降级"在 IoC 里就是绑一个默认实现，
-  运行期热替换与"组合是数据、启动静态"的框架立场冲突；它独有的"结构化接口"（零编译期边）
-  用组合根的一个适配器即可达成且换回编译期检查。跨进程调用改为显式：位置由组合决定、
-  导出由 `RpcExport` 声明、地址由 `serviceId` 给出。同进程调用改用 `@Inject`（含互相依赖），
-  跨进程调用用 `RemoteProxyFactory`（见上条）。`EventBus` 的消息域描述随之从三通道改为两通道。
-  设计文档 `freeway-remote-callbus-design.md` 更名为 `freeway-cloud-rpc-design.md` 并重写立场章节。
-- **`Binder.install(ModuleEx)` 移除（freeway-ioc，破坏性）** — 模块组合不再通过 `bind()`
-  内的命令式安装表达。动机：安装式组合让模块图成为 `bind()` 的副作用，框架的其余部分
-  （装配校验、SPI 去重、启动日志、测试）都看不到真实的模块集合。期间一度改为
-  `ModuleEx.subModules()`，最终定为**入口构建的 `ModuleNode` 树**（见下一条）。
-- **`ModuleEx.subModules()` 与 `ModuleTree` 移除：模块组合成为入口构建的树（freeway-ioc，
-  破坏性）** — `ModuleEx` 只剩 `bind(Binder)`（外加展示用的 `name()` 默认方法），模块只声明绑定；
-  组合由入口代码构建：`ModuleNode.app("order-service", ModuleNode.of(new
-  OrderModule()), CloudModule.class)`，容器绑定它的前序并持有它。迁移：
-  `b.install(new HttpModule())` / `subModules()` → `ModuleNode.app("app",
-  ModuleNode.of(new HttpModule()))`（`FreewayApp.run(new HttpModule())` 是同一件事的扁平
-  写法：应用根的直接孩子）。动机：`subModules()` 让组合成为框架**回调用户代码**的方法
-  （每次启动被读多次，于是要靠"必须是稳定视图、请用字段 + getter"的契约去约束），而且伞
-  模块因此拥有自己的子模块、应用无法替换其中一个；树是值——构建一次、装配处可见、片段可
-  复用、校验落在构建它的那行代码上。同一实例重复到达仍折叠（共享片段是正常用法），同
-  class 两个实例仍启动失败，但错误现在点名两条路径（`app → web → HttpModule`）。绑定序
-  ＝前序，确定性但**不再是契约**：需要时序请用 `RuntimeHook` 锚点或贡献自己的 `order()`。
-  启动日志与 `Container.moduleTree()` 读的是同一份值，`Container.modules()`（同轮引入，未
-  发布）随之删除。
-- **`CloudModule` 改为 bundle 模块（freeway-cloud，破坏性）** — 伞模块 → 片段工厂
-  `CloudModules.standard()` → `CloudModule` + `@SubModule`：整包用
-  `ModuleNode.of(CloudModule.class)`，只取其中一个模块就单独
-  `ModuleNode.of(CloudRpcModule.class)`（这是伞模块做不到的）。迁移：
-  `new CloudModule()` / `CloudModules.standard()` → `ModuleNode.of(CloudModule.class)`
-  （或 `FreewayApp.of(...).add(CloudModule.class)`）。
-- **`AppConfig.snapshot()` 移除（freeway-boot，破坏性）** — 级联不再对外暴露 map 形态：
-  `SymbolSource` 是唯一读取入口，`AppConfig` 收窄为 `profiles()` / `providers()` /
-  `close()`。迁移：`config.snapshot().get(k)` →
-  `container.get(SymbolSource.class).resolve(k, null)`（或按声明 `resolve(spec)`）。
-- **`PutResult.versionId`（freeway-cloud，破坏性）** — 接口没有按版本寻址的读/删
-  （`get`/`delete` 只按 key，`ObjectEntry` 也没有版本字段），这个每次写入新铸的 UUID
-  调用方除了打印什么也做不了：契约不成立。版本能力与其可用的操作一起排期，而不是先留一个
-  拿不到东西的返回值。同步更新设计文档；`ObjectStorageDefault.put` 的 javadoc 写明本地
-  后端**刻意忽略** `ObjectMetadata`（content-type/用户元数据是给 ext 后端的契约），
-  而不是半兑现。
-- **`EventSubscriber` 的排序 id（freeway-ioc，破坏性）** — `id` 字段、`of(String id, Class,
-  Consumer)`、`of(String id, String topic, Consumer)` 与包内 `id()` 全部删除：该 id 从未被
-  任何读取方使用（订阅索引只读 topic/eventType/handler），排序 id 属于 contribution ——
-  `Contributions.add(id, value)` 才是唯一定义处。原文档示例写着
-  `.add(EventSubscriber.of("notify", …)).after("index")`，既编译不过（`add(T)` 返回的
-  `Contributions` 没有 `after`）又会静默排错序；两个示例已改为
-  `.add("notify", EventSubscriber.of(…)).after("index")`。
-- **`SymbolSpec.description` 与两个零调用者工厂（freeway-ioc，破坏性）** — `description`
-  组件只写不读（javadoc 承诺的 "docs/registry use" 并不存在），随之删除
-  `of(key, type, default, description)` 与 `required(key, type, parser, description)`；
-  唯一传过它的调用点（`CloudResilienceModule`）把那句说明改为注释。记录现在只剩机制真正
-  使用的输入：key、type、default、parser、required。
+- **`CallBus` and its satellite types deleted (freeway-ioc, breaking)** — the six
+  public types `CallBus`, `CallTargetRegistry`, `CallAdviceChain`,
+  `CallProxyFactory`, `CallStats` and `DeadCallException` are deleted (718 lines
+  of core main, 1076 of tests), and the container no longer registers a `CallBus`
+  builtin. The reasoning: same-process invocation overlaps IoC injection (the
+  container resolves mutually dependent services directly), "optional capability
+  absent degrades gracefully" in IoC is just binding a default implementation,
+  runtime hot-swapping conflicts with the framework stance of "composition is
+  data, startup is static", and its one distinctive feature — the "structured
+  interface" (zero compile-time edges) — is achievable with one adapter at the
+  composition root while buying back compile-time checking. Cross-process
+  invocation becomes explicit: the location is decided by composition, exports
+  are declared by `RpcExport`, and the address is given by `serviceId`.
+  Same-process invocation switches to `@Inject` (mutual dependencies included),
+  and cross-process invocation uses `RemoteProxyFactory` (see the previous
+  entry). `EventBus`'s messaging-domain description accordingly goes from three
+  channels to two. The design document `freeway-remote-callbus-design.md` is
+  renamed `freeway-cloud-rpc-design.md` with its stance section rewritten.
+- **`Binder.install(ModuleEx)` removed (freeway-ioc, breaking)** — module
+  composition is no longer expressed as imperative installation inside `bind()`.
+  Motivation: install-style composition made the module graph a side effect of
+  `bind()`, invisible to the rest of the framework (assembly validation, SPI
+  deduplication, the startup log, tests). It was briefly `ModuleEx.subModules()`
+  and finally became the **entry-point-built `ModuleNode` tree** (next entry).
+- **`ModuleEx.subModules()` and `ModuleTree` removed: module composition becomes
+  an entry-point-built tree (freeway-ioc, breaking)** — `ModuleEx` keeps only
+  `bind(Binder)` (plus the display-only `name()` default method), and modules
+  declare only bindings; composition is built by entry-point code:
+  `ModuleNode.app("order-service", ModuleNode.of(new
+  OrderModule()), CloudModule.class)`, which the container binds in pre-order and
+  holds. Migration: `b.install(new HttpModule())` / `subModules()` →
+  `ModuleNode.app("app", ModuleNode.of(new HttpModule()))`
+  (`FreewayApp.run(new HttpModule())` is the flat spelling of the same thing: a
+  direct child of the application root). Motivation: `subModules()` made
+  composition a method the framework **calls back into user code** (read several
+  times per startup, hence the "must be a stable view, use a field + getter"
+  contract to constrain it), and the umbrella module consequently owned its
+  submodules, so the application could not replace one of them; the tree is a
+  value — built once, visible at the assembly point, fragments reusable, and
+  validation lands on the line of code that built it. Repeated arrivals of the
+  same instance still fold (sharing fragments is normal usage), two instances of
+  one class still fail startup, but the error now names both paths
+  (`app → web → HttpModule`). Binding order = pre-order: deterministic but **no
+  longer a contract**; for sequencing use `RuntimeHook` anchors or contribute
+  your own `order()`. The startup log and `Container.moduleTree()` read the same
+  value, and `Container.modules()` (introduced in the same round, never released)
+  is deleted with it.
+- **`CloudModule` becomes a bundle module (freeway-cloud, breaking)** — umbrella
+  module → fragment factory: `CloudModules.standard()` → `CloudModule` +
+  `@SubModule`; the whole bundle is `ModuleNode.of(CloudModule.class)`, and taking
+  one module alone is `ModuleNode.of(CloudRpcModule.class)` (which an umbrella
+  module could not do). Migration: `new CloudModule()` /
+  `CloudModules.standard()` → `ModuleNode.of(CloudModule.class)`
+  (or `FreewayApp.of(...).add(CloudModule.class)`).
+- **`AppConfig.snapshot()` removed (freeway-boot, breaking)** — the cascade no
+  longer exposes a map shape: `SymbolSource` is the only reading entry, and
+  `AppConfig` narrows to `profiles()` / `providers()` / `close()`. Migration:
+  `config.snapshot().get(k)` →
+  `container.get(SymbolSource.class).resolve(k, null)` (or `resolve(spec)` per
+  declaration).
+- **`PutResult.versionId` (freeway-cloud, breaking)** — the interface has no
+  version-addressed read/delete (`get`/`delete` take only a key, and
+  `ObjectEntry` has no version field), so this freshly-minted-per-write UUID let
+  a caller do nothing but print it: the contract did not hold. Versioning is
+  scheduled together with the operations that could use it, rather than shipping
+  a return value nothing can reach. The design doc updates in step;
+  `ObjectStorageDefault.put`'s javadoc states that the local backend
+  **deliberately ignores** `ObjectMetadata` (content-type/user metadata is the
+  contract for ext backends) instead of half-honouring it.
+- **`EventSubscriber`'s ordering id (freeway-ioc, breaking)** — the `id` field,
+  `of(String id, Class, Consumer)`, `of(String id, String topic, Consumer)` and
+  the in-package `id()` are all deleted: the id was never read by anything (the
+  subscription index reads only topic/eventType/handler), and the ordering id
+  belongs to the contribution — `Contributions.add(id, value)` is the only
+  definition site. The old doc example read
+  `.add(EventSubscriber.of("notify", …)).after("index")`, which neither compiled
+  (`add(T)`'s `Contributions` has no `after`) nor ordered correctly, silently;
+  both examples become
+  `.add("notify", EventSubscriber.of(…)).after("index")`.
+- **`SymbolSpec.description` and two zero-caller factories (freeway-ioc,
+  breaking)** — the `description` component was written and never read (the
+  javadoc's promised "docs/registry use" does not exist), and with it go
+  `of(key, type, default, description)` and `required(key, type, parser,
+  description)`; the only call site that passed it (`CloudResilienceModule`)
+  turns that sentence into a comment. The record now carries only the inputs the
+  mechanism actually uses: key, type, default, parser, required.
 
 ### Fixed
 
-- **"声称与实现脱钩"清扫（全仓）** — 本轮审计把每一处"注释/报错/文档承诺了实现没有的东西"补成真的，或把话改对：
-  flow 的驱动报错与 javadoc 指向早已删除的 `newInstance`（且被测试断言钉死）→ 改指 `FlowEngine.create`，断言反向
-  钉住"不得指向已删 API"；`GraphSpec` 的 `System.Logger` → SLF4J，`@author noear`/上游 `@since` 移植残留清除，
-  `PlantUmlOptions.DEFAULT` 可变静态全局按 FlowOptions 自家原则改为 record 值 + wither；`JsonUtils` javadoc 承诺的
-  `JsonException` 类不存在 → 文档改为写明真实契约（`IllegalArgumentException` 带位置）；`HPackContext` 编码器 javadoc
-  声称"编码器动态表逐块推进"而表根本不存在 → 删谎，锁要求的真实理由（帧序连续）写进注释；`ServiceRuntime` 的
-  "cached lookups are lock-free"注释由下方实现兑现。`@NotThreadSafe` 的错误建议"改用接口（代理）"治不了它展示的病
-  （代理共享一个 target）→ 改为给出真正可行的三个修法。
-- **接口单例热路径的 JVM 级锁（freeway-ioc）** — 接口单例代理每次方法调用都重进 `realize()` 抢静态 `REALIZE_LOCK`，
-  即使命中缓存——一个容器的慢构造可阻塞无关容器已建单例的调用（实测 1.2s），且与"锁只护首次构造"的注释相反。
-  现在目标完整构造后才发布进 CHM，缓存读走锁前快路径；关闭密封协议（sealed-then-clear 不得留下孤儿单例）不变。
-  同轮：`@NotThreadSafe` 隔着接口绑定不被执法（校验对接口目标直接早退）→ 校验所选绑定的 impl 标记，THREAD 作用域
-  的接口代理豁免（每线程各得实例）；provider 返回 null 以绑定标识的明确报错出现，不再是缓存 put 里的匿名 NPE。
-- **HEADERS+立即 RST 冻结连接读循环（freeway-http）** — 活跃的 RST_STREAM 路径只 `close()` 流而不标记输入结束：
-  reader 线程自身落入 `DataIn.close()` 的 drain 分支时在空队列上永久 park（无唤醒源），一条连接两帧即可打停；
-  dispatch 里真正设 `peerReset/halfClosed` 的 RST 分支是死代码。现在复位只经 `resetByPeer()`（标记→结束→拆除一条
-  路径），`wakeupReader` 补 null 守卫（unpark(null) 会在 reader 线程上抛 NPE）。回归测试钉住"复位后连接还能接下一
-  个请求"。
-- **枚举写路径与池的迟到释放（freeway-db）** — DDL 侧把 enum 映射为 VARCHAR、读侧 `valueOf`，写侧却把原始 enum 交给
-  `setObject`：H2/PostgreSQL 抛转换错误，枚举"可读不可写"且零往返测试。现在所有绑定点（位置/命名/展开集合/批处理）
-  统一过 `StatementValues.bindValue`。连接池复用同一个 wrapper 对象，跨线程迟到的 `release()`/`invalidate()` 会把
-  别人正在用的连接拿走/销毁（实测复现）：现在每次 borrow 给新句柄，已消费句柄上的迟到调用是无害 no-op。
-- **RPC 参数绑定、重连风暴、权重（freeway-cloud）** — `decodeArgs` 注释声称容器参数"由 handler 自己的强制转换重绑"，
-  而派发并不做：DTO 参数一律以 `ClassCastException` 出现并被伪装成业务失败。现在按声明参数类型经 codec 重绑
-  （`JsonCodec` 新增 `convert` 缝：节点直转，默认实现文本往返，第三方实现不破坏），varargs 尾部真正组装数组，参数
-  个数在派发前判定（调用方错误 = `Kind.REJECTED`，不再是 handler 异常）。mesh 重拨的退避计数从"socket 打开"移到
-  "hello ack"：token 配错的两个节点不再全速互拨；`LoadBalancerDefault` 读自家 `ServiceInstance` 暴露的 `weight()`
-  （权重=周期份额，0/负按 1）——此前"配置了但不读"。
-- **数字守卫与 cause 环（freeway-commons）** — `MAX_NUMBER_LENGTH` 抄自字符串上限（10MiB）而非成本界：10M 位数
-  token 合法通过而 BigDecimal 解析超线性（实测 1M 位 ≈11s，10M 位 60s+ 未归）。上限改为 1000 字符并给出理由，
-  测试同时钉住"拒绝快"与"边界内能解析"。`JULFileHandler.estimateThrowableSize` 对 cause/suppressed 环无访问集
-  （同库另三处都有）→ 补上：它运行在 handler monitor 内，一个中毒记录即可锁死整个 logger。
-- **hook 启动中的重入 close（freeway-boot）** — 第一个 hook 调 `close()` 时嵌套停止只看得见"已登记"的 hook：closer
-  自己（登记在 start 返回之后）永不被停，其后的 hook 继续在已关容器上启动且无人再停。现在 start 循环逐 hook 检查
-  封存标记，closer 在自己的 start 返回后补一次 stop，其余 hook 不再启动。
-- **入站请求有 span 了，traceId 也进日志（freeway-cloud）** — 此前模块内唯一的 span 是出站调用：
-  入站请求只做上下文提取，于是被调方在链路里是一段平线，且**入站日志没有任何 traceId** 可关联。
-  现在 `TracingFilter`（由 `CloudObserveModule` 贡献，因为它拥有 `Tracer`）为每个应用请求开一个
-  server span，并把它**绑定为请求作用域**——这点是关键：`InvocationContext.current()` 优先
-  scoped 层，只写 ambient 的 span 处理器看不见，于是出站传播会跳过本跳。为此 `Tracer.Span`
-  新增 `context()`（span 建立的调用上下文，默认 null = 该 tracer 不拥有上下文），
-  `TracerDefault` 返回它已算好的子上下文（含继承的 principal/baggage）。框架自身的探针与
-  `/metrics` 不计入追踪。同时补上 W3C `tracestate` 的透传（`TraceContext` 增加 `traceState` 组件，
-  构造时严格校验——CR/LF 注入与超长值直接拒绝；入站侧宽容：非法即丢弃并 debug 记录）。
-- **readiness 不再恒真，且丢失的注册会自愈（freeway-cloud）** — 本地注册表的 readiness
-  contributor 此前无条件返回健康，`/health/ready` 在默认安装下恒 200；而 `RegistryStore.renew`
-  在条目已不存在时静默无操作，被淘汰的实例会一直"运行但不可见"直到重启。现在心跳除了续租还会
-  用**消费者同款的发现查询**校验自身条目是否仍在册，不在则重新注册（WARN 记录），并把结果发布到
-  `RegistryRenewal`：连续 {@code 3} 次（默认约 30s）心跳失败后 `/health/ready` 返回 503 并给出
-  "heartbeat failed N times in a row"。未注册任何实例的进程报 `not registered`，不再给空洞的
-  all-clear。
-- **密钥文件轮换无需重启（freeway-cloud）** — `SecretStoreDefault` 此前只在构造时读一次
-  （`reload()` 私有），k8s 换卷或改写 properties 后进程一直用旧密钥。现在按 size + **全精度
-  mtime** 变化重读，节流 1s；读失败或文件瞬时消失（projected volume 的原子换卷）**保留已加载的
-  值**并告警，绝不会把在用密钥清空。设计文档此前声称的"显式 reload()"并不存在，已同步为真实语义。
-- **网格 token 走明文 ws:// 时启动告警（freeway-cloud）** — `event.token` 在 hello 里明文过线，
-  其保护来自传输；`registry.service-scheme` 非 https 时拨号是 `ws://`。sidecar/mesh 终止 mTLS
-  的部署里这是正常拓扑，因此**不拒绝**，而是启动时响亮告警一次：要么改成 https（wss://），
-  要么确认它在 mesh/可信网络内。
+- **The "claims decoupled from implementation" sweep (whole repo)** — this
+  round's audit made every "comment/error/doc promising something the
+  implementation does not have" true, or corrected the wording: flow's driver
+  error and javadoc pointed at the long-deleted `newInstance` (pinned by a test
+  assertion) → they point at `FlowEngine.create` now, with the assertion flipped
+  to pin "must not point at a deleted API"; `GraphSpec`'s `System.Logger` →
+  SLF4J, and the `@author noear`/upstream `@since` porting residue is cleared;
+  `PlantUmlOptions.DEFAULT`, a mutable static global, becomes a record value +
+  withers per FlowOptions' own principle; the `JsonException` class promised by
+  `JsonUtils`' javadoc does not exist → the doc states the real contract
+  (`IllegalArgumentException` carrying the position); `HPackContext`'s encoder
+  javadoc claimed "the encoder's dynamic table advances per block" while no such
+  table exists → the lie goes, and the lock's real reason (contiguous frame
+  order) enters the comment; and `ServiceRuntime`'s "cached lookups are
+  lock-free" comment is made true by the implementation below it.
+  `@NotThreadSafe`'s wrong advice — "switch to an interface (proxy)" — cannot
+  cure the disease it demonstrates (the proxy shares one target) → it now gives
+  the three fixes that actually work.
+- **The JVM-level lock on the interface-singleton hot path (freeway-ioc)** — the
+  interface singleton proxy re-entered `realize()` for the static `REALIZE_LOCK`
+  on every method call, even on a cache hit — one container's slow construction
+  could block calls on another container's built singletons (measured at 1.2 s),
+  contradicting "the lock only guards first construction". The target is now
+  published into the CHM only once fully constructed, and cache reads take the
+  lock-free fast path; the shutdown seal protocol (sealed-then-clear must leave
+  no orphan singletons) is unchanged. Same round: `@NotThreadSafe` was not
+  enforced across an interface binding (validation early-returned for interface
+  targets) → it checks the chosen binding's impl markers, with THREAD-scoped
+  interface proxies exempt (each thread gets its own instance); and a provider
+  returning null produces a clear error naming the binding instead of an
+  anonymous NPE inside the cache put.
+- **HEADERS + immediate RST froze the connection's read loop (freeway-http)** —
+  the active RST_STREAM path only `close()`d the stream without marking input
+  ended: when the reader thread itself fell into `DataIn.close()`'s drain branch
+  it parked forever on an empty queue (nothing would wake it), so two frames on
+  one connection could stall it; the RST branch in dispatch that actually set
+  `peerReset/halfClosed` was dead code. Reset now goes only through
+  `resetByPeer()` (mark → end → teardown, one path), and `wakeupReader` gains a
+  null guard (`unpark(null)` throws an NPE on the reader thread). A regression
+  test pins "the connection accepts the next request after a reset".
+- **The enum write path and the pool's late release (freeway-db)** — the DDL side
+  mapped enums to VARCHAR and the read side used `valueOf`, but the write side
+  handed the raw enum to `setObject`: H2/PostgreSQL threw conversion errors,
+  making enums "readable, not writable" with zero round-trip tests. All binding
+  points (positional/named/expanded collections/batch) now go through
+  `StatementValues.bindValue`. The pool reused one wrapper object, so a
+  cross-thread late `release()`/`invalidate()` could take or destroy a connection
+  someone else was using (reproduced in testing): each borrow now gets a fresh
+  handle, and late calls on a consumed handle are harmless no-ops.
+- **RPC argument binding, the reconnect storm, and weight (freeway-cloud)** —
+  `decodeArgs`'s comment claimed container parameters "are rebound by the
+  handler's own casts", but dispatch did no such thing: DTO parameters always
+  surfaced as `ClassCastException` disguised as a business failure. Arguments now
+  rebind through the codec by declared parameter type (`JsonCodec` gains a
+  `convert` seam: nodes convert directly, the default implementation round-trips
+  text, third-party implementations are unaffected), varargs tails assemble into
+  real arrays, and the argument count is judged before dispatch (a caller error =
+  `Kind.REJECTED`, no longer a handler exception). The mesh re-dial's backoff
+  counter moves from "socket opened" to "hello ack": two nodes with mismatched
+  tokens no longer dial each other at full speed; and `LoadBalancerDefault` reads
+  its own `ServiceInstance`'s exposed `weight()` (weight = share of the cycle,
+  0/negative as 1) — previously "configured but unread".
+- **The number guard and cause cycles (freeway-commons)** — `MAX_NUMBER_LENGTH`
+  was copied from the string limit (10 MiB) rather than a cost bound: a 10M-digit
+  token passed legally while BigDecimal parsing is super-linear (1M digits ≈ 11 s
+  measured; 10M digits still running past 60 s). The cap becomes 1000 characters
+  with the reason stated, and the tests pin both "rejects fast" and "parses
+  within the bound". `JULFileHandler.estimateThrowableSize` had no visited set
+  for cause/suppressed cycles (the library's other three sites do) → added: it
+  runs inside the handler monitor, so one poisoned record could lock up the whole
+  logger.
+- **Re-entrant close during hook startup (freeway-boot)** — when the first hook
+  called `close()`, the nested stop saw only the hooks "already registered": the
+  closer itself (registered after start returns) was never stopped, and later
+  hooks kept starting on an already-closed container with nobody to stop them.
+  The start loop now checks the seal flag per hook, the closer issues its own
+  stop after its `start` returns, and the remaining hooks do not start.
+- **Inbound requests get a span, and traceId reaches the logs (freeway-cloud)** —
+  the only span in the module used to be outbound calls: inbound requests did
+  context extraction only, so the callee was a flat line in the trace and
+  **inbound logs carried no traceId** to correlate. `TracingFilter` (contributed
+  by `CloudObserveModule`, which owns the `Tracer`) now opens a server span per
+  application request and **binds it as the request scope** — that part is the
+  key: `InvocationContext.current()` prefers the scoped layer, which a handler
+  that only writes the ambient context cannot see, so outbound propagation would
+  skip this hop. For this `Tracer.Span` gains `context()` (the call context the
+  span established, default null = this tracer owns no context), and
+  `TracerDefault` returns its already-computed child context (inherited
+  principal/baggage included). The framework's own probes and `/metrics` are not
+  traced. W3C `tracestate` passthrough is added too (`TraceContext` gains a
+  `traceState` component, strictly validated at construction — CR/LF injection
+  and overlong values are rejected; the inbound side is lenient: invalid values
+  are dropped with a debug log).
+- **Readiness is no longer always-true, and a lost registration heals
+  (freeway-cloud)** — the local registry's readiness contributor returned healthy
+  unconditionally, so `/health/ready` was a permanent 200 on the default install;
+  and `RegistryStore.renew` silently no-oped when the entry no longer existed, so
+  an evicted instance stayed "running but invisible" until restart. The heartbeat
+  now, besides renewing, verifies its own entry is still registered using **the
+  same discovery query a consumer would make**, re-registers (with a WARN) when
+  gone, and publishes the result to `RegistryRenewal`: after {@code 3}
+  consecutive failures (about 30 s by default) `/health/ready` returns 503 with
+  "heartbeat failed N times in a row". A process with no registered instances
+  reports `not registered` instead of an empty all-clear.
+- **Secret file rotation without a restart (freeway-cloud)** —
+  `SecretStoreDefault` read only at construction (`reload()` was private), so
+  after a k8s volume swap or a rewritten properties file the process kept using
+  the old secrets. It now re-reads on size + **full-precision mtime** changes,
+  throttled to 1 s; on a read failure or the file momentarily disappearing (a
+  projected volume's atomic swap) it **keeps the loaded values** and warns — it
+  never blanks secrets in use. The design doc's claimed "explicit reload()" never
+  existed and has been synced to the real semantics.
+- **A startup warning when the mesh token crosses plaintext ws:// (freeway-cloud)**
+  — `event.token` crosses the wire in the hello in plaintext, with its protection
+  coming from the transport; when `registry.service-scheme` is not https, dials
+  are `ws://`. In sidecar/mesh mTLS-terminating deployments this is normal
+  topology, so it is **not refused** — instead startup warns loudly once: either
+  switch to https (wss://) or confirm it stays inside the mesh/trusted network.
 
-- **topic 通道的 DeadEvent 不再自我触发（freeway-ioc）** — `dispatchEvent`（CLASS 通道）有"`DeadEvent`
-  本身不再产生 DeadEvent"的守卫，`dispatchTopic`（TOPIC 通道）没有：把一条 `DeadEvent` 当 topic 载荷发布
-  时，会先为它报一次"零订阅者"诊断，再为那条诊断报第二次。现在两个通道说同一条规则；新增测试同时钉住
-  "零订阅者的 topic 发布报一次诊断"与"发布诊断本身不再产生第二条"。
-- **框架扩展面的两处契约表述（freeway-cloud）** — `LoadBalancer` 的接口 javadoc 原写
-  "Reads routing inputs (zone/weight/canary) from `ServiceInstance#metadata()`"，作为对
-  **默认实现**的描述是假的（`LoadBalancerDefault` 是纯轮询，不读任何实例属性），作为对
-  **角色**的描述才是真的。现写明：默认轮询不读属性，weighted/zone-aware/canary 是应用或
-  适配器 `.primary()` 的活（设计文档 §263-266 的既定分工），而
-  `ServiceInstance.weight()/zone()/version()/isCanary()` 是这些策略的**输入词汇表**
-  （键名与解析的定义处，应用不应自己读 metadata 键）。这些访问器**保留**——仓库内没有
-  调用者只说明"那个 CanaryLb 在仓库之外"。
-  `RegistryStore.liveReady` 此前把 `Health.isStale` 的阈值判断内联重写了一遍，现调用
-  `Health.isStale(maxAge)`，规则回到它自己的 owner（`Health` 的 javadoc 本就声明了这条淘汰
-  语义），访问器因此不再是"没人读的成员"。
-- **响应头块超过对端帧上限时不再发出超限 HEADERS 帧（freeway-http，协议修复）** —
-  `HPackContext.encodeResponseHeaders` 把整个头块编成**一个** HEADERS 帧，且从不比较对端的
-  `SETTINGS_MAX_FRAME_SIZE`（初值 16384，`Http2Connection.peerMaxFrameSize`），而本地预算却是
-  64 KiB；同时该上限此前只用于 DATA 分片。于是 16 KiB–64 KiB 的响应头块（多个 `Set-Cookie`、
-  长 CSP/Link、或单纯头多）会以超限帧发出，一致的对端必须按 FRAME_SIZE_ERROR 判定为**连接
-  错误**。现按对端上限切分为 HEADERS + CONTINUATION（RFC 9113 §6.10），`END_STREAM` 留在
-  HEADERS、`END_HEADERS` 只在末帧，整串由 `Http2FrameWriter` 一次加锁连续写出（不得插入其他
-  帧）；`ContinuationFrame` 由"仅解析"变为真实写出路径，`FrameHeader.DEFAULT_MAX_FRAME_SIZE`
-  成为该协议常量的唯一定义处（原先 `Http2Connection` 里另有一个同值字面量）。
-  `HeadersFrame.writeTo` 改为按自身解析出的 flags 序列化——`BaseFrame.writeTo` 是抽象方法，
-  该类必须实现它，此前它硬编码 `END_HEADERS`、丢弃 `END_STREAM`，是个只会产出错帧的陷阱。
-  新增 `H2WireFormatTest.oversizedHeaderBlockIsSplitIntoContinuationFrames`：按 512 字节
-  切分 2 KiB 头块，逐帧校验类型/flags/上限，并用引擎自身解码器重组回同一头块。
-- **节点身份统一为一处推导（freeway-cloud）** — 此前注册表的实例 id 是
-  `service-instance-id` 或 `service-id@host:port`（HTTP server 起来后推导），而事件网格的
-  origin 是 `service-id@<随机 UUID>`（网格在 HTTP server 之前接线，端口未知），注释与设计
-  文档却声称二者相同。现在 `HttpServiceDeclaration.of(container)` 是唯一定义处，注册与网格
-  都消费它返回的同一个 `ServiceInstance`，网格改用 `.after(HTTP_SERVER)` 接线以获得真实
-  端口；代价是接线前到达的 hello 会收到 1013 并按既有退避重连（网格本就以此为准）。
-  `PeerHub` 不再自造 UUID 回退。
-- **HTTP 引擎三处行为缺陷（freeway-http）** — 均由审计以具体输入复现：
-  - **RST 之后的响应帧泄漏**：`markAborted()` 只置 `responseAborted` 而未置
-    `streamOutputClosed`，且写出前的检查排在 `writeResponseHeaders` 之后——收到
-    `HEADERS[END_STREAM]` 后再来一个 DATA 帧时，服务器发完 RST_STREAM 仍会继续发
-    HEADERS/DATA/END_STREAM（RFC 9113 §5.1）。现两处都修，该输入下不再发帧。
-  - **带引号的 charset 导致乱码**：`Content-Type: text/plain; charset="ISO-8859-1"` 时
-    `bodyText()` 因 `Charset.forName("\"ISO-8859-1\"")` 失败而静默回退 UTF-8；同一个头
-    `Part.text()` 却解码正确。现去掉引号后再查表，两条路径一致。
-  - **`isMultipart()` 是子串判断**：`text/plain; note=multipart/form-data` 被当作上传，
-    `multipart()` 抛错、默认处理器回 400。现按媒体类型精确比较。
-  - 另修：`CompressionConfig` 负值静默改成 256（同记录其他分量都抛），现抛
-    `IllegalArgumentException`；HTTP/1.1 补齐 415/416 的 reason phrase（此前线上出现
-    `HTTP/1.1 415 ` 空原因短语）；`WebServer` 的 null sink 现在走 noop 哨兵；
-    `cors.max-age` 由未校验的 String 改为 Integer（`=abc` 不再被原样写进响应头，改为启动即失败）。
-- **配置面分档与文档纠错（freeway-http / freeway-cloud / docs）** — `HttpConfigKeys` 与
-  `CloudConfigKeys` 按「决策键 / 默认最优 / 高级（小概率）」重组并写明理由，高级簇各自
-  标出管辖它的聚合键（`rpc.resilience=auto|off`、`event.enabled` presence、
-  `event.dedup.enabled`）；`docs/freeway-config.md` 的「必填配置速查」换成「决策键速查」。
-  纠错：文档四处用 `freeway.http.port` 当例子，但该键**不存在**（真实键
-  `freeway.http.server.port` ↔ `FREEWAY_HTTP_SERVER_PORT`）；`secret.file`/`secret.keys`
-  标注为仅 `-D`；`rpc.connect-timeout`/`request-timeout` 明确**不受** `resilience=off`
-  管辖；WS 端点 `/cloud/events` → `/cloud/event`（6 处）；`CloudEventModule` 的
-  "enabled default false" 改为 presence 驱动的真实规则；`ExceptionMapper` →
-  `ErrorHandler`（1.3.8 改名后的残留）；DEVELOPER-GUIDE 的 RPC 导出示例在
-  `bind(Binder)` 里引用 `container`（编译不过），改为模块持有 `CallBus`。
-- **`freeway-ioc` 内部收敛（无 API 变化）** — 按"概念要挣到自己的位置"清理：
-  - 总线协作者与宿主同包同可见性：`EventStats`/`EventSinkRegistry`/`EventExecutorSupport`/
-    `CallStats`/`CallTargetRegistry`/`CallAdviceChain`/`CallProxyFactory` 由 `ioc.internal`
-    （public）移入 `ioc`（包私有），与既有的 `EventDispatcher`/`EventStreams`/
-    `EventSubscriptionIndex` 一致；`ioc.internal` 现只剩 `ContainerImpl` 一个 public 类型。
-  - `ProxyFactory`（包私有接口 + 唯一实现，无外部可代换点）并入 `ProxyFactoryImpl`。
-  - `@Inject Logger` 改走 `container.get(LoggerSource.class)`（与 `SymbolSource`/`Coercer`
-    同一原则）：此前走硬连线字段，绑定一个 primary `LoggerSource` 替代实现对其无效。
-  - `ContainerImpl`：删除零调用者的纯转发 `resolveArguments`；模块上下文的 save/restore
-    永远恢复 null（树先展平、不递归）改为 set/clear；单用处 `Scoping` 字段内联；
-    `close()` 补 `markerIndex.clear()`（此前标记索引长期持有全部 binding）。
-  - `BindingIndex`：`updateId` 里写回同一引用的"更新类型索引"空操作块、`scanBindings`
-    未使用的 `type` 参数删除。`MarkerIndex.register`/`sync` 合一（marker 校验已在 binding
-    入口完成，不再三处重复）。
-  - `Shutdown` 两个 catch 体相同者合一；`EventExecutorSupport` 恒真且返回值被丢弃的
-    `BooleanSupplier` 改为 `Runnable`；`EventBus` 删除提取 `EventDispatcher` 后遗留的未使用
-    `LOG` 字段、修正 `publishOrdered` 里描述已删参数 `key` 的 javadoc；`ContainerImpl`
-    线程作用域登记表去掉从未读取的 owner 值（`Map<Object,ContainerImpl>` → 恒等 `Set`）。
-- **文件系统覆盖文件的 profile 段顺序（freeway-boot）** — 工作目录与
-  `freeway.config.file` 的 profile 变体此前按「每个 profile 的 properties+json」排列，
-  与类路径段的「先全部 properties、再全部 json」不一致：多 profile 时同一份文件内容在两侧
-  会得出不同的赢家（`application-dev.json` 在类路径赢过 `application-prod.properties`，
-  在文件系统侧却输给它）。两侧现统一为格式优先。
-- **bootstrap-only 键的 WARN 覆盖全部配置文件渠道（freeway-boot）** — 此前只检查类路径
-  文件；工作目录的 profile 变体与 `freeway.config.file` 附加文件中声明
-  `freeway.env.prefix`/`freeway.config.file` 仍被静默忽略。现由
-  `AppConfigDefault` 统一在读取每个文件系统文件时点名（含文件名），CLI 参数
-  （`--freeway.config.file=...`）同样点名。
+- **The topic channel's DeadEvent no longer triggers itself (freeway-ioc)** —
+  `dispatchEvent` (the CLASS channel) had the guard "`DeadEvent` itself produces
+  no DeadEvent", but `dispatchTopic` (the TOPIC channel) did not: publishing a
+  `DeadEvent` as a topic payload produced one "zero subscribers" diagnostic for
+  it, then a second one for that diagnostic. Both channels now state the same
+  rule; new tests pin both "a zero-subscriber topic publish reports one
+  diagnostic" and "publishing the diagnostic produces no second one".
+- **Two contract statements on the framework's extension face (freeway-cloud)** —
+  `LoadBalancer`'s interface javadoc read "Reads routing inputs
+  (zone/weight/canary) from `ServiceInstance#metadata()`", which is false as a
+  description of the **default implementation** (`LoadBalancerDefault` is pure
+  round-robin, reading no instance attributes) and true only of the **role**. It
+  now says: the default round-robin reads no attributes, and
+  weighted/zone-aware/canary are the job of an application's or adapter's
+  `.primary()` (the division of labour fixed in design doc §263-266), while
+  `ServiceInstance.weight()/zone()/version()/isCanary()` are the **input
+  vocabulary** of those strategies (the definition site of the key names and
+  parsing; applications should not read metadata keys themselves). The accessors
+  **stay** — no callers in the repo only means "that CanaryLb lives outside the
+  repo". `RegistryStore.liveReady` used to inline-rewrite `Health.isStale`'s
+  threshold logic and now calls `Health.isStale(maxAge)`, returning the rule to
+  its owner (`Health`'s javadoc already declared this eviction semantics), so the
+  accessor is no longer "a member nobody reads".
+- **No more oversized HEADERS frames when the response head exceeds the peer's
+  frame limit (freeway-http, a protocol fix)** —
+  `HPackContext.encodeResponseHeaders` encoded the whole head block into **one**
+  HEADERS frame and never compared the peer's `SETTINGS_MAX_FRAME_SIZE`
+  (initially 16384, `Http2Connection.peerMaxFrameSize`) while the local budget
+  was 64 KiB; and the limit previously applied only to DATA fragmentation. So a
+  16 KiB–64 KiB response head block (many `Set-Cookie`s, long CSP/Link headers,
+  or simply many headers) went out as an oversized frame, and a conforming peer
+  must treat it as a **connection error** per FRAME_SIZE_ERROR. It now splits
+  into HEADERS + CONTINUATION per the peer's limit (RFC 9113 §6.10), with
+  `END_STREAM` on the HEADERS and `END_HEADERS` only on the last frame, the whole
+  sequence written by `Http2FrameWriter` under one lock with no other frames
+  interleaved; `ContinuationFrame` goes from "parse-only" to a real write path,
+  and `FrameHeader.DEFAULT_MAX_FRAME_SIZE` becomes the sole definition of that
+  protocol constant (`Http2Connection` previously carried a second literal of the
+  same value). `HeadersFrame.writeTo` serializes by its own parsed flags —
+  `BaseFrame.writeTo` is abstract and the class must implement it, but it used to
+  hard-code `END_HEADERS` and drop `END_STREAM`, a trap that produced only wrong
+  frames. The new
+  `H2WireFormatTest.oversizedHeaderBlockIsSplitIntoContinuationFrames` splits a
+  2 KiB head block at 512 bytes, validates type/flags/limit per frame, and
+  reassembles the same block with the engine's own decoder.
+- **Node identity unifies into one derivation (freeway-cloud)** — the registry's
+  instance id used to be `service-instance-id` or `service-id@host:port`
+  (derived once the HTTP server was up), while the event mesh's origin was
+  `service-id@<random UUID>` (the mesh wires up before the HTTP server and does
+  not know the port) — yet the comments and the design doc claimed the two were
+  the same. `HttpServiceDeclaration.of(container)` is now the only definition
+  site: registration and the mesh both consume the same `ServiceInstance` it
+  returns, and the mesh wires with `.after(HTTP_SERVER)` to get the real port;
+  the cost is that a hello arriving before wiring receives 1013 and reconnects
+  with the existing backoff (which is already the mesh's contract). `PeerHub` no
+  longer fabricates a UUID fallback.
+- **Three behavioural defects in the HTTP engine (freeway-http)** — each
+  reproduced by the audit with a concrete input:
+  - **Response-frame leak after RST**: `markAborted()` set only
+    `responseAborted` and not `streamOutputClosed`, and the pre-write check ran
+    after `writeResponseHeaders` — on a DATA frame following
+    `HEADERS[END_STREAM]`, the server kept sending HEADERS/DATA/END_STREAM after
+    its own RST_STREAM (RFC 9113 §5.1). Both are fixed, and no frames go out for
+    that input.
+  - **A quoted charset produced mojibake**: for
+    `Content-Type: text/plain; charset="ISO-8859-1"`, `bodyText()` silently fell
+    back to UTF-8 because `Charset.forName("\"ISO-8859-1\"")` failed, while
+    `Part.text()` on the same header decoded correctly. The quotes are now
+    stripped before lookup, making both paths agree.
+  - **`isMultipart()` was a substring check**: `text/plain;
+    note=multipart/form-data` counted as an upload, so `multipart()` threw and
+    the default handler returned 400. It now compares the media type exactly.
+  - Also fixed: `CompressionConfig` silently turned negatives into 256 (every
+    other component of the record throws) and now throws
+    `IllegalArgumentException`; HTTP/1.1 gains the reason phrases for 415/416
+    (the wire previously showed `HTTP/1.1 415 ` with an empty phrase);
+    `WebServer`'s null sink goes through the noop sentinel; and `cors.max-age`
+    changes from an unvalidated String to an Integer (`=abc` no longer lands in
+    the response header verbatim — startup fails instead).
+- **Config tiers and doc corrections (freeway-http / freeway-cloud / docs)** —
+  `HttpConfigKeys` and `CloudConfigKeys` reorganize by "decision keys / best
+  default / advanced (low probability)" with reasons stated, and each advanced
+  cluster names the aggregate key governing it (`rpc.resilience=auto|off`,
+  `event.enabled` presence, `event.dedup.enabled`); `docs/freeway-config.md`'s
+  "required config quick reference" becomes the "decision key quick reference".
+  Corrections: the docs used `freeway.http.port` as an example in four places,
+  but that key **does not exist** (the real key is
+  `freeway.http.server.port` ↔ `FREEWAY_HTTP_SERVER_PORT`); `secret.file`/
+  `secret.keys` are annotated as `-D` only; `rpc.connect-timeout`/
+  `request-timeout` are stated as **not** governed by `resilience=off`; the WS
+  endpoint `/cloud/events` → `/cloud/event` (6 places); `CloudEventModule`'s
+  "enabled default false" becomes the real presence-driven rule;
+  `ExceptionMapper` → `ErrorHandler` (a residue of the 1.3.8 rename); and the
+  DEVELOPER-GUIDE's RPC export example referenced `container` inside
+  `bind(Binder)` (does not compile) and now has the module hold the `CallBus`.
+- **`freeway-ioc` internal convergence (no API change)** — cleaned by "a concept
+  must earn its own place":
+  - The bus's collaborators share the host's package and visibility:
+    `EventStats`/`EventSinkRegistry`/`EventExecutorSupport`/`CallStats`/
+    `CallTargetRegistry`/`CallAdviceChain`/`CallProxyFactory` move from
+    `ioc.internal` (public) into `ioc` (package-private), matching the existing
+    `EventDispatcher`/`EventStreams`/`EventSubscriptionIndex`; `ioc.internal` now
+    holds exactly one public type, `ContainerImpl`.
+  - `ProxyFactory` (a package-private interface with one implementation and no
+    external substitution point) folds into `ProxyFactoryImpl`.
+  - `@Inject Logger` routes through `container.get(LoggerSource.class)` (the same
+    principle as `SymbolSource`/`Coercer`): it previously went through a
+    hard-wired field, so binding a primary `LoggerSource` alternative had no
+    effect on it.
+  - `ContainerImpl`: the zero-caller pure-forwarding `resolveArguments` is
+    deleted; the module context's save/restore, which always restored null (the
+    tree flattens first, no recursion), becomes set/clear; the single-use
+    `Scoping` field is inlined; and `close()` gains `markerIndex.clear()` (the
+    marker index previously held every binding for the container's lifetime).
+  - `BindingIndex`: the "update the type index" no-op block in `updateId` that
+    wrote the same reference back, and `scanBindings`' unused `type` parameter,
+    are deleted. `MarkerIndex.register`/`sync` merge into one (marker validation
+    already happens at the binding entry; no more three copies).
+  - `Shutdown`'s two identical catch bodies merge; `EventExecutorSupport`'s
+    always-true, return-discarded `BooleanSupplier` becomes a `Runnable`;
+    `EventBus` deletes the unused `LOG` field left over from extracting
+    `EventDispatcher` and fixes `publishOrdered`'s javadoc describing the deleted
+    `key` parameter; and `ContainerImpl`'s thread-scope registry drops its
+    never-read owner value (`Map<Object,ContainerImpl>` → an identity `Set`).
+- **The profile segment order of filesystem override files (freeway-boot)** — the
+  working-directory and `freeway.config.file` profile variants used to be
+  ordered "per profile: properties+json", inconsistent with the classpath side's
+  "all properties first, then all json": with multiple profiles the same file
+  contents produced different winners on the two sides
+  (`application-dev.json` beat `application-prod.properties` on the classpath
+  but lost to it on the filesystem). Both sides now put format first.
+- **bootstrap-only keys' WARN covers every config file channel (freeway-boot)** —
+  only classpath files were checked before; `freeway.env.prefix`/
+  `freeway.config.file` declared in working-directory profile variants or
+  `freeway.config.file` additional files were still silently ignored. Now
+  `AppConfigDefault` names them uniformly while reading each filesystem file
+  (filename included), and CLI arguments (`--freeway.config.file=...`) are named
+  too.
 
 ## [1.5.1] — 2026-09-06
 
