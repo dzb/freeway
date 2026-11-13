@@ -122,7 +122,7 @@ final class Http1xParser {
         Map<String, List<String>> headers = parseHeaders();
         long contentLength = -1;
         boolean isChunked = false, keepAlive = !isHttp10;
-        boolean connectionUpgrade = false, upgradeWebsocket = false;
+        boolean connectionUpgrade = false, upgradeWebSocket = false;
 
         for (var entry : headers.entrySet()) {
             // Keys are already lowercased by parseHeaders (RFC 7230 §3.2) —
@@ -183,7 +183,7 @@ final class Http1xParser {
                 }
                 case "upgrade" -> {
                     String v = entry.getValue().getFirst();
-                    if (v != null && "websocket".equalsIgnoreCase(v)) upgradeWebsocket = true;
+                    if (v != null && "websocket".equalsIgnoreCase(v)) upgradeWebSocket = true;
                 }
             }
         }
@@ -194,7 +194,7 @@ final class Http1xParser {
 
         return new ParsedRequest(method, path, queryString, headers,
             contentLength, isChunked, isHttp10, keepAlive,
-            connectionUpgrade && upgradeWebsocket, false);
+            connectionUpgrade && upgradeWebSocket, false);
     }
 
     // --- bulk-read helpers ---

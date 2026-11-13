@@ -24,15 +24,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p><b>This is now a regression guard for a past shape, not a comparison of
  * two live implementations.</b> It was written when the built-in engine bounded
- * bodies through {@code RequestBody} and the adapter seam exposed
- * {@code AbstractHttpContext#readBody} — a second implementation that
- * {@code HttpEngine}'s javadoc and AGENTS.md both named as <em>the</em> shared
- * one while nothing in the framework called it. Two independent loops, one
+ * bodies through {@code RequestBody} and the adapter seam exposed a second
+ * read helper — a second implementation that {@code HttpEngine}'s javadoc and
+ * AGENTS.md both named as <em>the</em> shared one while nothing in the
+ * framework called it. Two independent loops, one
  * documented guarantee, and the two happened to agree on every case here, so the
  * duplication was a latent divergence rather than a live bug.
  *
  * <p>There is now exactly one limiter: {@code http.internal.LimitedInputStream},
- * which {@code HttpContextSupport} wraps around {@code transport.bodyStream()}
+ * which {@code HttpExchangeSupport} wraps around {@code transport.framedBodyStream()}
  * for every engine. {@link #viaEngine} drives that limiter directly and
  * {@link #viaAdapterHelper} drives it through a real support object, so the
  * case-by-case comparison below asserts that the support object's wrapper is

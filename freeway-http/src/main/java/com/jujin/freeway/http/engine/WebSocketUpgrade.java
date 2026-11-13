@@ -38,7 +38,7 @@ final class WebSocketUpgrade {
                 Http1xParser.ParsedRequest req) {
         try {
             String origin = HttpSession.headerValue(req.headers(), "Origin");
-            WebSocketMatch match = ctx.handler().websocket(req.method(), req.path(), origin);
+            WebSocketMatch match = ctx.handler().matchWebSocket(req.method(), req.path(), origin);
             if (match == null) {
                 HttpSession.sendUpgradeError(connection.outputStream(), 403, "Forbidden");
                 return;
@@ -102,7 +102,7 @@ final class WebSocketUpgrade {
             }
             HttpSession.writeLine(out, "");
             out.flush();
-            ctx.metrics().websocketConnections().increment();
+            ctx.metrics().webSocketConnections().increment();
 
             // A WebSocket is long-lived and must survive idle periods:
             // clear the socket read timeout before entering the blocking
@@ -120,8 +120,8 @@ final class WebSocketUpgrade {
                 // loop keeps the pre-existing (timeout-kill) behavior.
             }
 
-            InputStream websocketInput = parser.upgradeStream();
-            var wsConnection = new WebSocketConnection(websocketInput,
+            InputStream webSocketInput = parser.upgradeStream();
+            var wsConnection = new WebSocketConnection(webSocketInput,
                 connection.outputStream());
             var wsSession = new WebSocketSessionSupport(wsConnection,
                 HttpSession.headerValue(req.headers(), "x-request-id"),
@@ -140,8 +140,7 @@ final class WebSocketUpgrade {
                     req.path(), e.toString(), e);
                 return;
             }
-            WebSocketReadLoop.readLoop(websocketInput, connection.outputStream(),
-                wsConnection, listener);
+            WebSocketReadLoop.readLoop(webSocketInput, wsConnection, listener);
         } catch (Exception e) {
             // Read-loop and connection failures stay low-level: a peer
             // disconnecting mid-frame is routine, not a fault to alert on.

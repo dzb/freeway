@@ -26,12 +26,12 @@ class ResiliencePolicyTest {
         return new ResiliencePolicy(retryer, null, null);
     }
 
-    private static CloudResponse ok() {
-        return new CloudResponse(200, Map.of(), new byte[0]);
+    private static RpcResponse ok() {
+        return new RpcResponse(200, Map.of(), new byte[0]);
     }
 
-    private static CloudException connectFailure() {
-        return CloudException.connect("svc", new IOException("down"));
+    private static RpcException connectFailure() {
+        return RpcException.connect("svc", new IOException("down"));
     }
 
     @Test
@@ -40,7 +40,7 @@ class ResiliencePolicyTest {
         ResiliencePolicy policy = policy(Retryer.NO_RETRY);
         AtomicInteger attempts = new AtomicInteger();
 
-        CloudResponse response = policy.run("svc", 0, breaker, FakeLimiter.unlimited(), true,
+        RpcResponse response = policy.run("svc", 0, breaker, FakeLimiter.unlimited(), true,
             () -> {
                 attempts.incrementAndGet();
                 return ok();
@@ -58,7 +58,7 @@ class ResiliencePolicyTest {
         ResiliencePolicy policy = policy(Retryer.NO_RETRY);
         AtomicInteger attempts = new AtomicInteger();
 
-        CloudException ex = assertThrows(CloudException.class,
+        RpcException ex = assertThrows(RpcException.class,
             () -> policy.run("svc", 0, breaker, FakeLimiter.withPermits(0), true, () -> {
                 attempts.incrementAndGet();
                 return ok();
@@ -77,7 +77,7 @@ class ResiliencePolicyTest {
         ResiliencePolicy policy = policy(Retryer.NO_RETRY);
         AtomicInteger attempts = new AtomicInteger();
 
-        CloudException ex = assertThrows(CloudException.class,
+        RpcException ex = assertThrows(RpcException.class,
             () -> policy.run("svc", 0, breaker, limiter, true, () -> {
                 attempts.incrementAndGet();
                 return ok();
@@ -94,7 +94,7 @@ class ResiliencePolicyTest {
         ResiliencePolicy policy = policy(new FakeRetryer(5, 0));
         AtomicInteger attempts = new AtomicInteger();
 
-        CloudResponse response = policy.run("svc", 0, breaker, FakeLimiter.unlimited(), true,
+        RpcResponse response = policy.run("svc", 0, breaker, FakeLimiter.unlimited(), true,
             () -> {
                 if (attempts.incrementAndGet() < 3) {
                     throw connectFailure();
@@ -114,7 +114,7 @@ class ResiliencePolicyTest {
         ResiliencePolicy policy = policy(new FakeRetryer(1, 0));
         AtomicInteger attempts = new AtomicInteger();
 
-        CloudException ex = assertThrows(CloudException.class,
+        RpcException ex = assertThrows(RpcException.class,
             () -> policy.run("svc", 0, breaker, FakeLimiter.unlimited(), true, () -> {
                 attempts.incrementAndGet();
                 throw connectFailure();
@@ -133,11 +133,11 @@ class ResiliencePolicyTest {
         ResiliencePolicy policy = policy(new FakeRetryer(5, 0));
         AtomicInteger attempts = new AtomicInteger();
 
-        CloudResponse response = policy.run("svc", 0, breaker, FakeLimiter.unlimited(), true,
+        RpcResponse response = policy.run("svc", 0, breaker, FakeLimiter.unlimited(), true,
             () -> {
                 attempts.incrementAndGet();
                 if (attempts.get() < 3) {
-                    throw CloudException.timeout("svc");
+                    throw RpcException.timeout("svc");
                 }
                 return ok();
             });
@@ -153,10 +153,10 @@ class ResiliencePolicyTest {
         ResiliencePolicy policy = policy(new FakeRetryer(5, 0));
         AtomicInteger attempts = new AtomicInteger();
 
-        CloudException ex = assertThrows(CloudException.class,
+        RpcException ex = assertThrows(RpcException.class,
             () -> policy.run("svc", 0, breaker, FakeLimiter.unlimited(), false, () -> {
                 attempts.incrementAndGet();
-                throw CloudException.timeout("svc");
+                throw RpcException.timeout("svc");
             }));
 
         assertTrue(ex.retryable(), "timeout is still a retryable class of failure");
@@ -173,10 +173,10 @@ class ResiliencePolicyTest {
         ResiliencePolicy policy = policy(new FakeRetryer(5, 0));
         AtomicInteger attempts = new AtomicInteger();
 
-        CloudException ex = assertThrows(CloudException.class,
+        RpcException ex = assertThrows(RpcException.class,
             () -> policy.run("svc", 0, breaker, FakeLimiter.unlimited(), false, () -> {
                 attempts.incrementAndGet();
-                throw CloudException.http("svc", 503);
+                throw RpcException.http("svc", 503);
             }));
 
         assertTrue(ex.retryable());
@@ -184,10 +184,10 @@ class ResiliencePolicyTest {
         assertEquals(1, attempts.get(), "5xx must not be replayed for a non-idempotent operation");
 
         // The same failure retries once the operation is marked idempotent.
-        CloudResponse response = policy.run("svc", 0, breaker, FakeLimiter.unlimited(), true,
+        RpcResponse response = policy.run("svc", 0, breaker, FakeLimiter.unlimited(), true,
             () -> {
                 if (attempts.incrementAndGet() < 3) {
-                    throw CloudException.http("svc", 503);
+                    throw RpcException.http("svc", 503);
                 }
                 return ok();
             });
@@ -201,10 +201,10 @@ class ResiliencePolicyTest {
         ResiliencePolicy policy = policy(new FakeRetryer(5, 0));
         AtomicInteger attempts = new AtomicInteger();
 
-        CloudException ex = assertThrows(CloudException.class,
+        RpcException ex = assertThrows(RpcException.class,
             () -> policy.run("svc", 0, breaker, FakeLimiter.unlimited(), false, () -> {
                 attempts.incrementAndGet();
-                throw CloudException.transport("svc", new IOException("connection reset"));
+                throw RpcException.transport("svc", new IOException("connection reset"));
             }));
 
         assertTrue(ex.retryable());
@@ -219,7 +219,7 @@ class ResiliencePolicyTest {
         ResiliencePolicy policy = policy(new FakeRetryer(5, 0));
         AtomicInteger attempts = new AtomicInteger();
 
-        CloudResponse response = policy.run("svc", 0, breaker, FakeLimiter.unlimited(), false,
+        RpcResponse response = policy.run("svc", 0, breaker, FakeLimiter.unlimited(), false,
             () -> {
                 attempts.incrementAndGet();
                 if (attempts.get() < 2) {
@@ -239,10 +239,10 @@ class ResiliencePolicyTest {
         ResiliencePolicy policy = policy(new FakeRetryer(5, 0));
         AtomicInteger attempts = new AtomicInteger();
 
-        CloudException ex = assertThrows(CloudException.class,
+        RpcException ex = assertThrows(RpcException.class,
             () -> policy.run("svc", 0, breaker, FakeLimiter.unlimited(), true, () -> {
                 attempts.incrementAndGet();
-                throw CloudException.noInstance("svc");
+                throw RpcException.noInstance("svc");
             }));
 
         assertFalse(ex.retryable(), "no instance is a configuration error, not retryable");
@@ -258,10 +258,10 @@ class ResiliencePolicyTest {
         FakeBreaker breaker = FakeBreaker.halfOpen();
         ResiliencePolicy policy = policy(Retryer.NO_RETRY);
 
-        CloudException ex = assertThrows(CloudException.class,
+        RpcException ex = assertThrows(RpcException.class,
             () -> policy.run("svc", 0, breaker, FakeLimiter.unlimited(), true,
                 () -> {
-                    throw CloudException.noInstance("svc");
+                    throw RpcException.noInstance("svc");
                 }));
 
         assertFalse(ex.retryable());
@@ -274,7 +274,7 @@ class ResiliencePolicyTest {
         FakeBreaker breaker = FakeBreaker.halfOpen();
         ResiliencePolicy policy = policy(Retryer.NO_RETRY);
 
-        CloudResponse response = policy.run("svc", 0, breaker, FakeLimiter.unlimited(), true,
+        RpcResponse response = policy.run("svc", 0, breaker, FakeLimiter.unlimited(), true,
             () -> ok());
 
         assertEquals(200, response.status());
@@ -288,7 +288,7 @@ class ResiliencePolicyTest {
         ResiliencePolicy policy = policy(Retryer.NO_RETRY);
         AtomicInteger attempts = new AtomicInteger();
 
-        CloudException ex = assertThrows(CloudException.class,
+        RpcException ex = assertThrows(RpcException.class,
             () -> policy.run("svc", 1, breaker, FakeLimiter.unlimited(), true, () -> {
                 attempts.incrementAndGet();
                 return ok();
@@ -307,7 +307,7 @@ class ResiliencePolicyTest {
         ResiliencePolicy policy = policy(new FakeRetryer(10, 60_000));
         AtomicInteger attempts = new AtomicInteger();
 
-        CloudException ex = assertThrows(CloudException.class,
+        RpcException ex = assertThrows(RpcException.class,
             () -> policy.run("svc", DurationNanos.ms(5), breaker, FakeLimiter.unlimited(), true,
                 () -> {
                     attempts.incrementAndGet();

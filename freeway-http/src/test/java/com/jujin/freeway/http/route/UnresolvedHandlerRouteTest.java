@@ -8,7 +8,7 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
-import com.jujin.freeway.http.HttpContext;
+import com.jujin.freeway.http.HttpExchange;
 
 /**
  * A class-based route in an index that {@code HttpModule} did not build is
@@ -35,15 +35,15 @@ class UnresolvedHandlerRouteTest {
 
     public static final class Plain implements RouteHandler {
         @Override
-        public void handle(HttpContext ctx) throws java.io.IOException {
-            ctx.send(200, "ok");
+        public void handle(HttpExchange ctx) throws java.io.IOException {
+            ctx.sendText(200, "ok");
         }
     }
 
     @Test
     void theRefusalSaysWhichRouteWhichClassAndWhatToDo() {
         IllegalStateException ex = assertThrows(IllegalStateException.class,
-            () -> new RouteIndex(List.of(Route.get("/orders/{id}", Plain.class)), List.of()));
+            () -> new RouteIndex(List.of(Route.get("/orders/{id}", Plain.class))));
 
         String message = ex.getMessage();
         assertTrue(message.contains("/orders/{id}"),
@@ -82,7 +82,7 @@ class UnresolvedHandlerRouteTest {
         Route route = Route.get("/test", Plain.class);
         ((ResolvableHandler) route.handler()).resolve(Plain::new);
 
-        RouteIndex index = new RouteIndex(List.of(route), List.of());
+        RouteIndex index = new RouteIndex(List.of(route));
         var match = index.match("GET", "/test");
         assertNotNull(match, "a resolved class route indexes and matches like any other");
         assertTrue(match.handler() instanceof ResolvableHandler,
@@ -108,7 +108,7 @@ class UnresolvedHandlerRouteTest {
         // The other declaration form never needed resolving and must not be
         // dragged into the check.
         RouteIndex index = new RouteIndex(
-            List.of(Route.get("/test", ctx -> ctx.send(200, "ok"))), List.of());
+            List.of(Route.get("/test", ctx -> ctx.sendText(200, "ok"))));
         assertNotNull(index.match("GET", "/test"));
     }
 }

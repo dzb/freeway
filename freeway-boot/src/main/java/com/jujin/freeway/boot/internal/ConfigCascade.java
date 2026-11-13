@@ -5,7 +5,6 @@ import com.jujin.freeway.ioc.symbol.SymbolProvider;
 import com.jujin.freeway.commons.util.EnvKeys;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -73,16 +72,9 @@ public final class ConfigCascade {
     private static final List<String> BOOTSTRAP_ONLY_KEYS = List.of(
         CONFIG_FILE_KEY, ENV_PREFIX_KEY);
 
-    /** The standard base config file family — one source of truth for the
-     *  classpath load, the working-directory overrides and the filesystem
-     *  base (profile variants are derived from these names). */
-    private static final String APPLICATION_PROPERTIES = "application.properties";
-    private static final String APPLICATION_JSON = "application.json";
     /** The bootstrap log cascade's view, parsed once per class loader. */
     private static final Map<ClassLoader, ConfigSources> BOOTSTRAP_LAYERS =
         Collections.synchronizedMap(new WeakHashMap<>());
-    private static final List<String> APPLICATION_FILES =
-        List.of(APPLICATION_PROPERTIES, APPLICATION_JSON);
 
     /** A value that begins with a minus sign but is a number (e.g. {@code -1}, {@code -2.5}, {@code -1e5}). */
     private static final Pattern NEGATIVE_NUMBER_PATTERN =
@@ -94,9 +86,15 @@ public final class ConfigCascade {
      * environment, and the CLI arguments.
      */
     public static AppConfig load(ClassLoader loader, String... args) {
+        Path workDir = Path.of("").toAbsolutePath();
+        ConfigFilePlan basePlan = ConfigFilePlan.base(workDir);
+        ConfigFilePlan.Snapshot base = basePlan.read();
+
         // Filesystem base files participate in profile selection alongside
-        // the classpath base (filesystem wins, env/CLI win over both).
-        ConfigSources sources = loadLayers(loader, readFilesystemBase(), args);
+        // the classpath base (filesystem wins, env/CLI win over both). The
+        // snapshot is carried into the full read below, so these files are
+        // parsed once even though the profile variants are only knowable now.
+        ConfigSources sources = loadLayers(loader, base.values(), args);
 
         warnAboutBootstrapKeys("the classpath config files", sources.files());
         warnAboutBootstrapKeys("the command-line arguments", sources.cli());
@@ -105,44 +103,9 @@ public final class ConfigCascade {
         // The class-load-only keys ignore every file, the classpath included.
         LogKeyNotices.unread("the command-line arguments", sources.cli(), null);
         LogKeyNotices.classLoadOnly("the classpath config files", sources.files());
-        return new AppConfigDefault(sources, overrideFiles(sources.profiles()));
-    }
-
-    /**
-     * The ordered filesystem files the file tier folds over the classpath
-     * baseline (later wins): the working-directory base files, then the
-     * variants of every active profile, then the files named by the
-     * {@code freeway.config.file} bootstrap key.
-     *
-     * <p>The profile band is laid out exactly as the classpath load lays it
-     * out — every profile's {@code .properties}, then every profile's
-     * {@code .json} — so the source format outranks the profile order
-     * wherever a file lives ({@code application-a.json} beats
-     * {@code application-b.properties} on both sides of the baseline).
-     *
-     * <p>Named separately from {@link #load} because it is the one part of
-     * the cascade whose order is pure data: the file names, not their
-     * contents, decide precedence.
-     */
-    static AppConfigDefault.OverrideFiles overrideFiles(List<String> profiles) {
-        Path workDir = Path.of("").toAbsolutePath();
-        List<AppConfigDefault.OverrideFile> files = new ArrayList<>();
-        for (String name : APPLICATION_FILES) {
-            files.add(AppConfigDefault.OverrideFile.base(workDir.resolve(name)));
-        }
-        for (String base : APPLICATION_FILES) {
-            for (String profile : profiles) {
-                files.add(AppConfigDefault.OverrideFile.variant(
-                    workDir.resolve(profileVariant(base, profile))));
-            }
-        }
-        String configFiles = EnvKeys.bootstrap(CONFIG_FILE_KEY);
-        for (String extra : (configFiles == null ? "" : configFiles).split(",")) {
-            if (!extra.isBlank()) {
-                files.add(AppConfigDefault.OverrideFile.declared(Path.of(extra.trim())));
-            }
-        }
-        return new AppConfigDefault.OverrideFiles(files);
+        ConfigFilePlan fullPlan = ConfigFilePlan.full(workDir, sources.profiles());
+        return new AppConfigDefault(
+            sources, fullPlan, fullPlan.read(base.byPath()));
     }
 
     /**
@@ -168,28 +131,6 @@ public final class ConfigCascade {
                     key, key, EnvKeys.name(key), value, origin);
             }
         }
-    }
-
-    /**
-     * Base files in the working directory (filesystem overrides of the
-     * packaged {@code application.properties}/{@code application.json}).
-     * They participate in profile selection and hot reload — dropping one
-     * next to the deployed jar is the standard way to externalize config.
-     */
-    private static Map<String, String> readFilesystemBase() {
-        Map<String, String> base = new LinkedHashMap<>();
-        for (String name : APPLICATION_FILES) {
-            Path file = Path.of(name).toAbsolutePath();
-            if (!Files.isRegularFile(file)) {
-                continue;
-            }
-            try {
-                base.putAll(ConfigFileReader.read(file));
-            } catch (IOException e) {
-                throw new IllegalStateException("Unable to load " + file, e);
-            }
-        }
-        return Map.copyOf(base);
     }
 
     /** The classpath sources without filesystem base files — the form the
@@ -227,8 +168,8 @@ public final class ConfigCascade {
         String... args
     ) {
         Map<String, String> environment = loadEnvironment(System.getenv());
-        Map<String, String> properties = loadResource(loader, APPLICATION_PROPERTIES);
-        Map<String, String> json = loadResource(loader, APPLICATION_JSON);
+        Map<String, String> properties = loadResource(loader, ConfigFilePlan.APPLICATION_PROPERTIES);
+        Map<String, String> json = loadResource(loader, ConfigFilePlan.APPLICATION_JSON);
         Map<String, String> cli = parseArgs(args);
 
         // Ascending precedence, derived from the symbol chain's own tiers
@@ -256,9 +197,9 @@ public final class ConfigCascade {
         List<Map<String, String>> profileJson = new ArrayList<>(profiles.size());
         for (String profile : profiles) {
             profileProperties.add(withoutActivationKey(
-                loadResource(loader, profileVariant(APPLICATION_PROPERTIES, profile))));
+                loadResource(loader, ConfigFilePlan.profileVariant(ConfigFilePlan.APPLICATION_PROPERTIES, profile))));
             profileJson.add(withoutActivationKey(
-                loadResource(loader, profileVariant(APPLICATION_JSON, profile))));
+                loadResource(loader, ConfigFilePlan.profileVariant(ConfigFilePlan.APPLICATION_JSON, profile))));
         }
         List<Map<String, String>> fileLayers = new ArrayList<>(2 + profiles.size() * 2);
         fileLayers.add(properties);
@@ -368,13 +309,6 @@ public final class ConfigCascade {
         } catch (IOException ex) {
             throw new IllegalStateException("Unable to load " + name, ex);
         }
-    }
-
-    /** The {@code -profile} variant of a base file name:
-     *  {@code application.properties} → {@code application-dev.properties}. */
-    private static String profileVariant(String base, String profile) {
-        int dot = base.lastIndexOf('.');
-        return base.substring(0, dot) + '-' + profile + base.substring(dot);
     }
 
     /**

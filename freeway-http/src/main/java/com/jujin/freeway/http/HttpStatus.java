@@ -8,6 +8,7 @@ public final class HttpStatus {
     public static final int CREATED = 201;
     public static final int ACCEPTED = 202;
     public static final int NO_CONTENT = 204;
+    public static final int RESET_CONTENT = 205;
     public static final int PARTIAL_CONTENT = 206;
     public static final int MOVED_PERMANENTLY = 301;
     public static final int FOUND = 302;
@@ -31,4 +32,12 @@ public final class HttpStatus {
     public static final int GATEWAY_TIMEOUT = 504;
 
     private HttpStatus() {}
+
+    /**
+     * True when the status permits a message body. RFC 9110 §8.6: 204, 205
+     * and 304 never carry one.
+     */
+    public static boolean allowsBody(int status) {
+        return status != NO_CONTENT && status != RESET_CONTENT && status != NOT_MODIFIED;
+    }
 }

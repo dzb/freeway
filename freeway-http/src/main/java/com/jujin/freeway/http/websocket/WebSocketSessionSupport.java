@@ -1,16 +1,15 @@
 package com.jujin.freeway.http.websocket;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.time.Instant;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
 import com.jujin.freeway.http.ExchangeMetaImpl;
-import com.jujin.freeway.http.internal.HttpHeaders;
+import com.jujin.freeway.http.RequestViewSupport;
+import com.jujin.freeway.http.internal.WebSocketCloseReason;
 
 /**
  * The one shared {@link WebSocketSession} implementation: the
@@ -28,11 +27,7 @@ public final class WebSocketSessionSupport implements WebSocketSession {
 
     private final WebSocketTransport transport;
     private final ExchangeMetaImpl exchangeMeta;
-    private final String method;
-    private final String path;
-    private final Map<String, String> pathVariables;
-    private final Map<String, List<String>> queryParams;
-    private final Map<String, List<String>> headers;
+    private final RequestViewSupport requestView;
 
     /**
      * @param transport     engine-specific frame operations
@@ -54,20 +49,8 @@ public final class WebSocketSessionSupport implements WebSocketSession {
     ) {
         this.transport = Objects.requireNonNull(transport, "transport");
         this.exchangeMeta = new ExchangeMetaImpl(correlationId);
-        this.method = Objects.requireNonNull(method, "method");
-        this.path = Objects.requireNonNull(path, "path");
-        this.pathVariables = pathVariables == null ? Map.of() : Map.copyOf(pathVariables);
-        this.queryParams = snapshot(queryParams);
-        this.headers = snapshot(headers);
-    }
-
-    /** Copies the map and each value list, so the snapshot cannot be mutated. */
-    private static Map<String, List<String>> snapshot(Map<String, List<String>> source) {
-        if (source == null || source.isEmpty()) return Map.of();
-        Map<String, List<String>> copy = new LinkedHashMap<>(source.size());
-        source.forEach((key, values) ->
-            copy.put(key, values == null ? List.of() : List.copyOf(values)));
-        return Map.copyOf(copy);
+        this.requestView = new RequestViewSupport(
+            method, path, pathVariables, queryParams, headers);
     }
 
     // -- exchange metadata --
@@ -111,55 +94,52 @@ public final class WebSocketSessionSupport implements WebSocketSession {
 
     @Override
     public String method() {
-        return method;
+        return requestView.method();
     }
 
     @Override
     public String path() {
-        return path;
+        return requestView.path();
     }
 
     @Override
     public Optional<String> pathVar(String name) {
-        return Optional.ofNullable(pathVariables.get(name));
+        return requestView.pathVar(name);
     }
 
     @Override
     public Map<String, String> pathVars() {
-        return pathVariables;
+        return requestView.pathVars();
     }
 
     @Override
     public Optional<String> queryParam(String name) {
-        List<String> values = queryParams.get(name);
-        return values != null && !values.isEmpty()
-            ? Optional.of(values.getFirst())
-            : Optional.empty();
+        return requestView.queryParam(name);
     }
 
     @Override
     public List<String> queryParams(String name) {
-        return queryParams.getOrDefault(name, List.of());
+        return requestView.queryParams(name);
     }
 
     @Override
     public Map<String, List<String>> queryParams() {
-        return queryParams;
+        return requestView.queryParams();
     }
 
     @Override
     public Optional<String> header(String name) {
-        return Optional.ofNullable(HttpHeaders.headerValue(headers, name));
+        return requestView.header(name);
     }
 
     @Override
     public List<String> headers(String name) {
-        return HttpHeaders.headerValues(headers, name);
+        return requestView.headers(name);
     }
 
     @Override
     public Map<String, List<String>> headers() {
-        return headers;
+        return requestView.headers();
     }
 
     // -- frame operations, delegated to the transport --
@@ -192,7 +172,7 @@ public final class WebSocketSessionSupport implements WebSocketSession {
      */
     @Override
     public void close(int code, String reason) throws IOException {
-        transport.close(code, truncateCloseReason(reason));
+        transport.close(code, WebSocketCloseReason.truncate(reason));
     }
 
     @Override
@@ -205,14 +185,4 @@ public final class WebSocketSessionSupport implements WebSocketSession {
         transport.sendTextBatch(texts);
     }
 
-    static String truncateCloseReason(String reason) {
-        if (reason == null) return "";
-        byte[] bytes = reason.getBytes(StandardCharsets.UTF_8);
-        if (bytes.length <= 123) return reason;
-        int end = 123;
-        while (end > 0 && (bytes[end] & 0xC0) == 0x80) {
-            end--;
-        }
-        return new String(bytes, 0, end, StandardCharsets.UTF_8);
-    }
 }

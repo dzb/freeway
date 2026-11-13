@@ -79,7 +79,7 @@ class MetricsAssemblyTest {
             HttpResponse<String> metrics = get(app, "/metrics");
             assertEquals(200, metrics.statusCode());
             assertTrue(metrics.body().contains("hits 3"),
-                "a backend installed instead of CloudObserveModule must be the active "
+                "a backend installed instead of ObserveModule must be the active "
                     + "Metrics and export itself");
         }
     }
@@ -124,7 +124,7 @@ class MetricsAssemblyTest {
             b.bind(Metrics.class).to(container -> backend).primary();
             b.bind(MetricsSnapshot.class).to(container -> backend);
             b.contribute(Route.class).add("metrics",
-                Route.get("/metrics", ctx -> ctx.send(200, backend.prometheusText())));
+                Route.get("/metrics", ctx -> ctx.sendText(200, backend.prometheusText())));
         }
     }
 

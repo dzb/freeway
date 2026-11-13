@@ -4,16 +4,21 @@ import java.io.IOException;
 import java.io.OutputStream;
 
 
-final class ResetStreamFrame extends BaseFrame {
+final class ResetStreamFrame implements Http2Frame {
+    private final FrameHeader header;
+
+    @Override
+    public FrameHeader header() { return header; }
+
     public final Http2ErrorCode errorCode;
 
     public ResetStreamFrame(Http2ErrorCode errorCode, int streamId) {
-        super(new FrameHeader(4, FrameType.RST_STREAM, FrameFlag.NONE, streamId));
+        this.header = new FrameHeader(4, FrameType.RST_STREAM, FrameFlag.NONE, streamId);
         this.errorCode = errorCode;
     }
 
     private ResetStreamFrame(FrameHeader header, Http2ErrorCode errorCode) {
-        super(header);
+        this.header = header;
         this.errorCode = errorCode;
     }
 

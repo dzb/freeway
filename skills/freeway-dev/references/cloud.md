@@ -10,16 +10,16 @@ which modules are installed, never by classpath presence (there is no scanning).
   context propagation, secrets, **discovery/registry**, remote invocation (RPC),
   observability, resilience, health, object storage.
 - Every sub-module is an ordinary module: place a subset directly
-  (`new CloudRpcModule()` for RPC only). No exclusion list exists.
-- `CloudEventModule` — deliberately NOT in the bundle: it opens a listener and
+  (`new RpcModule()` for RPC only). No exclusion list exists.
+- `EventMeshModule` — deliberately NOT in the bundle: it opens a listener and
   dials peers, so the application places and enters it explicitly.
 
 ## Service Registry & Discovery — one seam, three backends
 
 | Backend | Place | Infrastructure |
 |---|---|---|
-| In-process (default) | `CloudModule` or `CloudDiscoveryModule` | none — single instance / static topology |
-| Freeway-native fleet | `CloudModule` + `RegistryFleetModule` | 1–N deployable registry nodes |
+| In-process (default) | `CloudModule` or `DiscoveryModule` | none — single instance / static topology |
+| Freeway-native fleet | `CloudModule` + `FleetRegistryModule` | 1–N deployable registry nodes |
 | Consul | `CloudModule` + ext `ConsulModule` | Consul cluster |
 
 Switching = swapping the module and its keys; application code (`@Inject
@@ -31,7 +31,7 @@ A normal freeway application:
 
 ```java
 FreewayApp.run(Launch.of(args), new HttpModule(),
-    new CloudDiscoveryModule(), new RegistryServerModule());
+    new DiscoveryModule(), new RegistryServerModule());
 ```
 
 ```properties
@@ -61,7 +61,7 @@ every instance, which re-asserts itself on a 404), **no consensus replication**
 (clients fan writes out to all nodes and union reads — any node alive keeps the
 fleet serving; nodes are independent peers).
 
-### The fleet client (`RegistryFleetModule`)
+### The fleet client (`FleetRegistryModule`)
 
 ```properties
 freeway.cloud.registry.nodes=http://n1:8060,http://n2:8060   # required
@@ -81,7 +81,7 @@ adapters implement transport only.
 
 **Readiness (the instance is not discoverable until it can serve).** An
 application that contributes `CloudHealthContributor`s registers as
-`Health.starting()`, and a gate flips it to ready only when **every** check
+`ServiceHealth.starting()`, and a gate flips it to ready only when **every** check
 passes (retried every second, off the startup thread). No contributors ⇒ ready
 as registered — the old behaviour, deliberately. `ServiceRegistry.markReady` is
 the seam (default no-op, so Consul-style adapters are unaffected).
@@ -110,7 +110,7 @@ binder.contribute(RpcExport.class).add(RpcExport.of("user", UserHandlers.class))
 // consumer: typed client over discovery + load balancing
 binder.bind(UserApi.class).to(container -> RemoteProxyFactory
     .of(container.get(RemoteCaller.class))
-    .serviceId("user-service").mapping("user")
+    .withServiceId("user-service").withMapping("user")
     .build(UserApi.class));
 ```
 
@@ -123,7 +123,7 @@ binder.bind(UserApi.class).to(container -> RemoteProxyFactory
 - calls are POST and travel outside any local transaction — post-commit side
   effects belong on the EventBus (Defer), not on RPC
 
-## Event Mesh (`CloudEventModule`)
+## Event Mesh (`EventMeshModule`)
 
 Presence-driven activation:
 
@@ -137,8 +137,8 @@ freeway.cloud.event.token=mesh-secret           # production MUST set it (WS 100
 - publish: `mesh.publish("order.created", payload)` — topic string is the wire
   key (class names never travel); Defer-aware (buffered until commit, rollback
   discards)
-- receive: `contribute(CloudEventSubscription.class).add("orders",
-  CloudEventSubscription.of("order.", OrderCreated.class, handler))` — the
+- receive: `contribute(MeshSubscription.class).add("orders",
+  MeshSubscription.of("order.", OrderCreated.class, handler))` — the
   declaration IS the allowlist; unmatched topics are dropped without
   deserialization
 - `discovery-feed-ms`: poll the bound `ServiceDiscovery` for instances of this

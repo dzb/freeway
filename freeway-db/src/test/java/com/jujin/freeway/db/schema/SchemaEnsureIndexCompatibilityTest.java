@@ -2,7 +2,7 @@ package com.jujin.freeway.db.schema;
 
 import com.jujin.freeway.db.BatchQuery;
 import com.jujin.freeway.db.Database;
-import com.jujin.freeway.db.DatabaseStats;
+import com.jujin.freeway.db.PoolStats;
 import com.jujin.freeway.db.ExecuteResult;
 import com.jujin.freeway.db.IsolationLevel;
 import com.jujin.freeway.db.Query;
@@ -186,7 +186,7 @@ class SchemaEnsureIndexCompatibilityTest {
         }
 
         @Override
-        public DatabaseStats stats() {
+        public PoolStats stats() {
             return null;
         }
 

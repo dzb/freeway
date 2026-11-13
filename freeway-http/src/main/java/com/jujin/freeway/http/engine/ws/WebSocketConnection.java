@@ -7,6 +7,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
 
+import com.jujin.freeway.http.internal.WebSocketCloseReason;
 import com.jujin.freeway.http.websocket.WebSocketTransport;
 
 /**
@@ -177,24 +178,11 @@ public final class WebSocketConnection implements WebSocketTransport {
         // The reason arrives pre-truncated from WebSocketSessionSupport;
         // truncate here too so this frame writer never emits an oversized
         // payload no matter who calls it (the read loop's protocol closes).
-        byte[] reasonBytes = truncateTo123Bytes(reason);
+        byte[] reasonBytes = WebSocketCloseReason.utf8(reason);
         byte[] payload = new byte[2 + reasonBytes.length];
         payload[0] = (byte) (code >> 8 & 0xFF);
         payload[1] = (byte) (code & 0xFF);
         System.arraycopy(reasonBytes, 0, payload, 2, reasonBytes.length);
         return payload;
-    }
-
-    /** Truncates on a UTF-8 code-point boundary so a half character never
-     *  re-encodes to three bytes and pushes the payload back over 123. */
-    private static byte[] truncateTo123Bytes(String reason) {
-        if (reason == null) return new byte[0];
-        byte[] bytes = reason.getBytes(WebSocketFrame.TEXT_CHARSET);
-        if (bytes.length <= 123) return bytes;
-        int end = 123;
-        while (end > 0 && (bytes[end] & 0xC0) == 0x80) {
-            end--;
-        }
-        return Arrays.copyOf(bytes, end);
     }
 }

@@ -1,7 +1,7 @@
 package com.jujin.freeway.boot;
 
+import com.jujin.freeway.ioc.ModuleDeclaration;
 import com.jujin.freeway.ioc.ModuleEx;
-import com.jujin.freeway.ioc.annotation.SubModule;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -35,17 +35,19 @@ final class ModuleDiscovery {
      * {@code hasNext()/next()}, not from the loop body, and must get the same
      * classloader context.
      */
-    static List<ModuleEx> fill(List<ModuleEx> modules, ClassLoader loader) {
-        Set<Class<?>> known = declaredClasses(modules);
-        List<ModuleEx> discovered = new ArrayList<>();
+    static List<ModuleDeclaration> fill(
+            List<ModuleDeclaration> declarations, ClassLoader loader) {
+        Set<Class<?>> known = declaredClasses(declarations);
+        List<ModuleDeclaration> discovered = new ArrayList<>();
         try {
             for (ModuleEx module : ServiceLoader.load(ModuleEx.class, loader)) {
-                if (!known.add(module.getClass())) {
+                ModuleDeclaration declaration = ModuleDeclaration.of(module);
+                if (!known.add(declaration.type())) {
                     LOG.debug("Ignoring discovered module already declared: {}",
-                        module.getClass().getSimpleName());
+                        declaration.name());
                     continue;
                 }
-                discovered.add(module);
+                discovered.add(declaration);
             }
         } catch (ServiceConfigurationError ex) {
             throw new IllegalStateException(
@@ -53,7 +55,7 @@ final class ModuleDiscovery {
                     + loader + ")", ex);
         }
         if (discovered.isEmpty()) {
-            return modules;
+            return declarations;
         }
         // Say what the classpath added: composition is a fact about the run,
         // and the startup tree alone cannot tell a discovered module from a
@@ -61,8 +63,8 @@ final class ModuleDiscovery {
         LOG.info(
             "Discovered {} module(s) on the classpath (autoDiscovery): {}",
             discovered.size(),
-            discovered.stream().map(module -> module.getClass().getName()).toList());
-        List<ModuleEx> all = new ArrayList<>(modules);
+            discovered.stream().map(declaration -> declaration.type().getName()).toList());
+        List<ModuleDeclaration> all = new ArrayList<>(declarations);
         all.addAll(discovered);
         return all;
     }
@@ -75,28 +77,22 @@ final class ModuleDiscovery {
      * {@code ModuleNode.declaredSubModules}): read the annotation, never call a module method, and
      * stop at a class already seen so a cycle terminates here.
      */
-    private static Set<Class<?>> declaredClasses(List<ModuleEx> modules) {
+    private static Set<Class<?>> declaredClasses(List<ModuleDeclaration> declarations) {
         Set<Class<?>> known = new HashSet<>();
-        for (ModuleEx module : modules) {
-            collectBundles(module.getClass(), known);
+        for (ModuleDeclaration declaration : declarations) {
+            collectBundles(declaration.type(), known);
         }
         return known;
     }
 
     private static void collectBundles(Class<? extends ModuleEx> type, Set<Class<?>> known) {
-        // A nameless declaration never equals an SPI provider class — the same exclusion the tree
-        // applies (freeway-ioc, ModuleNode), so the mirror stays exact.
-        if (type.isAnonymousClass() || type.isSynthetic()) {
+        ModuleDeclaration declaration = ModuleDeclaration.of(type);
+        // A nameless declaration never equals an SPI provider class — the same
+        // exclusion the composition tree applies.
+        if (!declaration.hasStableType() || !known.add(type)) {
             return;
         }
-        if (!known.add(type)) {
-            return;
-        }
-        SubModule bundle = type.getAnnotation(SubModule.class);
-        if (bundle == null) {
-            return;
-        }
-        for (Class<? extends ModuleEx> submodule : bundle.value()) {
+        for (Class<? extends ModuleEx> submodule : declaration.submodules()) {
             collectBundles(submodule, known);
         }
     }

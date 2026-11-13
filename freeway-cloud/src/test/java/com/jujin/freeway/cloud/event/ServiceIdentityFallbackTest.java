@@ -9,7 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
-import com.jujin.freeway.cloud.internal.RegistryStore;
+import com.jujin.freeway.cloud.discovery.internal.RegistryStore;
 import com.jujin.freeway.http.HttpModule;
 import java.time.Duration;
 import java.util.List;
@@ -20,7 +20,7 @@ import org.junit.jupiter.api.Test;
 /**
  * P1-3 regression (service-id default chain): the registry identity resolved
  * by {@code HttpServiceDeclaration} and the event-mesh origin resolved by
- * {@code CloudEventLifecycleHook} must walk the same fallback chain —
+ * {@code MeshEventLifecycleHook} must walk the same fallback chain —
  * {@code freeway.cloud.registry.service-id} → {@code freeway.app.name} →
  * {@code "freeway-app"} — so a node configured only with
  * {@code freeway.app.name} registers and broadcasts under the SAME name.
@@ -73,7 +73,7 @@ class ServiceIdentityFallbackTest {
     /** Events enabled so the lifecycle hook wires the hub with the mesh origin. */
     private static AppRuntime appWithEvents() {
         System.setProperty(ConfigKeys.EVENT_ENABLED, "true");
-        return FreewayApp.create(new HttpModule()).add(CloudModule.class).add(new CloudEventModule()).start();
+        return FreewayApp.create(new HttpModule()).add(CloudModule.class).add(new EventMeshModule()).start();
     }
 
     /** Reads the identity HttpServiceDeclaration registered for this app. */

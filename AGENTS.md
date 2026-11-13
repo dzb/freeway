@@ -35,7 +35,7 @@ adapters (Undertow/Jetty engines, HikariCP, Kafka) live in
 | `freeway-http` | Routing, built-in HTTP engine, WebSocket, SSE | ioc + commons (+ boot, test) |
 | `freeway-db` | JDBC, ORM, pooling, transactions, migrations | commons (+ ioc, DbModule only) |
 | `freeway-flow` | Graph workflow engine — 7 node types, v3 DAG format (boot-validated), task vocabulary, branch isolation | ioc + commons |
-| `freeway-cloud` | Cloud-native foundation — discovery, remote invocation (JDK HttpClient), event fabric (`CloudEventBus`), observability, resilience, health, secrets, storage | ioc + commons + http (+ boot, test) |
+| `freeway-cloud` | Cloud-native foundation — discovery, remote invocation (JDK HttpClient), event fabric (`MeshEventBus`), observability, resilience, health, secrets, storage | ioc + commons + http (+ boot, test) |
 
 No module adds an external dependency beyond SLF4J 2.0.18 (declared explicitly
 by every module that logs — currently all but `ioc`, which inherits it
@@ -72,13 +72,12 @@ transitively) plus JUnit at test scope. Anything else belongs in an ext adapter.
     its own tiers and boot's cascade disappears silently
     (`SymbolSourceReplacementTest` pins both halves).
 - **Factory verbs**: `of` builds a *value* from the parts you hand it — the
-  records do this (`Endpoint.of`, `ServiceInstance.of`, `SymbolSpec.of`),
+  records do this (`ServiceEndpoint.of`, `ServiceInstance.of`, `SymbolSpec.of`),
   mirroring `List.of`. `create` is the framework *entry
   point* that hands you something to configure or run (`Freeway.create`,
   `FreewayApp.create`, `FlowEngine.create`, `Graph.create`), and `.builder()`
   is fluent assembly of a configured object — licensed *only* when the builder
-  holds no defaults of its own (`FlowDriverDefault.Builder`: two required
-  parts, nothing stated). An object that varies from a stated default in a
+  holds no defaults of its own. An object that varies from a stated default in a
   field or two is a `defaults()` value plus per-field withers returning new
   instances — the wither verb is `withX` (`HttpServerConfig.withPort`,
   `CorsFilter.withAllowedOrigins`, `StaticResourceMount.withFallthrough`), while
@@ -141,7 +140,7 @@ One criterion, from which most of the rest follow:
 > shape that cannot express the mistake — not to add the check that was forgotten.
 > `maxBodySize` leaking across keep-alive requests is the shape of it: the
 > configured ceiling became a **constructor input of the per-request exchange
-> support** (`HttpContextSupport`), so an engine cannot fail to *set* it, and
+> support** (`HttpExchangeSupport`), so an engine cannot fail to *set* it, and
 > there is no reset left to forget — the object dies with its request. The same
 > defect was first fixed by keeping a base value plus `resetMaxBodySize()` in the
 > one place a reused context reset; relocating the *lifetime* is what finally
@@ -194,7 +193,7 @@ nothing.
   name its exception: language-mandated (exceptions, JDK callbacks), true is-a
   (final, closed set), or closed protocol hierarchies (invisible outside their
   package). Third-party adapters compose the shared policy objects
-  (`HttpContextSupport`, `WebSocketSessionSupport`) over their own transport
+  (`HttpExchangeSupport`, `WebSocketSessionSupport`) over their own transport
   implementations instead of inheriting them, so "implementation shared with
   third-party adapters" is no longer an exception that exists. Reusing
   `internal` logic across modules means promoting the smallest possible
@@ -221,24 +220,26 @@ nothing.
   are assembly points and do hold containers; the rule is about the code that
   ships.) A consequence worth stating, because it looks like a limitation: a
   class-based route handler is built during composition, so it **cannot** take a
-  `Scope.THREAD` dependency. That is the scope meaning what it says — a
-  thread-level lifetime, opened and closed by `Scoping.within(...)`, and the
-  framework opens none of its own.
-- **Keep concepts few**: Module, Service, Extension, Scope, Runtime. Composition is
-  the ordered modules handed to an entry point (`Freeway.create`,
+  `Scope.BOUNDARY` dependency. That is the scope meaning what it says — one
+  lifetime per `ScopeBoundary.within(...)` boundary, opened and closed by the
+  caller, and the framework opens none of its own.
+- **Keep concepts few**: Module (with `ModuleDeclaration` as its class-or-instance
+  placement form), Service, Extension, Scope, Runtime. Composition is the
+  ordered declarations handed to an entry point (`Freeway.create`,
   `FreewayApp.run`/`create`), plus — for `FreewayApp` only, and on by default —
   the `META-INF/services` providers on the classpath, appended after the declared
   ones (`autoDiscovery(false)` turns it off; `Freeway.create` never discovers).
-  The validated structure behind it (`ModuleNode`) is internal to `ioc.internal`,
-  and boot's launcher is `FreewayApp` itself — a separate tree type or builder
-  type would be a sixth concept with no question of its own.
+  `ModuleDeclaration` is the one owner of no-arg module construction and
+  `@SubModule` metadata; the validated tree behind it (`ModuleNode`) is internal
+  to `ioc.internal`, and boot's launcher is `FreewayApp` itself — a separate tree
+  type or builder type would be another concept with no question of its own.
 
 ### Shape at the API surface
 
 - **Optional inputs**: one or two of them use a documented overload ladder, each
   step stating what it adds (`RemoteCaller.invoke`); three or more use a parameter
   record with `defaults()` and per-field withers
-  (`CloudHttpClientDefault.Wiring`), so a call site cannot drift between overloads.
+  (`RpcHttpClientDefault.Wiring`), so a call site cannot drift between overloads.
   A record's canonical constructor changes shape whenever a component is added —
   that is the intended outcome, not an accident: no previous-arity delegating
   constructor is kept for callers that have already been compiled. Adding a
@@ -349,17 +350,21 @@ enforces.
   repeated named parameters.
 - **Adapters**: a third-party engine's contract tests must pin the
   contract-typed edges no type enforces — `maxBodySize` accounting through the
-  composed `HttpContextSupport.body()` (413), which runs the one limiter
+  composed `HttpExchangeSupport.body()` (413), which runs the one limiter
   (`http.internal.LimitedInputStream`) every engine runs, so adapter and
   built-in 413 behaviour are the same code rather than two loops that happen to
   agree; the **transport contract** — an adapter's `HttpTransport` returns
   immutable request snapshots, writes no body bytes when
   `ResponseHead.sendsBodyBytes()` is false (a HEAD keeps the declared
-  `Content-Length` without reading the source), and translates native body
-  limits (Undertow's `MAX_ENTITY_SIZE`) into `BodyTooLargeException` inside
-  `bodyStream()`; gzip negotiation through the shared `Compression`,
-  `ExchangeHandler.websocket` consulted for every upgrade candidate, and every
-  `HttpServerConfig` field honored or reported at startup.
+  `Content-Length` without reading the source), reports `isCommitted()` before
+  the first head byte, owns protocol framing (`Transfer-Encoding` for HTTP/1.1,
+  never on HTTP/2), and may finalize a `Content-Length` only from a body it
+  actually materialized (a buffering transport must not leave a HEAD for a
+  container to report as zero); it translates native body limits (Undertow's
+  `MAX_ENTITY_SIZE`) into
+  `BodyTooLargeException` inside `framedBodyStream()`; gzip negotiation through the
+  shared `Compression`, `ExchangeHandler.matchWebSocket` consulted for every upgrade
+  candidate, and every `HttpServerConfig` field honored or reported at startup.
 
 ## Testing
 

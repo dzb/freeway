@@ -48,10 +48,6 @@ class ResponseFramingTest {
     }
 
     @Test
-    void fileGzipRequiresBodyAllowed() {
-    }
-
-    @Test
     void bodylessResponsesDropContentLengthOnBothProtocols() {
         // The rule used to live in the HTTP/1.1 writer only, so a handler-set
         // Content-Length on a 204 went out on h2. Both writers now ask here.
@@ -63,15 +59,5 @@ class ResponseFramingTest {
             "a response with a body keeps its Content-Length");
         assertFalse(ResponseFraming.suppressesHeader("Content-Type", false),
             "only Content-Length is suppressed");
-    }
-
-    @Test
-    void bodySuppressionTable() {
-        assertFalse(ResponseFraming.suppressBodyBytes(true, "GET"));
-        assertFalse(ResponseFraming.suppressBodyBytes(true, "POST"));
-        assertTrue(ResponseFraming.suppressBodyBytes(true, "HEAD"),
-            "HEAD must suppress body bytes");
-        assertTrue(ResponseFraming.suppressBodyBytes(false, "GET"),
-            "204/205/304 must suppress body bytes");
     }
 }

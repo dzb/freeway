@@ -77,7 +77,7 @@ public final class Compression {
     /** GZIP-compresses the data. */
     public static byte[] gzip(byte[] data) throws IOException {
         var out = new ByteArrayOutputStream(Math.max(64, data.length / 2));
-        try (var gzip = new GZIPOutputStream(out)) {
+        try (var gzip = gzipStream(out)) {
             gzip.write(data);
         }
         return out.toByteArray();

@@ -126,7 +126,7 @@ class EventBusAsyncCarrierTest {
             binder.bind(AsyncCarrier.class).id("second").to(c -> new RecordingCarrier());
         })) {
             assertThrows(AmbiguousBindingException.class, () -> EventBus.create(container),
-                "isActiveBinding must raise AmbiguousBindingException, not fall back to identity");
+                "isActiveBindingMarked must raise AmbiguousBindingException, not fall back to identity");
         }
     }
 }

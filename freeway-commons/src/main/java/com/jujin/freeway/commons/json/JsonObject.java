@@ -124,7 +124,7 @@ public final class JsonObject {
 
     @Override
     public String toString() {
-        return JsonUtils.stringify(this);
+        return JsonUtils.toJson(this);
     }
 
     /**

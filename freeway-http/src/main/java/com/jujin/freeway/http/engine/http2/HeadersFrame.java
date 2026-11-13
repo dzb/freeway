@@ -5,7 +5,12 @@ import java.io.OutputStream;
 import java.util.Arrays;
 
 
-final class HeadersFrame extends BaseFrame {
+final class HeadersFrame implements Http2Frame {
+    private final FrameHeader header;
+
+    @Override
+    public FrameHeader header() { return header; }
+
     private int padLength;
     private long dependentStreamId;
     /** The PRIORITY dependency's E bit (RFC 9113 §6.10): an exclusive dependency. */
@@ -14,7 +19,7 @@ final class HeadersFrame extends BaseFrame {
     private byte[] headerBlock;
 
     /** For {@link #parse}, which fills the block in from the payload. */
-    private HeadersFrame(FrameHeader header) { super(header); }
+    private HeadersFrame(FrameHeader header) { this.header = header; }
 
     public byte[] headerBlock() { return headerBlock; }
 

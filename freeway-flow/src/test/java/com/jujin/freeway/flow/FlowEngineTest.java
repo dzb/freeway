@@ -4,6 +4,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Phaser;
 
 import com.jujin.freeway.flow.internal.FlowContextImpl;
+import com.jujin.freeway.flow.internal.FlowContexts;
 import com.jujin.freeway.flow.internal.Stepper;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Freeway;
@@ -43,17 +44,17 @@ class FlowEngineTest {
     private static FlowDriver tasksRun(Consumer<Node> body) {
         return new FlowDriver() {
             @Override
-            public boolean handleCondition(FlowEvaluation evaluation, ConditionDesc condition)
+            public boolean handleCondition(FlowExecution evaluation, ConditionDesc condition)
                     throws Throwable {
                 return ExprEvaluator.evalCondition(condition.description(),
                     evaluation.context().data());
             }
 
             @Override
-            public void handleTask(FlowEvaluation evaluation, TaskDesc task) throws Throwable {
+            public void handleTask(FlowExecution evaluation, TaskDesc task) throws Throwable {
                 if (task.isEmpty()) return;
                 if (task.isGraphRef()) {
-                    evaluation.runGraph(evaluation.engine().graphOrThrow(
+                    evaluation.runGraph(evaluation.engine().require(
                         task.description().substring(1)));
                     return;
                 }
@@ -78,7 +79,7 @@ class FlowEngineTest {
     private static Graph graphWithDriver(String driver) {
         return GraphSpec.create("g", "", driver, s -> {
             s.entry("s");
-            s.addStart("s").linkAdd("e");
+            s.addStart("s").linkTo("e");
             s.addEnd("e");
         }).create();
     }
@@ -88,17 +89,25 @@ class FlowEngineTest {
     @Test
     void testLinearFlow() {
         Graph graph = Graph.create("linear", spec -> {
-            spec.addStart("s").linkAdd("a");
-            spec.addActivity("a").task("@counter").linkAdd("e");
+            spec.addStart("s").linkTo("a");
+            spec.addActivity("a").task("@counter").linkTo("e");
             spec.addEnd("e");
         });
 
         AtomicInteger counter = new AtomicInteger(0);
         FlowEngine engine = newEngine(driverResolving(Map.of("counter",
             (ctx, node) -> counter.incrementAndGet()), null));
-        engine.eval(graph, FlowContext.of());
+        engine.run(graph, FlowContext.of());
 
         assertEquals(1, counter.get());
+    }
+
+    @Test
+    void findReturnsEmptyAndRequireThrowsForUnknownGraph() {
+        FlowEngine engine = newEngine(driverResolving(Map.of(), null));
+
+        assertTrue(engine.find("missing").isEmpty());
+        assertThrows(FlowException.class, () -> engine.require("missing"));
     }
 
     @Test
@@ -109,14 +118,14 @@ class FlowEngineTest {
         // kind named.
         Graph graph = Graph.create("typed", spec -> {
             spec.entry("s");
-            spec.addStart("s").linkAdd("a");
-            spec.addActivity("a").task("@worker").linkAdd("e");
+            spec.addStart("s").linkTo("a");
+            spec.addActivity("a").task("@worker").linkTo("e");
             spec.addEnd("e");
         });
         FlowEngine engine = newEngine(driverResolving(Map.of("worker",
             (TaskHandler) (ctx, node) -> ctx.put("ran", true)), null));
         FlowContext ctx = FlowContext.of();
-        engine.eval(graph, ctx);
+        engine.run(graph, ctx);
         assertEquals(Boolean.TRUE, ctx.get("ran"));
     }
 
@@ -125,11 +134,11 @@ class FlowEngineTest {
     @Test
     void testExclusiveGateway() {
         Graph graph = Graph.create("exclusive", spec -> {
-            spec.addStart("s").linkAdd("gw");
-            spec.addExclusive("gw").linkAdd("high", ld -> ld.when("score > 80"))
-                    .linkAdd("low", ld -> ld.when("score <= 80"));
-            spec.addActivity("high").task("@highTask").linkAdd("e");
-            spec.addActivity("low").task("@lowTask").linkAdd("e");
+            spec.addStart("s").linkTo("gw");
+            spec.addExclusive("gw").linkTo("high", ld -> ld.when("score > 80"))
+                    .linkTo("low", ld -> ld.when("score <= 80"));
+            spec.addActivity("high").task("@highTask").linkTo("e");
+            spec.addActivity("low").task("@lowTask").linkTo("e");
             spec.addEnd("e");
         });
 
@@ -140,13 +149,13 @@ class FlowEngineTest {
 
         FlowContext ctx1 = FlowContext.of();
         ctx1.put("score", 90);
-        engine.eval(graph, ctx1);
+        engine.run(graph, ctx1);
         assertEquals(List.of("high"), executed);
 
         executed.clear();
         FlowContext ctx2 = FlowContext.of();
         ctx2.put("score", 50);
-        engine.eval(graph, ctx2);
+        engine.run(graph, ctx2);
         assertEquals(List.of("low"), executed);
     }
 
@@ -178,7 +187,7 @@ class FlowEngineTest {
         AtomicInteger counter = new AtomicInteger(0);
         FlowEngine engine = newEngine(driverResolving(Map.of("jsonTask",
             (TaskHandler) (ctx, node) -> counter.incrementAndGet()), null));
-        engine.eval(graph, FlowContext.of());
+        engine.run(graph, FlowContext.of());
         assertEquals(1, counter.get());
     }
 
@@ -410,13 +419,13 @@ class FlowEngineTest {
     @Test
     void testPlantUml() {
         Graph graph = Graph.create("plantuml_test", "测试图", spec -> {
-            spec.addStart("s").linkAdd("a");
-            spec.addActivity("a").task("@task1").linkAdd("gw");
+            spec.addStart("s").linkTo("a");
+            spec.addActivity("a").task("@task1").linkTo("gw");
             spec.addExclusive("gw")
-                    .linkAdd("b", ld -> ld.when("x > 5").title("大"))
-                    .linkAdd("c", ld -> ld.when("x <= 5").title("小"));
-            spec.addActivity("b").task("@task2").linkAdd("e");
-            spec.addActivity("c").task("@task3").linkAdd("e");
+                    .linkTo("b", ld -> ld.when("x > 5").title("大"))
+                    .linkTo("c", ld -> ld.when("x <= 5").title("小"));
+            spec.addActivity("b").task("@task2").linkTo("e");
+            spec.addActivity("c").task("@task3").linkTo("e");
             spec.addEnd("e");
         });
 
@@ -434,14 +443,14 @@ class FlowEngineTest {
     @Test
     void testSubGraph() {
         Graph subGraph = GraphSpec.create("sub", "", "default", spec -> {
-            spec.addStart("sub_s").linkAdd("sub_a");
-            spec.addActivity("sub_a").task("@subTask").linkAdd("sub_e");
+            spec.addStart("sub_s").linkTo("sub_a");
+            spec.addActivity("sub_a").task("@subTask").linkTo("sub_e");
             spec.addEnd("sub_e");
         }).create();
 
         Graph mainGraph = GraphSpec.create("main", "", "default", spec -> {
-            spec.addStart("s").linkAdd("call");
-            spec.addActivity("call").task("#sub").linkAdd("e");
+            spec.addStart("s").linkTo("call");
+            spec.addActivity("call").task("#sub").linkTo("e");
             spec.addEnd("e");
         }).create();
 
@@ -451,7 +460,7 @@ class FlowEngineTest {
 
         engine.load(subGraph);
         engine.load(mainGraph);
-        engine.eval("main", FlowContext.of());
+        engine.run("main", FlowContext.of());
 
         assertEquals(List.of("sub"), executed);
     }
@@ -477,15 +486,15 @@ class FlowEngineTest {
         ));
 
         Graph subGraph = GraphSpec.create("sub", "", "sub", spec -> {
-            spec.addStart("sub_s").linkAdd("sub_a");
-            spec.addActivity("sub_a").task("@subTask").linkAdd("sub_e");
+            spec.addStart("sub_s").linkTo("sub_a");
+            spec.addActivity("sub_a").task("@subTask").linkTo("sub_e");
             spec.addEnd("sub_e");
         }).create();
 
         Graph mainGraph = GraphSpec.create("main", "", "default", spec -> {
-            spec.addStart("main_s").linkAdd("main_a");
-            spec.addActivity("main_a").task("@mainTask").linkAdd("call");
-            spec.addActivity("call").task("#sub").linkAdd("main_e");
+            spec.addStart("main_s").linkTo("main_a");
+            spec.addActivity("main_a").task("@mainTask").linkTo("call");
+            spec.addActivity("call").task("#sub").linkTo("main_e");
             spec.addEnd("main_e");
         }).create();
 
@@ -493,7 +502,7 @@ class FlowEngineTest {
         engine.load(mainGraph);
         assertSame(mainDriver, engine.driver(mainGraph));
         assertSame(subDriver, engine.driver(subGraph));
-        engine.eval("main", FlowContext.of());
+        engine.run("main", FlowContext.of());
 
         assertEquals(List.of(
             "main:main:main_a",
@@ -507,19 +516,19 @@ class FlowEngineTest {
         FlowEngine engine = newEngine(tasksRun(node -> executed.add(node.id())));
         Graph child = GraphSpec.create("child", spec -> {
             spec.entry("cs");
-            spec.addStart("cs").linkAdd("ca");
-            spec.addActivity("ca").task("@dummy").linkAdd("ce");
+            spec.addStart("cs").linkTo("ca");
+            spec.addActivity("ca").task("@dummy").linkTo("ce");
             spec.addEnd("ce");
         }).create();
         Graph parent = GraphSpec.create("parent", spec -> {
             spec.entry("s");
-            spec.addStart("s").linkAdd("a");
-            spec.addActivity("a").task("#child").linkAdd("e");
+            spec.addStart("s").linkTo("a");
+            spec.addActivity("a").task("#child").linkTo("e");
             spec.addEnd("e");
         }).create();
         engine.load(child);
         engine.load(parent);
-        engine.eval("parent", FlowContext.of());
+        engine.run("parent", FlowContext.of());
         assertTrue(executed.contains("ca"),
             "#graph subgraph call must execute the child graph, got " + executed);
     }
@@ -534,20 +543,20 @@ class FlowEngineTest {
         FlowEngine engine = newEngine(tasksRun(node -> executed.add(node.id())));
         Graph child = GraphSpec.create("child2", spec -> {
             spec.entry("cs");
-            spec.addStart("cs").linkAdd("ca");
-            spec.addActivity("ca").task("@dummy").linkAdd("ce");
+            spec.addStart("cs").linkTo("ca");
+            spec.addActivity("ca").task("@dummy").linkTo("ce");
             spec.addEnd("ce");
         }).create();
         Graph parent = GraphSpec.create("parent2", spec -> {
             spec.entry("s");
-            spec.addStart("s").linkAdd("a");
-            spec.addActivity("a").task("#child2").linkAdd("b");
-            spec.addActivity("b").task("#child2").linkAdd("e");
+            spec.addStart("s").linkTo("a");
+            spec.addActivity("a").task("#child2").linkTo("b");
+            spec.addActivity("b").task("#child2").linkTo("e");
             spec.addEnd("e");
         }).create();
         engine.load(child);
         engine.load(parent);
-        engine.eval("parent2", FlowContext.of());
+        engine.run("parent2", FlowContext.of());
         assertEquals(2, executed.stream().filter("ca"::equals).count(),
             "each #graph call must execute the child body, got " + executed);
     }
@@ -560,23 +569,23 @@ class FlowEngineTest {
         FlowEngine engine = newEngine(tasksRun(node -> { }));
         Graph child = GraphSpec.create("deadchild", spec -> {
             spec.entry("cs");
-            spec.addStart("cs").linkAdd("gw");
+            spec.addStart("cs").linkTo("gw");
             spec.addExclusive("gw")
-                .linkAdd("never", l -> l.when("false == true"));
-            spec.addActivity("never").task("@dummy").linkAdd("ce");
+                .linkTo("never", l -> l.when("false == true"));
+            spec.addActivity("never").task("@dummy").linkTo("ce");
             spec.addEnd("ce");
         }).create();
         Graph parent = GraphSpec.create("parent3", spec -> {
             spec.entry("s");
-            spec.addStart("s").linkAdd("a");
-            spec.addActivity("a").task("#deadchild").linkAdd("e");
+            spec.addStart("s").linkTo("a");
+            spec.addActivity("a").task("#deadchild").linkTo("e");
             spec.addEnd("e");
         }).create();
         engine.load(child);
         engine.load(parent);
 
         FlowException ex = assertThrows(FlowException.class,
-            () -> engine.eval("parent3", FlowContext.of()));
+            () -> engine.run("parent3", FlowContext.of()));
         assertTrue(ex.getMessage().contains("deadchild"),
             "the failing sub-graph must be named, got: " + ex.getMessage());
     }
@@ -585,7 +594,7 @@ class FlowEngineTest {
     void evaluationCopyKeepsExecState() {
         FlowEngine engine = FlowEngine.create();
         Graph graph = graphWithDriver("default");
-        FlowEvaluation evaluation = new FlowEvaluation(
+        FlowExecution evaluation = new FlowExecution(
             graph, engine, engine.driver(graph), FlowContext.of());
 
         // Touch the join state through its own entry point: the count is not
@@ -593,7 +602,7 @@ class FlowEngineTest {
         // operation the join transition must own.
         evaluation.execState().joinReset(graph, "loop");
 
-        FlowEvaluation copy = evaluation.copy(graph);
+        FlowExecution copy = evaluation.copy(graph);
         assertSame(evaluation.execState(), copy.execState(),
             "a copy shares the run's state — a branch arriving after the copy "
                 + "must be counted by the same join");
@@ -604,9 +613,9 @@ class FlowEngineTest {
     @Test
     void testStop() {
         Graph graph = Graph.create("stop_test", spec -> {
-            spec.addStart("s").linkAdd("a");
-            spec.addActivity("a").task("@stopper").linkAdd("b");
-            spec.addActivity("b").task("@neverCalled").linkAdd("e");
+            spec.addStart("s").linkTo("a");
+            spec.addActivity("a").task("@stopper").linkTo("b");
+            spec.addActivity("b").task("@neverCalled").linkTo("e");
             spec.addEnd("e");
         });
 
@@ -617,7 +626,7 @@ class FlowEngineTest {
 
         // Stopping is an intentional early end: the run completes without the
         // dead-end error an unrouted gateway would raise.
-        assertDoesNotThrow(() -> engine.eval(graph, FlowContext.of()));
+        assertDoesNotThrow(() -> engine.run(graph, FlowContext.of()));
         assertEquals(0, bCount.get());
     }
 
@@ -664,8 +673,8 @@ class FlowEngineTest {
         List<String> received = new ArrayList<>();
 
         Graph graph = Graph.create("event_flow", spec -> {
-            spec.addStart("s").linkAdd("pub");
-            spec.addActivity("pub").task("@publisher").linkAdd("e");
+            spec.addStart("s").linkTo("pub");
+            spec.addActivity("pub").task("@publisher").linkTo("e");
             spec.addEnd("e");
         });
 
@@ -675,7 +684,7 @@ class FlowEngineTest {
                 ctx.eventBus().publish("done", "fired");
             }), null));
 
-        engine.eval(graph, FlowContext.of());
+        engine.run(graph, FlowContext.of());
         assertEquals(List.of("fired"), received);
     }
 
@@ -686,13 +695,13 @@ class FlowEngineTest {
         // into a later run of an unrelated graph that reuses the context.
         Graph graphA = GraphSpec.create("graphA", spec -> {
             spec.entry("s");
-            spec.addStart("s").linkAdd("sub");
-            spec.addActivity("sub").task("@subscribe").linkAdd("e");
+            spec.addStart("s").linkTo("sub");
+            spec.addActivity("sub").task("@subscribe").linkTo("e");
             spec.addEnd("e");
         }).create();
         Graph graphB = GraphSpec.create("graphB", spec -> {
             spec.entry("s");
-            spec.addStart("s").linkAdd("e");
+            spec.addStart("s").linkTo("e");
             spec.addEnd("e");
         }).create();
 
@@ -702,8 +711,8 @@ class FlowEngineTest {
                 ctx.eventBus().subscribe("stale.topic", e -> received.add((String) e))), null));
 
         FlowContext ctx = FlowContext.of();
-        engine.eval(graphA, ctx);
-        engine.eval(graphB, ctx);
+        engine.run(graphA, ctx);
+        engine.run(graphB, ctx);
         ctx.eventBus().publish("stale.topic", "after-fresh-run");
         assertEquals(List.of(), received,
             "subscriptions from a finished run must not survive into the next");
@@ -714,8 +723,8 @@ class FlowEngineTest {
     @Test
     void testInterceptorChain() {
         Graph graph = Graph.create("interceptor_flow", spec -> {
-            spec.addStart("s").linkAdd("a");
-            spec.addActivity("a").task("@taskA").linkAdd("e");
+            spec.addStart("s").linkTo("a");
+            spec.addActivity("a").task("@taskA").linkTo("e");
             spec.addEnd("e");
         });
 
@@ -745,7 +754,7 @@ class FlowEngineTest {
             Map.of("default", driverResolving(Map.of("taskA",
                 (TaskHandler) (ctx, node) -> events.add("task:exec:" + node.id())), null)),
             List.of(auditor));
-        engine.eval(graph, FlowContext.of());
+        engine.run(graph, FlowContext.of());
 
         assertEquals(List.of(
                 "flow:before:interceptor_flow",
@@ -763,8 +772,8 @@ class FlowEngineTest {
     @Test
     void testInterceptorStopFlow() {
         Graph graph = Graph.create("stop_interceptor", spec -> {
-            spec.addStart("s").linkAdd("a");
-            spec.addActivity("a").task("@neverRun").linkAdd("e");
+            spec.addStart("s").linkTo("a");
+            spec.addActivity("a").task("@neverRun").linkTo("e");
             spec.addEnd("e");
         });
 
@@ -784,14 +793,14 @@ class FlowEngineTest {
                 (TaskHandler) (ctx, node) -> taskRan.incrementAndGet()), null)),
             List.of(veto));
 
-        engine.eval(graph, FlowContext.of());
+        engine.run(graph, FlowContext.of());
         assertEquals(0, taskRan.get());
     }
 
     @Test
     void testMultipleInterceptors() {
         Graph graph = Graph.create("multi_interceptor", spec -> {
-            spec.addStart("s").linkAdd("e");
+            spec.addStart("s").linkTo("e");
             spec.addEnd("e");
         });
 
@@ -816,7 +825,7 @@ class FlowEngineTest {
 
         FlowEngine engine = FlowEngine.create(Map.of("default", FlowDriverDefault.instance()),
             List.of(a, b));
-        engine.eval(graph, FlowContext.of());
+        engine.run(graph, FlowContext.of());
 
         // list order = outermost first: a wraps b
         assertEquals(List.of("A:before", "B:before", "B:after", "A:after"), order);
@@ -848,20 +857,20 @@ class FlowEngineTest {
 
         Graph sub = GraphSpec.create("subI", spec -> {
             spec.entry("cs");
-            spec.addStart("cs").linkAdd("ca");
-            spec.addActivity("ca").task("@dummy").linkAdd("ce");
+            spec.addStart("cs").linkTo("ca");
+            spec.addActivity("ca").task("@dummy").linkTo("ce");
             spec.addEnd("ce");
         }).create();
         Graph main = GraphSpec.create("mainI", spec -> {
             spec.entry("s");
-            spec.addStart("s").linkAdd("call");
-            spec.addActivity("call").task("#subI").linkAdd("e");
+            spec.addStart("s").linkTo("call");
+            spec.addActivity("call").task("#subI").linkTo("e");
             spec.addEnd("e");
         }).create();
         engine.load(sub);
         engine.load(main);
 
-        engine.eval("mainI", FlowContext.of());
+        engine.run("mainI", FlowContext.of());
 
         assertEquals(Set.of("mainI:s", "mainI:call", "mainI:e", "subI:cs", "subI:ca", "subI:ce"),
             new HashSet<>(engineVisits),
@@ -896,14 +905,14 @@ class FlowEngineTest {
             List.of(pairing));
         Graph g = GraphSpec.create("startThrow", spec -> {
             spec.entry("s");
-            spec.addStart("s").linkAdd("a");
-            spec.addActivity("a").task("@dummy").linkAdd("e");
+            spec.addStart("s").linkTo("a");
+            spec.addActivity("a").task("@dummy").linkTo("e");
             spec.addEnd("e");
         }).create();
         engine.load(g);
 
         IllegalStateException ex = assertThrows(IllegalStateException.class,
-            () -> engine.eval("startThrow", FlowContext.of()));
+            () -> engine.run("startThrow", FlowContext.of()));
         assertEquals("boom at a", ex.getMessage(), "the original exception must propagate");
         assertEquals(0, taskRan.get(), "the task must not run after onNodeStart throws");
         assertTrue(events.contains("end:a"),
@@ -934,13 +943,13 @@ class FlowEngineTest {
             List.of(stopper));
         Graph g = GraphSpec.create("stopStart", spec -> {
             spec.entry("s");
-            spec.addStart("s").linkAdd("a");
-            spec.addActivity("a").task("@dummy").linkAdd("e");
+            spec.addStart("s").linkTo("a");
+            spec.addActivity("a").task("@dummy").linkTo("e");
             spec.addEnd("e");
         }).create();
         engine.load(g);
 
-        engine.eval("stopStart", FlowContext.of());
+        engine.run("stopStart", FlowContext.of());
         assertEquals(0, taskRan.get(), "the task must not run when start signals stop");
         assertTrue(events.contains("end:a"),
             "onNodeEnd must pair with a stopped onNodeStart, got " + events);
@@ -982,15 +991,15 @@ class FlowEngineTest {
         var engine = FlowEngine.create(Map.of("default", driver));
 
         engine.load(Graph.create("test", spec -> {
-            spec.addStart("s").linkAdd("a");
+            spec.addStart("s").linkTo("a");
             spec.addActivity("a")
                 .task("@injected")
-                .linkAdd("e");
+                .linkTo("e");
             spec.addEnd("e");
         }));
 
         var ctx = FlowContext.of();
-        engine.eval("test", ctx);
+        engine.run("test", ctx);
 
         assertEquals("Hi!", ctx.getAs("result"));
     }
@@ -1015,7 +1024,7 @@ class FlowEngineTest {
         // twenty times the old MAX_EXECUTION_DEPTH cap runs instead of
         // failing — the guard and the StackOverflowError safety net are gone.
         FlowEngine engine = newEngine(tasksRun(node -> { }));
-        assertDoesNotThrow(() -> engine.eval(chain(20_000), FlowContext.of()));
+        assertDoesNotThrow(() -> engine.run(chain(20_000), FlowContext.of()));
     }
 
     // ── driver 解析 ───────────────────────────────────────────────
@@ -1025,7 +1034,7 @@ class FlowEngineTest {
         FlowDriver driver = new FlowDriverDefault(null, null);
         FlowEngine engine = FlowEngine.create(Map.of("default", driver));
         Graph g = GraphSpec.create("g", s -> {
-            s.entry("s"); s.addStart("s").linkAdd("e"); s.addEnd("e");
+            s.entry("s"); s.addStart("s").linkTo("e"); s.addEnd("e");
         }).create();
         assertSame(driver, engine.driver(g));
     }
@@ -1035,7 +1044,7 @@ class FlowEngineTest {
         FlowDriver driver = new FlowDriverDefault(null, null);
         FlowEngine engine = FlowEngine.create(Map.of("default", driver));
         Graph g = GraphSpec.create("g", "", "", s -> {
-            s.entry("s"); s.addStart("s").linkAdd("e"); s.addEnd("e");
+            s.entry("s"); s.addStart("s").linkTo("e"); s.addEnd("e");
         }).create();
         assertSame(driver, engine.driver(g));
     }
@@ -1045,7 +1054,7 @@ class FlowEngineTest {
         FlowDriver driver = new FlowDriverDefault(null, null);
         FlowEngine engine = FlowEngine.create(Map.of("default", driver));
         Graph g = GraphSpec.create("g", "", "   ", s -> {
-            s.entry("s"); s.addStart("s").linkAdd("e"); s.addEnd("e");
+            s.entry("s"); s.addStart("s").linkTo("e"); s.addEnd("e");
         }).create();
         assertSame(driver, engine.driver(g));
     }
@@ -1084,7 +1093,7 @@ class FlowEngineTest {
         Graph g = graphWithDriver("nonexistent");
         engine.load(g);
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
-            () -> engine.eval("g", FlowContext.of()));
+            () -> engine.run("g", FlowContext.of()));
         assertTrue(ex.getMessage().contains("No driver found"));
         assertTrue(ex.getMessage().contains("FlowEngine.create(Map.of"));
         assertFalse(ex.getMessage().contains("newInstance"),
@@ -1096,15 +1105,15 @@ class FlowEngineTest {
         // FlowDriverDefault.instance() has container=null
         FlowEngine engine = FlowEngine.create(); // uses instance()
         Graph g = GraphSpec.create("g", spec -> {
-            spec.entry("s"); spec.addStart("s").linkAdd("a");
-            spec.addActivity("a").task("@counter").linkAdd("e");
+            spec.entry("s"); spec.addStart("s").linkTo("a");
+            spec.addActivity("a").task("@counter").linkTo("e");
             spec.addEnd("e");
         }).create();
         engine.load(g);
 
         // IllegalStateException propagates unwrapped (config error taxonomy)
         IllegalStateException ex = assertThrows(IllegalStateException.class,
-            () -> engine.eval("g", FlowContext.of()));
+            () -> engine.run("g", FlowContext.of()));
         assertTrue(ex.getMessage().contains("No container configured"));
     }
 
@@ -1120,14 +1129,14 @@ class FlowEngineTest {
         }
 
         @Override
-        public boolean handleCondition(FlowEvaluation evaluation, ConditionDesc condition)
+        public boolean handleCondition(FlowExecution evaluation, ConditionDesc condition)
                 throws Throwable {
             return ExprEvaluator.evalCondition(condition.description(),
                 evaluation.context().data());
         }
 
         @Override
-        public void handleTask(FlowEvaluation evaluation, TaskDesc task) throws Throwable {
+        public void handleTask(FlowExecution evaluation, TaskDesc task) throws Throwable {
             if (task.isEmpty()) return;
             invoked.incrementAndGet();
             evaluation.context().put("driver", label);
@@ -1147,12 +1156,12 @@ class FlowEngineTest {
         FlowEngine engine = FlowEngine.create(driverMap);
 
         Graph g = GraphSpec.create("g", "", "fast", s -> {
-            s.entry("s"); s.addStart("s").linkAdd("a");
-            s.addActivity("a").task("@dummy").linkAdd("e");
+            s.entry("s"); s.addStart("s").linkTo("a");
+            s.addActivity("a").task("@dummy").linkTo("e");
             s.addEnd("e");
         }).create();
         engine.load(g);
-        engine.eval("g", FlowContext.of());
+        engine.run("g", FlowContext.of());
 
         assertEquals(1, counting.invoked.get());
     }
@@ -1160,7 +1169,7 @@ class FlowEngineTest {
     @Test
     void contributedDriverClassIsInstantiatedByContainer() {
         var container = Freeway.create(binder ->
-            binder.contribute(FlowDriver.class).add(CountingDriverNoArg.class));
+            binder.contribute(FlowDriver.class).addDeferred(CountingDriverNoArg.class));
 
         Map<String, FlowDriver> driverMap = new HashMap<>();
         driverMap.put("default", new FlowDriverDefault(container, null));
@@ -1171,27 +1180,27 @@ class FlowEngineTest {
             .filter(k -> !"default".equals(k)).findFirst().orElseThrow();
 
         Graph g = GraphSpec.create("g", "", generatedId, s -> {
-            s.entry("s"); s.addStart("s").linkAdd("a");
-            s.addActivity("a").task("@dummy").linkAdd("e");
+            s.entry("s"); s.addStart("s").linkTo("a");
+            s.addActivity("a").task("@dummy").linkTo("e");
             s.addEnd("e");
         }).create();
         engine.load(g);
         FlowContext ctx = FlowContext.of();
-        engine.eval("g", ctx);
+        engine.run("g", ctx);
         assertEquals("injected", ctx.get("driver"));
     }
 
-    /** add(Class)-compatible driver — constructor takes only injectable types. */
+    /** addDeferred(Class)-compatible driver — constructor takes only injectable types. */
     public static final class CountingDriverNoArg implements FlowDriver {
         @Override
-        public boolean handleCondition(FlowEvaluation evaluation, ConditionDesc condition)
+        public boolean handleCondition(FlowExecution evaluation, ConditionDesc condition)
                 throws Throwable {
             return ExprEvaluator.evalCondition(condition.description(),
                 evaluation.context().data());
         }
 
         @Override
-        public void handleTask(FlowEvaluation evaluation, TaskDesc task) throws Throwable {
+        public void handleTask(FlowExecution evaluation, TaskDesc task) throws Throwable {
             if (task.isEmpty()) return;
             evaluation.context().put("driver", "injected");
         }
@@ -1206,14 +1215,14 @@ class FlowEngineTest {
         // Entry points to the LOOP node — keeps its LOOP type (not force-promoted to START)
         Graph g = GraphSpec.create("loop", spec -> {
             spec.entry("l");
-            spec.addLoop("l").metaPut("$for", "item")
-                .metaPut("$in", List.of(1, 2, 3))
-                .task("@dummy").linkAdd("a");
-            spec.addActivity("a").task("@dummy").linkAdd("e");
+            spec.addLoop("l").putMetadata("$for", "item")
+                .putMetadata("$in", List.of(1, 2, 3))
+                .task("@dummy").linkTo("a");
+            spec.addActivity("a").task("@dummy").linkTo("e");
             spec.addEnd("e");
         }).create();
         engine.load(g);
-        engine.eval("loop", FlowContext.of());
+        engine.run("loop", FlowContext.of());
         // LOOP task runs once + activity runs 3x = 4 executions
         assertEquals(4, counter.get());
     }
@@ -1226,14 +1235,14 @@ class FlowEngineTest {
         }));
         Graph g = GraphSpec.create("loopvars", spec -> {
             spec.entry("l");
-            spec.addLoop("l").metaPut("$for", "item")
-                .metaPut("$in", List.of("x", "y", "z")).linkAdd("body");
-            spec.addActivity("body").task("@dummy").linkAdd("e");
+            spec.addLoop("l").putMetadata("$for", "item")
+                .putMetadata("$in", List.of("x", "y", "z")).linkTo("body");
+            spec.addActivity("body").task("@dummy").linkTo("e");
             spec.addEnd("e");
         }).create();
         FlowContext ctx = FlowContext.of();
         engine.load(g);
-        engine.eval("loopvars", ctx);
+        engine.run("loopvars", ctx);
         assertEquals(3, seen.size());
         assertEquals("z", ctx.get("item"), "the last item remains bound after the loop");
     }
@@ -1249,14 +1258,14 @@ class FlowEngineTest {
         FlowEngine engine = newEngine(tasksRun(node -> { }));
         Graph g = GraphSpec.create("loop", spec -> {
             spec.entry("l");
-            spec.addLoop("l").metaPut("$for", "item")
-                .metaPut("$in", huge)
-                .task("@dummy").linkAdd("e");
+            spec.addLoop("l").putMetadata("$for", "item")
+                .putMetadata("$in", huge)
+                .task("@dummy").linkTo("e");
             spec.addEnd("e");
         }).create();
         engine.load(g);
         FlowException ex = assertThrows(FlowException.class,
-            () -> engine.eval("loop", FlowContext.of()));
+            () -> engine.run("loop", FlowContext.of()));
         assertTrue(ex.getMessage().contains("LOOP iteration limit"),
             "expected iteration limit error, got: " + ex.getMessage());
     }
@@ -1275,20 +1284,20 @@ class FlowEngineTest {
         }));
         Graph g = GraphSpec.create("loopjoin", spec -> {
             spec.entry("l");
-            spec.addLoop("l").metaPut("$for", "item")
-                .metaPut("$in", List.of(1, 2))
-                .task("@noop").linkAdd("fork");
+            spec.addLoop("l").putMetadata("$for", "item")
+                .putMetadata("$in", List.of(1, 2))
+                .task("@noop").linkTo("fork");
             spec.addInclusive("fork").task("@noop")
-                .linkAdd("a", link -> link.when("item >= 1"))   // both iterations
-                .linkAdd("b", link -> link.when("item == 2"));  // iteration 2 only
-            spec.addActivity("a").task("@noop").linkAdd("join");
-            spec.addActivity("b").task("@noop").linkAdd("join");
-            spec.addInclusive("join").task("@noop").linkAdd("e");
+                .linkTo("a", link -> link.when("item >= 1"))   // both iterations
+                .linkTo("b", link -> link.when("item == 2"));  // iteration 2 only
+            spec.addActivity("a").task("@noop").linkTo("join");
+            spec.addActivity("b").task("@noop").linkTo("join");
+            spec.addInclusive("join").task("@noop").linkTo("e");
             spec.addEnd("e");
         }).create();
         engine.load(g);
 
-        assertDoesNotThrow(() -> engine.eval("loopjoin", FlowContext.of()));
+        assertDoesNotThrow(() -> engine.run("loopjoin", FlowContext.of()));
         assertEquals(1, joinExecutions.get(),
             "the join must activate exactly once (iteration 2, after both arrivals), got "
                 + joinExecutions.get());
@@ -1302,15 +1311,15 @@ class FlowEngineTest {
         FlowEngine engine = newEngine(tasksRun(node -> executed.add(node.id())));
         Graph g = GraphSpec.create("inc", spec -> {
             spec.entry("s");
-            spec.addStart("s").linkAdd("gw");
+            spec.addStart("s").linkTo("gw");
             spec.addInclusive("gw").task("@dummy")
-                .linkAdd("a").linkAdd("b");
-            spec.addActivity("a").task("@dummy").linkAdd("e");
-            spec.addActivity("b").task("@dummy").linkAdd("e");
+                .linkTo("a").linkTo("b");
+            spec.addActivity("a").task("@dummy").linkTo("e");
+            spec.addActivity("b").task("@dummy").linkTo("e");
             spec.addEnd("e");
         }).create();
         engine.load(g);
-        engine.eval("inc", FlowContext.of());
+        engine.run("inc", FlowContext.of());
         assertTrue(executed.contains("gw"));
         assertTrue(executed.contains("a"));
         assertTrue(executed.contains("b"));
@@ -1322,17 +1331,17 @@ class FlowEngineTest {
         FlowEngine engine = newEngine(tasksRun(node -> executed.add(node.id())));
         Graph g = GraphSpec.create("ex", spec -> {
             spec.entry("s");
-            spec.addStart("s").linkAdd("gw");
+            spec.addStart("s").linkTo("gw");
             // two links: one conditional (won't match), one default
             spec.addExclusive("gw").task("@dummy")
-                .linkAdd("false_path", link -> link.when("false == true"))
-                .linkAdd("default_path");
-            spec.addActivity("false_path").task("@dummy").linkAdd("e");
-            spec.addActivity("default_path").task("@dummy").linkAdd("e");
+                .linkTo("false_path", link -> link.when("false == true"))
+                .linkTo("default_path");
+            spec.addActivity("false_path").task("@dummy").linkTo("e");
+            spec.addActivity("default_path").task("@dummy").linkTo("e");
             spec.addEnd("e");
         }).create();
         engine.load(g);
-        engine.eval("ex", FlowContext.of());
+        engine.run("ex", FlowContext.of());
         assertTrue(executed.contains("gw"));
         assertTrue(executed.contains("default_path"));
         assertFalse(executed.contains("false_path"));
@@ -1346,15 +1355,15 @@ class FlowEngineTest {
         FlowEngine engine = newEngine(tasksRun(node -> executed.add(node.id())));
         Graph g = GraphSpec.create("ex_dead", spec -> {
             spec.entry("s");
-            spec.addStart("s").linkAdd("gw");
+            spec.addStart("s").linkTo("gw");
             spec.addExclusive("gw").task("@dummy")
-                .linkAdd("never", link -> link.when("false == true"));
-            spec.addActivity("never").task("@dummy").linkAdd("e");
+                .linkTo("never", link -> link.when("false == true"));
+            spec.addActivity("never").task("@dummy").linkTo("e");
             spec.addEnd("e");
         }).create();
         engine.load(g);
         FlowException ex = assertThrows(FlowException.class,
-            () -> engine.eval("ex_dead", FlowContext.of()));
+            () -> engine.run("ex_dead", FlowContext.of()));
         assertTrue(ex.getMessage().contains("gw"),
             "error must name the stuck node, got: " + ex.getMessage());
         assertTrue(ex.getMessage().contains("ex_dead"),
@@ -1369,16 +1378,16 @@ class FlowEngineTest {
         FlowEngine engine = newEngine(tasksRun(node -> executed.add(node.id())));
         Graph g = GraphSpec.create("ex_default", spec -> {
             spec.entry("s");
-            spec.addStart("s").linkAdd("gw");
+            spec.addStart("s").linkTo("gw");
             spec.addExclusive("gw").task("@dummy")
-                .linkAdd("never", link -> link.when("false == true"))
-                .linkAdd("fallback");
-            spec.addActivity("never").task("@dummy").linkAdd("e");
-            spec.addActivity("fallback").task("@dummy").linkAdd("e");
+                .linkTo("never", link -> link.when("false == true"))
+                .linkTo("fallback");
+            spec.addActivity("never").task("@dummy").linkTo("e");
+            spec.addActivity("fallback").task("@dummy").linkTo("e");
             spec.addEnd("e");
         }).create();
         engine.load(g);
-        assertDoesNotThrow(() -> engine.eval("ex_default", FlowContext.of()));
+        assertDoesNotThrow(() -> engine.run("ex_default", FlowContext.of()));
         assertTrue(executed.contains("fallback"), "default link must be taken");
     }
 
@@ -1391,20 +1400,20 @@ class FlowEngineTest {
         FlowEngine engine = newEngine(tasksRun(node -> executed.add(node.id())));
         Graph g = GraphSpec.create("inc_dead", spec -> {
             spec.entry("s");
-            spec.addStart("s").linkAdd("x");
+            spec.addStart("s").linkTo("x");
             // EXCLUSIVE always routes to branch a; branch b is never reached,
             // so the join below only ever receives one of its two arrivals.
             spec.addExclusive("x").task("@dummy")
-                .linkAdd("a", link -> link.when("true == true"))
-                .linkAdd("b", link -> link.when("false == true"));
-            spec.addActivity("a").task("@dummy").linkAdd("gw");
-            spec.addActivity("b").task("@dummy").linkAdd("gw");
-            spec.addInclusive("gw").task("@dummy").linkAdd("e");
+                .linkTo("a", link -> link.when("true == true"))
+                .linkTo("b", link -> link.when("false == true"));
+            spec.addActivity("a").task("@dummy").linkTo("gw");
+            spec.addActivity("b").task("@dummy").linkTo("gw");
+            spec.addInclusive("gw").task("@dummy").linkTo("e");
             spec.addEnd("e");
         }).create();
         engine.load(g);
         FlowException ex = assertThrows(FlowException.class,
-            () -> engine.eval("inc_dead", FlowContext.of()));
+            () -> engine.run("inc_dead", FlowContext.of()));
         assertTrue(ex.getMessage().contains("gw"),
             "error must name the stuck join, got: " + ex.getMessage());
         assertFalse(executed.contains("e"),
@@ -1418,18 +1427,18 @@ class FlowEngineTest {
         FlowEngine engine = newEngine(tasksRun(node -> executed.add(node.id())));
         Graph g = GraphSpec.create("par_dead", spec -> {
             spec.entry("s");
-            spec.addStart("s").linkAdd("x");
+            spec.addStart("s").linkTo("x");
             spec.addExclusive("x").task("@dummy")
-                .linkAdd("a", link -> link.when("true == true"))
-                .linkAdd("b", link -> link.when("false == true"));
-            spec.addActivity("a").task("@dummy").linkAdd("j");
-            spec.addActivity("b").task("@dummy").linkAdd("j");
-            spec.addParallel("j").task("@dummy").linkAdd("e");
+                .linkTo("a", link -> link.when("true == true"))
+                .linkTo("b", link -> link.when("false == true"));
+            spec.addActivity("a").task("@dummy").linkTo("j");
+            spec.addActivity("b").task("@dummy").linkTo("j");
+            spec.addParallel("j").task("@dummy").linkTo("e");
             spec.addEnd("e");
         }).create();
         engine.load(g);
         FlowException ex = assertThrows(FlowException.class,
-            () -> engine.eval("par_dead", FlowContext.of()));
+            () -> engine.run("par_dead", FlowContext.of()));
         assertTrue(ex.getMessage().contains("j"),
             "error must name the stuck join, got: " + ex.getMessage());
         assertFalse(executed.contains("e"),
@@ -1444,15 +1453,15 @@ class FlowEngineTest {
         FlowEngine engine = newEngine(tasksRun(node -> executed.add(node.id())));
         Graph g = GraphSpec.create("join_ok", spec -> {
             spec.entry("s");
-            spec.addStart("s").linkAdd("p");
-            spec.addParallel("p").task("@dummy").linkAdd("a").linkAdd("b");
-            spec.addActivity("a").task("@dummy").linkAdd("gw");
-            spec.addActivity("b").task("@dummy").linkAdd("gw");
-            spec.addInclusive("gw").task("@dummy").linkAdd("e");
+            spec.addStart("s").linkTo("p");
+            spec.addParallel("p").task("@dummy").linkTo("a").linkTo("b");
+            spec.addActivity("a").task("@dummy").linkTo("gw");
+            spec.addActivity("b").task("@dummy").linkTo("gw");
+            spec.addInclusive("gw").task("@dummy").linkTo("e");
             spec.addEnd("e");
         }).create();
         engine.load(g);
-        assertDoesNotThrow(() -> engine.eval("join_ok", FlowContext.of()));
+        assertDoesNotThrow(() -> engine.run("join_ok", FlowContext.of()));
         assertTrue(executed.contains("gw"),
             "the join must activate once both branches arrive, got " + executed);
         assertTrue(executed.contains("a") && executed.contains("b"),
@@ -1465,15 +1474,15 @@ class FlowEngineTest {
         FlowEngine engine = newEngine(tasksRun(node -> executed.add(node.id())));
         Graph g = GraphSpec.create("incjoin", spec -> {
             spec.entry("s");
-            spec.addStart("s").linkAdd("p");
-            spec.addParallel("p").task("@dummy").linkAdd("a").linkAdd("b");
-            spec.addActivity("a").task("@dummy").linkAdd("gw");
-            spec.addActivity("b").task("@dummy").linkAdd("gw");
-            spec.addInclusive("gw").task("@dummy").linkAdd("e");
+            spec.addStart("s").linkTo("p");
+            spec.addParallel("p").task("@dummy").linkTo("a").linkTo("b");
+            spec.addActivity("a").task("@dummy").linkTo("gw");
+            spec.addActivity("b").task("@dummy").linkTo("gw");
+            spec.addInclusive("gw").task("@dummy").linkTo("e");
             spec.addEnd("e");
         }).create();
         engine.load(g);
-        engine.eval("incjoin", FlowContext.of());
+        engine.run("incjoin", FlowContext.of());
         assertTrue(executed.contains("gw"), "inclusive gateway must execute");
         assertTrue(executed.contains("a") && executed.contains("b"),
             "both branches must reach the gateway");
@@ -1533,22 +1542,22 @@ class FlowEngineTest {
             });
             Graph g = GraphSpec.create("par", spec -> {
                 spec.entry("s");
-                spec.addStart("s").linkAdd("p");
-                spec.addParallel("p").task("@noop").linkAdd("a").linkAdd("b")
-                    .linkAdd("c").linkAdd("d").linkAdd("e").linkAdd("f")
-                    .linkAdd("g").linkAdd("h");
-                spec.addActivity("a").task("@dummy").linkAdd("end");
-                spec.addActivity("b").task("@dummy").linkAdd("end");
-                spec.addActivity("c").task("@dummy").linkAdd("end");
-                spec.addActivity("d").task("@dummy").linkAdd("end");
-                spec.addActivity("e").task("@dummy").linkAdd("end");
-                spec.addActivity("f").task("@dummy").linkAdd("end");
-                spec.addActivity("g").task("@dummy").linkAdd("end");
-                spec.addActivity("h").task("@dummy").linkAdd("end");
+                spec.addStart("s").linkTo("p");
+                spec.addParallel("p").task("@noop").linkTo("a").linkTo("b")
+                    .linkTo("c").linkTo("d").linkTo("e").linkTo("f")
+                    .linkTo("g").linkTo("h");
+                spec.addActivity("a").task("@dummy").linkTo("end");
+                spec.addActivity("b").task("@dummy").linkTo("end");
+                spec.addActivity("c").task("@dummy").linkTo("end");
+                spec.addActivity("d").task("@dummy").linkTo("end");
+                spec.addActivity("e").task("@dummy").linkTo("end");
+                spec.addActivity("f").task("@dummy").linkTo("end");
+                spec.addActivity("g").task("@dummy").linkTo("end");
+                spec.addActivity("h").task("@dummy").linkTo("end");
                 spec.addEnd("end");
             }).create();
             engine.load(g);
-            engine.eval("par", FlowContext.of());
+            engine.run("par", FlowContext.of());
             assertEquals(branches, executed.size());
             assertEquals(8, maxConcurrent.get(),
                 "branches must overlap in time (concurrent execution)");
@@ -1579,14 +1588,14 @@ class FlowEngineTest {
             }
 
             @Override
-            public boolean handleCondition(FlowEvaluation evaluation, ConditionDesc condition)
+            public boolean handleCondition(FlowExecution evaluation, ConditionDesc condition)
                     throws Throwable {
                 return ExprEvaluator.evalCondition(condition.description(),
                     evaluation.context().data());
             }
 
             @Override
-            public void handleTask(FlowEvaluation evaluation, TaskDesc task) throws Throwable {
+            public void handleTask(FlowExecution evaluation, TaskDesc task) throws Throwable {
                 if (!task.isEmpty()) body.accept(task.node());
             }
         }));
@@ -1606,20 +1615,20 @@ class FlowEngineTest {
             });
             Graph g = GraphSpec.create("parinc", spec -> {
                 spec.entry("s");
-                spec.addStart("s").linkAdd("p");
-                spec.addParallel("p").task("@noop").linkAdd("a").linkAdd("b")
-                    .linkAdd("c").linkAdd("d").linkAdd("e").linkAdd("f");
-                spec.addActivity("a").task("@dummy").linkAdd("gw");
-                spec.addActivity("b").task("@dummy").linkAdd("gw");
-                spec.addActivity("c").task("@dummy").linkAdd("gw");
-                spec.addActivity("d").task("@dummy").linkAdd("gw");
-                spec.addActivity("e").task("@dummy").linkAdd("gw");
-                spec.addActivity("f").task("@dummy").linkAdd("gw");
-                spec.addInclusive("gw").task("@dummy").linkAdd("end");
+                spec.addStart("s").linkTo("p");
+                spec.addParallel("p").task("@noop").linkTo("a").linkTo("b")
+                    .linkTo("c").linkTo("d").linkTo("e").linkTo("f");
+                spec.addActivity("a").task("@dummy").linkTo("gw");
+                spec.addActivity("b").task("@dummy").linkTo("gw");
+                spec.addActivity("c").task("@dummy").linkTo("gw");
+                spec.addActivity("d").task("@dummy").linkTo("gw");
+                spec.addActivity("e").task("@dummy").linkTo("gw");
+                spec.addActivity("f").task("@dummy").linkTo("gw");
+                spec.addInclusive("gw").task("@dummy").linkTo("end");
                 spec.addEnd("end");
             }).create();
             engine.load(g);
-            engine.eval("parinc", FlowContext.of());
+            engine.run("parinc", FlowContext.of());
             assertEquals(1, gatewayExecutions.get(),
                 "inclusive gateway must join concurrent branches exactly once");
         } finally {
@@ -1664,18 +1673,18 @@ class FlowEngineTest {
                 });
                 Graph g = GraphSpec.create("parloop", spec -> {
                     spec.entry("s");
-                    spec.addStart("s").linkAdd("p");
-                    spec.addParallel("p").task("@noop").linkAdd("a").linkAdd("b");
-                    spec.addActivity("a").task("@dummy").linkAdd("l");
-                    spec.addActivity("b").task("@dummy").linkAdd("l");
-                    spec.addLoop("l").metaPut("$for", "item")
-                        .metaPut("$in", List.of(1, 2, 3))
-                        .task("@loopTask").linkAdd("body");
-                    spec.addActivity("body").task("@dummy").linkAdd("e");
+                    spec.addStart("s").linkTo("p");
+                    spec.addParallel("p").task("@noop").linkTo("a").linkTo("b");
+                    spec.addActivity("a").task("@dummy").linkTo("l");
+                    spec.addActivity("b").task("@dummy").linkTo("l");
+                    spec.addLoop("l").putMetadata("$for", "item")
+                        .putMetadata("$in", List.of(1, 2, 3))
+                        .task("@loopTask").linkTo("body");
+                    spec.addActivity("body").task("@dummy").linkTo("e");
                     spec.addEnd("e");
                 }).create();
                 engine.load(g);
-                engine.eval("parloop", FlowContext.of());
+                engine.run("parloop", FlowContext.of());
                 assertEquals(3, bodyCount.get(),
                     "the loop body must run exactly once (3 items), not once per branch — got "
                         + bodyCount.get());
@@ -1704,18 +1713,18 @@ class FlowEngineTest {
             });
             Graph g = GraphSpec.create("isolate", spec -> {
                 spec.entry("s");
-                spec.addStart("s").linkAdd("p");
+                spec.addStart("s").linkTo("p");
                 spec.addParallel("p").task("@noop")
-                    .linkAdd("x1").linkAdd("x2").linkAdd("x3").linkAdd("x4");
-                spec.addActivity("x1").task("@dummy").linkAdd("j");
-                spec.addActivity("x2").task("@dummy").linkAdd("j");
-                spec.addActivity("x3").task("@dummy").linkAdd("j");
-                spec.addActivity("x4").task("@dummy").linkAdd("j");
-                spec.addInclusive("j").task("@dummy").linkAdd("e");
+                    .linkTo("x1").linkTo("x2").linkTo("x3").linkTo("x4");
+                spec.addActivity("x1").task("@dummy").linkTo("j");
+                spec.addActivity("x2").task("@dummy").linkTo("j");
+                spec.addActivity("x3").task("@dummy").linkTo("j");
+                spec.addActivity("x4").task("@dummy").linkTo("j");
+                spec.addInclusive("j").task("@dummy").linkTo("e");
                 spec.addEnd("e");
             }).create();
             engine.load(g);
-            engine.eval("isolate", ctx);
+            engine.run("isolate", ctx);
             for (int i = 1; i <= branches; i++) {
                 assertEquals("x" + i, ctx.get("k_x" + i),
                     "every branch's distinct write must land after the join");
@@ -1741,14 +1750,14 @@ class FlowEngineTest {
                 }
 
                 @Override
-                public boolean handleCondition(FlowEvaluation evaluation, ConditionDesc condition)
+                public boolean handleCondition(FlowExecution evaluation, ConditionDesc condition)
                         throws Throwable {
                     return ExprEvaluator.evalCondition(condition.description(),
                         evaluation.context().data());
                 }
 
                 @Override
-                public void handleTask(FlowEvaluation evaluation, TaskDesc task) throws Throwable {
+                public void handleTask(FlowExecution evaluation, TaskDesc task) throws Throwable {
                     if (task.isEmpty()) return;
                     switch (task.node().id()) {
                         case "a" -> {
@@ -1765,15 +1774,15 @@ class FlowEngineTest {
             }));
             Graph g = GraphSpec.create("conflict", spec -> {
                 spec.entry("s");
-                spec.addStart("s").linkAdd("p");
-                spec.addParallel("p").task("@noop").linkAdd("a").linkAdd("b");
-                spec.addActivity("a").task("@dummy").linkAdd("e");
-                spec.addActivity("b").task("@dummy").linkAdd("e");
+                spec.addStart("s").linkTo("p");
+                spec.addParallel("p").task("@noop").linkTo("a").linkTo("b");
+                spec.addActivity("a").task("@dummy").linkTo("e");
+                spec.addActivity("b").task("@dummy").linkTo("e");
                 spec.addEnd("e");
             }).create();
             engine.load(g);
             FlowException ex = assertThrows(FlowException.class,
-                () -> engine.eval("conflict", FlowContext.of()));
+                () -> engine.run("conflict", FlowContext.of()));
             assertTrue(ex.getMessage().contains("conflicting"),
                 "expected a conflict error, got: " + ex.getMessage());
             assertTrue(ex.getMessage().contains("shared"),
@@ -1789,32 +1798,32 @@ class FlowEngineTest {
         // no conflict check); with sequential branches this is deterministic.
         FlowEngine direct = FlowEngine.create(Map.of("default", new FlowDriver() {
             @Override
-            public boolean handleCondition(FlowEvaluation evaluation, ConditionDesc condition)
+            public boolean handleCondition(FlowExecution evaluation, ConditionDesc condition)
                     throws Throwable {
                 return ExprEvaluator.evalCondition(condition.description(),
                     evaluation.context().data());
             }
 
             @Override
-            public void handleTask(FlowEvaluation evaluation, TaskDesc task) throws Throwable {
+            public void handleTask(FlowExecution evaluation, TaskDesc task) throws Throwable {
                 if (task.isEmpty()) return;
                 evaluation.context().put("winner", task.node().id());
             }
         }));
         Graph g = GraphSpec.create("shared", spec -> {
             spec.entry("s");
-            spec.addStart("s").linkAdd("p");
-            spec.addParallel("p").metaPut("join", "shared").task("@noop")
-                .linkAdd("a").linkAdd("b");
-            spec.addActivity("a").task("@dummy").linkAdd("e");
-            spec.addActivity("b").task("@dummy").linkAdd("e");
+            spec.addStart("s").linkTo("p");
+            spec.addParallel("p").putMetadata("join", "shared").task("@noop")
+                .linkTo("a").linkTo("b");
+            spec.addActivity("a").task("@dummy").linkTo("e");
+            spec.addActivity("b").task("@dummy").linkTo("e");
             spec.addEnd("e");
         }).create();
         direct.load(g);
         FlowContext ctx = FlowContext.of();
         // No executor: branches run inline, so the second overwrites the
         // first without conflict detection — legal under "shared".
-        assertDoesNotThrow(() -> direct.eval("shared", ctx));
+        assertDoesNotThrow(() -> direct.run("shared", ctx));
         assertEquals("b", ctx.get("winner"));
     }
 
@@ -1825,13 +1834,13 @@ class FlowEngineTest {
         FlowEngine engine = newEngine(tasksRun(node -> { }));
         Graph g = GraphSpec.create("datawrite", spec -> {
             spec.entry("s");
-            spec.addStart("s").linkAdd("w");
-            spec.addActivity("w").data(Map.of("greeting", "hi", "count", 3)).linkAdd("e");
+            spec.addStart("s").linkTo("w");
+            spec.addActivity("w").data(Map.of("greeting", "hi", "count", 3)).linkTo("e");
             spec.addEnd("e");
         }).create();
         FlowContext ctx = FlowContext.of();
         engine.load(g);
-        engine.eval("datawrite", ctx);
+        engine.run("datawrite", ctx);
         assertEquals("hi", ctx.get("greeting"));
         assertEquals(3, ctx.get("count"));
     }
@@ -1840,8 +1849,8 @@ class FlowEngineTest {
     void dataFieldRoundTripsThroughDom() {
         Graph g = GraphSpec.create("dt", spec -> {
             spec.entry("s");
-            spec.addStart("s").linkAdd("w");
-            spec.addActivity("w").data(Map.of("k", "v")).linkAdd("e");
+            spec.addStart("s").linkTo("w");
+            spec.addActivity("w").data(Map.of("k", "v")).linkTo("e");
             spec.addEnd("e");
         }).create();
         Graph reparsed = Graph.fromText(g.toJson());
@@ -1855,24 +1864,24 @@ class FlowEngineTest {
         // build and names the replacement.
         IllegalStateException meta = assertThrows(IllegalStateException.class,
             () -> GraphSpec.create("g", s -> {
-                s.entry("s"); s.addStart("s").linkAdd("a");
-                s.addActivity("a").task("$endpoint").linkAdd("e");
+                s.entry("s"); s.addStart("s").linkTo("a");
+                s.addActivity("a").task("$endpoint").linkTo("e");
                 s.addEnd("e");
             }).create());
         assertTrue(meta.getMessage().contains("data"), "$ hint: " + meta.getMessage());
 
         IllegalStateException marker = assertThrows(IllegalStateException.class,
             () -> GraphSpec.create("g", s -> {
-                s.entry("s"); s.addStart("s").linkAdd("a");
-                s.addActivity("a").task("!channel").linkAdd("e");
+                s.entry("s"); s.addStart("s").linkTo("a");
+                s.addActivity("a").task("!channel").linkTo("e");
                 s.addEnd("e");
             }).create());
         assertTrue(marker.getMessage().contains("contribute"), "! hint: " + marker.getMessage());
 
         IllegalStateException bare = assertThrows(IllegalStateException.class,
             () -> GraphSpec.create("g", s -> {
-                s.entry("s"); s.addStart("s").linkAdd("a");
-                s.addActivity("a").task("runSomething").linkAdd("e");
+                s.entry("s"); s.addStart("s").linkTo("a");
+                s.addActivity("a").task("runSomething").linkTo("e");
                 s.addEnd("e");
             }).create());
         assertTrue(bare.getMessage().contains("runSomething"),
@@ -1886,10 +1895,10 @@ class FlowEngineTest {
         // through it — or never, for a cold branch.
         IllegalStateException ex = assertThrows(IllegalStateException.class,
             () -> GraphSpec.create("g", s -> {
-                s.entry("s"); s.addStart("s").linkAdd("gw");
-                s.addExclusive("gw").linkAdd("a", l -> l.when("x >&& 5"))
-                    .linkAdd("e");
-                s.addActivity("a").task("@dummy").linkAdd("e");
+                s.entry("s"); s.addStart("s").linkTo("gw");
+                s.addExclusive("gw").linkTo("a", l -> l.when("x >&& 5"))
+                    .linkTo("e");
+                s.addActivity("a").task("@dummy").linkTo("e");
                 s.addEnd("e");
             }).create());
         assertTrue(ex.getMessage().contains("when"),
@@ -1900,19 +1909,19 @@ class FlowEngineTest {
     void joinMetaIsParallelOnlyAndValueChecked() {
         assertThrows(IllegalStateException.class,
             () -> GraphSpec.create("g", s -> {
-                s.entry("s"); s.addStart("s").linkAdd("a");
-                s.addActivity("a").metaPut("join", "merge").linkAdd("e");
+                s.entry("s"); s.addStart("s").linkTo("a");
+                s.addActivity("a").putMetadata("join", "merge").linkTo("e");
                 s.addEnd("e");
             }).create());
         assertThrows(IllegalStateException.class,
             () -> GraphSpec.create("g", s -> {
-                s.entry("s"); s.addStart("s").linkAdd("p");
-                s.addParallel("p").metaPut("join", "both").linkAdd("e");
+                s.entry("s"); s.addStart("s").linkTo("p");
+                s.addParallel("p").putMetadata("join", "both").linkTo("e");
                 s.addEnd("e");
             }).create());
         assertDoesNotThrow(() -> GraphSpec.create("g", s -> {
-            s.entry("s"); s.addStart("s").linkAdd("p");
-            s.addParallel("p").metaPut("join", "shared").linkAdd("e");
+            s.entry("s"); s.addStart("s").linkTo("p");
+            s.addParallel("p").putMetadata("join", "shared").linkTo("e");
             s.addEnd("e");
         }).create());
     }
@@ -1922,15 +1931,15 @@ class FlowEngineTest {
         // Inline handlers are programmatic and stay valid; only string
         // descriptors beyond @ and # fail.
         Graph g = GraphSpec.create("inline", s -> {
-            s.entry("s"); s.addStart("s").linkAdd("a");
+            s.entry("s"); s.addStart("s").linkTo("a");
             s.addActivity("a").task((TaskHandler) (ctx, node) -> ctx.put("inline", true))
-                .linkAdd("e");
+                .linkTo("e");
             s.addEnd("e");
         }).create();
         FlowContext ctx = FlowContext.of();
         FlowEngine engine = newEngine(FlowDriverDefault.instance());
         engine.load(g);
-        engine.eval(g, ctx);
+        engine.run(g, ctx);
         assertEquals(Boolean.TRUE, ctx.get("inline"));
     }
 
@@ -2056,7 +2065,7 @@ class FlowEngineTest {
         ctx.put("k", "A");
         // Parent changed under the branch's feet: the value the branch based
         // its write on (null) moved before merge — conflict.
-        ctx.stopped(false);
+        FlowContexts.setStopped(ctx, false);
         merge.commit();
         assertEquals("A", ctx.get("k"), "clean merge lands in the parent");
 

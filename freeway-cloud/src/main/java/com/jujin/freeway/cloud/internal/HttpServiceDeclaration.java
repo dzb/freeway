@@ -1,6 +1,6 @@
 package com.jujin.freeway.cloud.internal;
 
-import com.jujin.freeway.cloud.discovery.Endpoint;
+import com.jujin.freeway.cloud.discovery.ServiceEndpoint;
 import com.jujin.freeway.cloud.discovery.ServiceDeclaration;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.ioc.symbol.SymbolSpec;
@@ -71,7 +71,7 @@ public final class HttpServiceDeclaration implements ServiceDeclaration {
         String serviceId = symbols.resolve(ConfigKeys.REGISTRY_SERVICE_ID,
             symbols.resolve(ConfigKeys.APP_NAME, ConfigKeys.APP_NAME_DEFAULT));
         String scheme = ServiceIdentity.scheme(
-            symbols.resolve(SERVICE_SCHEME), server.secure(), serviceId);
+            symbols.resolve(SERVICE_SCHEME), server.isSecure(), serviceId);
         String host = ServiceIdentity.host(
             symbols.resolve(SERVICE_HOST), server.host(), serviceId);
         // The default port is the live server's port, not a static value —
@@ -86,6 +86,6 @@ public final class HttpServiceDeclaration implements ServiceDeclaration {
                 host, serviceId, ConfigKeys.REGISTRY_SERVICE_HOST);
         }
         return ServiceInstance.of(serviceId, instanceId,
-            Endpoint.of(scheme, host, port), Map.of());
+            ServiceEndpoint.of(scheme, host, port), Map.of());
     }
 }

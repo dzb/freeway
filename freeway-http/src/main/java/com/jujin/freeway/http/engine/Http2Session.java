@@ -18,7 +18,7 @@ import javax.net.ssl.SSLSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.jujin.freeway.http.HttpContextSupport;
+import com.jujin.freeway.http.HttpExchangeSupport;
 import com.jujin.freeway.http.engine.http2.Http2Connection;
 import com.jujin.freeway.http.engine.http2.Http2ResponseWriter;
 import com.jujin.freeway.http.engine.http2.Http2Stream;
@@ -189,7 +189,8 @@ final class Http2Session {
                 sslSession != null, sslSession,
                 HttpSession.remoteAddress(socket));
             transport.setWriter(new Http2ResponseWriter(stream));
-            var context = new HttpContextSupport(transport, ctx.jsonCodec(),
+            transport.setCommitProbe(stream::isCommitted);
+            var context = new HttpExchangeSupport(transport, ctx.jsonCodec(),
                 ctx.coercer(), ctx.config().maxBodySize(),
                 ctx.config().compression(), correlationId);
             // Echo for tracing only — a hostile value (e.g. CR/LF inside an

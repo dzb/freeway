@@ -12,7 +12,7 @@ import java.io.InputStream;
  * fixed-length wrapper, and how many bytes have been consumed.
  *
  * <p>Size limiting and full-body caching live in {@code
- * HttpContextSupport} — the policy object every engine composes. This class
+ * HttpExchangeSupport} — the policy object every engine composes. This class
  * is the built-in engine's wire framing only, plus the drain decision that
  * controls keep-alive reuse.</p>
  */

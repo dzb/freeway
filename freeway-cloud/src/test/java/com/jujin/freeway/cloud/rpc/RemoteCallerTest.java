@@ -11,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
-import com.jujin.freeway.cloud.discovery.Endpoint;
+import com.jujin.freeway.cloud.discovery.ServiceEndpoint;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.cloud.discovery.ServiceRegistry;
 import com.jujin.freeway.http.HttpModule;
@@ -85,7 +85,7 @@ class RemoteCallerTest {
         // consumer discovers the *provider's* instances. Same mechanics either way.
         registry.register(ServiceInstance.of(
             "target", "i1",
-            Endpoint.of("http", webServer.host(), webServer.port()), java.util.Map.of()));
+            ServiceEndpoint.of("http", webServer.host(), webServer.port()), java.util.Map.of()));
     }
 
     @AfterEach
@@ -115,7 +115,7 @@ class RemoteCallerTest {
 
     @Test
     void businessExceptionIsNeverRetryableAndCarriesRemoteClass() {
-        CloudException ex = assertThrows(CloudException.class, () ->
+        RpcException ex = assertThrows(RpcException.class, () ->
             caller.invoke("target", "user", "boom", List.of(), String.class));
         assertFalse(ex.retryable(), "business failure is deterministic");
         assertEquals(400, ex.status());
@@ -128,7 +128,7 @@ class RemoteCallerTest {
 
     @Test
     void unknownTopicSurfacesAsNotFound() {
-        CloudException ex = assertThrows(CloudException.class, () ->
+        RpcException ex = assertThrows(RpcException.class, () ->
             caller.invoke("target", "user", "missing", List.of(), String.class));
         assertFalse(ex.retryable(), "no handler is configuration, not transient");
         assertEquals(404, ex.status());
@@ -138,7 +138,7 @@ class RemoteCallerTest {
     void perCallTimeoutNarrowsTheWait() {
         // Server handler sleeps? Use the slow endpoint via a dedicated service:
         // reuse boom-free greet but with an absurdly short per-call deadline.
-        CloudException ex = assertThrows(CloudException.class, () ->
+        RpcException ex = assertThrows(RpcException.class, () ->
             caller.invoke("target", "user", "greet", List.of("bob"), Greeting.class,
                 java.time.Duration.ofNanos(1)));
         assertTrue(ex.retryable(), "per-call deadline expiry maps to retryable timeout");
@@ -169,7 +169,7 @@ class RemoteCallerTest {
     void exportGateStaysPerMappingPrefix() {
         // order.charge exists, user.charge does not: a sibling mapping's method
         // must not become reachable under another mapping's name.
-        CloudException ex = assertThrows(CloudException.class, () ->
+        RpcException ex = assertThrows(RpcException.class, () ->
             caller.invoke("target", "user", "charge", List.of("9"), String.class));
         assertEquals(404, ex.status());
     }
@@ -179,36 +179,36 @@ class RemoteCallerTest {
         // No instance / circuit open / rate limited share retryable=false,
         // outcomeUnknown=false, status=-1, cause=null — only kind() tells them
         // apart, which is what an operator's next action depends on.
-        assertEquals(CloudException.Kind.NO_INSTANCE,
-            CloudException.noInstance("svc").kind());
-        assertEquals(CloudException.Kind.CIRCUIT_OPEN,
-            CloudException.circuitOpen("svc").kind());
-        assertEquals(CloudException.Kind.RATE_LIMITED,
-            CloudException.rateLimited("svc").kind());
-        assertEquals(CloudException.Kind.CONNECT,
-            CloudException.connect("svc", new java.io.IOException("refused")).kind());
-        assertEquals(CloudException.Kind.TIMEOUT, CloudException.timeout("svc").kind());
-        assertEquals(CloudException.Kind.TRANSPORT,
-            CloudException.transport("svc", new java.io.IOException("reset")).kind());
+        assertEquals(RpcException.Kind.NO_INSTANCE,
+            RpcException.noInstance("svc").kind());
+        assertEquals(RpcException.Kind.CIRCUIT_OPEN,
+            RpcException.circuitOpen("svc").kind());
+        assertEquals(RpcException.Kind.RATE_LIMITED,
+            RpcException.rateLimited("svc").kind());
+        assertEquals(RpcException.Kind.CONNECT,
+            RpcException.connect("svc", new java.io.IOException("refused")).kind());
+        assertEquals(RpcException.Kind.TIMEOUT, RpcException.timeout("svc").kind());
+        assertEquals(RpcException.Kind.TRANSPORT,
+            RpcException.transport("svc", new java.io.IOException("reset")).kind());
     }
 
     @Test
     void eachWireFailureCarriesItsOwnKind() {
         // Business failure: the handler threw (class crosses, wrapped as cause).
-        CloudException business = assertThrows(CloudException.class, () ->
+        RpcException business = assertThrows(RpcException.class, () ->
             caller.invoke("target", "user", "boom", List.of(), String.class));
-        assertEquals(CloudException.Kind.BUSINESS, business.kind());
+        assertEquals(RpcException.Kind.BUSINESS, business.kind());
         assertTrue(business.getCause() instanceof RemoteInvocationException);
 
         // Rejected shape: the peer has no such method.
-        CloudException missing = assertThrows(CloudException.class, () ->
+        RpcException missing = assertThrows(RpcException.class, () ->
             caller.invoke("target", "user", "missing", List.of(), String.class));
-        assertEquals(CloudException.Kind.REJECTED, missing.kind());
+        assertEquals(RpcException.Kind.REJECTED, missing.kind());
 
         // Unreadable reply: the declared type does not match the answer.
-        CloudException unreadable = assertThrows(CloudException.class, () ->
+        RpcException unreadable = assertThrows(RpcException.class, () ->
             caller.invoke("target", "user", "greet", List.of("bob"), Integer.class));
-        assertEquals(CloudException.Kind.REPLY_UNREADABLE, unreadable.kind());
+        assertEquals(RpcException.Kind.REPLY_UNREADABLE, unreadable.kind());
     }
 
     @Test
@@ -218,11 +218,11 @@ class RemoteCallerTest {
         // handler failure to be retried or a 500 to be investigated as an
         // outage — and because it is caught before dispatch, it is a rejection
         // (the caller's mistake), not a business exception (the handler's).
-        CloudException ex = assertThrows(CloudException.class, () ->
+        RpcException ex = assertThrows(RpcException.class, () ->
             caller.invoke("target", "user", "add", List.of(1), Integer.class));
         assertFalse(ex.retryable(), "a malformed call is deterministic");
         assertEquals(400, ex.status());
-        assertEquals(CloudException.Kind.REJECTED, ex.kind(),
+        assertEquals(RpcException.Kind.REJECTED, ex.kind(),
             "an arity mismatch is the caller's contract violation, got: " + ex.kind());
     }
 

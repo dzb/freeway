@@ -56,6 +56,33 @@ public interface Dialect {
      */
     String dialectId();
 
+    // ====================== built-in catalog ======================
+
+    /**
+     * Resolves a built-in dialect by its stable id, or fails naming the
+     * extension seam. A module that binds a custom dialect with this id and
+     * sets {@code freeway.db.dialect} wins before this catalog is consulted.
+     * The switch is the one id → implementation table; URL detection below
+     * maps a JDBC scheme to one of these ids instead of carrying a second
+     * class-selection table. H2 remains special when a URL carries a MODE
+     * because its instance is parameterized.
+     */
+    public static Dialect ofId(String id) {
+        if (id == null || id.isBlank()) {
+            throw new IllegalArgumentException("SQL dialect id must not be blank");
+        }
+        return switch (id.trim().toLowerCase(Locale.ROOT)) {
+            case "postgresql", "postgres" -> new PostgresDialect();
+            case "mysql", "mariadb" -> new MySqlDialect();
+            case "sqlite" -> new SqliteDialect();
+            case "h2" -> new H2Dialect();
+            default -> throw new IllegalArgumentException(
+                "Unknown SQL dialect '" + id.trim() + "'. Built-ins: h2, mariadb, "
+                    + "mysql, postgres, postgresql, sqlite. Bind an extension Dialect "
+                    + "with that id and set freeway.db.dialect=" + id.trim());
+        };
+    }
+
     // ====================== URL detection ======================
 
     /**
@@ -68,7 +95,9 @@ public interface Dialect {
      *
      * <p>Single source of truth for URL-based dialect detection — shared by
      * {@code Database.create} (standalone assembly) and {@code DbModule}
-     * (IoC assembly) so both resolve the same dialect for the same URL.
+     * (IoC assembly) so both resolve the same dialect for the same URL. H2
+     * URLs return {@link H2Dialect} with their {@code MODE}; H2 modes are not
+     * remapped to PostgreSQL/MySQL.
      *
      * @param url JDBC URL; may be {@code null} or blank (treated as no URL →
      *            default PostgreSQL dialect)
@@ -80,32 +109,25 @@ public interface Dialect {
      */
     static Dialect of(String url) {
         if (url == null || url.isBlank()) {
-            return new PostgresDialect();
+            return ofId("postgresql");
         }
         // Scheme matching on the uppercased copy: docs promise case-insensitive
         // detection (freeway-db.md), and Locale.ROOT keeps the Turkish dotted-i
         // from turning "jdbc:sqlite" into a non-match.
         String upper = url.toUpperCase(Locale.ROOT);
         if (upper.contains("JDBC:MYSQL") || upper.contains("JDBC:MARIADB")) {
-            return new MySqlDialect();
+            return ofId("mysql");
         }
         if (upper.contains("JDBC:SQLITE")) {
-            return new SqliteDialect();
+            return ofId("sqlite");
         }
         if (upper.contains("JDBC:H2")) {
-            if (
-                upper.contains("MODE=MYSQL") ||
-                upper.contains("MODE=MARIADB")
-            ) {
-                return new MySqlDialect();
-            }
-            if (upper.contains("MODE=POSTGRESQL")) {
-                return new PostgresDialect();
-            }
-            return new H2Dialect();
+            // H2 remains H2 in every MODE: its compatibility modes change the
+            // parser surface, not H2's introspection/DDL/type semantics.
+            return H2Dialect.of(url);
         }
         if (upper.contains("JDBC:POSTGRESQL")) {
-            return new PostgresDialect();
+            return ofId("postgresql");
         }
         throw new IllegalStateException(
             "No SQL dialect for JDBC URL '" + url + "' — unsupported database. "
@@ -322,9 +344,9 @@ public interface Dialect {
     }
 
     /**
-     * Whether DDL statements participate in transactions. PostgreSQL, H2, and
-     * SQLite support transactional DDL; MySQL/MariaDB implicitly commit on
-     * every DDL statement, so a migration that mixes DDL with the checksum
+     * Whether DDL statements participate in transactions. PostgreSQL and
+     * SQLite support transactional DDL; H2 and MySQL/MariaDB implicitly commit
+     * on every DDL statement, so a migration that mixes DDL with the checksum
      * INSERT can never be applied atomically there (the DDL is committed but
      * the checksum row is lost, so the next startup re-runs the DDL and fails).
      */
@@ -342,6 +364,24 @@ public interface Dialect {
         return true;
     }
 
+    /**
+     * Whether this dialect can render upsert as a complete MERGE-style
+     * statement instead of an INSERT suffix. H2 uses this for every mode.
+     */
+    default boolean supportsMergeUpsert() {
+        return false;
+    }
+
+    /**
+     * Renders a complete upsert statement. Only called when
+     * {@link #supportsMergeUpsert()} is true.
+     */
+    default String mergeUpsertStatement(String table, List<String> columns,
+            List<String> keyColumns, String placeholders) {
+        throw new UnsupportedOperationException(
+            "Dialect '" + dialectId() + "' does not support MERGE upsert");
+    }
+
     /** Returns the FOR UPDATE clause for row-level locking (without leading space). */
     default String forUpdateClause() {
         return "FOR UPDATE";
@@ -350,11 +390,22 @@ public interface Dialect {
     /**
      * Returns the pagination clause for an OFFSET without a LIMIT.
      * MySQL and SQLite reject a bare {@code OFFSET n}, so they override this
-     * with an "unlimited" LIMIT; the default follows the SQL standard
-     * ({@code LIMIT ALL OFFSET n}, accepted by PostgreSQL and H2).
+     * with an "unlimited" LIMIT; the default follows the PostgreSQL form
+     * ({@code LIMIT ALL OFFSET n}). H2 overrides this with standard
+     * {@code OFFSET n ROWS}.
      */
     default String offsetOnlyClause(long offset) {
         return "LIMIT ALL OFFSET " + offset;
+    }
+
+    /** Returns the LIMIT/FETCH clause for a row limit without an offset. */
+    default String limitClause(long limit) {
+        return "LIMIT " + limit;
+    }
+
+    /** Returns the pagination clause for a row limit and an offset together. */
+    default String limitOffsetClause(long limit, long offset) {
+        return "LIMIT " + limit + " OFFSET " + offset;
     }
 
     // ====================== type mappings ======================

@@ -4,6 +4,8 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.channels.FileChannel;
+import java.nio.file.LinkOption;
+import java.nio.file.StandardOpenOption;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -37,6 +39,7 @@ public final class TestTransport implements HttpTransport {
 
     private final List<ResponseHead> heads = new ArrayList<>();
     private final List<byte[]> bodies = new ArrayList<>();
+    private boolean committed;
     private SseEmitter sse;
 
     public TestTransport(String method, String path,
@@ -105,7 +108,7 @@ public final class TestTransport implements HttpTransport {
     }
 
     @Override
-    public InputStream bodyStream() {
+    public InputStream framedBodyStream() {
         return requestBody;
     }
 
@@ -124,77 +127,93 @@ public final class TestTransport implements HttpTransport {
         return "";
     }
 
+    @Override
+    public boolean isCommitted() {
+        return committed;
+    }
+
     // -- HttpTransport: response side --
 
     @Override
-    public void writeResponse(ResponseHead head, byte[] body) {
+    public void writeResponse(ResponsePlan plan) throws IOException {
+        ResponseHead head = plan.head();
+        if (!head.sendsBodyBytes()) {
+            // HEAD / 204 / 205 / 304 must not read the body source just to
+            // record it, but an owned channel is still released.
+            if (plan.body() instanceof ResponseBody.Channel channel) {
+                channel.channel().close();
+            }
+            heads.add(head);
+            bodies.add(new byte[0]);
+            committed = true;
+            return;
+        }
+        byte[] data = switch (plan.body()) {
+            case ResponseBody.Empty ignored -> new byte[0];
+            case ResponseBody.Bytes bytes -> bytes.data().clone();
+            case ResponseBody.Stream stream -> stream.stream().readAllBytes();
+            case ResponseBody.File file -> readFile(file);
+            case ResponseBody.Channel channel -> readChannel(channel);
+        };
+        if (plan.gzip()) {
+            data = Compression.gzip(data);
+            head = head.withHeader("Content-Length", Integer.toString(data.length));
+        } else if (head.sendsBodyBytes() && !head.hasHeader("Content-Length")) {
+            head = head.withHeader("Content-Length", Integer.toString(data.length));
+        }
         heads.add(head);
-        // What is committed is what goes on the wire: HEAD and the bodyless
-        // statuses carry the head only.
-        bodies.add(head.sendsBodyBytes() ? body : new byte[0]);
+        bodies.add(head.sendsBodyBytes() ? data : new byte[0]);
+        committed = true;
     }
 
-    @Override
-    public void writeResponse(ResponseHead head, InputStream body, boolean gzip)
+    private static byte[] readFile(ResponseBody.File file) throws IOException {
+        try (FileChannel channel = FileChannel.open(file.path(), StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS)) {
+            return readRange(channel, file.offset(), file.length());
+        }
+    }
+
+    private static byte[] readChannel(ResponseBody.Channel body) throws IOException {
+        try {
+            return readRange(body.channel(), body.offset(), body.length());
+        } finally {
+            body.channel().close();
+        }
+    }
+
+    private static byte[] readRange(FileChannel channel, long offset, long length)
             throws IOException {
-        heads.add(head);
-        if (!head.sendsBodyBytes()) {
-            bodies.add(new byte[0]);
-            return;
-        }
-        byte[] data = body.readAllBytes();
-        bodies.add(gzip ? Compression.gzip(data) : data);
-    }
-
-    @Override
-    public void writeResponseFile(ResponseHead head, FileChannel channel,
-            long offset, long length, boolean gzip) throws IOException {
-        heads.add(head);
-        if (!head.sendsBodyBytes()) {
-            // HEAD / 204 must not read the file: the size is already in the
-            // head the support object set.
-            bodies.add(new byte[0]);
-            return;
-        }
+        long remaining = length >= 0 ? length : channel.size() - offset;
         channel.position(offset);
-        byte[] data = new byte[(int) Math.min(length, Integer.MAX_VALUE)];
-        int read = 0;
-        while (read < data.length) {
-            int n = channel.read(java.nio.ByteBuffer.wrap(data, read,
-                data.length - read));
-            if (n < 0) break;
-            read += n;
-        }
-        byte[] actual = read == data.length ? data
-            : java.util.Arrays.copyOf(data, read);
-        bodies.add(gzip ? Compression.gzip(actual) : actual);
+        return java.nio.channels.Channels.newInputStream(channel)
+            .readNBytes(Math.toIntExact(remaining));
     }
 
     @Override
     public SseEmitter openSse(ResponseHead head) throws IOException {
         heads.add(head);
         sse = new SseEmitter(new ByteArrayOutputStream());
+        committed = true;
         return sse;
     }
 
     // -- assertions read the recording --
 
-    /** The most recent committed response head, or null. */
+    /** The most recent recorded response head, or null. */
     public ResponseHead head() {
         return heads.isEmpty() ? null : heads.getLast();
     }
 
-    /** Every response head committed on this exchange, in order. */
+    /** Every response head recorded on this exchange, in order. */
     public List<ResponseHead> heads() {
         return List.copyOf(heads);
     }
 
-    /** The most recent response body as committed, or null. */
+    /** The most recent response body as recorded, or null. */
     public byte[] bodyBytes() {
         return bodies.isEmpty() ? null : bodies.getLast();
     }
 
-    /** Every response body committed on this exchange, in order. */
+    /** Every response body recorded on this exchange, in order. */
     public List<byte[]> bodies() {
         return List.copyOf(bodies);
     }

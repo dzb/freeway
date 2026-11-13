@@ -13,7 +13,7 @@ import javax.net.ssl.TrustManager;
  * PKCS12/JKS keystore (client identity) and optional truststore (peer
  * verification) — both loaded via the JDK only, no third-party crypto.
  *
- * <p>Substitutable from outside: {@link CloudRpcModule} activates it from the
+ * <p>Substitutable from outside: {@link RpcModule} activates it from the
  * {@code freeway.cloud.rpc.tls.*} keys, and an extension module may bind its
  * own {@link TransportSecurity} implementation (e.g. Vault-backed) with
  * {@code .primary()} instead.

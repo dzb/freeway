@@ -2,6 +2,7 @@ package com.jujin.freeway.db;
 
 import com.jujin.freeway.db.internal.DatabaseRegistryImpl;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Registry for multiple named {@link Database} instances.
@@ -28,9 +29,9 @@ public interface DatabaseRegistry {
      * Returns the database registered under the given name.
      *
      * @param name the database name
-     * @return the database, or null if not found
+     * @return the database, or empty if not found
      */
-    Database get(String name);
+    Optional<Database> find(String name);
 
     /**
      * Returns the primary (default) database.
@@ -42,5 +43,5 @@ public interface DatabaseRegistry {
      *  assembled — an immutable snapshot, not a live view: later contributions
      *  do not appear.
      */
-    Map<String, Database> all();
+    Map<String, Database> databases();
 }

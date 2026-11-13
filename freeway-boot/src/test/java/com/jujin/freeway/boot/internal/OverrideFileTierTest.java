@@ -139,6 +139,7 @@ class OverrideFileTierTest {
     private static List<String> captureWarnings(Runnable action) {
         List<Logger> loggers = List.of(
             Logger.getLogger(AppConfigDefault.class.getName()),
+            Logger.getLogger(ConfigFilePlan.class.getName()),
             Logger.getLogger(LogKeyNotices.class.getName()));
         List<String> messages = new ArrayList<>();
         Handler handler = new Handler() {
@@ -186,8 +187,8 @@ class OverrideFileTierTest {
             "freeway.profile=prod\napp.name=demo\n");
         AppConfigDefault config = new AppConfigDefault(
             new ConfigSources(Map.of(), Map.of(), Map.of(), List.of("dev")),
-            new AppConfigDefault.OverrideFiles(List.of(
-                AppConfigDefault.OverrideFile.variant(variant))));
+            new ConfigFilePlan(List.of(
+                new ConfigFilePlan.File(variant, ConfigFilePlan.Role.PROFILE_VARIANT))));
         try {
             assertNull(fileValue(config, "freeway.profile"),
                 "the variant's own activation key must not surface");
@@ -232,8 +233,8 @@ class OverrideFileTierTest {
         List<String> warnings = captureWarnings(() -> {
             AppConfigDefault config = new AppConfigDefault(
                 new ConfigSources(Map.of(), Map.of(), Map.of(), List.of()),
-                new AppConfigDefault.OverrideFiles(List.of(
-                    AppConfigDefault.OverrideFile.declared(missing))));
+                new ConfigFilePlan(List.of(
+                    new ConfigFilePlan.File(missing, ConfigFilePlan.Role.DECLARED))));
             config.close();
         });
         assertTrue(

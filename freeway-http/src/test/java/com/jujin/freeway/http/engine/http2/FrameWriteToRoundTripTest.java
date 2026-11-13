@@ -33,13 +33,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class FrameWriteToRoundTripTest {
 
-    private static byte[] write(BaseFrame frame) throws IOException {
+    private static byte[] write(Http2Frame frame) throws IOException {
         var out = new ByteArrayOutputStream();
         frame.writeTo(out);
         return out.toByteArray();
     }
 
-    private static BaseFrame read(byte[] wire) throws IOException {
+    private static Http2Frame read(byte[] wire) throws IOException {
         try (InputStream in = new ByteArrayInputStream(wire)) {
             return FrameSerializer.deserialize(in, wire.length);
         }

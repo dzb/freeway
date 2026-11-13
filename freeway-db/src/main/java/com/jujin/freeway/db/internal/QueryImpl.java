@@ -61,7 +61,7 @@ final class QueryImpl implements Query {
     }
 
     @Override
-    public Query param(String name, Object value) {
+    public Query bind(String name, Object value) {
         if (positionalParams.length > 0) {
             throw new SqlException(
                 "Cannot mix positional and named parameters. SQL: " +
@@ -314,7 +314,7 @@ final class QueryImpl implements Query {
      *
      * <p>Handles three parameter styles:
      * <ol>
-     *   <li>Named params ({@code :name / $name}) via {@code .param()} API</li>
+     *   <li>Named params ({@code :name / $name}) via {@code .bind()} API</li>
      *   <li>Auto-detected named placeholders with positional values</li>
      *   <li>Pure positional ({@code ?}) with collection expansion
      *       ({@code WHERE id IN (?)} with a List → repeated {@code ?})</li>
@@ -348,7 +348,7 @@ final class QueryImpl implements Query {
                 "Parameter count mismatch in '" + originalSql + "': " +
                     p.names().size() + " named parameter(s) " + p.names() +
                     " but " + positionalParams.length + " value(s) provided. " +
-                    "Use .param(\"name\", value) for named parameters."
+                    "Use .bind(\"name\", value) for named parameters."
             );
         }
         if (positionalParams.length == distinct.size() && p.names().size() > distinct.size()) {
@@ -360,7 +360,7 @@ final class QueryImpl implements Query {
                     throw new SqlException(
                         "Duplicate named parameter ':" + name +
                         "' with different positional values in '" +
-                        originalSql + "'. Use .param(\"" + name +
+                        originalSql + "'. Use .bind(\"" + name +
                         "\", value) for named parameters with repeated placeholders."
                     );
                 }
@@ -374,7 +374,7 @@ final class QueryImpl implements Query {
                     throw new SqlException(
                         "Duplicate named parameter ':" + name +
                         "' with different positional values in '" +
-                        originalSql + "'. Use .param(\"" + name +
+                        originalSql + "'. Use .bind(\"" + name +
                         "\", value) for named parameters with repeated placeholders."
                     );
                 }

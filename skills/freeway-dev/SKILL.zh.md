@@ -1,6 +1,6 @@
 ---
 name: freeway-dev
-description: 基于 Freeway 框架构建 Java 应用。当用户提到 Freeway、FreewayApp、ModuleEx、SubModule、IoC 容器、DbModule、HttpModule、AppRuntime、路由、ORM、EventBus、Defer、ScopedCache、HealthCheck、HealthFilter、PooledConnection、PostgresDialect、SchemaEntity、freeway-ext、CloudModule、ServiceDiscovery、RegistryFleetModule、RemoteCaller、RemoteProxyFactory、RpcExport、CloudEventBus、事件网格、服务注册发现、微服务 等框架相关术语时触发。涵盖模块编写、依赖注入、HTTP API、数据库操作、事务、事件总线、类型转换、延迟执行、验证、连接池、数据库方言、Schema 迁移等所有方面。同时也适用于回答 Freeway API 用法、项目结构、最佳实践和代码生成类问题。
+description: 基于 Freeway 框架构建 Java 应用。当用户提到 Freeway、FreewayApp、ModuleEx、SubModule、IoC 容器、DbModule、HttpModule、AppRuntime、路由、ORM、EventBus、Defer、ScopedCache、HealthCheck、HealthFilter、PooledConnection、PostgresDialect、SchemaEntity、freeway-ext、CloudModule、ServiceDiscovery、FleetRegistryModule、RemoteCaller、RemoteProxyFactory、RpcExport、MeshEventBus、事件网格、服务注册发现、微服务 等框架相关术语时触发。涵盖模块编写、依赖注入、HTTP API、数据库操作、事务、事件总线、类型转换、延迟执行、验证、连接池、数据库方言、Schema 迁移等所有方面。同时也适用于回答 Freeway API 用法、项目结构、最佳实践和代码生成类问题。
 ---
 
 # Freeway 开发技能
@@ -20,8 +20,8 @@ freeway-http        HTTP/WebSocket：路由、过滤器、静态文件、multipa
 freeway-db          JDBC：ORM、连接池、事务、SQL 构建器、迁移
   └ 外部连接池        HikariCP → 见 freeway-ext
 freeway-cloud       云原生：服务注册与发现、远程调用(RPC)、事件网格、健康、可观测、弹性、密钥、对象存储
-  ├ 注册节点          RegistryServerModule —— 可独立部署的注册中心（HttpModule + CloudDiscoveryModule + 它）
-  └ 节点舰队客户端    RegistryFleetModule —— 把一组注册节点绑定为注册发现后端（写入扇出、读取并集）
+  ├ 注册节点          RegistryServerModule —— 可独立部署的注册中心（HttpModule + DiscoveryModule + 它）
+  └ 节点舰队客户端    FleetRegistryModule —— 把一组注册节点绑定为注册发现后端（写入扇出、读取并集）
 
 第三方库适配器（freeway-http-undertow, freeway-http-jetty,
 freeway-db-hikari, freeway-mq-kafka）在
@@ -61,7 +61,7 @@ public class AppModule implements ModuleEx {
 
         // 贡献扩展（路由、hooks、事件订阅者等）
         b.contribute(Route.class)
-            .add(Route.get("/", ctx -> ctx.send(200, "Hello")));
+            .add(Route.get("/", ctx -> ctx.sendText(200, "Hello")));
 
         b.contribute(RuntimeHook.class)
             .add("cache.warmup", new RuntimeHook() {
@@ -132,7 +132,7 @@ Freeway.create(binder -> {
     binder.bind(PaymentGateway.class).to(StripeGateway.class).id("stripe").primary();
 
     // —— 作用域 ——
-    binder.bind(RequestState.class).to(RequestState.class).scope(Scope.THREAD);
+    binder.bind(RequestState.class).to(RequestState.class).scope(Scope.BOUNDARY);
 
     // —— AOP 织入（仅接口→实现类绑定可用） ——
     binder.bind(UserService.class).to(UserServiceImpl.class).advise(advisor ->
@@ -253,22 +253,22 @@ Primary 解析使用 `binding.primary()` DSL，不是注解。
 
 `ScopeBoundary.within()` 基于 JDK 25 `ScopedValue`，虚拟线程零 overhead，支持嵌套。若在 `Defer.within` 内打开，值/bean 附着到该 action scope，活到它关闭。
 
-**作用域兼容规则**：Singleton 不能直接注入 thread-scoped 的具体类。需要用接口 + proxy：
+**作用域兼容规则**：Singleton 不能直接注入 boundary-scoped 的具体类。需要用接口 + proxy：
 
 ```java
 // ✅ 正确 — singleton 注入接口，获取 lazy proxy
-binder.bind(ScopedApi.class).to(ScopedCounter.class).scope(Scope.THREAD);
+binder.bind(ScopedApi.class).to(ScopedCounter.class).scope(Scope.BOUNDARY);
 binder.bind(ScopedSingletonService.class).to(ScopedSingletonService.class);
 
-// ❌ 错误 — singleton 注入 thread-scoped 具体类
-binder.bind(ScopedCounter.class).to(ScopedCounter.class).scope(Scope.THREAD);
+// ❌ 错误 — singleton 注入 boundary-scoped 具体类
+binder.bind(ScopedCounter.class).to(ScopedCounter.class).scope(Scope.BOUNDARY);
 binder.bind(ScopedSingleton.class).to(ScopedSingleton.class); // 容器启动报错
 ```
 
 ### Thread 作用域使用
 
 ```java
-binder.bind(RequestState.class).to(RequestState.class).scope(Scope.THREAD);
+binder.bind(RequestState.class).to(RequestState.class).scope(Scope.BOUNDARY);
 
 ScopeBoundary boundary = c.get(ScopeBoundary.class);
 boundary.within(() -> {
@@ -337,7 +337,7 @@ public interface Ordering {
 - **贡献只在组合期有效**：容器在装配结束时封印（seal）所有扩展存储，之后 `add` 或持有的 `before()`/`after()` 会抛 "sealed" 错误——运行时订阅请用 `EventBus.subscribe` 等运行时 API
 - `add(value)` — 无名贡献，按插入顺序排列
 - `add(id, value)` — 命名贡献，通过 `before()` / `after()` 声明依赖
-- `add(Class)` / `add(id, factory)` — 延迟到全部模块 bind 之后构造（工厂/类可解析任意模块的服务），配置层（`SymbolProvider`/`CoerceRule`）先排先建；`add(Class)` 生成 canonical id（`snake_name@package`），返回的 `Ordering` 支持 `before/after`
+- `addDeferred(Class)` / `addDeferred(id, factory)` — 延迟到全部模块 bind 之后构造（工厂/类可解析任意模块的服务），配置层（`SymbolProvider`/`CoerceRule`）先排先建；`addDeferred(Class)` 生成 canonical id（`snake_name@package`），返回的 `Ordering` 支持 `before/after`
 - 拓扑排序：容器在收集完所有模块的贡献后，按 before/after 关系执行拓扑排序
 - 重复 id 立即报错
 - 缺失的排序目标（before/after 引用不存在的 id）在通用排序里 WARN 后忽略（兄弟模块可能未安装）；严格的扩展点（RuntimeHook）经 `Extension.validateOrdering()` 在启动期报错
@@ -385,7 +385,7 @@ Map<String, Route> named = c.extension(Route.class).asMap();
 |---|---|---|
 | `add(value)` — 无名 | ✅ | ❌ |
 | `add("id", value)` — 命名 | ✅ | ✅ (id 为 key) |
-| `add(Class)` — 自动实例化 | ✅ | ✅ (自动生成 id 为 key) |
+| `addDeferred(Class)` — 自动实例化 | ✅ | ✅ (自动生成 id 为 key) |
 
 `List<V>` = 所有贡献，保持排序。`Map<String, V>` = 仅命名贡献，按 id 查找。
 
@@ -545,7 +545,7 @@ advisor.wrap(inv -> inv.method().getParameterCount() == 0, advice);    // 无参
 
 ### Thread-Scoped Proxy（跨作用域注入）
 
-当 singleton 需要注入 thread-scoped 服务时，容器自动创建 lazy proxy。这是隐式的 AOP 应用：
+当 singleton 需要注入 boundary-scoped 服务时，容器自动创建 lazy proxy。这是隐式的 AOP 应用：
 
 ```java
 // 接口定义
@@ -554,7 +554,7 @@ public interface RequestContext {
 }
 
 // 接口绑定为 THREAD 作用域
-binder.bind(RequestContext.class).to(RequestContextDefault.class).scope(Scope.THREAD);
+binder.bind(RequestContext.class).to(RequestContextDefault.class).scope(Scope.BOUNDARY);
 
 // Singleton 注入接口 — 容器自动生成 proxy，每次调用委托到当前作用域的实例
 @Inject
@@ -571,7 +571,7 @@ private RequestContext ctx;    // 这是 proxy，不是实际实例
 
 ```java
 binder.contribute(Route.class)
-    .add(Route.get("/", ctx -> ctx.send(200, "Hello")))
+    .add(Route.get("/", ctx -> ctx.sendText(200, "Hello")))
     .add(Route.get("/users/:id", ctx -> ctx.sendJson(200, user(ctx.pathVar("id")))))
     .add(Route.post("/users", (ctx, body) -> {
         ctx.sendJson(201, userService.create(body));
@@ -587,11 +587,11 @@ binder.contribute(Route.class)
 public static final class GetUser implements RouteHandler {
     private final UserService svc;
     public GetUser(UserService svc) { this.svc = svc; }
-    public void handle(HttpContext ctx) throws Exception {
+    public void handle(HttpExchange ctx) throws Exception {
         var user = svc.findById(ctx.pathVar("id"));
         user.ifPresentOrElse(
             u -> ctx.sendJson(200, u),
-            () -> ctx.send(404, "Not found"));
+            () -> ctx.sendText(404, "Not found"));
     }
 }
 
@@ -617,7 +617,7 @@ binder.contribute(RouteGroup.class)
     ));
 ```
 
-### HttpContext 核心方法
+### HttpExchange 核心方法
 
 | 方法 | 用途 |
 |------|------|
@@ -631,7 +631,7 @@ binder.contribute(RouteGroup.class)
 | `ctx.correlationId()` | 唯一请求 id |
 | `ctx.setStatus(201)` | 设置状态码 |
 | `ctx.setHeader("X-Custom", "value")` | 设置响应头 |
-| `ctx.send(200, "plain text")` | 发送文本响应 |
+| `ctx.sendText(200, "plain text")` | 发送文本响应 |
 | `ctx.sendJson(200, object)` | 发送 JSON 响应 |
 | `ctx.sse()` | 获取 SSE 发射器 |
 
@@ -639,9 +639,9 @@ binder.contribute(RouteGroup.class)
 
 ```java
 public class AuthFilter implements HttpFilter {
-    public void doFilter(HttpContext ctx, RouteHandler next) throws Exception {
+    public void doFilter(HttpExchange ctx, RouteHandler next) throws Exception {
         if (ctx.header("Authorization") == null) {
-            ctx.send(401, "Unauthorized");
+            ctx.sendText(401, "Unauthorized");
             return;
         }
         next.handle(ctx);
@@ -736,7 +736,7 @@ List<User> users = db.query("SELECT * FROM users WHERE active = ?", true).list(U
 
 // 命名参数
 User u = db.query("SELECT * FROM users WHERE id = :id")
-    .param("id", 42).one(User.class).orElseThrow();
+    .bind("id", 42).one(User.class).orElseThrow();
 
 // Stream（需 try-with-resources）
 try (var stream = db.query("SELECT * FROM big_table").stream(Row.class)) {
@@ -746,21 +746,21 @@ try (var stream = db.query("SELECT * FROM big_table").stream(Row.class)) {
 // 执行
 ExecuteResult r = db.execute("INSERT INTO users (name) VALUES (?)", "Alice");
 r.rows();   // 影响行数
-r.key();    // 生成的主键
+r.generatedKey();    // 生成的主键
 ```
 
 ### Row 读取
 
 ```java
 Row r = db.query("SELECT * FROM t").list(Row.class).get(0);
-r.string("name");
-r.integer("age");
-r.longValue("id");
+r.asString("name");
+r.asInt("age");
+r.asLong("id");
 r.bool("active");
-r.decimal("amount");
-r.date("created_at");
-r.dateTime("updated_at");
-r.uuid("uuid_col");
+r.asBigDecimal("amount");
+r.asLocalDate("created_at");
+r.asLocalDateTime("updated_at");
+r.asUuid("uuid_col");
 ```
 
 ### 事务
@@ -823,23 +823,27 @@ IoC 下通过 `.primary()` 模式选择：`PoolDefault`（默认）或引入 `Hi
 
 ### 数据库方言
 
-方言控制 DDL 生成（标识符引用、自增、元数据查询）。选择方式与 Pool、HttpEngine 一致：bind by id，config 选中，URL 自动检测兜底。
+方言控制 DDL 生成（标识符引用、自增、元数据查询）。选择按 id 进行：显式配置先查同名用户绑定，再查 `Dialect.ofId` 内建 catalog；未配置时从 JDBC URL 检测 id，再走同一套查找。
 
 **解析链：**
 ```
-freeway.db.dialect=mysql          ← 配置？
-  → container.get(Dialect, id)    ← 按 id 查找绑定
-  → jdbc:postgresql://...         ← URL 自动检测
-  → PostgresDialect               ← 默认 primary
+freeway.db.dialect=company        ← 配置？
+  → 用户绑定 Dialect@company      ← 按 id 查找
+  → Dialect.ofId("company")       ← 内建 catalog / 未知 id 失败
+  → 未配置时从 jdbc:... 检测 id
+  → 检测到的 id 同样先查用户绑定
+  → PostgresDialect               ← 只有 URL 为空时默认
 ```
 
-**内置：** `PostgresDialect`（id `"postgresql"`，默认）
+`DbModule` 只绑定一个最终选中的 `Dialect` service，不再逐个绑定内建 dialect。
+
+**内置：** `postgresql` / `postgres`、`mysql` / `mariadb`、`h2`、`sqlite`。
 
 **自定义方言：**
 ```java
-// 实现 Dialect → 绑定
-binder.bind(Dialect.class).to(MySqlDialect.class).id("mysql").primary();
-// 通过配置选中: freeway.db.dialect=mysql
+// 实现 Dialect → 以 id 绑定
+binder.bind(Dialect.class).to(MySqlDialect.class).id("company");
+// 通过配置选中: freeway.db.dialect=company
 ```
 
 **按 SchemaEntity 组覆盖（上述全局方言仍为默认）：**
@@ -940,8 +944,8 @@ freeway.db.schema.mode=auto          freeway.db.schema.mode=validate
 // 编程式
 GraphSpec bp = GraphSpec.create("orderFlow", spec -> {
     spec.entry("start");
-    spec.addStart("start").linkAdd("approve");
-    spec.addActivity("approve").task("@orderService").linkAdd("end");
+    spec.addStart("start").linkTo("approve");
+    spec.addActivity("approve").task("@orderService").linkTo("end");
     spec.addEnd("end");
 });
 Graph graph = bp.create();          // create() 构建期校验 link 引用 + 可达性
@@ -984,7 +988,7 @@ Graph graph = Graph.fromText("""
 // 自定义驱动器
 binder.contribute(FlowDriver.class)
     .add("custom", new MyCustomDriver())
-    .add(MyOtherDriver.class);  // add(Class) → container.create() 自动注入
+    .addDeferred(MyOtherDriver.class);  // addDeferred(Class) → container.create() 自动注入
 ```
 
 图定义中指定：`{ "driver": "custom", ... }`
@@ -994,7 +998,7 @@ binder.contribute(FlowDriver.class)
 ```java
 FlowEngine engine = container.get(FlowEngine.class);
 engine.load(graph);
-engine.eval("orderFlow", FlowContext.of());
+engine.run("orderFlow", FlowContext.of());
 
 // 通过 IoC — FlowModule 自动注册贡献的 TaskHandler 和 FlowDriver
 FreewayApp.run(Launch.of(args), new AppModule(), new FlowModule());
@@ -1009,8 +1013,8 @@ FreewayApp.run(Launch.of(args), new AppModule(), new FlowModule());
 ```java
 JsonObject obj = JsonUtils.parseObject("{\"name\":\"Alice\"}");
 JsonArray arr = JsonUtils.parseArray("[1, 2, 3]");
-String json = JsonUtils.stringify(obj);
-String pretty = JsonUtils.stringifyPretty(obj);
+String json = JsonUtils.toJson(obj);
+String pretty = JsonUtils.toPrettyJson(obj);
 
 // JsonCodec（可注入）
 @Inject JsonCodec codec;
@@ -1039,7 +1043,7 @@ Defer.within(() -> {
 
 ```java
 ScopedCache.within(() -> {
-    Connection conn = ScopedCache.get("db", () -> dataSource.getConnection());
+    Connection conn = ScopedCache.computeIfAbsent("db", () -> dataSource.getConnection());
     // 同一 key 在作用域内复用
 });
 // 退出时自动清理；在 Defer.within 内打开时值附着到 action scope，活到它关闭
@@ -1048,7 +1052,7 @@ ScopedCache.within(() -> {
 值的**生命周期**与**访问窗口**分开：块外 `ScopedCache.isActive()` 为 false、`get` 不缓存；
 `ScopeSession` 是只读句柄（`isActionScope()` / `isClosed()`），rollback 用 `Defer.rollback()`。
 
-IoC 的 `Scope.THREAD` 基于 ScopedCache 实现。
+IoC 的 `Scope.BOUNDARY` 基于 ScopedCache 实现。
 
 ### BeanValidator
 
@@ -1173,18 +1177,18 @@ Schema.ensure(db, TestEntity.class);
 
 单机与云原生是同一套代码的两种放置方式：`CloudModule` 是 8 个子模块（上下文传播、密钥、
 **注册发现**、RPC、可观测、弹性、健康、对象存储）的 bundle，放置即全部安装；每个子模块
-也是普通模块，要子集就直接放。`CloudEventModule` 刻意独立——它开自己的监听并主动拨号，
+也是普通模块，要子集就直接放。`EventMeshModule` 刻意独立——它开自己的监听并主动拨号，
 由应用显式放置。
 
 ### 服务注册与发现：三种后端，一套接口
 
 | 后端 | 放置 | 基础设施 |
 |---|---|---|
-| 进程内（默认） | `CloudModule` 或 `CloudDiscoveryModule` | 无 |
-| freeway 注册节点 | `CloudModule` + `RegistryFleetModule` | 自部署 1~N 个注册节点 |
+| 进程内（默认） | `CloudModule` 或 `DiscoveryModule` | 无 |
+| freeway 注册节点 | `CloudModule` + `FleetRegistryModule` | 自部署 1~N 个注册节点 |
 | Consul | `CloudModule` + ext `ConsulModule` | Consul 集群 |
 
-注册节点 = 普通 freeway 应用：`new HttpModule(), new CloudDiscoveryModule(),
+注册节点 = 普通 freeway 应用：`new HttpModule(), new DiscoveryModule(),
 new RegistryServerModule()`，键 `freeway.cloud.registry.token` 设共享密钥。
 客户端配 `freeway.cloud.registry.nodes`（节点列表）与 `.token`：
 写扇出到全部节点、读取并集、心跳 404 就地重灌——任一节点存活即整队可用。
@@ -1223,8 +1227,8 @@ binder.contribute(RpcExport.class).add(RpcExport.of("user", UserHandlers.class))
 // 消费方：类型化客户端
 binder.bind(UserApi.class).to(container -> RemoteProxyFactory
     .of(container.get(RemoteCaller.class))
-    .serviceId("user-service")     // 发现 id
-    .mapping("user")
+    .withServiceId("user-service")     // 发现 id
+    .withMapping("user")
     .build(UserApi.class));
 ```
 
@@ -1249,8 +1253,8 @@ frames_dropped / send_failures / inbound_delivered / dropped_legacy / dropped_no
 peers）——**没有 peer 时也在**。
 
 发布 `mesh.publish("order.created", payload)`（Defer 感知：事务内缓冲、回滚即弃）；
-接收即白名单 `contribute(CloudEventSubscription.class).add("orders",
-CloudEventSubscription.of("order.", OrderCreated.class, handler))`——topic 不匹配的帧
+接收即白名单 `contribute(MeshSubscription.class).add("orders",
+MeshSubscription.of("order.", OrderCreated.class, handler))`——topic 不匹配的帧
 不反序列化即弃。at-most-once、无重投；持久有序用 Kafka 平面。本地 EventBus 不受影响；
 远程事实要进本地总线在 handler 里显式镜像。
 

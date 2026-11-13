@@ -199,7 +199,7 @@ public final class FreewayHttpEngine implements HttpEngine {
      *  sockets it accepts are TLS. Read on every call: {@link #reload} can
      *  only add certificate material, never take it away. */
     @Override
-    public boolean secure() {
+    public boolean isSecure() {
         return sslContext != null;
     }
 

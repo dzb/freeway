@@ -2,7 +2,7 @@ package com.jujin.freeway.db.internal;
 
 import com.jujin.freeway.db.PooledConnection;
 
-import com.jujin.freeway.db.DatabaseStats;
+import com.jujin.freeway.db.PoolStats;
 import com.jujin.freeway.db.PoolConfig;
 import com.jujin.freeway.db.SqlException;
 import java.lang.reflect.InvocationHandler;
@@ -126,19 +126,19 @@ class PoolDefaultTest {
         var pool = new PoolDefault(config);
 
         // 借出前：longLeased = 0
-        DatabaseStats before = pool.stats();
+        PoolStats before = pool.stats();
         assertEquals(0, before.active());
 
         PooledConnection conn = pool.borrow();
         // 借出后：active 增加，longLeased 追踪中
-        DatabaseStats after = pool.stats();
+        PoolStats after = pool.stats();
 
         assertEquals(1, after.active());
         assertNotNull(((PoolDefault.Handle) conn).pooled.borrowedAt());
 
         pool.release(conn);
         // 归还后：active 归零，borrowedAt 已清除
-        DatabaseStats released = pool.stats();
+        PoolStats released = pool.stats();
         assertEquals(0, released.active());
         assertNull(((PoolDefault.Handle) conn).pooled.borrowedAt());
 
@@ -237,7 +237,7 @@ class PoolDefaultTest {
         assertTrue(acquired.await(5, TimeUnit.SECONDS));
         pool.release(second.get());
 
-        DatabaseStats stats = pool.stats();
+        PoolStats stats = pool.stats();
         assertEquals(2L, stats.borrowCount());
         assertTrue(stats.borrowWaitNanos() > 0L);
 

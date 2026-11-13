@@ -33,7 +33,7 @@ import java.util.function.Supplier;
  *
  * <p><b>The bus is the in-process plane, and knows no other.</b> A fact
  * that must cross a process boundary is published on the plane that owns
- * the boundary — freeway-cloud's {@code CloudEventBus} for the mesh, an MQ
+ * the boundary — freeway-cloud's {@code MeshEventBus} for the mesh, an MQ
  * client for durable streams. Whether an event leaves this JVM is visible
  * at the call site, never a property of which modules happen to be loaded.</p>
  *
@@ -61,7 +61,7 @@ public final class EventBus implements AutoCloseable {
      * thread. Identity when no {@link AsyncCarrier} is bound (a bus
      * without the cloud context module dispatches bare, as before).
      * Binding the type more than once without a primary does not fall
-     * back to identity: {@code isActiveBinding} raises the same
+     * back to identity: {@code isActiveBindingMarked} raises the same
      * AmbiguousBindingException the binding index reports, so the bus
      * fails loudly at construction instead of dispatching bare.
      */
@@ -113,7 +113,7 @@ public final class EventBus implements AutoCloseable {
         return new EventBus(
             container.get(Metrics.class),
             subscribers,
-            container.isActiveBinding(AsyncCarrier.class)
+            container.isActiveBindingMarked(AsyncCarrier.class)
                 ? container.get(AsyncCarrier.class)
                 : null);
     }
@@ -365,7 +365,7 @@ public final class EventBus implements AutoCloseable {
      * @param streamDrops        events dropped by a slow/absent-demand stream
      *                           consumer (overflow-drop, never blocks dispatch)
      */
-    public record EventBusStats(
+    public record Stats(
         long published,
         long delivered,
         long subscriberFailures,
@@ -377,7 +377,7 @@ public final class EventBus implements AutoCloseable {
      * Snapshot of cumulative dispatch counters. Useful for operational
      * observability (e.g. "subscriberFailures &gt; 0 for the last N events").
      */
-    public EventBusStats stats() {
+    public Stats stats() {
         return stats.snapshot();
     }
 

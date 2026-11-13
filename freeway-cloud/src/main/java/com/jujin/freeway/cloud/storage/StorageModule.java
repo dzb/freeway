@@ -1,0 +1,54 @@
+package com.jujin.freeway.cloud.storage;
+
+import com.jujin.freeway.cloud.CloudHooks;
+import com.jujin.freeway.cloud.annotation.Local;
+import com.jujin.freeway.cloud.internal.BackendTypeGuard;
+import com.jujin.freeway.ioc.Binder;
+import com.jujin.freeway.ioc.Container;
+import com.jujin.freeway.ioc.event.EventBus;
+import com.jujin.freeway.ioc.ModuleEx;
+import com.jujin.freeway.ioc.RuntimeHook;
+import com.jujin.freeway.ioc.annotation.Builtin;
+import com.jujin.freeway.ioc.annotation.Marker;
+import com.jujin.freeway.ioc.symbol.SymbolSpec;
+import com.jujin.freeway.ioc.symbol.SymbolSource;
+
+import java.nio.file.Path;
+import java.util.function.Function;
+import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
+
+/**
+ * IoC wiring for the optional object storage subsystem: {@link ObjectStorage}
+ * → {@link ObjectStorageDefault} (local file system, {@code @Local} marker),
+ * rooted at {@code freeway.cloud.storage.base-path}
+ * (default {@code cloud-storage} in the working directory). Put/delete emit
+ * domain event on the {@link EventBus}. Decoupled from the core
+ * discovery/rpc/config/observe/resilience chain.
+ */
+@Marker(Builtin.class)
+public final class StorageModule implements ModuleEx {
+
+    // Default comes from the shared ConfigKeys source so the documented
+    // value cannot drift from the code that applies it.
+    private static final SymbolSpec<String> STORAGE_BASE_PATH = SymbolSpec.of(
+        ConfigKeys.STORAGE_BASE_PATH, String.class,
+        ConfigKeys.STORAGE_BASE_PATH_DEFAULT, Function.identity());
+
+    @Override
+    public void bind(Binder b) {
+        b.bind(ObjectStorage.class)
+            .to((Container container) -> {
+                SymbolSource symbols = container.get(SymbolSource.class);
+                return new ObjectStorageDefault(
+                    Path.of(symbols.resolve(STORAGE_BASE_PATH)),
+                    event -> container.get(EventBus.class).publish(event));
+            })
+            .marker(Local.class)
+            ;
+
+        b.contribute(RuntimeHook.class).add(
+            CloudHooks.STORAGE,
+            BackendTypeGuard.warnHook(
+                ObjectStorage.class, ConfigKeys.STORAGE_TYPE, "storage"));
+    }
+}

@@ -51,7 +51,7 @@ public interface Pool extends AutoCloseable {
     /**
      * Returns pool statistics.
      */
-    DatabaseStats stats();
+    PoolStats stats();
 
     @Override
     void close();

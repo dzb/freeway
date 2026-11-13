@@ -5,21 +5,26 @@ import java.io.OutputStream;
 import java.util.Arrays;
 
 
-final class GoawayFrame extends BaseFrame {
+final class GoawayFrame implements Http2Frame {
+    private final FrameHeader header;
+
+    @Override
+    public FrameHeader header() { return header; }
+
     public final Http2ErrorCode errorCode;
     public final int lastSeenStream;
     /** RFC 9113 §6.8 optional diagnostic data; empty when the peer sent none. */
     private final byte[] debugData;
 
     public GoawayFrame(Http2ErrorCode errorCode, int lastSeenStream) {
-        super(new FrameHeader(8, FrameType.GOAWAY, FrameFlag.NONE, 0));
+        this.header = new FrameHeader(8, FrameType.GOAWAY, FrameFlag.NONE, 0);
         this.errorCode = errorCode;
         this.lastSeenStream = lastSeenStream;
         this.debugData = new byte[0];
     }
 
     private GoawayFrame(FrameHeader header, Http2ErrorCode errorCode, int lastSeenStream, byte[] debugData) {
-        super(header); this.errorCode = errorCode; this.lastSeenStream = lastSeenStream;
+        this.header = header; this.errorCode = errorCode; this.lastSeenStream = lastSeenStream;
         this.debugData = debugData;
     }
 

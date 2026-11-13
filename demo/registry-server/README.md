@@ -60,7 +60,7 @@ curl -s -X DELETE localhost:19090/registry/services/order/instances/i7
 
 ## Note on the split with production
 
-For production, `CloudDiscoveryModule`'s `ServiceRegistry`/`ServiceDiscovery`
+For production, `DiscoveryModule`'s `ServiceRegistry`/`ServiceDiscovery`
 are meant to be replaced with adapters for Nacos/Kubernetes/... (an adapter
 implementing the same two interfaces, `.primary()`-bound). This registry
 server is the *development* stand-in: it exposes the same in-process store

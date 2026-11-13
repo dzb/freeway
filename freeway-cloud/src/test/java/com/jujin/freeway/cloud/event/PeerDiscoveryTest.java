@@ -14,7 +14,7 @@ import com.jujin.freeway.ioc.ModuleEx;
 import java.net.ServerSocket;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import com.jujin.freeway.cloud.discovery.Endpoint;
+import com.jujin.freeway.cloud.discovery.ServiceEndpoint;
 import com.jujin.freeway.cloud.discovery.ServiceDiscovery;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import java.util.List;
@@ -73,11 +73,11 @@ class PeerDiscoveryTest {
         awaitWired(nodeA);
 
         String peer = "127.0.0.1:" + bPort;
-        nodeA.get(CloudEventBus.class).replaceDiscoveredPeers(List.of(peer));
+        nodeA.get(MeshEventBus.class).replaceDiscoveredPeers(List.of(peer));
         assertTrue(awaitConnections(nodeA, 1, 5000),
             "a discovered peer must be dialed, not just recorded: " + peer);
 
-        nodeA.get(CloudEventBus.class).replaceDiscoveredPeers(List.of());
+        nodeA.get(MeshEventBus.class).replaceDiscoveredPeers(List.of());
         assertTrue(awaitConnections(nodeA, 0, 3000),
             "an address missing from the snapshot must be disconnected");
 
@@ -99,11 +99,11 @@ class PeerDiscoveryTest {
         awaitWired(nodeA);
 
         String peer = "127.0.0.1:" + bPort;
-        nodeA.get(CloudEventBus.class).replaceDiscoveredPeers(List.of(peer));
+        nodeA.get(MeshEventBus.class).replaceDiscoveredPeers(List.of(peer));
         assertTrue(awaitConnections(nodeA, 1, 5000), "mesh must establish first");
 
         PeerConnection before = nodeA.get(PeerHub.class).connections().get(0);
-        nodeA.get(CloudEventBus.class).replaceDiscoveredPeers(List.of(peer));
+        nodeA.get(MeshEventBus.class).replaceDiscoveredPeers(List.of(peer));
         Thread.sleep(500);
 
         List<PeerConnection> after = nodeA.get(PeerHub.class).connections();
@@ -126,7 +126,7 @@ class PeerDiscoveryTest {
         assertTrue(awaitConnections(nodeA, 1, 8000), "a configured peer must dial by presence alone");
 
         PeerConnection before = nodeA.get(PeerHub.class).connections().get(0);
-        nodeA.get(CloudEventBus.class).replaceDiscoveredPeers(List.of());
+        nodeA.get(MeshEventBus.class).replaceDiscoveredPeers(List.of());
         Thread.sleep(500);
 
         List<PeerConnection> after = nodeA.get(PeerHub.class).connections();
@@ -192,7 +192,7 @@ class PeerDiscoveryTest {
 
         String serviceId = nodeA.get(PeerHub.class).serviceId();
         directory.put("b-1", ServiceInstance.of(serviceId, "b-1",
-            Endpoint.of("http", "127.0.0.1", bPort)));
+            ServiceEndpoint.of("http", "127.0.0.1", bPort)));
 
         assertTrue(awaitConnections(nodeA, 1, 5000),
             "an instance registered into the directory must be dialed - the mesh"
@@ -221,7 +221,7 @@ class PeerDiscoveryTest {
     private static AppRuntime startNode(String peers,
                                         ServiceDiscovery discovery) {
         return FreewayApp.run(new ModuleEx[] {
-            new HttpModule(), new CloudEventModule(),
+            new HttpModule(), new EventMeshModule(),
             binder -> binder.bind(ServiceDiscovery.class).to(c -> discovery)});
     }
 
@@ -233,7 +233,7 @@ class PeerDiscoveryTest {
         System.setProperty(ConfigKeys.EVENT_BACKOFF_BASE_MS, FAST_BACKOFF_BASE_MS);
         System.setProperty(ConfigKeys.EVENT_BACKOFF_MAX_MS, FAST_BACKOFF_MAX_MS);
         System.setProperty(ConfigKeys.EVENT_PEERS, peers);
-        List<ModuleEx> modules = List.of(new HttpModule(), new CloudEventModule());
+        List<ModuleEx> modules = List.of(new HttpModule(), new EventMeshModule());
         return FreewayApp.run(modules.toArray(new ModuleEx[0]));
     }
 

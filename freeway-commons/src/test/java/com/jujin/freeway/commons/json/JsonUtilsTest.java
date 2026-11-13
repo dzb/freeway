@@ -192,7 +192,7 @@ class JsonUtilsTest {
             .add("a")
             .add("b");
 
-        assertEquals("{\"name\":\"Freeway\",\"tags\":[\"a\",\"b\"]}", JsonUtils.stringify(value));
+        assertEquals("{\"name\":\"Freeway\",\"tags\":[\"a\",\"b\"]}", JsonUtils.toJson(value));
     }
 
     @Test
@@ -212,7 +212,7 @@ class JsonUtilsTest {
         first.put("second", second);
         second.put("first", first);
 
-        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> JsonUtils.stringify(first));
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> JsonUtils.toJson(first));
 
         assertTrue(ex.getMessage().contains("Cyclic JSON value"));
     }
@@ -234,7 +234,7 @@ class JsonUtilsTest {
         JsonObject shared = JsonUtils.object().put("value", 1);
         JsonArray array = JsonUtils.array().add(shared).add(shared);
 
-        assertEquals("[{\"value\":1},{\"value\":1}]", JsonUtils.stringify(array));
+        assertEquals("[{\"value\":1},{\"value\":1}]", JsonUtils.toJson(array));
     }
 
     @Test
@@ -261,16 +261,16 @@ class JsonUtilsTest {
 
     @Test
     void escapesLoneSurrogates() {
-        String escapedHigh = JsonUtils.stringify("\ud800");
+        String escapedHigh = JsonUtils.toJson("\ud800");
         assertTrue(escapedHigh.contains("\\ud800"),
             "lone high surrogate must be escaped, got: " + escapedHigh);
-        String escapedLow = JsonUtils.stringify("\udfff");
+        String escapedLow = JsonUtils.toJson("\udfff");
         assertTrue(escapedLow.contains("\\udfff"),
             "lone low surrogate must be escaped, got: " + escapedLow);
 
         // A valid surrogate pair round-trips unchanged.
         String emoji = "\ud83d\ude00";
-        assertEquals(emoji, JsonUtils.parse(JsonUtils.stringify(emoji)));
+        assertEquals(emoji, JsonUtils.parse(JsonUtils.toJson(emoji)));
     }
 
     @Test
@@ -351,7 +351,7 @@ class JsonUtilsTest {
         value.put("x", 1);
         value.put("y", 2);
 
-        String pretty = JsonUtils.stringifyPretty(value);
+        String pretty = JsonUtils.toPrettyJson(value);
         assertTrue(pretty.contains("\n"));
         assertTrue(pretty.contains("  "));
     }
@@ -379,24 +379,24 @@ class JsonUtilsTest {
 
     @Test
     void stringifyNullAndPrimitives() {
-        assertEquals("null", JsonUtils.stringify(null));
-        assertEquals("42", JsonUtils.stringify(42));
-        assertEquals("true", JsonUtils.stringify(true));
-        assertEquals("\"text\"", JsonUtils.stringify("text"));
+        assertEquals("null", JsonUtils.toJson(null));
+        assertEquals("42", JsonUtils.toJson(42));
+        assertEquals("true", JsonUtils.toJson(true));
+        assertEquals("\"text\"", JsonUtils.toJson("text"));
     }
 
     @Test
     void rejectsNonFiniteNumbersDuringStringify() {
-        assertThrows(IllegalArgumentException.class, () -> JsonUtils.stringify(Double.NaN));
-        assertThrows(IllegalArgumentException.class, () -> JsonUtils.stringify(Double.POSITIVE_INFINITY));
-        assertThrows(IllegalArgumentException.class, () -> JsonUtils.stringify(Float.NEGATIVE_INFINITY));
+        assertThrows(IllegalArgumentException.class, () -> JsonUtils.toJson(Double.NaN));
+        assertThrows(IllegalArgumentException.class, () -> JsonUtils.toJson(Double.POSITIVE_INFINITY));
+        assertThrows(IllegalArgumentException.class, () -> JsonUtils.toJson(Float.NEGATIVE_INFINITY));
     }
 
     @Test
     void rejectsNonFiniteNumbersInsideObjectsDuringStringify() {
         JsonObject object = JsonUtils.object().put("value", Double.NaN);
 
-        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> JsonUtils.stringifyPretty(object));
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> JsonUtils.toPrettyJson(object));
 
         assertTrue(ex.getMessage().contains("JSON number must be finite"));
     }
@@ -517,7 +517,7 @@ class JsonUtilsTest {
             UUID.fromString("550e8400-e29b-41d4-a716-446655440000")
         );
 
-        String json = JsonUtils.stringify(entry);
+        String json = JsonUtils.toJson(entry);
         TemporalEntry roundTrip = JsonUtils.coerce(JsonUtils.parseObject(json), TemporalEntry.class);
 
         assertEquals(entry, roundTrip);
@@ -552,30 +552,30 @@ class JsonUtilsTest {
     void nullMapKeyThrows() {
         Map<Object, String> map = new HashMap<>();
         map.put(null, "value");
-        assertThrows(IllegalArgumentException.class, () -> JsonUtils.stringify(map));
+        assertThrows(IllegalArgumentException.class, () -> JsonUtils.toJson(map));
     }
 
     @Test
     void stringifyDuration() {
-        String json = JsonUtils.stringify(Duration.ofMinutes(5));
+        String json = JsonUtils.toJson(Duration.ofMinutes(5));
         assertEquals("\"PT5M\"", json);
     }
 
     @Test
     void stringifyDate() {
-        String json = JsonUtils.stringify(new Date(0));
+        String json = JsonUtils.toJson(new Date(0));
         assertEquals("\"1970-01-01T00:00:00Z\"", json);
     }
 
     @Test
     void stringifyOptionalInt() {
-        String json = JsonUtils.stringify(OptionalInt.of(3));
+        String json = JsonUtils.toJson(OptionalInt.of(3));
         assertEquals("3", json);
     }
 
     @Test
     void stringifyHandlesURI() {
-        String json = JsonUtils.stringify(URI.create("https://example.com"));
+        String json = JsonUtils.toJson(URI.create("https://example.com"));
         assertEquals("\"https://example.com\"", json);
     }
 
@@ -595,7 +595,7 @@ class JsonUtilsTest {
 
     @Test
     void stringifyHandlesCharSequence() {
-        String json = JsonUtils.stringify(new StringBuilder("hello"));
+        String json = JsonUtils.toJson(new StringBuilder("hello"));
         assertEquals("\"hello\"", json,
                 "StringBuilder should serialize as a string");
     }
@@ -805,7 +805,7 @@ class JsonUtilsTest {
         raw.put("color", Color.RED);
         raw.put("endpoint", new Endpoint("x"));
 
-        String json = JsonUtils.stringify(raw);
+        String json = JsonUtils.toJson(raw);
         assertEquals(
             "{\"name\":\"freeway\",\"count\":42,\"ratio\":1.5,\"flag\":true,"
                 + "\"nothing\":null,\"tags\":[\"a\",\"b\"],\"when\":\"2026-06-18\","
@@ -816,7 +816,7 @@ class JsonUtilsTest {
 
         // Parity with the previous normalize-then-write path.
         assertEquals(
-            JsonUtils.stringify(JsonUtils.normalize(raw)),
+            JsonUtils.toJson(JsonUtils.normalize(raw)),
             json
         );
     }
@@ -824,10 +824,10 @@ class JsonUtilsTest {
     @Test
     void stringifyRawArrayAndPrimitiveArray() {
         int[] ints = {1, 2, 3};
-        assertEquals("[1,2,3]", JsonUtils.stringify(ints));
+        assertEquals("[1,2,3]", JsonUtils.toJson(ints));
 
         String[] strs = {"a", null, "c"};
-        assertEquals("[\"a\",null,\"c\"]", JsonUtils.stringify(strs));
+        assertEquals("[\"a\",null,\"c\"]", JsonUtils.toJson(strs));
     }
 
     @Test
@@ -838,7 +838,7 @@ class JsonUtilsTest {
 
         IllegalArgumentException ex = assertThrows(
             IllegalArgumentException.class,
-            () -> JsonUtils.stringify(list)
+            () -> JsonUtils.toJson(list)
         );
         assertTrue(ex.getMessage().contains("Cyclic"),
             "cyclic raw list must be rejected by the writer, got: " + ex.getMessage());
@@ -848,8 +848,8 @@ class JsonUtilsTest {
     void writerAndNormalizerAgreeOnScalarLeaves() {
         LeafBean bean = new LeafBean();
 
-        String direct = JsonUtils.stringify(bean);
-        assertEquals(direct, JsonUtils.stringify(JsonUtils.normalize(bean)),
+        String direct = JsonUtils.toJson(bean);
+        assertEquals(direct, JsonUtils.toJson(JsonUtils.normalize(bean)),
             "writer and normalizer must map scalar leaves identically");
     }
 
@@ -923,14 +923,14 @@ class JsonUtilsTest {
         // first-class bean properties.
         GetterBean bean = new GetterBean();
 
-        JsonObject out = JsonUtils.parseObject(JsonUtils.stringify(bean));
+        JsonObject out = JsonUtils.parseObject(JsonUtils.toJson(bean));
         assertEquals("demo", out.getString("name"));
         assertEquals(42, out.getInt("computed"));
         assertEquals(Boolean.TRUE, out.getBoolean("active"));
         // Normalizer mirrors the writer exactly (same property order).
         assertEquals(
-            JsonUtils.stringify(bean),
-            JsonUtils.stringify(JsonUtils.normalize(bean))
+            JsonUtils.toJson(bean),
+            JsonUtils.toJson(JsonUtils.normalize(bean))
         );
     }
 
@@ -940,7 +940,7 @@ class JsonUtilsTest {
         TransformBean bean = new TransformBean();
         bean.value = "abc";
 
-        assertEquals("{\"value\":\"ABC\"}", JsonUtils.stringify(bean));
+        assertEquals("{\"value\":\"ABC\"}", JsonUtils.toJson(bean));
     }
 
     @Test

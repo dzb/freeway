@@ -5,24 +5,29 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.channels.Channels;
 import java.nio.channels.FileChannel;
+import java.nio.file.LinkOption;
+import java.nio.file.StandardOpenOption;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BooleanSupplier;
 
 import javax.net.ssl.SSLSession;
 
 import com.jujin.freeway.http.Compression;
 import com.jujin.freeway.http.HttpTransport;
+import com.jujin.freeway.http.ResponseBody;
 import com.jujin.freeway.http.ResponseHead;
-import com.jujin.freeway.http.internal.Headers;
+import com.jujin.freeway.http.ResponsePlan;
+import com.jujin.freeway.http.internal.HeaderStore;
 import com.jujin.freeway.http.internal.HttpUtils;
 
 /**
  * The built-in engine's {@link HttpTransport}: one per request, backed by
  * the connection's socket (HTTP/1.x) or one HTTP/2 stream. It owns the
  * request snapshot, the body framing state, the raw output stream, the
- * per-response writer, and the keep-alive decision; all response policy
- * (status, headers, gzip, Content-Length) lives in the {@code
- * HttpContextSupport} that composes it.
+ * per-response writer, the committed flag and the keep-alive decision; all
+ * response policy (status, headers, gzip, Content-Length) lives in the {@code
+ * HttpExchangeSupport} that composes it.
  */
 public final class HttpTransportImpl implements HttpTransport {
 
@@ -45,6 +50,10 @@ public final class HttpTransportImpl implements HttpTransport {
     /** Whether the connection may serve another request after this one;
      *  SSE and {@code Connection: close} flip it off mid-request. */
     private boolean keepAlive;
+    /** HTTP/1.x commit flag; HTTP/2 reads the stream's exact fact below. */
+    private volatile boolean committed;
+    /** For HTTP/2, the stream owns the exact HEADERS-dispatched fact. */
+    private BooleanSupplier commitProbe;
     private final boolean secure;
     private final SSLSession sslSession;
     private final String remoteAddress;
@@ -78,7 +87,7 @@ public final class HttpTransportImpl implements HttpTransport {
         HttpUtils.parseQueryParams(rawQuery)
             .forEach((name, values) -> params.put(name, List.copyOf(values)));
         this.queryParams = Map.copyOf(params);
-        this.requestHeaders = Headers.copyOf(headers).asMap();
+        this.requestHeaders = HeaderStore.copyOf(headers).asMap();
         this.requestBody = new RequestBody(bodyStream, contentLength, chunked);
         this.rawOut = rawOut;
         this.keepAlive = keepAlive;
@@ -127,7 +136,7 @@ public final class HttpTransportImpl implements HttpTransport {
     }
 
     @Override
-    public InputStream bodyStream() {
+    public InputStream framedBodyStream() {
         return requestBody.stream();
     }
 
@@ -146,30 +155,75 @@ public final class HttpTransportImpl implements HttpTransport {
         return remoteAddress;
     }
 
+    @Override
+    public boolean isCommitted() {
+        BooleanSupplier probe = commitProbe;
+        return probe != null ? probe.getAsBoolean() : committed;
+    }
+
+    /** Makes the transport read a stream-owned commit fact instead of its local flag. */
+    void setCommitProbe(BooleanSupplier probe) {
+        this.commitProbe = probe;
+    }
+
     // -- response side --
 
     @Override
-    public void writeResponse(ResponseHead head, byte[] body) throws IOException {
+    public void writeResponse(ResponsePlan plan) throws IOException {
+        ResponseHead head = plan.head();
+        if (!head.sendsBodyBytes()) {
+            try {
+                writeHeadOnly(head);
+            } finally {
+                closeBody(plan.body());
+            }
+            return;
+        }
+        switch (plan.body()) {
+            case ResponseBody.Empty ignored -> writeHeadOnly(head);
+            case ResponseBody.Bytes bytes -> writeBytes(head, bytes.data(), plan.gzip());
+            case ResponseBody.Stream stream ->
+                writeStream(head, stream.stream(), stream.length(), plan.gzip());
+            case ResponseBody.File file -> writeFile(head, file, plan.gzip());
+            case ResponseBody.Channel channel ->
+                writeChannel(head, channel.channel(), channel.offset(),
+                    channel.length(), plan.gzip());
+        }
+    }
+
+    private static void closeBody(ResponseBody body) throws IOException {
+        if (body instanceof ResponseBody.Channel channel) {
+            channel.channel().close();
+        }
+    }
+
+    private void writeHeadOnly(ResponseHead head) throws IOException {
         HttpResponseWriter w = writer();
+        committed = true;
         w.writeHead(head);
-        w.writeBody(head, body, 0, body.length);
         w.end(head);
     }
 
-    @Override
-    public void writeResponse(ResponseHead head, InputStream body, boolean gzip)
+    private void writeBytes(ResponseHead head, byte[] body, boolean gzip)
             throws IOException {
-        if (!head.sendsBodyBytes()) {
-            // HEAD / 204 / 205 / 304: the head carries the framing (and, for
-            // HEAD, the same Content-Length as GET), but no body bytes go on
-            // the wire — so the source is never read. A HEAD must not page a
-            // 60 MB file into memory just to discard it.
-            HttpResponseWriter w = writer();
-            w.writeHead(head);
-            w.end(head);
-            return;
-        }
+        byte[] data = gzip ? Compression.gzip(body) : body;
+        ResponseHead framed = head.withHeader(
+            "Content-Length", Integer.toString(data.length));
         HttpResponseWriter w = writer();
+        committed = true;
+        w.writeHead(framed);
+        w.writeBody(framed, data, 0, data.length);
+        w.end(framed);
+    }
+
+    private void writeStream(ResponseHead head, InputStream body, long length,
+            boolean gzip) throws IOException {
+        // Content-Length is the support object's declaration. A body shape
+        // that could only learn its length here (a file range) frames the head
+        // in writeChannel before entering this method; a protocol writer is
+        // not allowed to make a second, later decision.
+        HttpResponseWriter w = writer();
+        committed = true;
         w.writeHead(head);
         byte[] buffer = new byte[8192];
         if (gzip) {
@@ -181,9 +235,7 @@ public final class HttpTransportImpl implements HttpTransport {
 
                 @Override
                 public void write(byte[] b, int off, int len) throws IOException {
-                    if (len > 0) {
-                        w.writeBody(head, b, off, len);
-                    }
+                    if (len > 0) w.writeBody(head, b, off, len);
                 }
             });
             while (true) {
@@ -201,7 +253,8 @@ public final class HttpTransportImpl implements HttpTransport {
                     ? (int) Math.min(buffer.length, remaining) : buffer.length;
                 if (remaining == 0) {
                     if (body.read() >= 0) {
-                        failLengthMismatch(head, "Response body exceeds Content-Length");
+                        failLengthMismatch(head,
+                            "Response body exceeds Content-Length");
                     }
                     break;
                 }
@@ -214,37 +267,46 @@ public final class HttpTransportImpl implements HttpTransport {
                 }
             }
             if (expected >= 0 && actual != expected) {
-                failLengthMismatch(head, "Response body shorter than Content-Length");
+                failLengthMismatch(head,
+                    "Response body shorter than Content-Length");
             }
         }
         w.end(head);
     }
 
-    @Override
-    public void writeResponseFile(ResponseHead head, FileChannel channel,
+    private void writeFile(ResponseHead head, ResponseBody.File file, boolean gzip)
+            throws IOException {
+        try (FileChannel channel = FileChannel.open(file.path(),
+                StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS)) {
+            writeChannel(head, channel, file.offset(), file.length(), gzip);
+        }
+    }
+
+    private void writeChannel(ResponseHead head, FileChannel channel,
             long offset, long length, boolean gzip) throws IOException {
         try {
-            if (!head.sendsBodyBytes()) {
-                // HEAD / 204: the head carries the same Content-Length as the
-                // equivalent GET, but no file bytes go on the wire (and an
-                // empty or oversized file must not be read at all).
-                HttpResponseWriter w = writer();
-                w.writeHead(head);
-                w.end(head);
-                return;
+            long effectiveLength = length;
+            if (effectiveLength < 0) {
+                effectiveLength = Math.max(0, channel.size() - offset);
             }
-            if (!gzip && fileSender != null && length >= MIN_SENDFILE_BYTES) {
-                writeSendfile(head, channel, offset, length);
+            if (!gzip) {
+                // A file range's final length is a transport fact: a negative
+                // requested length means "to end", which only the open channel
+                // can answer. Resolve it once, before the head is committed,
+                // and use that same head for sendfile and buffered streaming.
+                head = head.hasHeader("Content-Length")
+                    ? head
+                    : head.withHeader("Content-Length", Long.toString(effectiveLength));
+            }
+            if (!gzip && fileSender != null
+                    && effectiveLength >= MIN_SENDFILE_BYTES) {
+                writeSendfile(head, channel, offset, effectiveLength);
                 return;
             }
             channel.position(offset);
-            InputStream body = new FixedLengthInputStream(
-                Channels.newInputStream(channel), length);
-            if (gzip) {
-                writeResponse(head, body, true);
-            } else {
-                byte[] data = body.readAllBytes();
-                writeResponse(head, data);
+            try (InputStream body = new FixedLengthInputStream(
+                    Channels.newInputStream(channel), effectiveLength)) {
+                writeStream(head, body, effectiveLength, gzip);
             }
         } finally {
             channel.close();
@@ -254,13 +316,10 @@ public final class HttpTransportImpl implements HttpTransport {
     private void writeSendfile(ResponseHead head, FileChannel channel,
             long offset, long length) throws IOException {
         HttpResponseWriter w = writer();
+        committed = true;
         w.writeHead(head);
         rawOut.flush();
-        try {
-            fileSender.transfer(channel, offset, length);
-        } finally {
-            channel.close();
-        }
+        fileSender.transfer(channel, offset, length);
         w.end(head);
     }
 
@@ -270,7 +329,9 @@ public final class HttpTransportImpl implements HttpTransport {
         // SSE terminates an HTTP/1.1 exchange; the H2 stream session ignores
         // the flag, so this is correct for both built-in writers.
         keepAlive = false;
-        return writer().openSse(head);
+        HttpResponseWriter w = writer();
+        committed = true;
+        return w.openSse(head);
     }
 
     // -- package-private helpers for Session --

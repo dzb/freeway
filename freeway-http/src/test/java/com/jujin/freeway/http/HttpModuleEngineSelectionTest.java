@@ -131,7 +131,7 @@ class HttpModuleEngineSelectionTest {
 
     private static final class FakeEngine implements HttpEngine {
         @Override
-        public boolean secure() {
+        public boolean isSecure() {
             return false;
         }
 

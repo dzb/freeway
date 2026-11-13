@@ -29,7 +29,7 @@ class ScopeBoundaryDeferAttachmentTest {
     void threadBeanAttachesToTheEnclosingActionScope() {
         destroyed.set(0);
         Container container = Freeway.create(binder ->
-            binder.bind(ScopedValue.class).to(ScopedValue.class).scope(Scope.THREAD));
+            binder.bind(ScopedValue.class).to(ScopedValue.class).scope(Scope.BOUNDARY));
         ScopeBoundary boundary = container.get(ScopeBoundary.class);
 
         Defer.within(() -> {
@@ -41,7 +41,7 @@ class ScopeBoundaryDeferAttachmentTest {
                 "cleanup waits for the action scope it attached to");
             assertThrows(IllegalStateException.class,
                 () -> container.get(ScopedValue.class),
-                "outside the value access window a THREAD bean is not resolvable");
+                "outside the value access window a BOUNDARY bean is not resolvable");
         });
 
         assertEquals(1, destroyed.get(), "the action scope close destroys the bean");

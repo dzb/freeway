@@ -32,7 +32,7 @@ public final class CloudHooks {
     /** Registry registration + heartbeat; runs after the HTTP server. */
     public static final String REGISTRY = "freeway.cloud.registry";
 
-    /** CloudEventBus wiring; runs after the HTTP server (the mesh origin needs
+    /** MeshEventBus wiring; runs after the HTTP server (the mesh origin needs
      *  the port the node actually serves on). */
     public static final String EVENT = "freeway.cloud.event";
 

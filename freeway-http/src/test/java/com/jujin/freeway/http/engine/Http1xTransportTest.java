@@ -15,11 +15,12 @@ import org.junit.jupiter.api.Test;
 
 import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.commons.json.JsonCodecDefault;
-import com.jujin.freeway.http.HttpContextSupport;
+import com.jujin.freeway.http.HttpExchangeSupport;
 import com.jujin.freeway.http.HttpServerConfig;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -27,7 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * the committed {@code ResponseHead} (Content-Length / chunked /
  * Connection), gzip execution, HEAD suppression, and the sendfile path.
  * Policy (status, headers, gzip decision) is asserted separately in
- * {@code HttpContextSupportTest}.
+ * {@code HttpExchangeSupportTest}.
  */
 class Http1xTransportTest {
 
@@ -35,12 +36,12 @@ class Http1xTransportTest {
         HttpServerConfig.CompressionConfig.DEFAULT;
 
     /** A support object whose transport writes onto {@code out}. */
-    private static HttpContextSupport exchange(String method,
+    private static HttpExchangeSupport exchange(String method,
             Map<String, List<String>> headers, ByteArrayOutputStream out) {
         var transport = new HttpTransportImpl(method, "/", null, headers,
             new ByteArrayInputStream(new byte[0]), -1, false, out, true,
             false, null, "");
-        return new HttpContextSupport(transport, new JsonCodecDefault(),
+        return new HttpExchangeSupport(transport, new JsonCodecDefault(),
             new CoercerDefault(), HttpServerConfig.DEFAULT_MAX_BODY_SIZE,
             COMPRESSION, null);
     }
@@ -67,7 +68,7 @@ class Http1xTransportTest {
         var out = new ByteArrayOutputStream();
         var ctx = exchange("GET", Map.of(), out);
 
-        ctx.send(200, "ok");
+        ctx.sendText(200, "ok");
 
         String text = wire(out);
         assertTrue(text.startsWith("HTTP/1.1 200"), "default writer must emit HTTP/1.1: " + text);
@@ -83,7 +84,7 @@ class Http1xTransportTest {
         var ctx = exchange("GET", Map.of(), out);
 
         ctx.setStatus(204).setHeader("Content-Length", "999");
-        ctx.output(new byte[0]);
+        ctx.body(new byte[0]);
 
         String text = wire(out);
         assertTrue(text.startsWith("HTTP/1.1 204"),
@@ -98,7 +99,7 @@ class Http1xTransportTest {
         var ctx = exchange("GET", Map.of(), out);
 
         ctx.setStatus(304).setHeader("Content-Length", "999");
-        ctx.output(new byte[0]);
+        ctx.body(new byte[0]);
 
         String text = wire(out);
         assertTrue(text.startsWith("HTTP/1.1 304"),
@@ -108,12 +109,39 @@ class Http1xTransportTest {
     }
 
     @Test
+    void resetContentStatusDropsContentLengthOnTheWire() throws Exception {
+        var out = new ByteArrayOutputStream();
+        var ctx = exchange("GET", Map.of(), out);
+
+        ctx.setStatus(205).setHeader("Content-Length", "999");
+        ctx.body(new byte[0]);
+
+        String text = wire(out);
+        assertTrue(text.startsWith("HTTP/1.1 205"), "205 must be committed: " + text);
+        assertFalse(text.toLowerCase(java.util.Locale.ROOT).contains("content-length"),
+            "205 must not carry Content-Length: " + text);
+    }
+
+    @Test
+    void http1HeadOfUnknownLengthUsesChunkedWithoutABody() throws Exception {
+        var out = new ByteArrayOutputStream();
+        var ctx = exchange("HEAD", Map.of(), out);
+
+        ctx.body(new ByteArrayInputStream("hello".getBytes(StandardCharsets.UTF_8)), -1);
+
+        String text = wire(out);
+        assertTrue(text.contains("Transfer-Encoding: chunked"));
+        assertFalse(text.contains("Content-Length"));
+        assertFalse(text.contains("hello"), "HEAD carries no body bytes: " + text);
+    }
+
+    @Test
     void http1WriterEmitsMultipleSetCookieLines() throws Exception {
         var out = new ByteArrayOutputStream();
         var ctx = exchange("GET", Map.of(), out);
         ctx.addHeader("Set-Cookie", "a=1");
         ctx.addHeader("Set-Cookie", "b=2");
-        ctx.send(200, "ok");
+        ctx.sendText(200, "ok");
 
         String text = wire(out);
         assertTrue(text.contains("Set-Cookie: a=1\r\n"));
@@ -125,7 +153,7 @@ class Http1xTransportTest {
         var out = new ByteArrayOutputStream();
         var ctx = exchange("GET", Map.of(), out);
 
-        ctx.output(new ByteArrayInputStream("hello".getBytes(StandardCharsets.UTF_8)), 5);
+        ctx.body(new ByteArrayInputStream("hello".getBytes(StandardCharsets.UTF_8)), 5);
 
         String text = wire(out);
         assertTrue(text.contains("Content-Length: 5"));
@@ -138,7 +166,7 @@ class Http1xTransportTest {
         var out = new ByteArrayOutputStream();
         var ctx = exchange("GET", Map.of(), out);
 
-        ctx.output(new ByteArrayInputStream("hello".getBytes(StandardCharsets.UTF_8)), -1);
+        ctx.body(new ByteArrayInputStream("hello".getBytes(StandardCharsets.UTF_8)), -1);
 
         String text = wire(out);
         assertTrue(text.contains("Transfer-Encoding: chunked"));
@@ -153,7 +181,7 @@ class Http1xTransportTest {
             Map.of("accept-encoding", List.of("gzip")), out);
         ctx.setHeader("Content-Type", "text/plain");
         String original = "hello gzip ".repeat(64);
-        ctx.output(original.getBytes(StandardCharsets.UTF_8));
+        ctx.body(original.getBytes(StandardCharsets.UTF_8));
 
         String text = wire(out);
         assertTrue(text.contains("Content-Encoding: gzip"));
@@ -174,7 +202,7 @@ class Http1xTransportTest {
         ctx.setHeader("Content-Type", "text/plain");
         byte[] body = "stream ".repeat(64).getBytes(StandardCharsets.UTF_8);
 
-        ctx.output(new ByteArrayInputStream(body), body.length);
+        ctx.body(new ByteArrayInputStream(body), body.length);
 
         String text = wire(out);
         assertTrue(text.contains("Content-Encoding: gzip"));
@@ -183,11 +211,37 @@ class Http1xTransportTest {
     }
 
     @Test
+    void http1StreamingBodyLongerThanContentLengthFails() throws Exception {
+        var out = new ByteArrayOutputStream();
+        var ctx = exchange("GET", Map.of(), out);
+
+        assertThrows(java.io.IOException.class,
+            () -> ctx.body(new ByteArrayInputStream("hello!".getBytes(StandardCharsets.UTF_8)), 5));
+
+        String text = wire(out);
+        assertTrue(text.contains("Content-Length: 5"));
+        assertTrue(text.endsWith("hello"),
+            "the bytes past the declared length must not reach the wire: " + text);
+    }
+
+    @Test
+    void http1StreamingBodyShorterThanContentLengthFails() throws Exception {
+        var out = new ByteArrayOutputStream();
+        var ctx = exchange("GET", Map.of(), out);
+
+        assertThrows(java.io.IOException.class,
+            () -> ctx.body(new ByteArrayInputStream("hi".getBytes(StandardCharsets.UTF_8)), 5));
+
+        assertTrue(ctx.isCommitted(),
+            "the head was already written; the failure is a transport failure, not a retry");
+    }
+
+    @Test
     void http1HeadSuppressesBodyButKeepsLength() throws Exception {
         var out = new ByteArrayOutputStream();
         var ctx = exchange("HEAD", Map.of(), out);
 
-        ctx.send(200, "hello");
+        ctx.sendText(200, "hello");
 
         String text = wire(out);
         assertTrue(text.contains("Content-Length: 5"));
@@ -214,7 +268,7 @@ class Http1xTransportTest {
     // -- files / sendfile --
 
     @Test
-    void outputFileUsesSendfileForLargeFile() throws Exception {
+    void fileUsesSendfileForLargeFile() throws Exception {
         Path file = Files.createTempFile("sendfile", ".bin");
         try {
             int size = 64 * 1024;
@@ -228,13 +282,13 @@ class Http1xTransportTest {
                 transferred[0] = offset;
                 transferred[1] = length;
             });
-            var ctx = new HttpContextSupport(transport, new JsonCodecDefault(),
+            var ctx = new HttpExchangeSupport(transport, new JsonCodecDefault(),
                 new CoercerDefault(), HttpServerConfig.DEFAULT_MAX_BODY_SIZE,
                 COMPRESSION, null);
 
             try (var channel = java.nio.channels.FileChannel.open(file,
                     StandardOpenOption.READ)) {
-                ctx.outputFile(channel, 0, size);
+                ctx.file(channel, 0, size);
             }
 
             assertEquals(0L, transferred[0]);
@@ -255,27 +309,60 @@ class Http1xTransportTest {
                 false, null, "");
             boolean[] transferred = {false};
             transport.setFileSender((ch, offset, length) -> transferred[0] = true);
-            var ctx = new HttpContextSupport(transport, new JsonCodecDefault(),
+            var ctx = new HttpExchangeSupport(transport, new JsonCodecDefault(),
                 new CoercerDefault(), HttpServerConfig.DEFAULT_MAX_BODY_SIZE,
                 COMPRESSION, null);
 
             try (var channel = java.nio.channels.FileChannel.open(file,
                     StandardOpenOption.READ)) {
-                ctx.outputFile(channel, 0, 64 * 1024);
+                ctx.file(channel, 0, 64 * 1024);
             }
 
             assertFalse(transferred[0],
                 "HEAD must never transfer file bytes on the sendfile path");
             assertEquals("65536", ctx.responseHeader("Content-Length"),
                 "HEAD must report the same Content-Length as GET");
-            assertTrue(ctx.isResponded());
+            assertTrue(ctx.isCommitted());
         } finally {
             Files.deleteIfExists(file);
         }
     }
 
     @Test
-    void outputFileStreamsSmallFileThroughBuffer() throws Exception {
+    void unknownFileLengthIsResolvedBeforeSendfileCommitsHead() throws Exception {
+        Path file = Files.createTempFile("sendfile-unknown", ".bin");
+        try {
+            int size = 64 * 1024;
+            Files.write(file, new byte[size]);
+            var out = new ByteArrayOutputStream();
+            var transport = new HttpTransportImpl("GET", "/", null, Map.of(),
+                new ByteArrayInputStream(new byte[0]), -1, false, out, true,
+                false, null, "");
+            long[] transferred = new long[1];
+            transport.setFileSender((channel, offset, length) -> transferred[0] = length);
+            var ctx = new HttpExchangeSupport(transport, new JsonCodecDefault(),
+                new CoercerDefault(), HttpServerConfig.DEFAULT_MAX_BODY_SIZE,
+                COMPRESSION, null);
+
+            try (var channel = java.nio.channels.FileChannel.open(file,
+                    StandardOpenOption.READ)) {
+                ctx.file(channel, 0, -1);
+            }
+
+            assertEquals((long) size, transferred[0],
+                "the sendfile path must receive the resolved range length");
+            String text = wire(out);
+            assertTrue(text.contains("Content-Length: " + size),
+                "a resolved file length must be declared before commit: " + text);
+            assertFalse(text.contains("Transfer-Encoding"),
+                "the sendfile bytes are not chunk-framed, so the head cannot say chunked");
+        } finally {
+            Files.deleteIfExists(file);
+        }
+    }
+
+    @Test
+    void fileStreamsSmallFileThroughBuffer() throws Exception {
         Path file = Files.createTempFile("small", ".bin");
         try {
             byte[] content = "hello".getBytes(StandardCharsets.UTF_8);
@@ -287,13 +374,13 @@ class Http1xTransportTest {
             transport.setFileSender((c, o, l) -> {
                 throw new AssertionError("small file must not use sendfile");
             });
-            var ctx = new HttpContextSupport(transport, new JsonCodecDefault(),
+            var ctx = new HttpExchangeSupport(transport, new JsonCodecDefault(),
                 new CoercerDefault(), HttpServerConfig.DEFAULT_MAX_BODY_SIZE,
                 COMPRESSION, null);
 
             try (var channel = java.nio.channels.FileChannel.open(file,
                     StandardOpenOption.READ)) {
-                ctx.outputFile(channel, 0, content.length);
+                ctx.file(channel, 0, content.length);
             }
 
             String text = wire(out);
@@ -314,13 +401,13 @@ class Http1xTransportTest {
                 false, null, "");
             boolean[] transferred = {false};
             transport.setFileSender((ch, offset, length) -> transferred[0] = true);
-            var ctx = new HttpContextSupport(transport, new JsonCodecDefault(),
+            var ctx = new HttpExchangeSupport(transport, new JsonCodecDefault(),
                 new CoercerDefault(), HttpServerConfig.DEFAULT_MAX_BODY_SIZE,
                 COMPRESSION, null);
 
             try (var channel = java.nio.channels.FileChannel.open(file,
                     StandardOpenOption.READ)) {
-                ctx.outputFile(channel, 0, 64 * 1024);
+                ctx.file(channel, 0, 64 * 1024);
             }
 
             assertTrue(transferred[0], "GET must keep using the sendfile transfer path");

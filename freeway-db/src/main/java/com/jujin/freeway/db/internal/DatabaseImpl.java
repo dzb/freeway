@@ -3,7 +3,7 @@ package com.jujin.freeway.db.internal;
 import com.jujin.freeway.commons.scoped.Defer;
 import com.jujin.freeway.db.BatchQuery;
 import com.jujin.freeway.db.Database;
-import com.jujin.freeway.db.DatabaseStats;
+import com.jujin.freeway.db.PoolStats;
 import com.jujin.freeway.db.ExecuteResult;
 import com.jujin.freeway.db.IsolationLevel;
 import com.jujin.freeway.db.Pool;
@@ -19,6 +19,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.sql.SQLException;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -54,23 +55,39 @@ public final class DatabaseImpl implements Database {
     private final Dialect dialect;
     private final int queryTimeoutSeconds;
 
-    public DatabaseImpl(
-        PoolConfig config,
-        RowMapperResolver rowMapperResolver
-    ) {
-        this(config, rowMapperResolver, null, null);
-    }
-
-    public DatabaseImpl(
+    /**
+     * The one assembly point for a database's service graph: applies the
+     * standard pool and dialect when the caller does not supply them, then
+     * hands every collaborator to the non-null constructor. The stand-alone
+     * {@link Database#create} path and the container's {@code DbModule} both
+     * use this deriving step.
+     */
+    public static DatabaseImpl assemble(
         PoolConfig config,
         RowMapperResolver rowMapperResolver,
         Pool pool,
         Dialect dialect
     ) {
-        this.pool =
-            pool != null ? pool : new PoolDefault(config);
-        this.rowMapperResolver = rowMapperResolver;
-        this.dialect = dialect != null ? dialect : new PostgresDialect();
+        Objects.requireNonNull(config, "config");
+        Objects.requireNonNull(rowMapperResolver, "rowMapperResolver");
+        return new DatabaseImpl(
+            config,
+            rowMapperResolver,
+            pool != null ? pool : new PoolDefault(config),
+            dialect != null ? dialect : new PostgresDialect()
+        );
+    }
+
+    private DatabaseImpl(
+        PoolConfig config,
+        RowMapperResolver rowMapperResolver,
+        Pool pool,
+        Dialect dialect
+    ) {
+        this.pool = Objects.requireNonNull(pool, "pool");
+        this.rowMapperResolver = Objects.requireNonNull(
+            rowMapperResolver, "rowMapperResolver");
+        this.dialect = Objects.requireNonNull(dialect, "dialect");
         long millis = config.queryTimeout().toMillis();
         // 0 = no timeout (JDBC setQueryTimeout(0)); sub-second values round up
         // to a whole second.
@@ -196,7 +213,7 @@ public final class DatabaseImpl implements Database {
     }
 
     @Override
-    public DatabaseStats stats() {
+    public PoolStats stats() {
         return pool.stats();
     }
 

@@ -15,11 +15,11 @@ import org.junit.jupiter.api.Test;
  * P1-4 regression (log-forgery surface): a hostile peer answers a remote
  * call with form-encoded CRLF (and unbounded text) in its
  * {@code X-RPC-Exception}/{@code X-RPC-Message} headers. Every layer of the
- * exception chain the caller sees — the outer {@link CloudException} message
+ * exception chain the caller sees — the outer {@link RpcException} message
  * and the {@link RemoteInvocationException} cause — must render sanitized
  * peer text only: no control characters, no unbounded payload.
  *
- * <p>The responses are stubbed at the {@link CloudHttpClient} boundary so the
+ * <p>The responses are stubbed at the {@link RpcHttpClient} boundary so the
  * forged headers reach {@code RemoteCaller.businessException} without a real
  * (header-refusing) HTTP server in between.
  */
@@ -29,10 +29,10 @@ class RemoteCallerSanitizationTest {
 
     /** A transport that always answers the remote call with forged headers. */
     private static RemoteCaller callerWith(int status, String exClass, String message) {
-        CloudHttpClient hostile = new CloudHttpClient() {
+        RpcHttpClient hostile = new RpcHttpClient() {
             @Override
-            public CloudResponse call(String serviceId, CloudRequest request) {
-                return new CloudResponse(status,
+            public RpcResponse call(String serviceId, RpcRequest request) {
+                return new RpcResponse(status,
                     Map.of("x-rpc-exception", List.of(exClass), "x-rpc-message", List.of(message)),
                     new byte[0]);
             }
@@ -43,18 +43,18 @@ class RemoteCallerSanitizationTest {
         return new RemoteCaller(hostile, new JsonCodecDefault());
     }
 
-    private static CloudException invokeWith(String exClass, String message) {
-        return assertThrows(CloudException.class, () -> callerWith(400, exClass, message)
+    private static RpcException invokeWith(String exClass, String message) {
+        return assertThrows(RpcException.class, () -> callerWith(400, exClass, message)
             .invoke(SERVICE, "user", "charge", List.of(), String.class));
     }
 
     @Test
     void forgedCrlfInExceptionHeadersNeverReachesAnyChainLevel() {
-        CloudException ex = invokeWith(
+        RpcException ex = invokeWith(
             "com.evil.Boom%0d%0aX-Injected:%20pwned",
             "overdrawn%0d%0aX-Injected:%20fake");
 
-        // ① Outer CloudException message carries no CRLF.
+        // ① Outer RpcException message carries no CRLF.
         assertControlFree(ex.getMessage());
         assertTrue(ex.getMessage().contains("overdrawnX-Injected: fake"),
             "the message must survive with the control characters stripped: "
@@ -73,7 +73,7 @@ class RemoteCallerSanitizationTest {
 
     @Test
     void overlongMessageIsCappedInTheCauseAsWellAsTheOuterMessage() {
-        CloudException ex = invokeWith("com.evil.Boom", "m".repeat(400));
+        RpcException ex = invokeWith("com.evil.Boom", "m".repeat(400));
 
         RemoteInvocationException cause = assertInstanceOf(
             RemoteInvocationException.class, ex.getCause());
@@ -90,7 +90,7 @@ class RemoteCallerSanitizationTest {
         // A bare "%" is not a valid escape: decode() degrades to the raw
         // value, which must then flow through sanitization unchanged (this
         // value carries no control characters and stays under the cap).
-        CloudException ex = invokeWith("com.evil.Boom", "100% sure");
+        RpcException ex = invokeWith("com.evil.Boom", "100% sure");
         assertTrue(ex.getMessage().contains("100% sure"));
         RemoteInvocationException cause = assertInstanceOf(
             RemoteInvocationException.class, ex.getCause());

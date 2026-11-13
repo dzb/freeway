@@ -35,7 +35,7 @@ import org.slf4j.LoggerFactory;
  * the emitter is closed, so a handler's try-with-resources close happens only
  * after the stream ends.</p>
  */
-public class SseEmitter implements AutoCloseable {
+public final class SseEmitter implements AutoCloseable {
     static final Logger LOG = LoggerFactory.getLogger(SseEmitter.class);
     /** Default heartbeat interval. Kept well below common intermediary idle
      *  timeouts (typically ≥ 60s) so a quiet stream stays alive through them. */
@@ -150,17 +150,17 @@ public class SseEmitter implements AutoCloseable {
     /**
      * Pumps SSE event from the given JDK {@link Flow.Publisher} until the
      * source completes or the emitter is closed. Equivalent to
-     * {@code from(publisher, Function.identity())} on an event-valued stream.
+     * {@code pipe(publisher, Function.identity())} on an event-valued stream.
      *
      * @param publisher source of event; must emit {@link SseEvent} items
      */
-    public void from(Flow.Publisher<SseEvent> publisher) {
-        from(publisher, Function.identity());
+    public void pipe(Flow.Publisher<SseEvent> publisher) {
+        pipe(publisher, Function.identity());
     }
 
     /**
      * Pumps a stream of items into this emitter, mapping each to an
-     * {@link SseEvent} (e.g. {@code emitter.from(strings, SseEvent::new)}).
+     * {@link SseEvent} (e.g. {@code emitter.pipe(strings, SseEvent::new)}).
      *
      * <p><b>Backpressure:</b> demand is one-in-flight ({@code request(1)}
      * after each write), so TCP write speed propagates upstream as natural
@@ -175,14 +175,14 @@ public class SseEmitter implements AutoCloseable {
      * <p><b>Lifecycle:</b> source completion closes the response normally;
      * a failing source logs at debug and closes it; a client disconnect
      * cancels the upstream subscription and stops the pump. An emitter may
-     * carry only one attached stream; a second {@code from} call throws
+     * carry only one attached stream; a second {@code pipe} call throws
      * {@link IllegalStateException}.</p>
      *
      * @param <T>      source item type
      * @param publisher source of items
      * @param mapper   maps each item to an SSE event
      */
-    public <T> void from(
+    public <T> void pipe(
         Flow.Publisher<T> publisher,
         Function<? super T, SseEvent> mapper
     ) {

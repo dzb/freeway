@@ -1,7 +1,7 @@
 package demo;
 
 import com.jujin.freeway.commons.validation.BeanValidator;
-import com.jujin.freeway.http.HttpContext;
+import com.jujin.freeway.http.HttpExchange;
 import com.jujin.freeway.http.ValidationException;
 import com.jujin.freeway.http.route.RouteHandler;
 import com.jujin.freeway.ioc.annotation.Inject;
@@ -20,7 +20,7 @@ public final class CreateUserHandler implements RouteHandler {
     }
 
     @Override
-    public void handle(HttpContext ctx) throws Exception {
+    public void handle(HttpExchange ctx) throws Exception {
         CreateUser body = ctx.bodyAsJson(CreateUser.class);
         var result = BeanValidator.validate(body);
         if (result.hasErrors()) {

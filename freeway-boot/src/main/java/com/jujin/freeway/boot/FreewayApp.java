@@ -6,12 +6,12 @@ import com.jujin.freeway.boot.internal.ConfigCascade;
 import com.jujin.freeway.commons.logging.LogBootstrap;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Freeway;
+import com.jujin.freeway.ioc.ModuleDeclaration;
 import com.jujin.freeway.ioc.ModuleEx;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -51,11 +51,11 @@ public final class FreewayApp {
     }
 
     /**
-     * The declared modules, in declaration order, each resolved when the container is built: a
-     * class declaration is instantiated then (a declaration, not an early instance) and an
-     * instance declaration reuses the module the caller configured.
+     * The declared modules, in declaration order. A class declaration is
+     * instantiated when the container is built; an instance declaration reuses
+     * the module the caller configured.
      */
-    private final List<Supplier<ModuleEx>> declared = new ArrayList<>();
+    private final List<ModuleDeclaration> declared = new ArrayList<>();
     /** The composition root's name for the startup log; {@code null} = the default. */
     private String name;
     private String[] args = new String[0];
@@ -114,53 +114,48 @@ public final class FreewayApp {
         return new FreewayApp().add(types);
     }
 
+    /** The application over an explicit mixed class/instance declaration list. */
+    public static FreewayApp create(ModuleDeclaration... declarations) {
+        FreewayApp app = new FreewayApp();
+        if (declarations != null) {
+            app.add(declarations);
+        }
+        return app;
+    }
+
     // ── the chain ───────────────────────────────────────────────
 
     /** Add one or more modules to the application, in declaration order. */
     public FreewayApp add(ModuleEx... modules) {
         Objects.requireNonNull(modules, "modules");
-        for (ModuleEx m : modules) {
-            ModuleEx module = Objects.requireNonNull(m, "module");
-            this.declared.add(() -> module);
+        for (ModuleEx module : modules) {
+            this.declared.add(ModuleDeclaration.of(
+                Objects.requireNonNull(module, "module")));
         }
         return this;
     }
 
     /**
      * Add one or more modules named by class — the normal way; each is
-     * instantiated through its no-arg constructor when the application starts.
+     * instantiated through its no-arg constructor when the container resolves it.
      */
     @SafeVarargs
     public final FreewayApp add(Class<? extends ModuleEx>... types) {
         Objects.requireNonNull(types, "module types");
         for (Class<? extends ModuleEx> type : types) {
-            Class<? extends ModuleEx> moduleType = Objects.requireNonNull(type, "module type");
-            this.declared.add(() -> instantiate(moduleType));
+            this.declared.add(ModuleDeclaration.of(
+                Objects.requireNonNull(type, "module type")));
         }
         return this;
     }
 
-    /**
-     * Instantiates a class declaration through its no-arg constructor, the same rule the container
-     * applies to one (freeway-ioc, {@code ModuleNode.resolve}): a module whose constructor takes
-     * arguments is declared as an instance. Boot instantiates here because the composition it hands
-     * over mixes declared classes with the instances it owns ({@code BootModule}, SPI-discovered
-     * modules), and only the instance-taking entry point can express that mix.
-     */
-    private static ModuleEx instantiate(Class<? extends ModuleEx> type) {
-        try {
-            var constructor = type.getDeclaredConstructor();
-            constructor.trySetAccessible();
-            return constructor.newInstance();
-        } catch (NoSuchMethodException e) {
-            throw new IllegalArgumentException(
-                "Module " + type.getName() + " has no no-arg constructor. A module whose"
-                    + " constructor takes arguments is declared as an instance:"
-                    + " .add(new " + type.getSimpleName() + "(…))", e);
-        } catch (ReflectiveOperationException e) {
-            Throwable cause = e.getCause() == null ? e : e.getCause();
-            throw new IllegalStateException("Cannot instantiate module " + type.getName(), cause);
+    /** Add explicit class/instance declarations, preserving order. */
+    public FreewayApp add(ModuleDeclaration... declarations) {
+        Objects.requireNonNull(declarations, "declarations");
+        for (ModuleDeclaration declaration : declarations) {
+            this.declared.add(Objects.requireNonNull(declaration, "declaration"));
         }
+        return this;
     }
 
     /** Set command-line arguments (used to override config values). */
@@ -245,15 +240,15 @@ public final class FreewayApp {
             // one per attempt. The composition — not a per-layer bookkeeping
             // map — is what decides duplicates, order and (for discovery) which
             // classes are already declared.
-            List<ModuleEx> composed = new ArrayList<>(declared.size() + 1);
-            composed.add(new BootModule(config)); // config first: later modules may read it
-            for (Supplier<ModuleEx> declaration : declared) {
-                composed.add(declaration.get());
-            }
+            List<ModuleDeclaration> composed = new ArrayList<>(declared.size() + 1);
+            // Config first: later modules may read it. This is an instance
+            // declaration because the boot layer owns the configured value.
+            composed.add(ModuleDeclaration.of(new BootModule(config)));
+            composed.addAll(declared);
             if (autoDiscovery) {
                 composed = ModuleDiscovery.fill(composed, effectiveLoader);
             }
-            ModuleEx[] declarations = composed.toArray(ModuleEx[]::new);
+            ModuleDeclaration[] declarations = composed.toArray(ModuleDeclaration[]::new);
             container = name != null
                 ? Freeway.create(name, declarations)
                 : Freeway.create(declarations);

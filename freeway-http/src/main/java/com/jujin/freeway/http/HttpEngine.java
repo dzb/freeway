@@ -16,7 +16,7 @@ import java.io.IOException;
  *       {@code sendBufferSize} and {@code maxConnections} wherever the engine
  *       has a counterpart (the built-in engine has one for all five).</li>
  *   <li><b>Per-exchange policy</b> — state-shaped: {@code maxBodySize}, which the
- *       engine hands to the {@link HttpContext} it creates as a constructor
+ *       engine hands to the {@link HttpExchange} it creates as a constructor
  *       argument, so an engine cannot forget to set it at all; the exchange is
  *       created per request, so there is no reset to owe, and enforcement
  *       lives in {@code http.internal.LimitedInputStream} — the one limiter
@@ -52,8 +52,8 @@ public interface HttpEngine {
      * from its own settings while the built-in {@code freeway.http.ssl.*} keys
      * stay unset, or the reverse.
      *
-     * <p>Every engine answers this: it is what {@link HttpServer#secure()} — and
+     * <p>Every engine answers this: it is what {@link HttpServer#isSecure()} — and
      * behind it the registry scheme an instance publishes — is derived from.
      */
-    boolean secure();
+    boolean isSecure();
 }

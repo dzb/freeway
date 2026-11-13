@@ -4,7 +4,7 @@ import com.jujin.freeway.cloud.context.Baggage;
 import com.jujin.freeway.cloud.context.InvocationContext;
 import com.jujin.freeway.cloud.context.PrincipalContext;
 import com.jujin.freeway.cloud.context.TraceContext;
-import com.jujin.freeway.cloud.internal.TracePropagator;
+import com.jujin.freeway.cloud.context.internal.TracePropagator;
 import org.junit.jupiter.api.Test;
 import org.slf4j.MDC;
 
@@ -109,7 +109,7 @@ class ObserveTest {
                 assertEquals(outerCtx.spanId(), innerCtx.parentSpanId(),
                     "nested spans chain parent → child");
                 // Outbound propagation must see the ambient context (the same
-                // lookup CloudHttpClient uses before injecting traceparent).
+                // lookup RpcHttpClient uses before injecting traceparent).
                 Map<String, String> headers = new HashMap<>();
                 new TracePropagator().inject(InvocationContext.current().orElseThrow(), headers);
                 assertTrue(headers.containsKey(TracePropagator.HEADER_TRACEPARENT),

@@ -6,11 +6,16 @@ import java.util.ArrayList;
 import java.util.Arrays;
 
 
-public final class SettingsFrame extends BaseFrame {
+public final class SettingsFrame implements Http2Frame {
+    private final FrameHeader header;
+
+    @Override
+    public FrameHeader header() { return header; }
+
     public final ArrayList<SettingParameter> params = new ArrayList<>();
 
     public SettingsFrame(FrameHeader header) {
-        super(header);
+        this.header = header;
     }
 
     public static SettingsFrame parse(byte[] body, FrameHeader header) throws IOException {

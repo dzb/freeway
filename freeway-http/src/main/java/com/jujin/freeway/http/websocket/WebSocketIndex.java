@@ -1,6 +1,6 @@
 package com.jujin.freeway.http.websocket;
 
-import com.jujin.freeway.http.HttpContext;
+import com.jujin.freeway.http.HttpExchange;
 import com.jujin.freeway.http.route.Route;
 import com.jujin.freeway.http.route.RouteHandler;
 import com.jujin.freeway.http.route.RouteIndex;
@@ -21,32 +21,20 @@ public final class WebSocketIndex {
     private final RouteIndex routes;
 
     /**
-     * Contribution-consumed routes: both parameter lists are resolved from
-     * {@code binder.contribute(...)} extensions when the container builds
-     * this class (see {@code HttpModule}) — constructor parameters consume
-     * contributions implicitly. {@code HttpModule} resolves every class-based
-     * endpoint before this constructor runs; one still unresolved here (an
-     * index built by hand, without that step) fails at assembly rather than
-     * silently deferring to the first upgrade.
+     * Endpoints ready for matching: callers expand groups and resolve
+     * class-based endpoints before construction, so this index owns no
+     * contribution or container vocabulary. {@code HttpModule} is that
+     * assembly point; a one-off failure here means the index was built without
+     * it and fails at assembly rather than on the first upgrade.
      */
-    public WebSocketIndex(
-        List<WebSocketRoute> routes,
-        List<WebSocketGroup> groups
-    ) {
+    public WebSocketIndex(List<WebSocketRoute> routes) {
         List<Route> adapted = new ArrayList<>();
-        if (groups != null) {
-            for (WebSocketGroup group : groups) {
-                for (WebSocketRoute route : group.expand()) {
-                    adapted.add(adapt(route));
-                }
-            }
-        }
         if (routes != null) {
             for (WebSocketRoute route : routes) {
                 adapted.add(adapt(route));
             }
         }
-        this.routes = new RouteIndex(adapted, List.of());
+        this.routes = new RouteIndex(adapted);
     }
 
     private static Route adapt(WebSocketRoute route) {
@@ -59,6 +47,13 @@ public final class WebSocketIndex {
                     + "container, or declare an endpoint instance");
         }
         return Route.get(route.path(), new EndpointHandler(route.endpoint()));
+    }
+
+    /** Registered WebSocket paths in declaration order, without endpoints. */
+    public List<String> paths() {
+        return routes.descriptions().stream()
+            .map(RouteIndex.RouteDescription::path)
+            .toList();
     }
 
     public WebSocketMatch match(String method, String path) {
@@ -78,7 +73,7 @@ public final class WebSocketIndex {
     private record EndpointHandler(WebSocketEndpoint endpoint)
             implements RouteHandler {
         @Override
-        public void handle(HttpContext ctx) {
+        public void handle(HttpExchange ctx) {
             throw new UnsupportedOperationException(
                 "WebSocket endpoint handlers are never dispatched over HTTP");
         }

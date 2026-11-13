@@ -117,11 +117,11 @@ public final class JsonUtils {
         return JsonCoercions.coerce(value, type, coercer);
     }
 
-    public static String stringify(Object value) {
+    public static String toJson(Object value) {
         return JsonWriter.stringify(value);
     }
 
-    public static String stringifyPretty(Object value) {
+    public static String toPrettyJson(Object value) {
         return JsonWriter.stringifyPretty(value);
     }
 

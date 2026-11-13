@@ -107,7 +107,7 @@ class Http1xParserTest {
     }
 
     @Test
-    void upgradeWebsocketWithTrailingSpace() throws IOException {
+    void upgradeWebSocketWithTrailingSpace() throws IOException {
         String raw = "GET /ws HTTP/1.1\r\n"
             + "Host: localhost\r\n"
             + "Upgrade: websocket \r\n"

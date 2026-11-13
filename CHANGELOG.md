@@ -7,36 +7,228 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Renamed / API vocabulary
+
+- **HTTP**：`HttpContext` → `HttpExchange`，`HttpContextSupport` →
+  `HttpExchangeSupport`；`ResolvableSupport` → `ResolvableValue`，`SslSettings` →
+  `SslConfig`；`HttpServer.secure` / `HttpEngine.secure` → `isSecure`；
+  `ExchangeHandler.websocket` → `matchWebSocket`；`HttpPipeline` / `HttpServer` 的
+  `websocketIndex` → `webSocketIndex`。`HttpResponse` 的 body 写入家族统一为
+  `body(byte[])`、`body(InputStream,long)`、`text(String)`、`json(Object)`、
+  `file(Path/FileChannel,long,long)`、`sendText(int,String)`、`sendJson(int,Object)`；
+  `StaticResourceMount.withCacheMaxAgeSeconds(long)` → `withCacheMaxAge(Duration)`；
+  `SseEmitter.from(...)` → `pipe(...)`；`ErrorResponse.send(HttpResponse)` →
+  `write(HttpResponse)`。
+- **DB**：`DatabaseStats` → `PoolStats`；`DatabaseRegistry.get(String)` →
+  `find(String): Optional<Database>`；`DatabaseRegistry.all()` → `databases()`；
+  `Query.param(...)` → `bind(...)`；`BatchQuery.rows(...)` → `rowsRaw(...)`，
+  `BatchQuery.named(...)` → `rowsNamed(...)`；`Row` 的便捷访问器统一为
+  `asString/asInt/asLong/asBoolean/asBigDecimal/asBigInteger/asLocalDate/...`；
+  `Sql.sql()` → `toSql()`，`Sql.setColumn(...)` → `value(...)`。
+- **Flow**：`FlowEvaluation` → `FlowExecution`；`FlowEngine.eval(...)` →
+  `run(...)`，`evalAndGet(...)` → `runAndGet(...)`；`graph(String)` →
+  `find(String): Optional<Graph>`，`graphOrThrow(...)` → `require(...)`；
+  `FlowContext.stopped(boolean)` 移入 internal
+  `FlowContextState.setStopped(...)`；Graph/Node/Link 的 metadata family 统一为
+  `metadata()`/`putMetadata(...)`；`NodeSpec.linkAdd(...)` → `linkTo(...)`。
+- **IoC**：`Container.isActiveBinding(...)` → `isActiveBindingMarked(...)`；
+  `EventBus.EventBusStats` → `EventBus.Stats`；`Contribution.add(Class)` 与
+  `add(id, factory)` → `addDeferred(...)`。
+- **Commons**：`ScopedCache.get(key, factory)` → `computeIfAbsent(...)`；
+  `JsonUtils.stringify(...)` → `toJson(...)`，`stringifyPretty(...)` →
+  `toPrettyJson(...)`；`JsonCodec.convert(...)` → `coerce(...)`。
+- **Cloud RPC**：`CloudException` → `RpcException`；`CloudRequest` /
+  `CloudResponse` / `CloudHttpClient` / `CloudHttpClientDefault` → `RpcRequest` /
+  `RpcResponse` / `RpcHttpClient` / `RpcHttpClientDefault`；`idempotentWith` →
+  `withIdempotent`，`idempotentVerb` → `isIdempotentMethod`，`is2xx` →
+  `isSuccess`，`propagateMessages` → `withPropagatedMessages`；
+  `RemoteProxyFactory` 的 `serviceId/mapping/timeout` →
+  `withServiceId/withMapping/withTimeout`。
+- **Cloud event mesh**：`CloudEventEnvelope` / `CloudEventBus` /
+  `CloudEventSubscription` / `CloudEventInterceptor` / `CloudEventLifecycleHook`
+  → `MeshEnvelope` / `MeshEventBus` / `MeshSubscription` / `MeshInterceptor` /
+  `MeshEventLifecycleHook`；`CloudEventBus.CloudEventStats` →
+  `MeshEventBus.Stats`；`CloudEventModule` → `EventMeshModule`。
+- **Cloud modules / discovery**：`CloudRpcModule` / `CloudSecretModule` /
+  `CloudStorageModule` / `CloudHealthModule` / `CloudResilienceModule` /
+  `CloudDiscoveryModule` / `CloudObserveModule` → `RpcModule` / `SecretModule` /
+  `StorageModule` / `HealthModule` / `ResilienceModule` / `DiscoveryModule` /
+  `ObserveModule`；`CloudHealthContributor` 保持原名；`Health` / `Endpoint` →
+  `ServiceHealth` / `ServiceEndpoint`；`cloud.registry` →
+  `cloud.discovery.registry`，`RegistryNodeClient` /
+  `RegistryNodeServiceRegistry` / `RegistryNodeServiceDiscovery` /
+  `RegistryFleetModule` → `FleetRegistryClient` / `FleetServiceRegistry` /
+  `FleetServiceDiscovery` / `FleetRegistryModule`。
+
 ### Added
+
+- **运行时描述 API**（freeway-ioc / freeway-boot）：`Container.describe()` 返回只读
+  `RuntimeDescription`（模块树、binding 的 type/id/scope/markers、contribution
+  id/顺序），`AppRuntime.describe()` 返回 `AppRuntimeDescription`（状态、profiles、
+  配置键名、容器描述）。描述不实例化惰性服务、不持有服务实例或配置值，供工具与编码 agent
+  使用，取代解析启动日志。
+- **`ModuleDeclaration` 与混合组合**（freeway-ioc / freeway-boot）：一个 placed module
+  现在是 class declaration 或 configured instance 的显式值。它独占无参构造与
+  `@SubModule` 静态元数据；`Freeway.create(ModuleDeclaration...)`、`FreewayApp.add(...)`
+  可表达混合列表。boot 不再自己保存/实例化 module supplier，SPI discovery 也读同一份
+  声明元数据。
+- **路由注册描述**（freeway-http）：`RouteIndex.descriptions()` 与
+  `HttpServer.routeDescriptions()` 给出一条路由的 method/path identity（不暴露 handler）；
+  `WebSocketIndex.paths()` / `HttpServer.webSocketPaths()` 给出 WebSocket 路径。
+- **`Dialect.ofId(String)`**（freeway-db）：内建 dialect catalog 的单一 id→实现入口；
+  未知 id 带扩展绑定提示失败。
+
+- **JsonCodec 容器内建**（freeway-ioc / freeway-http）：JsonCodec 不再由 HttpModule 绑定，
+  而是 IoC 的基础能力；编码器读取容器的 Coercer，替换 Coercer 仍然生效，替换 JsonCodec 仍可
+  .primary() 覆盖。修复无 HttpModule 的 Cloud RPC 客户端子集无法解析 RemoteCaller 的问题。
+  自定义 JsonCodec 绑定若与内建默认并存，需标记 .primary()；这是“基础能力 + 可替换默认”
+  的统一规则，不再由 HttpModule 提供第二个隐式默认。
 
 - **`ScopeFilter`（`freeway-http`）**：可选的请求级容器 value scope。设
   `freeway.http.request-scope.enabled=true` 时 `HttpModule` 在 CORS/health 之后、应用 filter
-  之前加入一个 `ScopeFilter`；一次请求内 `Scope.THREAD` 服务与 scoped cache 值复用，请求结束清理。
+  之前加入一个 `ScopeFilter`；一次请求内 `Scope.BOUNDARY` 服务与 scoped cache 值复用，请求结束清理。
   也可自行 `contribute(HttpFilter.class).add(ScopeFilter.class)`；显式贡献时不会重复添加。它不传播到
   子线程（异步工作用 `ContextExecutor`），也不是事务边界（`Defer` 仍负责提交/回滚）。
 - **`ScopeBoundary.withinChecked`（`freeway-ioc`）**：适配器的受检异常入口；scope 在正常/异常路径
   都会关闭，原始 `Exception` 原样重抛。
+- **`StaticResourceMount.withSpaFallback(boolean)`（`freeway-http`）**：history-mode SPA 的
+  终端 index 回退。开启后，无扩展名的 GET/HEAD 路径在静态资源和路由链都未命中时回退到该 mount
+  的 `index.html`；带扩展名的缺失仍是 404。回退按“最具体匹配 mount”选择，避免专用
+  `/assets` mount 的缺失文件被根 SPA 吞成 HTML；路由命中优先，405 不会被改写成 SPA 页面；
+  开启但缺少 `index.html` 的 mount 在 `HttpServer` 构造时失败。
 
 ### Changed
 
+- **模块组合收敛为一次解析**（freeway-ioc / freeway-boot）：`ModuleDeclaration` 统一
+  class/instance、无参构造和 `@SubModule`；`ModuleNode` 只负责 normalized tree 的绑定顺序、
+  校验和 render，boot 的 `FreewayApp` 与 `ModuleDiscovery` 不再各自实例化 module 或展开
+  bundle。混合 composition 可显式构造，class declaration 仍在 container load 时实例化。
+- **排序规则与拓扑排序单点化**（freeway-ioc / freeway-commons）：
+  `OrderingSupport` 统一 contribution/deferred 的四类 ordering 边；
+  `TopologicalOrder` 统一 extension contribution 与 `DeferAction` 的 Kahn 排序、
+  ready-node tie-break 和 cycle remainder。两个 ordering 的领域策略仍分别由调用方持有。
+- **DB 装配、dialect 与 ORM SQL 收敛**（freeway-db）：`DatabaseImpl.assemble(...)` 是
+  standalone 与 `DbModule` 共用的唯一装配/defaulting 点，`DatabaseImpl` 只保留一个全参
+  私有构造器。`DbModule` 绑定一个 selected `Dialect` service，custom dialect 继续以 id
+  绑定；内建 id 由 `Dialect.ofId` catalog 解析，不再手绑四个 dialect 实例。
+  `Orm` 的 select/insert/update/delete 全部经 `Sql` builder（H2 MERGE 仍走 dialect
+  的完整语句渲染）；`Sql.offset(n)` 现支持 offset-only，并由 dialect 渲染
+  `LIMIT -1 OFFSET` / `OFFSET n ROWS` 等方言拼写。
+- **启动配置文件层单点化**（freeway-boot）：新增 `ConfigFilePlan`，统一标准文件名、role、
+  precedence、读取与 snapshot。`ConfigCascade` 先用 base snapshot 选 profile，再把同一份
+  base values 交给 full plan；工作目录 `application.properties/json` 启动期只解析一次，
+  hot reload 仍整体重读。
+- **cloud internal 按领域拆包**（freeway-cloud）：context/discovery/health/observe 的实现移入
+  `cloud.<domain>.internal`；顶层 `cloud.internal` 只保留跨域 support（shared HTTP client、
+  constant-time、backend guard、service identity、HTTP service declaration 等）。
+  `BackendTypeGuard.warnHook(...)` 统一 secret/storage 的 guard hook；
+  `OptionalBinding.get(...)` 统一两处可选 lookup。
+- **跨模块小收敛**（commons / ioc / http / cloud）：`Proxies.objectMethod(...)` 统一容器
+  advising proxy 与 cloud remote proxy 的 Object 方法语义；`RequestViewSupport` 的
+  case-insensitive header fallback 复用 `HttpHeaders`；`HttpPipeline.filtersInOrder()`
+  成为 built-in + application filters 的统一排序点。
+
+- **HTTP 装配与响应 framing 收敛**（freeway-http）：`RouteIndex` 与
+  `WebSocketIndex` 现在只接收已展开、已解析的最终路由列表；`HttpModule` 是唯一装配点，
+  contribution 的直接路由、`RouteGroup`/`WebSocketGroup` 展开和 class handler/endpoint
+  解析各发生一次。`ResolvableHandler`/`ResolvableEndpoint` 共用
+  `ResolvableValue` 的两阶段首次赋值状态机；`WebSocketSessionSupport` 与内置帧写入器
+  共用 `WebSocketCloseReason` 的 123 字节 UTF-8 截断规则。`HttpExchangeSupport` 的
+  byte[]/stream/file/channel 四条响应路径合并为一个 `write(...)` 策略入口，transport
+  只在提交 head 前解析一次“打开 channel 后才知道”的文件长度；修复未知长度大文件走
+  sendfile 时 head 无 `Content-Length`、writer 选 chunked 而实际写原始字节的 framing
+  缺陷。`Compression.gzip` 复用 `gzipStream` 的 writer 构造。破坏性变化：
+  `new RouteIndex(routes, groups)` / `new WebSocketIndex(routes, groups)` 删除，调用方先
+  展开 group 再构造 index。Flow 的公开值/实现类型 `Node`、`Link`、`Graph`、`GraphSpec`、
+  `FlowEventBus`、`FlowModule`、`Stepper` 与 commons 的 `ValidationResult`、http 的
+  `SseEmitter` 补 `final`；框架不再留下可被用户继承的隐式实现类型。
+- **请求面去重 + 扩展点只读 + 作用域改名**（freeway-http / freeway-ioc）：
+  - 新增 `RequestHead`，`RequestView` 和 `HttpTransport` 都继承它；method/path/query/headers
+    四个请求事实只声明一次。新增 `RequestViewSupport`，HTTP exchange 与 WebSocket session
+    组合同一个 query/header/path-var 实现，header map 统一 lowercase。
+  - `HttpRequest` 的 TLS/remote/bodyStream 默认实现删除：这些是 transport 事实，缺失必须由
+    实现方显式回答，不能用 false/null/空串或全量缓冲掩盖。
+  - `Container.extension()` 改为返回只读 `Extension<T>`；`add/seal` 只存在于内部
+    `ExtensionStore`，写入仍只通过 `Contribution`。读接口不再暴露写能力。
+  - `Scope.THREAD` 改名为 `Scope.BOUNDARY`：它从来不是 ThreadLocal/线程生命周期，而是
+    `ScopeBoundary.within(...)` 的边界生命周期，旧名字在 virtual thread 下会误导。
+  - 删除无调用者的 `FlowDriverDefault.Builder`：它携带两个可选字段，和“builder 不持有默认值”
+    的约定冲突；需要定制时直接构造 `FlowDriverDefault`。
+- **HTTP 响应体执行收敛为 `ResponsePlan`**（freeway-http）：
+  `HttpTransport` 不再有 byte[]/stream/file/channel 四个 body 方法和它们的默认实现，只接收一个
+  `ResponsePlan(head, body)`；body 是 sealed 的 `Bytes`/`Stream`/`File`/`Channel`/`Empty`。
+  gzip 由 head 的 `Content-Encoding` 单点表达，`Content-Length`/HEAD 不再由 support、transport
+  default、transport override 三层各算一次。HEAD/204/205/304 不读取 body source，但会关闭 transport
+  接管的 channel。
+- **HTTP 错误/健康契约固定**（freeway-http / freeway-cloud）：
+  - 新增 `ErrorResponse(status, code, message, details, headers)` 与纯 `ErrorMapper`；
+    mapper 只返回数据，`HttpServer` 是唯一写入点，404/405/413/415/422/500 统一为
+    `{error, code, details?}`，405 另带 `Allow`。
+  - `HealthCheck` 返回 `HealthResult`（不再返回裸 `Object`）；健康 200，非健康 503，
+    cloud `CloudHealthContributor` 复用同一个结果类型，删除 cloud 内部重复的 `HealthResult`。
 - **HTTP/WebSocket 扩展点改为组合**（`freeway-http`）：删除框架类型之间的实现继承
   （`AbstractHttpContext`、`AbstractWebSocketSession` 及其子类）。新增 `HttpTransport` /
-  `WebSocketTransport` 两个 SPI 与 final 的 `HttpContextSupport` /
+  `WebSocketTransport` 两个 SPI 与 final 的 `HttpExchangeSupport` /
   `WebSocketSessionSupport`；内建引擎类型 `HttpContextImpl` 改名 `HttpTransportImpl`，
   `WebSocketSessionImpl` 拆成 `WebSocketConnection`（帧与连接状态）+ support。状态码/头校验、
   `Date`、`Content-Length`、gzip 决策、`Vary`、body 上限、JSON/强转现在只有一份实现，
   三个引擎行为一致。行为变化：
-  - `Content-Length` 框架权威：`output(byte[])` 用实际提交的字节数（gzip 后用压缩后长度）
-    覆盖 handler 设置的值；`output(InputStream, len)` 用 `len`，未知时删除；204/205/304 一律
-    删除；HEAD 保留与 GET 相同的长度且不读响应源。
+  - `Content-Length` 框架权威：`body(byte[])` 用实际提交的字节数（gzip 后用压缩后长度）
+    覆盖 handler 设置的值；`body(InputStream, len)` 用 `len`，未知时删除；204/205/304 一律
+    删除；HEAD 与 GET 保持相同的长度语义：长度已知时直接用 CL，未知/gzip 时缓冲 transport
+    物化后补实际 CL，流式 transport 继续不声明 CL。
   - **每请求 exchange**：不再有 `reset`/`resetMaxBodySize`/`ThreadLocal` 池；transport 与
     support 每请求新建（JMH 端到端多约 64 ns/op），换来复位义务与状态串扰失败模式消失。
   - SSE 不再写 `Connection: keep-alive`：HTTP/1 writer 写 `Connection: close`，HTTP/2 过滤
     该头，容器适配器交给容器决定。
   - WebSocket close reason 统一截断到 123 字节（UTF-8 码点边界），内建引擎不再抛
-    `IllegalArgumentException`。
-  - 适配器迁移路径：`UndertowHttpContext`/`JettyHttpContext` 改为实现 `HttpTransport`，
-    会话改为组合 `WebSocketSessionSupport`；编译错误即迁移。
+    `IllegalArgumentException`；适配器内部错误关闭也改走 support，不再绕过截断。
+  - 适配器迁移路径：`UndertowHttpExchange`/`JettyHttpExchange` 改为实现 `HttpTransport`，
+    会话改为组合 `WebSocketSessionSupport`；`HttpTransport` 新增 `isCommitted()`，
+    编译错误即迁移。`HttpResponse.isCommitted()` 改为抽象方法（不再默认 false），
+    `addVary` 返回 `HttpResponse` 以保持链式一致；生命周期内部名统一为
+    `committed`/`resetIfUncommitted`；HTTP/2 stream 的 `headersSent`/`isResponseCommitted()`
+    也统一为 `committed`/`isCommitted()`，H2 transport 的 `isCommitted()` 直接读取该 stream
+    事实，不再保留第二份判断。`HttpResponse.body(InputStream, long)` 和两个
+    `file` 不再提供会静默破坏长度/gzip 语义的 default 兜底，必须由实现方或
+    `HttpExchangeSupport` 实现；`HttpTransport.bodyStream()` 改为 `framedBodyStream()`，
+    与 handler 侧已限流的 `HttpRequest.bodyStream()` 区分；`allowsResponseBody()`
+    统一为 `allowsBody()`，204/205/304
+    的 body 规则集中到 `HttpStatus.allowsBody(int)`。
+  - **提交事实归 transport**：`HttpTransport.isCommitted()` 是唯一提交状态；support 不再
+    在 transport 写出 head 前把响应标记为已提交。缺文件、文件打开失败或提交前的流读取失败
+    会回滚已准备的 head 并由错误处理写成 500；提交后的失败按传输失败处理。
+  - **framing 归 transport**：缓冲 transport 用物化后的实际字节数补 `Content-Length`
+    （HEAD 也一样）；流式 transport 保留无 CL 的 chunked 语义。HTTP/1.1 适配器只在仍无 CL
+    时补 `Transfer-Encoding: chunked`，HTTP/2 不补，连接级字段（Connection/Keep-Alive/
+    Upgrade/TE 等）在 HTTP/2 下被过滤。handler 设置的 TE 被 support 过滤；文件范围
+    的 length<0 时内置 transport 按 channel.size 计算，不再报 500。
+  - **Jetty `Date`**：关闭 Jetty 的自动 Date 生成，`HttpExchangeSupport` 是唯一来源，
+    修复每个响应出现两个 `Date` 的问题。
+  - **适配器响应头最终态**：Undertow/Jetty 的 `applyHead` 先校验再清空并重放
+    `ResponseHead`，失败重试不会留下上一次响应的头；HTTP/2 额外过滤连接级字段。
+  - **提交后的 `setStatus`** 是 no-op（与 header 一致）；重复 output 仍被忽略。
+  - **HTTP/2 帧族组合化**：`BaseFrame` 抽象类删除，改为包内 sealed
+    `Http2Frame` 接口；各帧组合 `FrameHeader`，分派改用 sealed pattern switch，
+    生产路径不再有帧类型强制转换。新增帧类型由编译器强制补分派。该改动以类型
+    安全/穷尽性为目标，不承诺吞吐提升；性能验证需单独做 JMH/端到端基准。
+  - 内部命名：`Headers` → `HeaderStore`；删除重复的
+    `HttpResponse.suppressBodyBytes`/`ResponseFraming.suppressBodyBytes`，以及无调用者的
+    `HeaderStore.setValueIfPresent/getAll`、`ExchangeMetaImpl.setCorrelationId`。
+- **DB 方言去继承 / H2 mode-aware**（`freeway-db`）：`H2Dialect` 不再继承
+  `PostgresDialect`，改为直接实现 `Dialect` 并携带 `H2Mode`；`PostgresDialect` 改为 final。
+  H2 的 `MODE` 只影响 H2 的语法面，不再把 PG/MySQL 模式映射成目标方言：H2 始终使用自己的
+  `INFORMATION_SCHEMA`、DDL 语义和类型系统。行为变化：
+  - H2 URL（含 `MODE=PostgreSQL`/`MODE=MySQL`）统一返回 `h2` 方言，`DbModule` 自动检测
+    保留 mode；显式 `freeway.db.dialect=h2` 表示 native。
+  - H2 `supportsTransactionalDdl=false`、`supportsReturning=false`；H2 不接受参数化的
+    `ON CONFLICT`，因此 `supportsOnConflict=false`；upsert 走 H2 `MERGE INTO ... KEY`。
+  - H2 MySQL/MariaDB 模式仍可用 `ON DUPLICATE KEY`；H2 的 OFFSET/LIMIT 统一用标准
+    `OFFSET/FETCH`，修复 Oracle/MSSQLServer/Derby/STRICT 模式下的分页。
+  - H2 introspection 统一走 `INFORMATION_SCHEMA.INDEXES`，不再使用 `pg_indexes` 或
+    `INFORMATION_SCHEMA.STATISTICS`。
+  - 迁移/DDL 守卫会把 H2 视为非事务性 DDL；H2 上包含 DDL 的 migration 会被拒绝（与 H2
+    实际自动提交行为一致）。
 - **CLI 不再自动给无点键加 `freeway.` 前缀**（`freeway-boot`）：键名一律按字面量解析，
   `--mode=prod` 现在就是应用键 `mode`，不再被改写成 `freeway.mode`——旧行为会把应用配置静默
   吸进框架命名空间，且拼出的 `freeway.port` 之类键没有任何模块读取、连未知键检测也因根前缀
@@ -45,6 +237,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`Scoping` 改名 `ScopeBoundary`（`freeway-ioc`）**：公共类型、内置服务 id 与报错文本同步；
   `Scoping.within` → `ScopeBoundary.within`。类型名从“作用域化机制”改为“边界入口”，与
   `Defer`（动作能力）、`ScopedCache`（值原语）分层一致；行为不变。
+
+### Fixed
+
+- **Orm.findAll 分页走方言**（freeway-db）：findAll 的 limit/offset 不再硬编码
+  LIMIT/OFFSET，改由 Dialect.limitClause/limitOffsetClause/offsetOnlyClause 渲染；修复
+  H2 的 Oracle/MSSQLServer/Derby/STRICT 等模式（拒绝 LIMIT）下 find 失败。
+- **history-mode SPA 深链缺少 index 回退**（`freeway-http`）：`withFallthrough(true)`
+  只把未命中交回路由链，没有 nginx `try_files ... /index.html` 的最后一跳，`/chat` 这类
+  深链在无路由时得到 404。新增 `withSpaFallback` 的终端回退，并修正 `withFallthrough` 的
+  javadoc 不再声称它单独支持 SPA；`serve()` 拆出共享的 `serveResolved`，回退复用同一套
+  cache/ETag/Range/HEAD/bytes 管线。
+- **贡献生命周期改为“构造/发布 → seal → 初始化”**（`freeway-ioc`）：此前 `add(Class)`
+  在 drain 中逐条 `create`（构造 + 字段注入）→ `@PostConstruct` → `ext.add`，一个在字段注入链
+  中途被 realize 的服务会把当时的部分 extension 视图固化进 singleton，跨模块贡献静默丢失
+  （`PropagationFilter` 的 `List<Propagator>` 构造器即此形状）。现在配置层先 construct-only、
+  publish 并初始化；其余 deferred 条目 construct-only 并 publish，`seal` 之后统一做字段注入和
+  `@PostConstruct`；字段注入链看到的是完整 store，`@PostConstruct` 属于最终构建而不是早期组合。
+  行为变化：
+  - `Extension.all()`/`asMap()`/`validateOrdering()` 在容器创建的 store 尚未发布完成时抛
+    `IllegalStateException`，不再返回前缀；配置链（`SymbolProvider`/`CoerceRule`）按既有
+    live-pull 语义豁免。
+  - 新增 `Supplier<List<E>>` / `Supplier<Map<String, E>>` 注入，作为构造期消费者在启动后
+    读取完整视图的正式形式；构造器里 eager `List`/`Map` 注入在仍有 pending 条目时启动失败。
+  - `PropagationFilter` 的构造器改为 `Supplier<List<Propagator>>`，防止晚到模块的
+    `Propagator` 被静默漏掉。
+  - `@PostConstruct` 不再在 store 发布过程中运行：配置层在自己的条目构造/发布后初始化，
+    其余条目在全局 seal 后统一初始化；seal 之后不能再向 extension add。依赖旧交错顺序的代码
+    会看到启动失败或行为变化。
 
 ## [1.5.7] - 2026-11-02
 

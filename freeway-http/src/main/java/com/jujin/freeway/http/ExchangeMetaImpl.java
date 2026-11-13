@@ -10,7 +10,7 @@ import java.util.concurrent.ThreadLocalRandom;
 /**
  * The default {@link ExchangeMeta} implementation: the per-exchange state
  * (correlation id, start time, principal, attributes) that
- * {@link HttpContextSupport} and WebSocket session supports embed, one
+ * {@link HttpExchangeSupport} and WebSocket session supports embed, one
  * instance per request (or per WebSocket connection lifetime). The exposed
  * state methods are specified by {@link ExchangeMeta}.
  */
@@ -25,16 +25,6 @@ public final class ExchangeMetaImpl implements ExchangeMeta {
         this.correlationId = correlationId != null && !correlationId.isBlank()
             ? correlationId : fastCorrelationId();
         this.startTime = Instant.now();
-    }
-
-    /**
-     * Replaces the correlation id for a reused exchange (keep-alive
-     * connections process a new request per reset). Blank input keeps the
-     * existing id. */
-    public void setCorrelationId(String correlationId) {
-        if (correlationId != null && !correlationId.isBlank()) {
-            this.correlationId = correlationId;
-        }
     }
 
     @Override

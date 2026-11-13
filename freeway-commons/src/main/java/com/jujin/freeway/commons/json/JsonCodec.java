@@ -26,11 +26,11 @@ public interface JsonCodec {
      * an implementation that parses with its own coercer should override
      * with the direct node coercion instead.
      */
-    default <T> T convert(Object node, Class<T> type) {
-        return convert(node, (Type) type);
+    default <T> T coerce(Object node, Class<T> type) {
+        return coerce(node, (Type) type);
     }
 
-    default <T> T convert(Object node, Type type) {
+    default <T> T coerce(Object node, Type type) {
         return fromJson(toJson(node), type);
     }
 }

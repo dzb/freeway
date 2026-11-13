@@ -31,6 +31,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
 
 final class InjectionResolver {
     private static final Logger LOG = LoggerFactory.getLogger(InjectionResolver.class);
@@ -272,24 +273,32 @@ final class InjectionResolver {
     }
 
     /**
-     * Resolves {@code List<Foo>} and {@code Map<String, Foo>} from the
-     * contribution mechanism. Constructor parameters consume contributions
-     * implicitly (the constructor is the single mandatory injection point —
-     * failure is loud at startup, so there is no silent-miss risk); fields
-     * require an explicit {@code @Inject}. An unannotated {@code List}/{@code Map}
-     * constructor parameter resolves to the contributed view, like any other
-     * contributed-typed parameter.
+     * Resolves {@code List<Foo>}, {@code Map<String, Foo>} and their deferred
+     * {@code Supplier<...>} forms from the contribution mechanism. Constructor
+     * parameters consume contributions implicitly (the constructor is the
+     * single mandatory injection point — failure is loud at startup, so there
+     * is no silent-miss risk); fields require an explicit {@code @Inject}.
      *
-     * <p>An explicit {@code @Inject("id")} on a {@code List}/{@code Map}
-     * injection point prefers a bound service with that id; only when no such
-     * binding exists does resolution fall back to contributions. This lets a
-     * user bind their own {@code List<Foo>}/{@code Map<String, Foo>} service
-     * and inject it by id instead of always receiving the contributed view.
+     * <p>{@code List}/{@code Map} are complete-or-throw: the extension store
+     * refuses the read while composition is still publishing that entry type.
+     * {@code Supplier<List<Foo>>} is the lazy form for a consumer that must be
+     * constructed during composition; the supplier is read after startup, when
+     * the store is complete.
+     *
+     * <p>An explicit {@code @Inject("id")} on a {@code List}/{@code Map}/
+     * {@code Supplier} injection point prefers a bound service with that id;
+     * only when no such binding exists does resolution fall back to
+     * contributions. This lets a user bind their own
+     * {@code List<Foo>}/{@code Map<String, Foo>} service and inject it by id
+     * instead of always receiving the contributed view.
      *
      * <p>{@code Extension<Foo>} is intentionally rejected — inject
-     * {@code List<Foo>} or {@code Map<String, Foo>} instead.
+     * {@code List<Foo>}, {@code Map<String, Foo>} or the deferred
+     * {@code Supplier} form instead.
      */
+    @SuppressWarnings("unchecked")
     private Object resolveContributed(
+        Class<?> ownerType,
         Type memberType,
         Class<?> targetType,
         AnnotationLookup lookup,
@@ -330,7 +339,7 @@ final class InjectionResolver {
             if (bound != null) {
                 return bound;
             }
-            return container.extension(entryType).all();
+            return contributedList(ownerType, entryType, parameterMode);
         }
         if (targetType == Map.class) {
             if (typeArgs.length < 2 || typeArgs[0] != String.class
@@ -341,16 +350,83 @@ final class InjectionResolver {
             if (bound != null) {
                 return bound;
             }
-            return container.extension(entryType).asMap();
+            return contributedMap(ownerType, entryType, parameterMode);
+        }
+        if (targetType == Supplier.class) {
+            if (typeArgs.length != 1
+                    || !(typeArgs[0] instanceof ParameterizedType nested)) {
+                return null;
+            }
+            Class<?> nestedRaw = Types.rawClass(nested);
+            Type[] nestedArgs = nested.getActualTypeArguments();
+            if (nestedRaw == List.class) {
+                if (nestedArgs.length < 1
+                        || !(nestedArgs[0] instanceof Class<?> entryType)) {
+                    return null;
+                }
+                Object bound = resolveById(targetType, lookup);
+                if (bound != null) {
+                    return bound;
+                }
+                return (Supplier<List<?>>) () ->
+                    container.extension(entryType).all();
+            }
+            if (nestedRaw == Map.class) {
+                if (nestedArgs.length < 2 || nestedArgs[0] != String.class
+                        || !(nestedArgs[1] instanceof Class<?> entryType)) {
+                    return null;
+                }
+                Object bound = resolveById(targetType, lookup);
+                if (bound != null) {
+                    return bound;
+                }
+                return (Supplier<Map<String, ?>>) () ->
+                    container.extension(entryType).asMap();
+            }
+            return null;
         }
         return null;
     }
 
+    private Object contributedList(
+        Class<?> ownerType, Class<?> entryType, boolean parameterMode
+    ) {
+        try {
+            return container.extension(entryType).all();
+        } catch (IllegalStateException ex) {
+            throw incomplete(ownerType, parameterMode,
+                "List<" + entryType.getSimpleName() + ">", ex);
+        }
+    }
+
+    private Object contributedMap(
+        Class<?> ownerType, Class<?> entryType, boolean parameterMode
+    ) {
+        try {
+            return container.extension(entryType).asMap();
+        } catch (IllegalStateException ex) {
+            throw incomplete(ownerType, parameterMode,
+                "Map<String, " + entryType.getSimpleName() + ">", ex);
+        }
+    }
+
+    private static IllegalStateException incomplete(
+        Class<?> ownerType, boolean parameterMode, String type,
+        IllegalStateException cause
+    ) {
+        String point = parameterMode ? "constructor parameter" : "@Inject field";
+        return new IllegalStateException(
+            "Cannot inject " + type + " into " + ownerType.getName()
+                + " (" + point + "): " + cause.getMessage(),
+            cause
+        );
+    }
+
     /**
      * Resolves a service explicitly qualified by {@code @Inject("id")} on a
-     * {@code List}/{@code Map} injection point: prefers a bound service of
-     * that exact type/id, falling back to the contributed view when no such
-     * binding exists.
+     * {@code List}/{@code Map}/{@code Supplier} injection point: prefers a
+     * bound service of that exact type/id, falling back to the contributed
+     * view when no such binding exists.
      */
     private Object resolveById(Class<?> targetType, AnnotationLookup lookup) {
         String id = resolveId(lookup);
@@ -463,10 +539,12 @@ final class InjectionResolver {
                 && (parameterMode || hasInjectionAnnotation(lookup))) {
             return resolveLogger(ownerType, lookup);
         }
-        // List<Foo> / Map<String, Foo> / Extension<Foo> — resolved from
-        // the contribution mechanism. Must precede resolveInjected so @Inject
-        // on these types does not attempt a broken container.get(...).
-        Object contributed = resolveContributed(memberType, targetType, lookup, parameterMode);
+        // List<Foo> / Map<String, Foo> / Supplier<...> / Extension<Foo> —
+        // resolved from the contribution mechanism. Must precede
+        // resolveInjected so @Inject on these types does not attempt a broken
+        // container.get(...).
+        Object contributed = resolveContributed(
+            ownerType, memberType, targetType, lookup, parameterMode);
         if (contributed != null) {
             return contributed;
         }
@@ -521,7 +599,7 @@ final class InjectionResolver {
     ) {
         Set<Class<? extends Annotation>> markers = resolveMarkers(ownerType, lookup);
         // Validate before realization: a singleton owner directly injecting a
-        // thread-scoped concrete class must get the dedicated diagnostic even
+        // boundary-scoped concrete class must get the dedicated diagnostic even
         // when no scope is open (otherwise "No open scope" from realize() masks
         // the real contract violation). The binding validated is the one the
         // selection below will actually pick — markers choose for a
@@ -649,16 +727,16 @@ final class InjectionResolver {
             return;
         }
         boolean targetIsInterface = targetType.isInterface();
-        if (targetBinding.scope() == Scope.THREAD) {
+        if (targetBinding.scope() == Scope.BOUNDARY) {
             if (!targetIsInterface) {
                 throw new IllegalStateException(
                     "Singleton service " + ownerType.getName()
-                        + " cannot directly inject thread-scoped concrete class "
+                        + " cannot directly inject boundary-scoped concrete class "
                         + targetType.getName()
                         + ". Use an interface with proxy support instead."
                 );
             }
-            // A THREAD-scoped interface binding is genuinely safe in a
+            // A boundary-scoped interface binding is genuinely safe in a
             // singleton: the proxy resolves per-scope, so each thread gets
             // its own target.
             return;
@@ -678,9 +756,9 @@ final class InjectionResolver {
                     + " — the singleton shares it across threads, and the "
                     + "interface proxy holds one target, so proxying does not "
                     + "change that. Remove the marker once the implementation "
-                    + "is verified thread-safe, bind it Scope.THREAD (then the "
+                    + "is verified thread-safe, bind it Scope.BOUNDARY (then the "
                     + "proxy resolves per thread), or inject it into a "
-                    + "prototype/thread-scoped holder."
+                    + "prototype/boundary-scoped holder."
             );
         }
     }

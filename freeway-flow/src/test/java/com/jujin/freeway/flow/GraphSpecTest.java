@@ -21,12 +21,12 @@ class GraphSpecTest {
     private static FlowDriver countingDriver(AtomicInteger counter) {
         return new FlowDriver() {
             @Override
-            public boolean handleCondition(FlowEvaluation evaluation, ConditionDesc condition) {
+            public boolean handleCondition(FlowExecution evaluation, ConditionDesc condition) {
                 return true;
             }
 
             @Override
-            public void handleTask(FlowEvaluation evaluation, TaskDesc task) {
+            public void handleTask(FlowExecution evaluation, TaskDesc task) {
                 if (!task.isEmpty()) counter.incrementAndGet();
             }
         };
@@ -36,8 +36,8 @@ class GraphSpecTest {
     void aSettledSpecSerializesTheSameUntilItChanges() {
         GraphSpec spec = GraphSpec.create("cached", s -> {
             s.entry("start");
-            s.addStart("start").linkAdd("a");
-            s.addActivity("a").task("@t").linkAdd("e");
+            s.addStart("start").linkTo("a");
+            s.addActivity("a").task("@t").linkTo("e");
             s.addEnd("e");
         });
 
@@ -45,7 +45,7 @@ class GraphSpecTest {
         assertEquals(first, spec.toMap(),
             "an unchanged spec normalizes to the same document (the cache is real)");
 
-        spec.addActivity("later").task("@t").linkAdd("e");
+        spec.addActivity("later").task("@t").linkTo("e");
         assertTrue(spec.toMap().toString().contains("later"),
             "a mutation invalidates the snapshot; the next toMap() must see it");
     }
@@ -58,10 +58,10 @@ class GraphSpecTest {
         IllegalStateException ex = assertThrows(IllegalStateException.class,
             () -> GraphSpec.create("condfork", spec -> {
                 spec.entry("s");
-                spec.addStart("s").linkAdd("fork");
+                spec.addStart("s").linkTo("fork");
                 var fork = spec.addParallel("fork").task("@noop");
-                fork.linkAdd("a", link -> link.when("x > 1"));
-                fork.linkAdd("b");
+                fork.linkTo("a", link -> link.when("x > 1"));
+                fork.linkTo("b");
                 spec.addEnd("a");
                 spec.addEnd("b");
             }).create());
@@ -74,9 +74,9 @@ class GraphSpecTest {
     void testBlueprintBuildsAndRuns() {
         GraphSpec blueprint = GraphSpec.create("blueprint_v2", bp -> {
             bp.entry("start");
-            bp.metaPut("kind", "demo");
-            bp.addStart("start").linkAdd("task");
-            bp.addActivity("task").task("@counter").linkAdd("end");
+            bp.putMetadata("kind", "demo");
+            bp.addStart("start").linkTo("task");
+            bp.addActivity("task").task("@counter").linkTo("end");
             bp.addEnd("end");
         });
 
@@ -90,7 +90,7 @@ class GraphSpecTest {
         AtomicInteger counter = new AtomicInteger();
         FlowEngine engine = newEngine(countingDriver(counter));
 
-        engine.eval(blueprint, FlowContext.of());
+        engine.run(blueprint, FlowContext.of());
         assertEquals(1, counter.get());
     }
 
@@ -116,8 +116,8 @@ class GraphSpecTest {
     void testV3JsonCanLoadThroughGraphApi() {
         GraphSpec blueprint = GraphSpec.create("v2_graph", bp -> {
             bp.entry("start");
-            bp.addStart("start").linkAdd("task");
-            bp.addActivity("task").task("@counter").linkAdd("end");
+            bp.addStart("start").linkTo("task");
+            bp.addActivity("task").task("@counter").linkTo("end");
             bp.addEnd("end");
         });
 
@@ -186,10 +186,10 @@ class GraphSpecTest {
     void testBlueprintPromotesEntryNodeInRuntimeGraph() {
         GraphSpec blueprint = GraphSpec.create("entry_promote", bp -> {
             bp.entry("task");
-            bp.metaPut("kind", "demo");
+            bp.putMetadata("kind", "demo");
             bp.title("entry promote");
             bp.driver("default");
-            bp.addActivity("task").task("@counter").linkAdd("end", link -> link.priority(7));
+            bp.addActivity("task").task("@counter").linkTo("end", link -> link.priority(7));
             bp.addEnd("end");
         });
 
@@ -197,7 +197,7 @@ class GraphSpecTest {
         assertEquals("entry_promote", graph.id());
         assertEquals("entry promote", graph.title());
         assertEquals("default", graph.driver());
-        assertEquals("demo", graph.meta("kind"));
+        assertEquals("demo", graph.metadata("kind"));
         assertEquals("task", graph.start().id());
         assertEquals(NodeType.ACTIVITY, graph.node("task").type());
         assertEquals("@counter", graph.node("task").task().description());
@@ -243,8 +243,8 @@ class GraphSpecTest {
     @Test
     void testBlueprintCopyPreservesPriority() {
         Graph graph = Graph.create("copy_priority", spec -> {
-            spec.addStart("s").linkAdd("task", link -> link.priority(5));
-            spec.addActivity("task").task("@counter").linkAdd("e");
+            spec.addStart("s").linkTo("task", link -> link.priority(5));
+            spec.addActivity("task").task("@counter").linkTo("e");
             spec.addEnd("e");
         });
 
@@ -263,7 +263,7 @@ class GraphSpecTest {
     void testBlueprintRejectsMissingEntryNode() {
         GraphSpec blueprint = GraphSpec.create("broken", bp -> {
             bp.entry("missing");
-            bp.addStart("start").linkAdd("end");
+            bp.addStart("start").linkTo("end");
             bp.addEnd("end");
         });
 
@@ -279,8 +279,8 @@ class GraphSpecTest {
     void testEngineCanLoadBlueprintDirectly() {
         GraphSpec blueprint = GraphSpec.create("engine_blueprint", bp -> {
             bp.entry("start");
-            bp.addStart("start").linkAdd("task");
-            bp.addActivity("task").task("@counter").linkAdd("end");
+            bp.addStart("start").linkTo("task");
+            bp.addActivity("task").task("@counter").linkTo("end");
             bp.addEnd("end");
         });
 
@@ -288,8 +288,8 @@ class GraphSpecTest {
         FlowEngine engine = newEngine(countingDriver(counter));
 
         engine.load(blueprint);
-        assertNotNull(engine.graph("engine_blueprint"));
-        engine.eval("engine_blueprint", FlowContext.of());
+        assertNotNull(engine.require("engine_blueprint"));
+        engine.run("engine_blueprint", FlowContext.of());
         assertEquals(1, counter.get());
     }
 
@@ -297,8 +297,8 @@ class GraphSpecTest {
     void testToMapDrainsPendingLinks() {
         GraphSpec bp = GraphSpec.create("map_test", spec -> {
             spec.entry("s");
-            spec.addStart("s").linkAdd("a");
-            spec.addActivity("a").task("@counter").linkAdd("e");
+            spec.addStart("s").linkTo("a");
+            spec.addActivity("a").task("@counter").linkTo("e");
             spec.addEnd("e");
         });
         Map<String, Object> map = bp.toMap();
@@ -312,8 +312,8 @@ class GraphSpecTest {
     void testToMapPreservesUnreachableNodes() {
         GraphSpec bp = GraphSpec.create("round_trip", spec -> {
             spec.entry("s");
-            spec.addStart("s").linkAdd("a");
-            spec.addActivity("a").linkAdd("e");
+            spec.addStart("s").linkTo("a");
+            spec.addActivity("a").linkTo("e");
             spec.addActivity("x");
             spec.addEnd("e");
         });
@@ -331,14 +331,14 @@ class GraphSpecTest {
     void testNodeMutationInvalidatesCompileOrder() {
         GraphSpec bp = GraphSpec.create("mutation_order", spec -> {
             spec.entry("s");
-            spec.addStart("s").linkAdd("a");
-            spec.addActivity("a").linkAdd("e");
+            spec.addStart("s").linkTo("a");
+            spec.addActivity("a").linkTo("e");
             spec.addActivity("x");
             spec.addEnd("e");
         });
 
         bp.toMap(); // prime cached normalization/BFS order
-        bp.node("s").linkAdd("x");
+        bp.node("s").linkTo("x");
 
         Map<String, Object> map = bp.toMap();
         @SuppressWarnings("unchecked")
@@ -368,7 +368,7 @@ class GraphSpecTest {
     void testNullLinkAddThrows() {
         GraphSpec bp = GraphSpec.create("null_link", spec -> {});
         var node = bp.addActivity("a");
-        assertThrows(NullPointerException.class, () -> node.linkAdd(null));
+        assertThrows(NullPointerException.class, () -> node.linkTo(null));
     }
 
     @Test
@@ -385,9 +385,9 @@ class GraphSpecTest {
         // guard is a passive backstop, not validation.
         GraphSpec bp = GraphSpec.create("cycle", spec -> {
             spec.entry("a");
-            spec.addActivity("a").task("@t1").linkAdd("b");
-            spec.addActivity("b").task("@t2").linkAdd("a");
-            spec.addActivity("c").task("@t3").linkAdd("end");
+            spec.addActivity("a").task("@t1").linkTo("b");
+            spec.addActivity("b").task("@t2").linkTo("a");
+            spec.addActivity("c").task("@t3").linkTo("end");
             spec.addEnd("end");
         });
         IllegalStateException ex = assertThrows(IllegalStateException.class, bp::create);
@@ -400,7 +400,7 @@ class GraphSpecTest {
         // A node linking to itself is a degenerate cycle and must be rejected.
         GraphSpec bp = GraphSpec.create("self", spec -> {
             spec.entry("a");
-            spec.addActivity("a").task("@t1").linkAdd("a");
+            spec.addActivity("a").task("@t1").linkTo("a");
             spec.addEnd("e");
         });
         IllegalStateException ex = assertThrows(IllegalStateException.class, bp::create);
@@ -412,7 +412,7 @@ class GraphSpecTest {
     void testToJsonAfterPartialBuild() {
         GraphSpec bp = GraphSpec.create("partial", spec -> {
             spec.entry("s");
-            spec.addStart("s").linkAdd("a");
+            spec.addStart("s").linkTo("a");
             spec.addActivity("a").task("@counter");
         });
         String json = bp.toJson();
@@ -439,8 +439,8 @@ class GraphSpecTest {
         // because the entry was already set.
         GraphSpec bp = GraphSpec.create("ok", spec -> {
             spec.entry("a");
-            spec.addStart("s").linkAdd("a");
-            spec.addActivity("a").task("@t").linkAdd("e");
+            spec.addStart("s").linkTo("a");
+            spec.addActivity("a").task("@t").linkTo("e");
             spec.addEnd("e");
         });
         Graph graph = bp.create();
@@ -465,9 +465,9 @@ class GraphSpecTest {
     void testUnconditionalDuplicateLinksRejected() {
         // Regression: two identical A->B edges executed B twice.
         GraphSpec bp = GraphSpec.create("dup", spec -> {
-            spec.addStart("s").linkAdd("a");
+            spec.addStart("s").linkTo("a");
             spec.addActivity("a").task("@t")
-                .linkAdd("e").linkAdd("e"); // duplicate unconditional edge
+                .linkTo("e").linkTo("e"); // duplicate unconditional edge
             spec.addEnd("e");
         });
         IllegalStateException ex = assertThrows(IllegalStateException.class, bp::create);
@@ -480,10 +480,10 @@ class GraphSpecTest {
         // Regression: handler-backed tasks silently vanished from toJson.
         GraphSpec bp = GraphSpec.create("inline", spec -> {
             spec.entry("s");
-            spec.addStart("s").linkAdd("a");
+            spec.addStart("s").linkTo("a");
             spec.addActivity("a")
                 .task((TaskHandler) (ctx, node) -> { })
-                .linkAdd("e");
+                .linkTo("e");
             spec.addEnd("e");
         });
         IllegalStateException ex = assertThrows(IllegalStateException.class, bp::toJson);

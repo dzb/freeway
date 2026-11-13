@@ -170,8 +170,8 @@ class UserDemoTest {
             List<Row> rows = db.query("SELECT * FROM t_user WHERE id = ?", id).list(Row.class);
             assertEquals(1, rows.size());
             Row row = rows.get(0);
-            assertEquals("闪电", row.string("name"));
-            assertEquals(3, row.integer("age").intValue());
+            assertEquals("闪电", row.asString("name"));
+            assertEquals(3, row.asInt("age").intValue());
 
             // SELECT → Record 映射
             User user = db.query("SELECT * FROM t_user WHERE id = ?", id)

@@ -31,7 +31,7 @@ class SseEmitterStreamTest {
         var baos = new ByteArrayOutputStream();
         var emitter = new SseEmitter(baos, 0);
         var publisher = new SubmissionPublisher<SseEvent>();
-        Thread pump = Thread.ofVirtual().start(() -> emitter.from(publisher));
+        Thread pump = Thread.ofVirtual().start(() -> emitter.pipe(publisher));
 
         awaitUntil(2000, () -> publisher.getNumberOfSubscribers() == 1);
         publisher.submit(new SseEvent("one"));
@@ -50,7 +50,7 @@ class SseEmitterStreamTest {
         var emitter = new SseEmitter(baos, 0);
         var publisher = new SubmissionPublisher<String>();
         Thread pump = Thread.ofVirtual().start(
-            () -> emitter.from(publisher, SseEvent::new));
+            () -> emitter.pipe(publisher, SseEvent::new));
 
         awaitUntil(2000, () -> publisher.getNumberOfSubscribers() == 1);
         publisher.submit("hello");
@@ -65,7 +65,7 @@ class SseEmitterStreamTest {
         var baos = new ByteArrayOutputStream();
         var emitter = new SseEmitter(baos, 0);
         var publisher = new SubmissionPublisher<SseEvent>();
-        Thread pump = Thread.ofVirtual().start(() -> emitter.from(publisher));
+        Thread pump = Thread.ofVirtual().start(() -> emitter.pipe(publisher));
 
         awaitUntil(2000, () -> publisher.getNumberOfSubscribers() == 1);
         // Client disconnect path: the handler closes the emitter while the
@@ -86,7 +86,7 @@ class SseEmitterStreamTest {
         var baos = new ByteArrayOutputStream();
         var emitter = new SseEmitter(baos, 0);
         var recording = new RecordingPublisher();
-        Thread pump = Thread.ofVirtual().start(() -> emitter.from(recording));
+        Thread pump = Thread.ofVirtual().start(() -> emitter.pipe(recording));
 
         awaitUntil(2000, () -> recording.subscribed());
         recording.deliver(new SseEvent("before"));
@@ -112,7 +112,7 @@ class SseEmitterStreamTest {
         var baos = new ByteArrayOutputStream();
         var emitter = new SseEmitter(baos, 0);
         var publisher = new SubmissionPublisher<SseEvent>();
-        Thread pump = Thread.ofVirtual().start(() -> emitter.from(publisher));
+        Thread pump = Thread.ofVirtual().start(() -> emitter.pipe(publisher));
 
         awaitUntil(2000, () -> publisher.getNumberOfSubscribers() == 1);
         publisher.submit(new SseEvent("before-crash"));
@@ -139,11 +139,11 @@ class SseEmitterStreamTest {
     void secondAttachRejected() throws Exception {
         var emitter = new SseEmitter(new ByteArrayOutputStream(), 0);
         var first = new SubmissionPublisher<SseEvent>();
-        Thread pump = Thread.ofVirtual().start(() -> emitter.from(first));
+        Thread pump = Thread.ofVirtual().start(() -> emitter.pipe(first));
         awaitUntil(2000, () -> first.getNumberOfSubscribers() == 1);
 
         assertThrows(IllegalStateException.class,
-            () -> emitter.from(new SubmissionPublisher<SseEvent>()));
+            () -> emitter.pipe(new SubmissionPublisher<SseEvent>()));
 
         emitter.close();
         pump.join(2000);
@@ -156,7 +156,7 @@ class SseEmitterStreamTest {
         var baos = new ByteArrayOutputStream();
         var emitter = new SseEmitter(baos, 0);
         var recording = new RecordingPublisher();
-        Thread pump = Thread.ofVirtual().start(() -> emitter.from(recording));
+        Thread pump = Thread.ofVirtual().start(() -> emitter.pipe(recording));
 
         awaitUntil(2000, () -> !recording.requests.isEmpty());
         assertEquals(List.of(1L), recording.requests,

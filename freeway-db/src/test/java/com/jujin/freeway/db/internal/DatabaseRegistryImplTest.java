@@ -2,7 +2,7 @@ package com.jujin.freeway.db.internal;
 
 import com.jujin.freeway.db.BatchQuery;
 import com.jujin.freeway.db.Database;
-import com.jujin.freeway.db.DatabaseStats;
+import com.jujin.freeway.db.PoolStats;
 import com.jujin.freeway.db.ExecuteResult;
 import com.jujin.freeway.db.IsolationLevel;
 import com.jujin.freeway.db.NamedDatabase;
@@ -40,9 +40,10 @@ class DatabaseRegistryImplTest {
             new DatabaseRegistryImpl(List.of(new NamedDatabase("primary", db),
                 new NamedDatabase("audit", db)));
 
-        assertEquals(2, registry.all().size());
+        assertEquals(2, registry.databases().size());
         assertEquals(db, registry.primary());
-        assertEquals(db, registry.get("audit"));
+        assertEquals(db, registry.find("audit").orElseThrow());
+        assertTrue(registry.find("missing").isEmpty(), "an absent name must be empty, not null");
     }
 
     /** Value object standing in for a Database — the registry only stores routes. */
@@ -84,7 +85,7 @@ class DatabaseRegistryImplTest {
         }
 
         @Override
-        public DatabaseStats stats() {
+        public PoolStats stats() {
             throw new UnsupportedOperationException();
         }
 

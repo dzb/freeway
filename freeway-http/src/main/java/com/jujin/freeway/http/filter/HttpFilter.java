@@ -1,6 +1,6 @@
 package com.jujin.freeway.http.filter;
 
-import com.jujin.freeway.http.HttpContext;
+import com.jujin.freeway.http.HttpExchange;
 import com.jujin.freeway.http.route.RouteHandler;
 
 /**
@@ -19,7 +19,7 @@ public interface HttpFilter {
      * the next filter or route handler in the chain by invoking
      * {@code next.handle(ctx)}.
      */
-    void doFilter(HttpContext ctx, RouteHandler next) throws Exception;
+    void doFilter(HttpExchange ctx, RouteHandler next) throws Exception;
 
     /** Execution order; lower values run earlier. Defaults to 0 for
      *  application filters. Built-ins use negative orders:

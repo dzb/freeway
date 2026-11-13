@@ -1,6 +1,7 @@
 package com.jujin.freeway.flow;
 
 import java.util.Collection;
+import java.util.Optional;
 import java.util.List;
 import java.util.function.BiConsumer;
 import java.util.Map;
@@ -12,13 +13,13 @@ import java.util.Map;
  * <pre>{@code
  * FlowEngine engine = FlowEngine.create();
  * engine.load(Graph.fromText(json));
- * engine.eval("graphId", FlowContext.of());
+ * engine.run("graphId", FlowContext.of());
  * }</pre>
  *
  * <p>The engine is IoC-free: {@code FlowModule} assembles the driver map and
  * the interceptor list from container contributions and hands them to
  * {@link #create(Map, List)}. Nothing here can be mutated after
- * construction — what an evaluation runs is decided once, at startup.</p>
+ * construction — what an execution runs is decided once, at startup.</p>
  */
 public interface FlowEngine {
 
@@ -48,9 +49,9 @@ public interface FlowEngine {
     }
 
     /**
-     * Creates an engine whose evaluations also forward every
+     * Creates an engine whose executions also forward every
      * {@link FlowContext#eventBus()} publish to {@code eventSink}, in addition
-     * to the evaluation's own subscribers. This is the core's exit: it knows
+     * to the execution's own subscribers. This is the core's exit: it knows
      * nothing about a container, so the container face ({@code FlowModule})
      * supplies a sink that publishes on the application's {@code EventBus}
      * under {@code "flow." + topic}. A standalone engine passes nothing and
@@ -78,58 +79,55 @@ public interface FlowEngine {
 
     Collection<Graph> graphs();
 
-    Graph graph(String graphId);
+    Optional<Graph> find(String graphId);
 
-    default Graph graphOrThrow(String graphId) {
-        Graph graph = graph(graphId);
-        if (graph == null) {
-            throw new FlowException("Flow graph not found: " + graphId);
-        }
-        return graph;
+    default Graph require(String graphId) {
+        return find(graphId).orElseThrow(
+            () -> new FlowException("Flow graph not found: " + graphId));
     }
 
     // --- eval ---
 
-    default void eval(String graphId) throws FlowException {
-        eval(graphOrThrow(graphId), FlowContext.of());
+    default void run(String graphId) throws FlowException {
+        run(require(graphId), FlowContext.of());
     }
 
-    default void eval(String graphId, FlowContext context) throws FlowException {
-        eval(graphOrThrow(graphId), context);
+    default void run(String graphId, FlowContext context) throws FlowException {
+        run(require(graphId), context);
     }
 
-    default void eval(Graph graph) throws FlowException {
-        eval(graph, FlowContext.of());
+    default void run(Graph graph) throws FlowException {
+        run(graph, FlowContext.of());
     }
 
     /** Evaluates the graph against a fresh context and returns its data. */
-    default Map<String, Object> evalAndGet(Graph graph) {
+    default Map<String, Object> runAndGet(Graph graph) {
         FlowContext context = FlowContext.of();
-        eval(graph, context);
+        run(graph, context);
         return context.data();
     }
 
-    default void eval(GraphSpec blueprint) throws FlowException {
-        eval(blueprint.create());
+    default void run(GraphSpec blueprint) throws FlowException {
+        run(blueprint.create());
     }
 
-    default void eval(GraphSpec blueprint, FlowContext context) throws FlowException {
-        eval(blueprint.create(), context);
+    default void run(GraphSpec blueprint, FlowContext context) throws FlowException {
+        run(blueprint.create(), context);
     }
 
     /**
-     * Evaluates a loaded graph. A fresh evaluation reaches the graph's END
+     * Runs a loaded graph. A fresh execution reaches the graph's END
      * node or fails: an EXCLUSIVE gateway that matches nothing or a join that
      * never assembles throws instead of completing silently. A run stopped
      * on purpose (by a task or interceptor calling {@link FlowContext#stop()})
      * is a legal early end.
      */
-    void eval(Graph graph, FlowContext context) throws FlowException;
+    void run(Graph graph, FlowContext context) throws FlowException;
 
     /**
-     * @hidden Continues an in-flight evaluation on another graph — the entry
-     *  {@link FlowEvaluation#runGraph} uses so the sub-run shares the parent's
-     *  join state. Applications call {@link #eval(Graph, FlowContext)}.
+     * @hidden Continues an in-flight execution on another graph — the entry
+     *  {@link FlowExecution#runGraph} uses so the sub-run shares the parent's
+     *  join state. Applications call {@link #run(Graph, FlowContext)}.
      */
-    void eval(Graph graph, FlowEvaluation evaluation) throws FlowException;
+    void run(Graph graph, FlowExecution execution) throws FlowException;
 }

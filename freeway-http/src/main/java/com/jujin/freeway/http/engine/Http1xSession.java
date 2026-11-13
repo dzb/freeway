@@ -13,7 +13,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.jujin.freeway.http.ErrorResponses;
-import com.jujin.freeway.http.HttpContextSupport;
+import com.jujin.freeway.http.HttpExchangeSupport;
 import com.jujin.freeway.http.engine.http2.FrameFlag;
 import com.jujin.freeway.http.engine.http2.FrameHeader;
 import com.jujin.freeway.http.engine.http2.FrameType;
@@ -104,7 +104,7 @@ final class Http1xSession {
                     req.isChunked(), out, req.keepAlive(),
                     secure, sslSession, remoteAddress);
                 transport.setFileSender(fileSender);
-                var context = new HttpContextSupport(transport, ctx.jsonCodec(),
+                var context = new HttpExchangeSupport(transport, ctx.jsonCodec(),
                     ctx.coercer(), ctx.config().maxBodySize(),
                     ctx.config().compression(), correlationId);
                 // The correlation id is echoed for tracing only — a hostile
@@ -120,9 +120,9 @@ final class Http1xSession {
                 try { ctx.executeRequest(context); }
                 catch (Exception e) {
                     LOG.debug("Handler exception for {} {}", req.method(), req.path(), e);
-                    if (!context.isResponded()) {
+                    if (!context.isCommitted()) {
                         try {
-                            ErrorResponses.internalError(context);
+                            ErrorResponses.internalError().write(context);
                         } catch (IOException ignored) {}
                     }
                 }

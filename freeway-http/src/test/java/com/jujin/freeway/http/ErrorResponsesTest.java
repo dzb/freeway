@@ -16,7 +16,7 @@ class ErrorResponsesTest {
     @Test
     void notFoundAnswersJson() throws Exception {
         TestExchange ctx = new TestExchange();
-        ErrorResponses.notFound(ctx);
+        ErrorResponses.notFound().write(ctx);
 
         assertEquals(404, ctx.status());
         assertTrue(ctx.responseHeader("Content-Type").startsWith("application/json"),
@@ -29,7 +29,7 @@ class ErrorResponsesTest {
     @Test
     void methodNotAllowedKeepsAllowAndAnswersJson() throws Exception {
         TestExchange ctx = new TestExchange();
-        ErrorResponses.methodNotAllowed(ctx, "GET, HEAD");
+        ErrorResponses.methodNotAllowed("GET, HEAD").write(ctx);
 
         assertEquals(405, ctx.status());
         assertEquals("GET, HEAD", ctx.responseHeader("Allow"),
@@ -42,7 +42,7 @@ class ErrorResponsesTest {
     @Test
     void internalErrorAnswersJson() throws Exception {
         TestExchange ctx = new TestExchange();
-        ErrorResponses.internalError(ctx);
+        ErrorResponses.internalError().write(ctx);
 
         assertEquals(500, ctx.status());
         assertTrue(ctx.responseHeader("Content-Type").startsWith("application/json"),

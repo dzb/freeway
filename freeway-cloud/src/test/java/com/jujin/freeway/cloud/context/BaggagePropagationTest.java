@@ -4,13 +4,13 @@ import com.jujin.freeway.cloud.CloudModule;
 
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
-import com.jujin.freeway.cloud.discovery.Endpoint;
+import com.jujin.freeway.cloud.discovery.ServiceEndpoint;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.cloud.discovery.ServiceRegistry;
-import com.jujin.freeway.cloud.internal.BaggagePropagator;
-import com.jujin.freeway.cloud.rpc.CloudHttpClient;
-import com.jujin.freeway.cloud.rpc.CloudRequest;
-import com.jujin.freeway.http.HttpContext;
+import com.jujin.freeway.cloud.context.internal.BaggagePropagator;
+import com.jujin.freeway.cloud.rpc.RpcHttpClient;
+import com.jujin.freeway.cloud.rpc.RpcRequest;
+import com.jujin.freeway.http.HttpExchange;
 import com.jujin.freeway.http.HttpModule;
 import com.jujin.freeway.http.route.Route;
 import com.jujin.freeway.http.route.RouteHandler;
@@ -36,7 +36,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * W3C {@code baggage} end-to-end: inbound extraction restores the baggage
- * into the request scope; the CloudHttpClient outbound call re-injects it, so
+ * into the request scope; the RpcHttpClient outbound call re-injects it, so
  * application-owned KV crosses the service boundary in both directions.
  */
 class BaggagePropagationTest {
@@ -64,7 +64,7 @@ class BaggagePropagationTest {
         try (AppRuntime app = FreewayApp.create(new BaggageModule(), new HttpModule()).add(CloudModule.class).start()) {
             app.get(ServiceRegistry.class).register(
                 ServiceInstance.of("svc", "i1",
-                    Endpoint.of("http", "127.0.0.1", app.get(com.jujin.freeway.http.HttpServer.class).port()),
+                    ServiceEndpoint.of("http", "127.0.0.1", app.get(com.jujin.freeway.http.HttpServer.class).port()),
                     Map.of()));
 
             HttpClient client = HttpClient.newHttpClient();
@@ -94,7 +94,7 @@ class BaggagePropagationTest {
         try (AppRuntime app = FreewayApp.create(new BaggageModule(), new HttpModule()).add(CloudModule.class).start()) {
             app.get(ServiceRegistry.class).register(
                 ServiceInstance.of("svc", "i1",
-                    Endpoint.of("http", "127.0.0.1", app.get(com.jujin.freeway.http.HttpServer.class).port()),
+                    ServiceEndpoint.of("http", "127.0.0.1", app.get(com.jujin.freeway.http.HttpServer.class).port()),
                     Map.of()));
 
             HttpClient client = HttpClient.newHttpClient();
@@ -189,22 +189,22 @@ class BaggagePropagationTest {
             b.contribute(Route.class).add(Route.get("/api/call", CallHandler.class));
             b.contribute(Route.class).add(Route.get("/api/echo", ctx -> {
                 CALLEE_SEEN.set(InvocationContext.current().map(InvocationContext::baggage).orElse(null));
-                ctx.send(200, "ok");
+                ctx.sendText(200, "ok");
             }));
         }
 
         static class CallHandler implements RouteHandler {
-            private final CloudHttpClient client;
+            private final RpcHttpClient client;
 
-            CallHandler(CloudHttpClient client) {
+            CallHandler(RpcHttpClient client) {
                 this.client = client;
             }
 
             @Override
-            public void handle(HttpContext ctx) throws Exception {
+            public void handle(HttpExchange ctx) throws Exception {
                 ENTRY_SEEN.set(InvocationContext.current().map(InvocationContext::baggage).orElse(null));
-                client.call("svc", CloudRequest.get("/api/echo"));
-                ctx.send(200, "ok");
+                client.call("svc", RpcRequest.get("/api/echo"));
+                ctx.sendText(200, "ok");
             }
         }
     }

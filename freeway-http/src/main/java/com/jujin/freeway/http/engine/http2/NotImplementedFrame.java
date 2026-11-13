@@ -3,12 +3,17 @@ package com.jujin.freeway.http.engine.http2;
 import java.io.IOException;
 import java.io.OutputStream;
 
-final class NotImplementedFrame extends BaseFrame {
+final class NotImplementedFrame implements Http2Frame {
+    private final FrameHeader header;
+
+    @Override
+    public FrameHeader header() { return header; }
+
 
     private final byte[] body;
 
     private NotImplementedFrame(FrameHeader header, byte[] body) {
-        super(header);
+        this.header = header;
         this.body = body;
     }
 

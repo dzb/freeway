@@ -1,6 +1,6 @@
 package com.jujin.freeway.http.websocket;
 
-import java.util.Objects;
+import com.jujin.freeway.http.internal.ResolvableValue;
 import java.util.Set;
 import java.util.function.Supplier;
 
@@ -26,21 +26,20 @@ import java.util.function.Supplier;
  * another package.
  */
 public final class ResolvableEndpoint implements WebSocketEndpoint {
-    private final Class<? extends WebSocketEndpoint> endpointType;
-    private volatile WebSocketEndpoint resolved;
+    private final ResolvableValue<WebSocketEndpoint> resolved;
 
     public ResolvableEndpoint(Class<? extends WebSocketEndpoint> endpointType) {
-        this.endpointType = Objects.requireNonNull(endpointType, "endpointType");
+        this.resolved = new ResolvableValue<>(endpointType);
     }
 
     /** The endpoint class this route was declared with. */
     public Class<? extends WebSocketEndpoint> endpointType() {
-        return endpointType;
+        return resolved.declaredType();
     }
 
     /** True once {@link #resolve} has handed in the built instance. */
     public boolean isResolved() {
-        return resolved != null;
+        return resolved.isResolved();
     }
 
     /**
@@ -49,24 +48,12 @@ public final class ResolvableEndpoint implements WebSocketEndpoint {
      * expansion is instantiated exactly once.
      */
     public WebSocketEndpoint resolve(Supplier<WebSocketEndpoint> factory) {
-        Objects.requireNonNull(factory, "factory");
-        WebSocketEndpoint h = resolved;
-        if (h == null) {
-            synchronized (this) {
-                h = resolved;
-                if (h == null) {
-                    resolved = h = Objects.requireNonNull(
-                        factory.get(), "factory.get()"
-                    );
-                }
-            }
-        }
-        return h;
+        return resolved.resolve(factory);
     }
 
     @Override
     public WebSocketListener open(WebSocketSession session) throws Exception {
-        WebSocketEndpoint h = resolved;
+        WebSocketEndpoint h = resolved.peek();
         if (h == null) {
             throw unresolved("upgrade");
         }
@@ -75,7 +62,7 @@ public final class ResolvableEndpoint implements WebSocketEndpoint {
 
     @Override
     public Set<String> subprotocols() {
-        WebSocketEndpoint h = resolved;
+        WebSocketEndpoint h = resolved.peek();
         if (h == null) {
             throw unresolved("handshake");
         }
@@ -95,7 +82,7 @@ public final class ResolvableEndpoint implements WebSocketEndpoint {
      */
     private IllegalStateException unresolved(String phase) {
         return new IllegalStateException(
-            "Endpoint class " + endpointType.getName() + " was never resolved: this "
+            "Endpoint class " + endpointType().getName() + " was never resolved: this "
                 + "endpoint wrapper was invoked directly at " + phase + ", outside an "
                 + "index. HttpModule resolves class endpoints while building the index, "
                 + "and WebSocketIndex refuses to build one that still holds an unresolved "

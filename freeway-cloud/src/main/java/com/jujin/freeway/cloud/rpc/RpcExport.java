@@ -55,7 +55,7 @@ public record RpcExport(String mapping, Class<?> type, boolean propagateMessage)
      * The same export, additionally forwarding the handler's exception message
      * to the caller. Opt in only on a mesh you control end to end.
      */
-    public RpcExport propagateMessages() {
+    public RpcExport withPropagatedMessages() {
         return new RpcExport(mapping, type, true);
     }
 }

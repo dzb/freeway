@@ -216,7 +216,7 @@ freeway-http/
 
 ```java
 Solon.start(MyApp.class, args, app -> {
-    app.get("/hello", ctx -> ctx.output("Hello"));
+    app.get("/hello", ctx -> ctx.text("Hello"));
 });
 ```
 

@@ -295,8 +295,8 @@ Defer 本身是通用的。任何有"成功 / 回滚"语义的边界都可以用
 |-----|------|
 | `ScopedCache.within(Runnable)` / `within(Supplier<T>)` | 打开访问窗口；在 action scope 内附着到它；否则新建 value scope，退出时清理 |
 | `ScopedCache.within(Function<ScopeSession,T>)` | 同上，并传入只读的 `ScopeSession` token（`isActionScope()` / `isClosed()`） |
-| `ScopedCache.get(key, factory)` | 窗口内首次创建并缓存；窗口外直接创建，不缓存、不清理 |
-| `ScopedCache.get(key, factory, onExit)` | 同上，并在拥有它的 scope 关闭时对每个值调用一次 `onExit` |
+| `ScopedCache.computeIfAbsent(key, factory)` | 窗口内首次创建并缓存；窗口外直接创建，不缓存、不清理 |
+| `ScopedCache.computeIfAbsent(key, factory, onExit)` | 同上，并在拥有它的 scope 关闭时对每个值调用一次 `onExit` |
 | `ScopedCache.onClose(handler)` / `removeOnClose(handler)` | 进程级清理 handler，对每个缓存值调用一次 |
 | `ScopedCache.isActive()` | 当前是否在访问窗口内（不是“当前 action 是否持有值”） |
 | `ScopedCache.currentSession()` | 窗口内的只读 `ScopeSession` token，否则 `null` |
@@ -305,7 +305,7 @@ Defer 本身是通用的。任何有"成功 / 回滚"语义的边界都可以用
 
 ```java
 ScopedCache.within(() -> {
-    Connection conn = ScopedCache.get("conn", () -> dataSource.getConnection());
+    Connection conn = ScopedCache.computeIfAbsent("conn", () -> dataSource.getConnection());
     Defer.within(() -> Defer.defer(() -> conn.flush()));  // 动作能看到 conn
 });
 // conn 在拥有它的 scope 关闭时清理
@@ -316,8 +316,8 @@ ScopedCache.within(() -> {
 ```java
 Defer.within(() -> {
     ScopedCache.within(() -> {
-        ScopedCache.get("conn", () -> open(), c -> close(c));
-        Defer.defer(() -> use(ScopedCache.get("conn", () -> open())));
+        ScopedCache.computeIfAbsent("conn", () -> open(), c -> close(c));
+        Defer.defer(() -> use(ScopedCache.computeIfAbsent("conn", () -> open())));
     });
     // 块外：isActive() == false，get 创建不缓存的值；但 conn 仍在，
     // 直到本 action scope 关闭才 close(c)
@@ -331,7 +331,7 @@ Defer.within(() -> {
 - **关闭顺序**：动作先执行、值后清理；回滚只丢弃动作，值仍然清理（清理必须发生）。
 - **失败与重复**：每个值的 entry cleanup 先于全局 `onClose` handler；同一值（identity）只处理一次；handler 异常只记日志，不跳过其余值。
 - **只读 token**：`ScopeSession` 不提供 `rollback`/`close`；回滚用 `Defer.rollback()`，关闭由打开它的门面拥有。
-- **Thread 作用域**：`ScopeBoundary.within` 基于同一个 value scope；在 `Defer` 内打开时 bean 附着、活到 action 关闭，访问窗口之外不再解析新的 THREAD bean。
+- **Boundary 作用域**：`ScopeBoundary.within` 基于同一个 value scope；在 `Defer` 内打开时 bean 附着、活到 action 关闭，访问窗口之外不再解析新的 BOUNDARY bean。
 
 ### 不要用它做
 
@@ -347,14 +347,14 @@ Defer.within(() -> {
 ```java
 ScopedCache.within(() -> {
     Defer.within(() -> {
-        Object v = ScopedCache.get(k, factory);
+        Object v = ScopedCache.computeIfAbsent(k, factory);
         Defer.defer(() -> use(v));   // 动作看得到外层缓存值
     });
 });
 
 Defer.within(() -> {
     ScopedCache.within(() -> {
-        Object v = ScopedCache.get(k, factory);
+        Object v = ScopedCache.computeIfAbsent(k, factory);
         Defer.defer(() -> use(v));   // 内层 cache 的值附着到外层 action scope，仍打开
     });
 });

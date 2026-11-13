@@ -34,12 +34,12 @@ class FlowModuleTest {
     /** A driver that stamps the context with its own label. */
     public static final class LabelDriver implements FlowDriver {
         @Override
-        public boolean handleCondition(FlowEvaluation evaluation, ConditionDesc condition) {
+        public boolean handleCondition(FlowExecution evaluation, ConditionDesc condition) {
             return true;
         }
 
         @Override
-        public void handleTask(FlowEvaluation evaluation, TaskDesc task) {
+        public void handleTask(FlowExecution evaluation, TaskDesc task) {
             if (!task.isEmpty()) evaluation.context().put("driver", "label");
         }
     }
@@ -47,8 +47,8 @@ class FlowModuleTest {
     private static Graph simpleGraph(String task, String driver) {
         return GraphSpec.create("g", "", driver, s -> {
             s.entry("s");
-            s.addStart("s").linkAdd("a");
-            s.addActivity("a").task(task).linkAdd("e");
+            s.addStart("s").linkTo("a");
+            s.addActivity("a").task(task).linkTo("e");
             s.addEnd("e");
         }).create();
     }
@@ -70,7 +70,7 @@ class FlowModuleTest {
         container.get(com.jujin.freeway.ioc.event.EventBus.class)
             .subscribe("flow.audit", received::add);
 
-        container.get(FlowEngine.class).eval(simpleGraph("@emit", null), FlowContext.of());
+        container.get(FlowEngine.class).run(simpleGraph("@emit", null), FlowContext.of());
 
         assertEquals(List.of("hello"), received,
             "a container-assembled engine forwards execution events to the application bus");
@@ -84,7 +84,7 @@ class FlowModuleTest {
         FlowEngine engine = container.get(FlowEngine.class);
         engine.load(simpleGraph("@worker", null));
         FlowContext ctx = FlowContext.of();
-        engine.eval("g", ctx);
+        engine.run("g", ctx);
         assertEquals(Boolean.TRUE, ctx.get("worked"));
     }
 
@@ -96,7 +96,7 @@ class FlowModuleTest {
         FlowEngine engine = container.get(FlowEngine.class);
         engine.load(simpleGraph("@anything", null));
         FlowContext ctx = FlowContext.of();
-        engine.eval("g", ctx);
+        engine.run("g", ctx);
         assertEquals("label", ctx.get("driver"),
             "the contributed default must replace FlowDriverDefault (warn-override contract)");
     }
@@ -116,7 +116,7 @@ class FlowModuleTest {
 
         FlowEngine engine = container.get(FlowEngine.class);
         engine.load(simpleGraph("@anything", null));
-        engine.eval("g", FlowContext.of());
+        engine.run("g", FlowContext.of());
 
         // s, a, e each get a node-start: three visits for the simple graph.
         assertEquals(3, starts.get(),

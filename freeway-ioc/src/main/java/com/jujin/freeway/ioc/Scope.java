@@ -5,12 +5,12 @@ package com.jujin.freeway.ioc;
  *
  * <ul>
  *   <li>{@link #SINGLETON} — one instance per container (default)</li>
- *   <li>{@link #THREAD} — one instance per {@link ScopeBoundary#within} boundary</li>
+ *   <li>{@link #BOUNDARY} — one instance per {@link ScopeBoundary#within} boundary</li>
  *   <li>{@link #PROTOTYPE} — new instance every resolution</li>
  * </ul>
  */
 public enum Scope {
     SINGLETON,
-    THREAD,
+    BOUNDARY,
     PROTOTYPE,
 }

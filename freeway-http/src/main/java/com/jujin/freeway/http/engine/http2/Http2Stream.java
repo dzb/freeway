@@ -38,7 +38,7 @@ public final class Http2Stream {
 
     private final AtomicLong receiveWindow = new AtomicLong(65535);
     private final AtomicBoolean handlingRequest = new AtomicBoolean();
-    private final AtomicBoolean headersSent = new AtomicBoolean();
+    private final AtomicBoolean committed = new AtomicBoolean();
     private final AtomicBoolean responseAborted = new AtomicBoolean();
     private volatile Thread thread;
     private volatile boolean streamOpen = true;
@@ -79,7 +79,7 @@ public final class Http2Stream {
      * it needed, navigated away); a cancel before it is the asymmetric
      * rapid-reset shape, where the server paid handler work for no response.
      */
-    boolean isResponseCommitted() { return headersSent.get(); }
+    public boolean isCommitted() { return committed.get(); }
 
     public void sendReset() throws IOException {
         if (responseAborted.compareAndSet(false, true)) {
@@ -158,20 +158,11 @@ public final class Http2Stream {
         close();
     }
 
-    public void dispatch(BaseFrame frame, ExecutorService executor) throws IOException {
-        switch (frame.header().type()) {
-            case HEADERS, CONTINUATION -> {
-                if (halfClosed) throw new Http2Exception(Http2ErrorCode.STREAM_CLOSED);
-                // END_STREAM on HEADERS means no body, but only if END_HEADERS
-                // is also set (header block complete). Otherwise CONTINUATION follows.
-                if (frame.header().flags().contains(FrameFlag.END_STREAM)
-                        && frame.header().flags().contains(FrameFlag.END_HEADERS)) {
-                    halfClosed = true;
-                }
-                startRequest(executor);
-            }
-            case DATA -> {
-                var dataFrame = (DataFrame) frame;
+    public void dispatch(Http2Frame frame, ExecutorService executor) throws IOException {
+        switch (frame) {
+            case HeadersFrame headers -> handleHeaderFrame(headers, executor);
+            case ContinuationFrame continuation -> handleHeaderFrame(continuation, executor);
+            case DataFrame dataFrame -> {
                 if (halfClosed) throw new Http2Exception(Http2ErrorCode.STREAM_CLOSED);
                 if (!streamOpen) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
                 // Enforce the stream-level receive window at frame receipt, not
@@ -193,8 +184,8 @@ public final class Http2Stream {
                     dataIn.wakeupReader();
                 }
             }
-            case WINDOW_UPDATE -> {
-                int increment = ((WindowUpdateFrame) frame).increment();
+            case WindowUpdateFrame windowUpdate -> {
+                int increment = windowUpdate.increment();
                 Http2FrameValidator.requirePositiveWindowIncrement(increment);
                 if (Http2FrameValidator.sendWindowOverflow(
                         sendWindow.addAndGet(increment))) {
@@ -205,12 +196,30 @@ public final class Http2Stream {
                 // Writers blocked on this stream's window re-check after wake.
                 connection.unparkWindowWaiters();
             }
-            default -> {}
+            case GoawayFrame ignored -> {}
+            case PingFrame ignored -> {}
+            case PriorityFrame ignored -> {}
+            case PushPromiseFrame ignored -> {}
+            case ResetStreamFrame ignored -> {}
+            case SettingsFrame ignored -> {}
+            case NotImplementedFrame ignored -> {}
         }
     }
 
+    private void handleHeaderFrame(Http2Frame frame, ExecutorService executor)
+            throws IOException {
+        if (halfClosed) throw new Http2Exception(Http2ErrorCode.STREAM_CLOSED);
+        // END_STREAM on HEADERS means no body, but only if END_HEADERS
+        // is also set (header block complete). Otherwise CONTINUATION follows.
+        if (frame.header().flags().contains(FrameFlag.END_STREAM)
+                && frame.header().flags().contains(FrameFlag.END_HEADERS)) {
+            halfClosed = true;
+        }
+        startRequest(executor);
+    }
+
     public void writeResponseHeaders(boolean closeStream) throws IOException {
-        if (!headersSent.compareAndSet(false, true)) return;
+        if (!committed.compareAndSet(false, true)) return;
         // The connection may have been closed (peer disconnect) while this
         // stream's handler was still running — writing into the dead
         // connection would throw from an already-closed stream. Surface a
@@ -313,7 +322,7 @@ public final class Http2Stream {
         public void close() throws IOException {
             if (closed) return;
             try {
-                if (connection.isClosed()) { headersSent.compareAndSet(false, true); return; }
+                if (connection.isClosed()) { committed.compareAndSet(false, true); return; }
                 writeResponseHeaders(false);
                 if (!streamOutputClosed) {
                     connection.writeFrame(

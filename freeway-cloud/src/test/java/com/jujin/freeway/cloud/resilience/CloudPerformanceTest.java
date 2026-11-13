@@ -1,9 +1,9 @@
 package com.jujin.freeway.cloud.resilience;
 
 import com.jujin.freeway.cloud.context.TraceContext;
-import com.jujin.freeway.cloud.discovery.Endpoint;
+import com.jujin.freeway.cloud.discovery.ServiceEndpoint;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
-import com.jujin.freeway.cloud.internal.RegistryStore;
+import com.jujin.freeway.cloud.discovery.internal.RegistryStore;
 
 import org.junit.jupiter.api.Test;
 
@@ -54,7 +54,7 @@ class CloudPerformanceTest {
         assertTrue(ops > FLOOR_OPS_PER_SECOND, "got " + (long) ops);
     }
 
-    /** The per-service shard lookup the CloudHttpClient performs per call. */
+    /** The per-service shard lookup the RpcHttpClient performs per call. */
     @Test
     void perServiceShardLookupThroughput() throws Exception {
         var shards = new java.util.concurrent.ConcurrentHashMap<String, CircuitBreakerDefault>();
@@ -112,7 +112,7 @@ class CloudPerformanceTest {
         RegistryStore store = new RegistryStore();
         double ops = measure(4, 200_000, () -> {
             store.register(ServiceInstance.of("svc", "i1",
-                Endpoint.of("http", "127.0.0.1", 8080), Map.of()));
+                ServiceEndpoint.of("http", "127.0.0.1", 8080), Map.of()));
             if (store.liveReady("svc", Duration.ofSeconds(30)).isEmpty()) {
                 throw new AssertionError("freshly registered instance must be live");
             }

@@ -2,11 +2,11 @@ package com.jujin.freeway.cloud.rpc;
 
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
-import com.jujin.freeway.cloud.discovery.Endpoint;
+import com.jujin.freeway.cloud.discovery.ServiceEndpoint;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.cloud.discovery.LoadBalancerDefault;
 import com.jujin.freeway.cloud.observe.MetricsDefault;
-import com.jujin.freeway.cloud.internal.RegistryStore;
+import com.jujin.freeway.cloud.discovery.internal.RegistryStore;
 import com.jujin.freeway.cloud.discovery.ServiceDiscoveryDefault;
 import com.jujin.freeway.cloud.observe.TracerDefault;
 import com.jujin.freeway.http.HttpModule;
@@ -22,9 +22,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * RPC → observability wiring: CloudHttpClient calls record {@code cloud.rpc.*}
+ * RPC → observability wiring: RpcHttpClient calls record {@code cloud.rpc.*}
  * metrics and (when tracing is enabled) create spans. The client is wired by
- * hand instead of through {@code CloudRpcModule}, because the container hands
+ * hand instead of through {@code RpcModule}, because the container hands
  * out a proxied {@code MetricsDefault} whose snapshot accessors the proxy does
  * not expose — the module-level assembly is covered by the container tests.
  */
@@ -40,28 +40,28 @@ class RpcObserveTest {
         System.clearProperty(ConfigKeys.SERVER_PORT);
     }
 
-    private static CloudHttpClientDefault client(
+    private static RpcHttpClientDefault client(
         HttpServer server, MetricsDefault metrics, TracerDefault tracer) {
         var store = new RegistryStore();
         store.register(ServiceInstance.of("echo", "i1",
-            Endpoint.of("http", server.host(), server.port()), Map.of()));
-        return new CloudHttpClientDefault(
+            ServiceEndpoint.of("http", server.host(), server.port()), Map.of()));
+        return new RpcHttpClientDefault(
             new ServiceDiscoveryDefault(store),
             new LoadBalancerDefault(),
-            CloudHttpClientDefault.Wiring.defaults()
+            RpcHttpClientDefault.Wiring.defaults()
                 .withTracer(tracer)
                 .withMetrics(metrics));
     }
 
     @Test
-    void successfulCallsAreCountedAgainstCloudRpcMetrics() throws Exception {
+    void successfulCallsAreCountedAgainstRpcMetrics() throws Exception {
         try (AppRuntime app = FreewayApp.run(
-            new CloudHttpClientTest.EchoModule(), new HttpModule())) {
+            new RpcHttpClientTest.EchoModule(), new HttpModule())) {
             var metrics = new MetricsDefault();
-            CloudHttpClientDefault client = client(app.get(HttpServer.class), metrics, new TracerDefault());
+            RpcHttpClientDefault client = client(app.get(HttpServer.class), metrics, new TracerDefault());
 
-            CloudResponse resp = client.call("echo", CloudRequest.get("/api/echo"));
-            assertTrue(resp.is2xx());
+            RpcResponse resp = client.call("echo", RpcRequest.get("/api/echo"));
+            assertTrue(resp.isSuccess());
 
             assertEquals(1, metrics.counterValue("cloud.rpc.calls"),
                 "each successful call must increment cloud.rpc.calls");
@@ -75,13 +75,13 @@ class RpcObserveTest {
     @Test
     void metricsAreRecordedWhenTracingIsDisabled() throws Exception {
         try (AppRuntime app = FreewayApp.run(
-            new CloudHttpClientTest.EchoModule(), new HttpModule())) {
+            new RpcHttpClientTest.EchoModule(), new HttpModule())) {
             var metrics = new MetricsDefault();
             // tracer == null mirrors freeway.cloud.rpc.trace.enabled=false.
-            CloudHttpClientDefault client = client(app.get(HttpServer.class), metrics, null);
+            RpcHttpClientDefault client = client(app.get(HttpServer.class), metrics, null);
 
-            CloudResponse resp = client.call("echo", CloudRequest.get("/api/echo"));
-            assertTrue(resp.is2xx());
+            RpcResponse resp = client.call("echo", RpcRequest.get("/api/echo"));
+            assertTrue(resp.isSuccess());
 
             assertEquals(1, metrics.counterValue("cloud.rpc.calls"),
                 "metrics must stay wired when tracing is disabled");

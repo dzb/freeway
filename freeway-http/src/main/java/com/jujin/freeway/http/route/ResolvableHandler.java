@@ -1,7 +1,7 @@
 package com.jujin.freeway.http.route;
 
-import com.jujin.freeway.http.HttpContext;
-import java.util.Objects;
+import com.jujin.freeway.http.HttpExchange;
+import com.jujin.freeway.http.internal.ResolvableValue;
 import java.util.function.Supplier;
 
 /**
@@ -35,16 +35,15 @@ import java.util.function.Supplier;
  * {@code HttpModule} can reach it from another package.
  */
 public final class ResolvableHandler implements RouteHandler {
-    private final Class<? extends RouteHandler> handlerType;
-    private volatile RouteHandler resolved;
+    private final ResolvableValue<RouteHandler> resolved;
 
     public ResolvableHandler(Class<? extends RouteHandler> handlerType) {
-        this.handlerType = handlerType;
+        this.resolved = new ResolvableValue<>(handlerType);
     }
 
     /** The handler class this route was declared with. */
     public Class<? extends RouteHandler> handlerType() {
-        return handlerType;
+        return resolved.declaredType();
     }
 
     /**
@@ -59,7 +58,7 @@ public final class ResolvableHandler implements RouteHandler {
      * directly; an index never holds one.
      */
     public boolean isResolved() {
-        return resolved != null;
+        return resolved.isResolved();
     }
 
     /**
@@ -68,31 +67,19 @@ public final class ResolvableHandler implements RouteHandler {
      * route set is instantiated exactly once.
      */
     public RouteHandler resolve(Supplier<RouteHandler> factory) {
-        Objects.requireNonNull(factory, "factory");
-        RouteHandler h = resolved;
-        if (h == null) {
-            synchronized (this) {
-                h = resolved;
-                if (h == null) {
-                    resolved = h = Objects.requireNonNull(
-                        factory.get(), "factory.get()"
-                    );
-                }
-            }
-        }
-        return h;
+        return resolved.resolve(factory);
     }
 
     @Override
-    public void handle(HttpContext ctx) throws Exception {
-        RouteHandler h = resolved;
+    public void handle(HttpExchange ctx) throws Exception {
+        RouteHandler h = resolved.peek();
         if (h == null) {
             // An unresolved wrapper cannot be inside an index — RouteIndex
             // refuses to build one — so this means the wrapper itself was
             // called. It still names the class and the way out rather than
             // failing on a null dispatch.
             throw new IllegalStateException(
-                "Handler class " + handlerType.getName() + " was never resolved: this "
+                "Handler class " + handlerType().getName() + " was never resolved: this "
                     + "route wrapper was invoked directly, outside an index. HttpModule "
                     + "resolves class routes while building the index, and RouteIndex "
                     + "refuses to build one that still holds an unresolved wrapper — so "

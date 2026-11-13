@@ -25,17 +25,24 @@ freeway-commons         zero deps
 ## Architecture Boundaries
 
 - **`Container`** — IoC boundary only: `get(type[, id | markers])`,
-  `isActiveBinding`, `extension`, `create` (a factory — full injection without
-  caching), `close()`.
-  Created via `Freeway.create(ModuleEx...)` or `Freeway.create(Class...)`,
-  optionally named — `Freeway.create(appName, ModuleEx...)` — for the startup
-  log's root line.
+  `isActiveBindingMarked`, `extension`, `create` (a factory — full injection without
+  caching), `describe`, `close()`.
+  Created via `Freeway.create(ModuleEx...)`, `Freeway.create(Class...)`, or
+  `Freeway.create(ModuleDeclaration...)`, optionally named — for the startup
+  log's root line. `describe()` returns a `RuntimeDescription`: module,
+  binding and contribution metadata, never service instances or config values.
 - **`AppRuntime`** — application boundary above Container: owns config,
   profiles, startup/shutdown and runtime hooks. Created via
   `FreewayApp.run(Launch, ModuleEx...)`, or through the launcher
-  `FreewayApp.create(...).name(...).start()`.
+  `FreewayApp.create(...).name(...).start()`. `describe()` returns an
+  `AppRuntimeDescription` combining runtime state, profile names, config key
+  names and the container's `RuntimeDescription`.
 - **`ModuleEx`** — declares its bindings in `bind(Binder)`; how it is placed is
-  not its concern. Composition has **two sources**, and they are ordered:
+  not its concern. A placement is a `ModuleDeclaration`: either a class
+  resolved when the container loads, or a configured instance. That type owns
+  no-arg instantiation and `@SubModule` metadata once, so the launcher, the
+  container and SPI discovery cannot implement class/instance semantics twice.
+  Composition has **two sources**, and they are ordered:
   1. the modules handed to the entry point (instances and class declarations, in
      order), always;
   2. the `META-INF/services/com.jujin.freeway.ioc.ModuleEx` providers on the
@@ -49,8 +56,10 @@ freeway-commons         zero deps
   on `FreewayApp` a classpath with those jars and no explicit placement still
   composes them — a server starts / a database is configured by presence alone.
   The structure behind composition (`ModuleNode`, package-private in
-  `ioc.internal`) is internal — it exists to own the invariants and to render
-  the startup log, not as an API. A module whose class declares `@SubModule` is a **bundle**: its
+  `ioc.internal`) is internal — it owns the invariants and renders the startup
+  log. The supported inspection surface is `Container.describe()` /
+  `AppRuntime.describe()`, not the tree type. A module whose class declares
+  `@SubModule` is a **bundle**: its
   submodules follow it as static metadata the entry point reads, and any
   submodule can be placed on its own instead. A class is a declaration
   instantiated at load time, an instance a configured module (the only form a
@@ -64,8 +73,9 @@ freeway-commons         zero deps
 - **`ServiceId`** is intentionally not a public type — service ids are plain
   strings, normalized internally by `ServiceIds`.
 - **Scopes** are declared only through `bind().scope(...)`: `SINGLETON`,
-  `PROTOTYPE`, `THREAD`. Thread scope is entered through `ScopeBoundary.within(...)`,
-  the `ScopeBoundary` service obtained from the container.
+  `PROTOTYPE`, `BOUNDARY`. A boundary scope is entered through
+  `ScopeBoundary.within(...)`, the `ScopeBoundary` service obtained from the
+  container.
 - **`Defer` / `ScopedCache`** (`commons.scoped`, built on `ScopedValue`) —
   one `ScopeSession`: `Defer` buffers actions for commit-time drain;
   `ScopedCache` caches key/value pairs with cleanup when the owning session
@@ -73,18 +83,20 @@ freeway-commons         zero deps
   live until that action scope closes; the cache view (`CURRENT` scope +
   `CACHE` access window) only opens access during the cache block and the
   action drain. `ScopeSession` is a read-only token; rollback is
-  `Defer.rollback()`. IoC's thread scope is built on the same value scope.
+  `Defer.rollback()`. IoC's boundary scope is built on the same value scope.
 - **`RuntimeHook`** — module-level start/stop extension, contributed through
   `Contribution<RuntimeHook>` and ordered with `before/after`; a reference to
   an unknown hook id fails startup. `HttpModule` contributes the server hook
   under the stable id `"freeway.http.server"`.
-- **`.primary()`** — one substitution pattern for engine, pool and dialect
-  selection: the framework's default binds without `.primary()`, an adapter
-  binds its alternative with it, and the container resolves the primary with no
-  config key (`FreewayHttpEngine` vs Undertow, `PoolDefault` vs Hikari).
-  Dialects are instead selected by id: `PostgresDialect` is the primary
-  `Dialect`, and a custom dialect binds under its own id for
-  `freeway.db.dialect` (a second primary would be ambiguous).
+- **`.primary()`** — one substitution pattern for engine and pool selection:
+  the framework's default binds without `.primary()`, an adapter binds its
+  alternative with it, and the container resolves the primary with no config
+  key (`FreewayHttpEngine` vs Undertow, `PoolDefault` vs Hikari).
+  Dialects are instead selected by id: `DbModule` binds one selected
+  `Dialect` service, `freeway.db.dialect` first resolves a user binding with
+  that id, then the built-in `Dialect.ofId(...)` catalog, and otherwise the
+  JDBC URL selects the id. A custom dialect therefore binds under its own id;
+  making several dialect bindings primary would not select one deterministically.
 - **Logging** — commons registers a JUL-backed SLF4J provider; at startup
   `LogBootstrap.ensureProvider()` probes the classpath for an external provider
   (Logback, Log4j, slf4j-simple) and pins `slf4j.provider` so that one wins,
@@ -103,27 +115,32 @@ freeway-commons         zero deps
   without boot a caller places the module in a lightweight container
   (`Freeway.create(new HttpModule(), …)`) and overrides the `HttpEngine` /
   `HttpServerConfig` bindings with `.primary()` — there is no second wiring to
-  drift from the first. The transport verdict is the engine's (`HttpEngine.secure()`),
-  so `HttpServer.secure()` reports what is actually terminating TLS rather than
+  drift from the first. The transport verdict is the engine's (`HttpEngine.isSecure()`),
+  so `HttpServer.isSecure()` reports what is actually terminating TLS rather than
   re-deriving a config presence rule. Structurally the server has two halves:
   the **assembly half** before start — four anchors: `HttpEngine` (capability),
   `HttpServerConfig` (transport declaration), `HttpPipeline` (handling
   declaration), `HttpServer` (the one derivation) — and the **runtime half**
-  during handle: the seam, `ExchangeHandler` (behaviour) + `HttpContext`
+  during handle: the seam, `ExchangeHandler` (behaviour) + `HttpExchange`
   (data). The two declarations cross the seam in opposite directions: config
   rides `engine.start(config, handler)` down into the engine, the pipeline is
   compiled into the `ExchangeHandler` above it and never crosses intact, and
-  `HttpContext` is where both meet per request (writers partitioned by phase).
+  `HttpExchange` is where both meet per request (writers partitioned by phase).
   The seam is implemented by composition, not inheritance: every engine
   (built-in, Undertow, Jetty) builds one `HttpTransport` (its request bytes in,
   response bytes out) per request and hands it to the final
-  `HttpContextSupport`, which implements `HttpContext` and owns the shared
+  `HttpExchangeSupport`, which implements `HttpExchange` and owns the shared
   policy — status/header validation, `Date`, `Content-Length`, the gzip
   decision, `Vary`, body limiting, JSON/coercion. An adapter plugs in by
   implementing `HttpTransport` (and `WebSocketTransport` for upgrades) and
   composing `WebSocketSessionSupport`; no framework class is subclassed, and
-  `ResponseHead` is the immutable snapshot of the committed response each
-  transport serializes. Route path variables use `:name` or
+  `ResponseHead` is the immutable snapshot of the response at commit time that
+  each transport serializes. The transport also owns the **commit fact**: it
+  reports `isCommitted()` immediately before writing the first head byte, so a failed
+  file open or stream read before that point can still become a 500, while a
+  failure after it is a transport failure and no second head is written. Framing
+  (`Content-Length` / `Transfer-Encoding`) belongs to the transport; the support
+  never invents it. Route path variables use `:name` or
   `{name}`, with `{name:regex}` for constraints.
 - **DB** — `Database` is the entry point: named params (`:name`/`$name`),
   programmatic transactions, built-in pooling, dialect auto-detection from the
@@ -237,6 +254,19 @@ through `binder.contribute(SymbolProvider.class)` and slots in by declaring its
 
 ## Lifecycle notes
 
+- **Composition publishes; final build initializes.** The config layer
+  (`SymbolProvider`/`CoerceRule`) is constructed, published and initialized
+  first so its providers and rules are final before any consumer exists. Every
+  non-config contribution is then constructed and published; only after that
+  does the container seal and run field injection plus `@PostConstruct`. A
+  contribution's `@PostConstruct` therefore sees the complete set, and a
+  service realized from a field-injection chain cannot freeze a partial
+  extension view.
+- **Extension reads are complete-or-throw.** A container-created store refuses
+  `all()`/`asMap()` while any declared contribution of that type is still
+  unpublished; inject `Supplier<List<V>>` (or `Supplier<Map<String,V>>`)
+  for a read that must be deferred past startup. The config chain is exempt
+  because `SymbolSource` reads its providers live.
 - `Container.close()` runs `@PreDestroy` before sealing the container, so
   cleanup code can still resolve services; only realized singletons are cleaned
   up (a never-invoked lazy proxy gets no `@PreDestroy`).

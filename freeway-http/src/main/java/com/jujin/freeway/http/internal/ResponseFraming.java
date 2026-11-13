@@ -36,12 +36,6 @@ public final class ResponseFraming {
             && acceptsGzip && compressible;
     }
 
-    /** True when the wire must not carry body bytes: HEAD requests and
-     *  204/205/304 statuses (which {@code bodyAllowed} already excludes). */
-    public static boolean suppressBodyBytes(boolean bodyAllowed, String method) {
-        return !bodyAllowed || "HEAD".equalsIgnoreCase(method);
-    }
-
     /** True when this response header must be omitted from the wire.
      *
      *  <p>RFC 9110 §8.6: a response without a body (204/205/304) must not

@@ -6,7 +6,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.Test;
 
-import com.jujin.freeway.http.HttpContext;
+import com.jujin.freeway.http.HttpExchange;
 import com.jujin.freeway.http.TestExchange;
 import com.jujin.freeway.http.route.RouteHandler;
 
@@ -42,7 +42,7 @@ class FilterChainTest {
     @Test
     void filterCanShortCircuit() throws Exception {
         HttpFilter blocker = (ctx, next) -> {
-            ctx.setStatus(403).output("blocked".getBytes());
+            ctx.setStatus(403).body("blocked".getBytes());
             // does not call next.handle(ctx)
         };
         AtomicInteger handlerCalled = new AtomicInteger(0);

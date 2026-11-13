@@ -12,9 +12,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Request body framing and drain — everything {@code RequestBody} still owns
- * after size limiting moved to {@code HttpContextSupport}. The limit itself
+ * after size limiting moved to {@code HttpExchangeSupport}. The limit itself
  * is asserted through the support object in
- * {@code HttpContextSupportBodyLimitTest}.
+ * {@code HttpExchangeSupportBodyLimitTest}.
  */
 class RequestBodyTest {
 

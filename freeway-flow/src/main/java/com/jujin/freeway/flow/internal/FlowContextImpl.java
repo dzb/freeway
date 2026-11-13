@@ -2,13 +2,12 @@ package com.jujin.freeway.flow.internal;
 
 import com.jujin.freeway.commons.json.JsonObject;
 import com.jujin.freeway.commons.json.JsonUtils;
+import com.jujin.freeway.commons.util.LazyValue;
 import com.jujin.freeway.flow.FlowContext;
 import com.jujin.freeway.flow.FlowContext.Branch;
 import com.jujin.freeway.flow.FlowEventBus;
 import com.jujin.freeway.flow.FlowException;
 
-import java.lang.invoke.MethodHandles;
-import java.lang.invoke.VarHandle;
 import java.util.AbstractMap;
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -38,19 +37,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * {@code containsKey} (the backing map forbids null values, so a sentinel
  * stores the clearing inside a layer).</p>
  */
-public final class FlowContextImpl implements FlowContext {
-    private static final VarHandle EVENT_BUS;
+public final class FlowContextImpl implements FlowContext, FlowContextState {
     /** Sentinel for "cleared in this layer" (the CHM root simply drops the key). */
     private static final Object REMOVED = new Object();
-
-    static {
-        try {
-            EVENT_BUS = MethodHandles.lookup()
-                    .findVarHandle(FlowContextImpl.class, "eventBus", FlowEventBus.class);
-        } catch (ReflectiveOperationException e) {
-            throw new ExceptionInInitializerError(e);
-        }
-    }
 
     /** One branch-local write layer: what changed, and the parent value each change started from. */
     private static final class Layer {
@@ -63,8 +52,7 @@ public final class FlowContextImpl implements FlowContext {
     private final ThreadLocal<Deque<Layer>> layers =
         ThreadLocal.withInitial(ArrayDeque::new);
     private final Object mergeLock = new Object();
-    @SuppressWarnings("unused") // accessed via VarHandle
-    private volatile FlowEventBus eventBus;
+    private final LazyValue<FlowEventBus> eventBus = LazyValue.of(FlowEventBus::new);
     private volatile boolean stopped;
 
     public FlowContextImpl() {
@@ -80,7 +68,7 @@ public final class FlowContextImpl implements FlowContext {
 
     @Override
     public void stop() {
-        stopped(true);
+        setStopped(true);
     }
 
     @Override
@@ -89,7 +77,7 @@ public final class FlowContextImpl implements FlowContext {
     }
 
     @Override
-    public void stopped(boolean stopped) {
+    public void setStopped(boolean stopped) {
         this.stopped = stopped;
     }
 
@@ -97,17 +85,7 @@ public final class FlowContextImpl implements FlowContext {
 
     @Override
     public FlowEventBus eventBus() {
-        // fast path: acquire ensures visibility of a fully-constructed bus
-        FlowEventBus bus = (FlowEventBus) EVENT_BUS.getAcquire(this);
-        if (bus != null) {
-            return bus;
-        }
-        // slow path: CAS one instance, discard loser's extra allocation
-        FlowEventBus created = new FlowEventBus();
-        if (EVENT_BUS.compareAndSet(this, null, created)) {
-            return created;
-        }
-        return (FlowEventBus) EVENT_BUS.getAcquire(this);
+        return eventBus.get();
     }
 
     // --- data ---
@@ -274,7 +252,7 @@ public final class FlowContextImpl implements FlowContext {
         JsonObject o = JsonUtils.object();
         o.put("stopped", stopped);
         o.put("data", dataObj);
-        return JsonUtils.stringify(o);
+        return JsonUtils.toJson(o);
     }
 
     private Map<String, Object> effectiveSnapshot() {

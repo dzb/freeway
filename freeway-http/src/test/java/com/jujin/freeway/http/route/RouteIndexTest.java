@@ -6,7 +6,7 @@ import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.Test;
 
-import com.jujin.freeway.http.HttpContext;
+import com.jujin.freeway.http.HttpExchange;
 import com.jujin.freeway.http.websocket.WebSocketListener;
 import com.jujin.freeway.http.websocket.WebSocketRoute;
 import com.jujin.freeway.ioc.Container;
@@ -24,11 +24,22 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class RouteIndexTest {
 
     @Test
+    void exposesRegistrationMetadataWithoutHandlers() {
+        RouteIndex index = new RouteIndex(List.of(
+            Route.get("/a", ctx -> ctx.sendText(200, "a")),
+            Route.post("/b", ctx -> ctx.sendText(201, "b"))));
+
+        assertEquals(List.of(
+                new RouteIndex.RouteDescription("GET", "/a"),
+                new RouteIndex.RouteDescription("POST", "/b")),
+            index.descriptions());
+        assertEquals(2, index.routeCount());
+    }
+
+    @Test
     void matchesPathParameters() {
         RouteIndex registry = new RouteIndex(
-            List.of(Route.get("/users/{id}", ctx -> ctx.send(200, "ok"))),
-            List.of()
-        );
+            List.of(Route.get("/users/{id}", ctx -> ctx.sendText(200, "ok"))));
         RouteIndex.RouteMatch match = registry.match("GET", "/users/42");
         assertNotNull(match);
         assertEquals("42", match.pathVariables().get("id"));
@@ -37,9 +48,9 @@ class RouteIndexTest {
     @Test
     void methodsListsTheMethodsThatRecognizeThePath() {
         RouteIndex registry = new RouteIndex(List.of(
-            Route.get("/users", ctx -> ctx.send(200, "ok")),
-            Route.post("/users", ctx -> ctx.send(201, "created")),
-            Route.get("/users/{id}", ctx -> ctx.send(200, "ok"))), List.of());
+            Route.get("/users", ctx -> ctx.sendText(200, "ok")),
+            Route.post("/users", ctx -> ctx.sendText(201, "created")),
+            Route.get("/users/{id}", ctx -> ctx.sendText(200, "ok"))));
 
         // HEAD rides along with GET — the same fallback match() applies.
         assertEquals(Set.of("GET", "HEAD", "POST"),
@@ -50,7 +61,7 @@ class RouteIndexTest {
         assertTrue(registry.methods("/absent").isEmpty());
         // Method-constrained routes only claim paths their constraint accepts.
         RouteIndex constrained = new RouteIndex(List.of(
-            Route.get("/items/{id:\\d+}", ctx -> ctx.send(200, "number"))), List.of());
+            Route.get("/items/{id:\\d+}", ctx -> ctx.sendText(200, "number"))));
         assertTrue(constrained.methods("/items/42").contains("GET"));
         assertTrue(constrained.methods("/items/abc").isEmpty());
     }
@@ -58,8 +69,7 @@ class RouteIndexTest {
     @Test
     void encodedSlashStaysInsideOnePathSegment() {
         RouteIndex registry = new RouteIndex(
-            List.of(Route.get("/files/{name}", ctx -> ctx.send(200, "ok"))),
-            List.of());
+            List.of(Route.get("/files/{name}", ctx -> ctx.sendText(200, "ok"))));
         var match = registry.match("GET", "/files/a%2Fb");
         assertNotNull(match);
         assertEquals("a/b", match.pathVariables().get("name"));
@@ -68,8 +78,8 @@ class RouteIndexTest {
     @Test
     void constrainedParameterRoutesCanShareAPathLevel() {
         RouteIndex registry = new RouteIndex(List.of(
-            Route.get("/items/{id:\\d+}", ctx -> ctx.send(200, "number")),
-            Route.get("/items/{name:[a-z]+}", ctx -> ctx.send(200, "word"))), List.of());
+            Route.get("/items/{id:\\d+}", ctx -> ctx.sendText(200, "number")),
+            Route.get("/items/{name:[a-z]+}", ctx -> ctx.sendText(200, "word"))));
         assertNotNull(registry.match("GET", "/items/42"));
         assertNotNull(registry.match("GET", "/items/abc"));
     }
@@ -77,9 +87,7 @@ class RouteIndexTest {
     @Test
     void nonTerminalDotStarConstraintMatchesOnlyOneSegment() {
         RouteIndex registry = new RouteIndex(
-            List.of(Route.get("/files/{name:.*}/meta", ctx -> ctx.send(200, "ok"))),
-            List.of()
-        );
+            List.of(Route.get("/files/{name:.*}/meta", ctx -> ctx.sendText(200, "ok"))));
         assertNotNull(registry.match("GET", "/files/readme/meta"));
         assertNull(registry.match("GET", "/files/a/b/meta"));
     }
@@ -87,9 +95,7 @@ class RouteIndexTest {
     @Test
     void terminalDotStarConstraintConsumesRemainingSegments() {
         RouteIndex registry = new RouteIndex(
-            List.of(Route.get("/files/{path:.*}", ctx -> ctx.send(200, "ok"))),
-            List.of()
-        );
+            List.of(Route.get("/files/{path:.*}", ctx -> ctx.sendText(200, "ok"))));
         RouteIndex.RouteMatch match = registry.match("GET", "/files/a/b/c.txt");
         assertNotNull(match);
         assertEquals("a/b/c.txt", match.pathVariables().get("path"));
@@ -98,18 +104,14 @@ class RouteIndexTest {
     @Test
     void rejectsEmptyPathParameterSegments() {
         RouteIndex registry = new RouteIndex(
-            List.of(Route.get("/users/{id}/profile", ctx -> ctx.send(200, "ok"))),
-            List.of()
-        );
+            List.of(Route.get("/users/{id}/profile", ctx -> ctx.sendText(200, "ok"))));
         assertNull(registry.match("GET", "/users//profile"));
     }
 
     @Test
     void rejectsDuplicateRoutes() {
         assertThrows(IllegalStateException.class, () -> new RouteIndex(
-            List.of(Route.get("/users/{id}", ctx -> ctx.send(200, "ok")), Route.get("/users/{id}", ctx -> ctx.send(200, "ok"))),
-            List.of()
-        ));
+            List.of(Route.get("/users/{id}", ctx -> ctx.sendText(200, "ok")), Route.get("/users/{id}", ctx -> ctx.sendText(200, "ok")))));
     }
 
     @Test
@@ -117,16 +119,18 @@ class RouteIndexTest {
         // One rule for both declaration forms: a group route and an explicit
         // route with the same method+path collide loudly instead of one of
         // them silently winning.
-        assertThrows(IllegalStateException.class, () -> new RouteIndex(
-            List.of(Route.get("/api/users", ctx -> ctx.send(200, "explicit"))),
-            List.of(RouteGroup.of("/api", Route.get("/users", ctx -> ctx.send(200, "group"))))
-        ));
+        Route direct = Route.get("/api/users", ctx -> ctx.sendText(200, "explicit"));
+        Route grouped = RouteGroup.of(
+            "/api", Route.get("/users", ctx -> ctx.sendText(200, "group")))
+            .expand().getFirst();
+        assertThrows(IllegalStateException.class,
+            () -> new RouteIndex(List.of(direct, grouped)));
     }
 
     @Test
     void rejectsEncodedTraversalInHttpRouteRegistration() {
         assertThrows(IllegalArgumentException.class, () ->
-            Route.get("/files/%2e%2e", ctx -> ctx.send(200, "ok")));
+            Route.get("/files/%2e%2e", ctx -> ctx.sendText(200, "ok")));
     }
 
     @Test
@@ -138,17 +142,15 @@ class RouteIndexTest {
     @Test
     void rejectsEmptyParameterNameInHttpRouteRegistration() {
         assertThrows(IllegalArgumentException.class, () ->
-            Route.get("/users/{}", ctx -> ctx.send(200, "ok")));
+            Route.get("/users/{}", ctx -> ctx.sendText(200, "ok")));
         assertThrows(IllegalArgumentException.class, () ->
-            Route.get("/users/{:id}", ctx -> ctx.send(200, "ok")));
+            Route.get("/users/{:id}", ctx -> ctx.sendText(200, "ok")));
     }
 
     @Test
     void matchesEncodedLiteralSegments() {
         RouteIndex registry = new RouteIndex(
-            List.of(Route.get("/hello world", ctx -> ctx.send(200, "ok"))),
-            List.of()
-        );
+            List.of(Route.get("/hello world", ctx -> ctx.sendText(200, "ok"))));
         assertNotNull(registry.match("GET", "/hello%20world"),
             "Encoded request path must match a decoded literal route");
     }
@@ -156,9 +158,7 @@ class RouteIndexTest {
     @Test
     void encodedLiteralRegistrationMatchesPlainAndEncodedRequests() {
         RouteIndex registry = new RouteIndex(
-            List.of(Route.get("/hello%20world", ctx -> ctx.send(200, "ok"))),
-            List.of()
-        );
+            List.of(Route.get("/hello%20world", ctx -> ctx.sendText(200, "ok"))));
         assertNotNull(registry.match("GET", "/hello world"),
             "an encoded registration must match the plain (decoded) request");
         assertNotNull(registry.match("GET", "/hello%20world"),
@@ -168,9 +168,7 @@ class RouteIndexTest {
     @Test
     void encodedSlashRegistrationStaysInsideOneSegment() {
         RouteIndex registry = new RouteIndex(
-            List.of(Route.get("/files/a%2Fb", ctx -> ctx.send(200, "ok"))),
-            List.of()
-        );
+            List.of(Route.get("/files/a%2Fb", ctx -> ctx.sendText(200, "ok"))));
         assertNotNull(registry.match("GET", "/files/a%2Fb"),
             "an encoded slash must stay inside its original segment");
         assertNull(registry.match("GET", "/files/a/b"),
@@ -180,15 +178,13 @@ class RouteIndexTest {
     @Test
     void rejectsMalformedPercentEncodingAtRegistration() {
         assertThrows(IllegalArgumentException.class, () ->
-            Route.get("/files/%zz", ctx -> ctx.send(200, "ok")));
+            Route.get("/files/%zz", ctx -> ctx.sendText(200, "ok")));
     }
 
     @Test
     void pathVariablesAreDecoded() {
         RouteIndex registry = new RouteIndex(
-            List.of(Route.get("/users/{name}", ctx -> ctx.send(200, "ok"))),
-            List.of()
-        );
+            List.of(Route.get("/users/{name}", ctx -> ctx.sendText(200, "ok"))));
         RouteIndex.RouteMatch match = registry.match("GET", "/users/a%20b");
         assertNotNull(match);
         assertEquals("a b", match.pathVariables().get("name"),
@@ -198,9 +194,7 @@ class RouteIndexTest {
     @Test
     void encodedTraversalIsRejectedAtMatchTime() {
         RouteIndex registry = new RouteIndex(
-            List.of(Route.get("/files/{name}", ctx -> ctx.send(200, "ok"))),
-            List.of()
-        );
+            List.of(Route.get("/files/{name}", ctx -> ctx.sendText(200, "ok"))));
         assertNull(registry.match("GET", "/files/%2e%2e"));
         assertNull(registry.match("GET", "/files/..%2Fetc"));
     }
@@ -208,18 +202,14 @@ class RouteIndexTest {
     @Test
     void malformedEncodingDoesNotMatch() {
         RouteIndex registry = new RouteIndex(
-            List.of(Route.get("/files/{name}", ctx -> ctx.send(200, "ok"))),
-            List.of()
-        );
+            List.of(Route.get("/files/{name}", ctx -> ctx.sendText(200, "ok"))));
         assertNull(registry.match("GET", "/files/%zz"));
     }
 
     @Test
     void overlongRegexConstrainedSegmentsAreRejectedBeforeRegexMatching() {
         RouteIndex registry = new RouteIndex(
-            List.of(Route.get("/id/{id:(a+)+$}", ctx -> ctx.send(200, "ok"))),
-            List.of()
-        );
+            List.of(Route.get("/id/{id:(a+)+$}", ctx -> ctx.sendText(200, "ok"))));
         // A 4KB+ 'a' segment would drive catastrophic backtracking on
         // (a+)+$ without the pre-regex segment length cap; it must be
         // rejected outright, fast, and without throwing.
@@ -240,9 +230,7 @@ class RouteIndexTest {
     @Test
     void regexConstrainedSegmentsAtTheLengthCapStillMatch() {
         RouteIndex registry = new RouteIndex(
-            List.of(Route.get("/id/{id:(a+)+$}", ctx -> ctx.send(200, "ok"))),
-            List.of()
-        );
+            List.of(Route.get("/id/{id:(a+)+$}", ctx -> ctx.sendText(200, "ok"))));
         String atCap = "a".repeat(PathPattern.MAX_SEGMENT_LENGTH);
         RouteIndex.RouteMatch match = registry.match("GET", "/id/" + atCap);
         assertNotNull(match);
@@ -252,8 +240,8 @@ class RouteIndexTest {
     // ──── handler class registration ────
 
     static class NoDepsHandler implements RouteHandler {
-        @Override public void handle(HttpContext ctx) throws Exception {
-            ctx.send(200, "ok");
+        @Override public void handle(HttpExchange ctx) throws Exception {
+            ctx.sendText(200, "ok");
         }
     }
 
@@ -263,8 +251,8 @@ class RouteIndexTest {
         InjectedHandler(@Symbol("${greeting:Hello}") String greeting) {
             this.greeting = greeting;
         }
-        @Override public void handle(HttpContext ctx) throws Exception {
-            ctx.send(200, greeting);
+        @Override public void handle(HttpExchange ctx) throws Exception {
+            ctx.sendText(200, greeting);
         }
     }
 
@@ -281,7 +269,7 @@ class RouteIndexTest {
                 Route r = Route.get("/test", NoDepsHandler.class);
                 ResolvableHandler h = (ResolvableHandler) r.handler();
                 h.resolve(() -> c.create(h.handlerType()));
-                return new RouteIndex(List.of(r), List.of());
+                return new RouteIndex(List.of(r));
             }));
         assertNotNull(container.get(RouteIndex.class).match("GET", "/test"));
     }
@@ -298,7 +286,7 @@ class RouteIndexTest {
     @Test
     void unresolvedHandlerClassIsRefusedAtAssembly() {
         IllegalStateException ex = assertThrows(IllegalStateException.class,
-            () -> new RouteIndex(List.of(Route.get("/test", NoDepsHandler.class)), List.of()));
+            () -> new RouteIndex(List.of(Route.get("/test", NoDepsHandler.class))));
         assertTrue(ex.getMessage().contains(NoDepsHandler.class.getName()),
             "must name the class that has no instance: " + ex.getMessage());
         assertTrue(ex.getMessage().contains("HttpModule"),
@@ -317,7 +305,7 @@ class RouteIndexTest {
                 Route r = Route.get("/greet", InjectedHandler.class);
                 ResolvableHandler h = (ResolvableHandler) r.handler();
                 h.resolve(() -> c.create(h.handlerType()));
-                return new RouteIndex(List.of(r), List.of());
+                return new RouteIndex(List.of(r));
             });
         });
         RouteIndex index = container.get(RouteIndex.class);
@@ -337,26 +325,26 @@ class RouteIndexTest {
 
     @Test
     void handlerClassInRouteGroupIsResolved() {
-        // The group path is the one HttpModule handles in two passes — expand,
-        // then resolve what it produced — so a caller doing it by hand must do
-        // the same, and both must happen on the same expansion: expand()
-        // builds fresh Route objects, so resolving one expansion and indexing
-        // another would leave the index holding an unresolved route.
+        // A group is composition, not indexing: the caller expands it once,
+        // resolves the routes that expansion produced, and indexes that same
+        // list. Expanding one copy and indexing another would leave the index
+        // holding unresolved routes.
         RouteGroup group = RouteGroup.of("/api", Route.get("/health", NoDepsHandler.class));
+        List<Route> expanded = group.expand();
 
         assertThrows(IllegalStateException.class,
-            () -> new RouteIndex(List.of(), List.of(group)),
+            () -> new RouteIndex(expanded),
             "an unresolved group-expanded class route is refused the same way");
 
         Container container = Freeway.create(b ->
             b.bind(RouteIndex.class).to(c -> {
-                List<Route> expanded = group.expand();
-                for (Route r : expanded) {
+                List<Route> routes = group.expand();
+                for (Route r : routes) {
                     if (r.handler() instanceof ResolvableHandler h) {
                         h.resolve(() -> c.create(h.handlerType()));
                     }
                 }
-                return new RouteIndex(expanded, List.of());
+                return new RouteIndex(routes);
             }));
         assertNotNull(container.get(RouteIndex.class).match("GET", "/api/health"),
             "a group-expanded class route is resolved the same way as a direct one");

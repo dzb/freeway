@@ -44,8 +44,8 @@ final class EventStats {
         streamDrops.increment();
     }
 
-    EventBus.EventBusStats snapshot() {
-        return new EventBus.EventBusStats(
+    EventBus.Stats snapshot() {
+        return new EventBus.Stats(
             published.sum(),
             delivered.sum(),
             subscriberFailures.sum(),

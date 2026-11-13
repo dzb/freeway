@@ -1,6 +1,7 @@
 package com.jujin.freeway.ioc.internal;
 
 import com.jujin.freeway.commons.bean.ReflectiveHandles;
+import com.jujin.freeway.commons.util.Proxies;
 import com.jujin.freeway.ioc.advisor.MethodInvocation;
 import java.lang.invoke.MethodHandle;
 import java.lang.reflect.InvocationHandler;
@@ -26,7 +27,7 @@ final class ServiceProxy {
      * PROTOTYPE targets so a proxy behaves like a single lazily-created
      * instance ("one instance per get(), state persists across calls") instead
      * of creating a fresh target per method call. Must NOT be set for
-     * THREAD-scoped targets — their identity is per-scope, not per-proxy.
+     * boundary-scoped targets — their identity is per-scope, not per-proxy.
      */
     @SuppressWarnings("unchecked")
     static <T> T create(
@@ -69,12 +70,7 @@ final class ServiceProxy {
         @Override
         public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
             if (method.getDeclaringClass() == Object.class) {
-                return switch (method.getName()) {
-                    case "toString" -> description;
-                    case "hashCode" -> System.identityHashCode(proxy);
-                    case "equals" -> args != null && args.length > 0 && proxy == args[0];
-                    default -> throw new UnsupportedOperationException("Unsupported Object method: " + method);
-                };
+                return Proxies.objectMethod(proxy, method, args, () -> description);
             }
             return invokeAdvised(resolveTarget(), method, args, 0);
         }

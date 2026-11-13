@@ -15,7 +15,7 @@ import com.jujin.freeway.http.sse.SseEmitter;
  * so framing state such as {@code headersWritten} and {@code chunked} is
  * owned by the response rather than by the connection. Every method receives
  * the immutable {@link ResponseHead} snapshot assembled by {@code
- * HttpContextSupport}.</p>
+ * HttpExchangeSupport}.</p>
  */
 public interface HttpResponseWriter {
 

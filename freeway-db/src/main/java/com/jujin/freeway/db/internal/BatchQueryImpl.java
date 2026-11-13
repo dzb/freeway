@@ -46,7 +46,7 @@ final class BatchQueryImpl implements BatchQuery {
     }
 
     @Override
-    public BatchQuery rows(Object[]... rows) {
+    public BatchQuery rowsRaw(Object[]... rows) {
         this.positionalRows = rows == null
             ? List.of()
             : List.of(rows);
@@ -55,7 +55,7 @@ final class BatchQueryImpl implements BatchQuery {
     }
 
     @Override
-    public BatchQuery named(List<Map<String, Object>> rows) {
+    public BatchQuery rowsNamed(List<Map<String, Object>> rows) {
         this.namedRows = rows == null ? List.of() : List.copyOf(rows);
         this.positionalRows = List.of();
         return this;

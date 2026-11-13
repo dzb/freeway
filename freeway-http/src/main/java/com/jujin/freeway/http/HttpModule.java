@@ -14,15 +14,14 @@ import org.slf4j.LoggerFactory;
 
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.json.JsonCodec;
-import com.jujin.freeway.commons.json.JsonCodecDefault;
 import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.http.engine.FreewayHttpEngine;
 import com.jujin.freeway.http.SslContexts;
-import com.jujin.freeway.http.SslSettings;
+import com.jujin.freeway.http.SslConfig;
 import com.jujin.freeway.http.event.AccessLog;
 import com.jujin.freeway.http.event.HttpExchangeEvent;
 import com.jujin.freeway.http.filter.CorsFilter;
-import com.jujin.freeway.http.filter.ErrorHandler;
+import com.jujin.freeway.http.filter.ErrorMapper;
 import com.jujin.freeway.http.filter.HealthCheck;
 import com.jujin.freeway.http.filter.HealthFilter;
 import com.jujin.freeway.http.filter.HttpFilter;
@@ -73,52 +72,36 @@ public final class HttpModule implements ModuleEx {
     @Override
     public void bind(Binder binder) {
         binder.bind(RouteIndex.class).to(container -> {
+            // Expand once, resolve once, index the final list: RouteIndex is a
+            // matching structure, not a second place that knows about groups.
             var routes = new ArrayList<>(container.extension(Route.class).all());
-            for (var r : routes) {
-                resolveHandler(r, container);
-            }
-            // Resolve ResolvableHandlers from RouteGroup-expanded routes too
-            var allRoutes = new ArrayList<>(routes);
             for (RouteGroup group : container.extension(RouteGroup.class).all()) {
-                for (Route expanded : group.expand()) {
-                    resolveHandler(expanded, container);
-                    allRoutes.add(expanded);
-                }
+                routes.addAll(group.expand());
             }
-            return new RouteIndex(allRoutes, List.of());
+            for (Route route : routes) {
+                resolveHandler(route, container);
+            }
+            return new RouteIndex(routes);
         });
         binder.bind(WebSocketIndex.class).to(container -> {
-            var routes = container.extension(WebSocketRoute.class).all();
-            var groups = container.extension(WebSocketGroup.class).all();
-            for (var r : routes) {
-                resolveEndpoint(r, container);
+            var routes = new ArrayList<>(container.extension(WebSocketRoute.class).all());
+            for (WebSocketGroup group : container.extension(WebSocketGroup.class).all()) {
+                routes.addAll(group.expand());
             }
-            // Resolve ResolvableEndpoints from group-expanded routes too.
-            // WebSocketIndex expands the groups itself, so this is the second
-            // expansion of the same group — unlike the RouteIndex block above,
-            // which hands its expansion over and passes no groups. That is safe
-            // for one reason: expand() rebuilds the route but reuses the
-            // endpoint instance, and resolution state lives on the endpoint, so
-            // the copy the index builds is already resolved. Keep it that way —
-            // an expand() that minted a fresh endpoint per route would leave
-            // the index holding unresolved copies.
-            for (WebSocketGroup group : groups) {
-                for (WebSocketRoute expanded : group.expand()) {
-                    resolveEndpoint(expanded, container);
-                }
+            for (WebSocketRoute route : routes) {
+                resolveEndpoint(route, container);
             }
-            return new WebSocketIndex(routes, groups);
+            return new WebSocketIndex(routes);
         });
-        binder.bind(JsonCodec.class).to(JsonCodecDefault.class);
 
         // Declared vocabulary for the unknown-key check.
         binder.contribute(KnownKeys.class).add(KnownKeys.of(ConfigKeys.class, ConfigKeys.PREFIX));
         // Config — each face resolved by the type that owns its keys and its
         // defaults (HttpServerConfig.from, CorsFilter.from, HealthFilter.from,
-        // SslSettings.from): the module reads no defaults of its own, so a key
+        // SslConfig.from): the module reads no defaults of its own, so a key
         // and a default cannot be stated in two places and drift.
-        binder.bind(SslSettings.class).to(container ->
-            SslSettings.from(container.get(SymbolSource.class)));
+        binder.bind(SslConfig.class).to(container ->
+            SslConfig.from(container.get(SymbolSource.class)));
         binder.bind(CorsFilter.class).to(container ->
             CorsFilter.from(container.get(SymbolSource.class)));
 
@@ -131,7 +114,7 @@ public final class HttpModule implements ModuleEx {
             int h2Burst = symbols.resolve(H2_RESET_BURST_LIMIT);
             Duration h2Window = symbols.resolve(H2_RESET_WINDOW);
 
-            SslSettings ssl = container.get(SslSettings.class);
+            SslConfig ssl = container.get(SslConfig.class);
             if (!ssl.enabled()) {
                 LOG.debug("SSL disabled, using plain HTTP engine");
                 return new FreewayHttpEngine(
@@ -193,7 +176,7 @@ public final class HttpModule implements ModuleEx {
                 container.get(HealthFilter.class),
                 container.extension(StaticResourceMount.class).all(),
                 List.copyOf(filters),
-                container.extension(ErrorHandler.class).all()
+                container.extension(ErrorMapper.class).all()
             );
             EventBus events = container.get(EventBus.class);
             boolean accessLogOn = symbols.resolve(ACCESS_LOG_ENABLED);
@@ -220,7 +203,7 @@ public final class HttpModule implements ModuleEx {
             @Override
             public void start(Container container) {
                 reportRetiredPrefixKeys(container.get(SymbolSource.class));
-                SslSettings ssl = container.get(SslSettings.class);
+                SslConfig ssl = container.get(SslConfig.class);
                 boolean builtinEngine = isBuiltinEngineActive(container);
                 if (!builtinEngine) {
                     reportIgnoredH2Guard(container.get(SymbolSource.class));
@@ -281,7 +264,7 @@ public final class HttpModule implements ModuleEx {
      * without ever constructing the built-in engine.
      */
     static boolean isBuiltinEngineActive(Container container) {
-        return container.isActiveBinding(HttpEngine.class, Builtin.class);
+        return container.isActiveBindingMarked(HttpEngine.class, Builtin.class);
     }
 
     /**
@@ -446,7 +429,7 @@ public final class HttpModule implements ModuleEx {
         /** Text access log to stdout (default false). */
         public static final String ACCESS_LOG_ENABLED    = "freeway.http.access-log.enabled";
         /** Open a container value scope around each HTTP request, so
-         *  {@code Scope.THREAD} services/caches live for the request (default false). */
+         *  {@code Scope.BOUNDARY} services/caches live for the request (default false). */
         public static final String REQUEST_SCOPE_ENABLED = "freeway.http.request-scope.enabled";
         /** CORS filter on (default true); {@code false} serves no CORS headers. */
         public static final String CORS_ENABLED           = "freeway.http.cors.enabled";
@@ -474,7 +457,7 @@ public final class HttpModule implements ModuleEx {
          *  latter advertised in SETTINGS). Default 16 KiB. */
         public static final String SERVER_MAX_HEADER_BYTES = "freeway.http.server.max-header-bytes";
         /** Inbound RST_STREAM burst guard: cancels arriving before the server
-         *  responded, beyond this count within the reset window, trip the
+         *  committed a response, beyond this count within the reset window, trip the
          *  connection with GOAWAY(ENHANCE_YOUR_CALM) (0 disables the guard).
          *  Engine-private: {@code HttpModule} reads it into the built-in engine's
          *  {@code Wiring}; a third-party engine reports a non-default at startup. */

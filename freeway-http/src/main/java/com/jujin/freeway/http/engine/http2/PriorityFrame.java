@@ -4,13 +4,18 @@ import java.io.IOException;
 import java.io.OutputStream;
 
 
-final class PriorityFrame extends BaseFrame {
+final class PriorityFrame implements Http2Frame {
+    private final FrameHeader header;
+
+    @Override
+    public FrameHeader header() { return header; }
+
     public int streamDependency;
     public int weight;
     public boolean exclusive;
 
     public PriorityFrame(FrameHeader header) {
-        super(header);
+        this.header = header;
     }
 
     public static PriorityFrame parse(byte[] body, FrameHeader header) throws IOException {

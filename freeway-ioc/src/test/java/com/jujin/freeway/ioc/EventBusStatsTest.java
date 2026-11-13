@@ -17,8 +17,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
     // ==================== event types ====================
 
-/** EventBusStatsTest: split from the former EventBusTest monolith (behavior-preserving move). */
-class EventBusStatsTest {
+/** StatsTest: split from the former EventBusTest monolith (behavior-preserving move). */
+class StatsTest {
     @Test
     void statsCountPublishDeliveriesAndFailures() {
         List<String> log = new ArrayList<>();
@@ -34,7 +34,7 @@ class EventBusStatsTest {
         bus.publish(new PostCreatedEvent(new Post("x")));
         bus.publish(new CommentAddedEvent(1L, "y")); // zero subscribers -> DeadEvent
 
-        EventBus.EventBusStats stats = bus.stats();
+        EventBus.Stats stats = bus.stats();
         assertEquals(2, stats.published(), "one dispatch per publish");
         assertEquals(1, stats.delivered(), "only the healthy subscriber delivery");
         assertEquals(1, stats.subscriberFailures(), "the throwing runtime subscriber");

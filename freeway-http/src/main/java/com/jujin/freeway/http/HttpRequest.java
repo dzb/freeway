@@ -4,7 +4,6 @@ import com.jujin.freeway.http.body.MultipartException;
 import com.jujin.freeway.http.body.MultipartForm;
 
 import javax.net.ssl.SSLSession;
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Type;
@@ -12,7 +11,7 @@ import java.util.Optional;
 
 /**
  * Read side of an HTTP exchange: method, path, parameters, headers, body,
- * and TLS details. Exchange metadata lives on {@link HttpContext}; framework
+ * and TLS details. Exchange metadata lives on {@link HttpExchange}; framework
  * components that only read should depend on this interface.
  */
 public interface HttpRequest extends RequestView {
@@ -31,27 +30,22 @@ public interface HttpRequest extends RequestView {
 
     /**
      * Returns true when this request was received over a TLS connection
-     * (HTTPS / WSS). Defaults to {@code false}; transport bridges override it.
+     * (HTTPS / WSS). This is a transport fact: an implementation must answer
+     * it, never default it to false and make a TLS request look plaintext.
      */
-    default boolean isSecure() {
-        return false;
-    }
+    boolean isSecure();
 
     /**
      * Returns the TLS session for this request (negotiated protocol, cipher
      * suite, peer certificates), or {@code null} for plain HTTP.
      */
-    default SSLSession sslSession() {
-        return null;
-    }
+    SSLSession sslSession();
 
     /**
      * Returns the client IP address of the connection, or an empty string
-     * when the transport does not expose one.
+     * when the transport genuinely does not expose one.
      */
-    default String remoteAddress() {
-        return "";
-    }
+    String remoteAddress();
 
     /** Returns the value of a path parameter coerced to the given type. */
     <T> Optional<T> pathVar(String name, Class<T> type);
@@ -92,14 +86,11 @@ public interface HttpRequest extends RequestView {
 
     /**
      * Returns the request body as a streaming input, enforcing this exchange's
-     * {@link HttpContext#setMaxBodySize(long) maximum body size} as it is read.
-     *
-     * <p>The default reads the whole body into memory for implementations
-     * that only buffer; transport bridges override it to stream directly.</p>
+     * {@link HttpExchange#setMaxBodySize(long) maximum body size} as it is read.
+     * This is a required capability: a default that buffers would hide the
+     * difference between a streaming engine and a materializing one.
      */
-    default InputStream bodyStream() throws IOException {
-        return new ByteArrayInputStream(body());
-    }
+    InputStream bodyStream() throws IOException;
 
     /** Reads the request body into a string using the charset from the
      *  Content-Type header. */

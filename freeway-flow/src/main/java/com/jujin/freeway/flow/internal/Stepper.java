@@ -6,7 +6,7 @@ import java.util.NoSuchElementException;
 /**
  * Stepper iterator (range: [start, end), step: step)
  */
-public class Stepper implements Iterator<Integer> {
+public final class Stepper implements Iterator<Integer> {
 
     /**
      * Parses a string and creates a stepper

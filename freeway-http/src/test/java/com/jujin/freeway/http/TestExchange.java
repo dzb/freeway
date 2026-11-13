@@ -21,15 +21,15 @@ import com.jujin.freeway.http.sse.SseEmitter;
 /**
  * A test exchange built the way an engine builds one: a {@link TestTransport}
  * for the request/response mechanism, composed with the real
- * {@link HttpContextSupport} for every policy decision. It implements {@link
- * HttpContext} by delegating, so ~80 call sites keep reading {@code ctx.status()}
+ * {@link HttpExchangeSupport} for every policy decision. It implements {@link
+ * HttpExchange} by delegating, so ~80 call sites keep reading {@code ctx.status()}
  * while assertions still observe the shared support object's behaviour.
  *
  * <p>This is composition (two fields plus delegation), not inheritance: no
  * framework type is subclassed, and there is no second "fake context" that
  * could bypass the policy under test.</p>
  */
-public final class TestExchange implements HttpContext {
+public final class TestExchange implements HttpExchange {
 
     @SuppressWarnings("unchecked")
     private static <T> T coerce(Object input, Class<T> targetType) {
@@ -56,7 +56,7 @@ public final class TestExchange implements HttpContext {
     private static final Coercer COERCER = TestExchange::coerce;
 
     private final TestTransport transport;
-    private final HttpContextSupport support;
+    private final HttpExchangeSupport support;
 
     public TestExchange() {
         this("GET", "/");
@@ -71,7 +71,7 @@ public final class TestExchange implements HttpContext {
             query = HttpUtils.parseQueryParams(path.substring(q + 1));
         }
         this.transport = new TestTransport(method, requestPath, query);
-        this.support = new HttpContextSupport(transport,
+        this.support = new HttpExchangeSupport(transport,
             new JsonCodecDefault(COERCER), COERCER,
             HttpServerConfig.DEFAULT_MAX_BODY_SIZE,
             HttpServerConfig.CompressionConfig.DEFAULT, null);
@@ -138,7 +138,7 @@ public final class TestExchange implements HttpContext {
         return transport;
     }
 
-    // -- HttpContext: exchange metadata --
+    // -- HttpExchange: exchange metadata --
 
     @Override public String correlationId() { return support.correlationId(); }
     @Override public Instant startTime() { return support.startTime(); }
@@ -148,7 +148,7 @@ public final class TestExchange implements HttpContext {
     @Override public void setAttribute(String key, Object value) { support.setAttribute(key, value); }
     @Override public Map<String, Object> attributes() { return support.attributes(); }
 
-    // -- HttpContext: request side --
+    // -- HttpExchange: request side --
 
     @Override public String method() { return support.method(); }
     @Override public String path() { return support.path(); }
@@ -174,31 +174,31 @@ public final class TestExchange implements HttpContext {
     @Override public <T> T bodyAsJson(Class<T> type) throws IOException { return support.bodyAsJson(type); }
     @Override public <T> T bodyAsJson(Type type) throws IOException { return support.bodyAsJson(type); }
 
-    // -- HttpContext: response side --
+    // -- HttpExchange: response side --
 
     @Override public HttpResponse setStatus(int status) { return support.setStatus(status); }
     @Override public HttpResponse setHeader(String name, String value) { return support.setHeader(name, value); }
     @Override public HttpResponse addHeader(String name, String value) { return support.addHeader(name, value); }
-    @Override public void addVary(String token) { support.addVary(token); }
-    @Override public HttpResponse output(byte[] data) throws IOException { return support.output(data); }
-    @Override public HttpResponse output(InputStream in, long contentLength) throws IOException { return support.output(in, contentLength); }
-    @Override public HttpResponse outputFile(Path file, long offset, long length) throws IOException { return support.outputFile(file, offset, length); }
-    @Override public HttpResponse outputFile(FileChannel channel, long offset, long length) throws IOException { return support.outputFile(channel, offset, length); }
-    @Override public HttpResponse output(String text) throws IOException { return support.output(text); }
-    @Override public HttpResponse outputJson(Object value) throws IOException { return support.outputJson(value); }
-    @Override public HttpResponse send(int status, String text) throws IOException { return support.send(status, text); }
+    @Override public HttpResponse addVary(String token) { return support.addVary(token); }
+    @Override public HttpResponse body(byte[] data) throws IOException { return support.body(data); }
+    @Override public HttpResponse body(InputStream in, long contentLength) throws IOException { return support.body(in, contentLength); }
+    @Override public HttpResponse file(Path file, long offset, long length) throws IOException { return support.file(file, offset, length); }
+    @Override public HttpResponse file(FileChannel channel, long offset, long length) throws IOException { return support.file(channel, offset, length); }
+    @Override public HttpResponse text(String text) throws IOException { return support.text(text); }
+    @Override public HttpResponse json(Object value) throws IOException { return support.json(value); }
+    @Override public HttpResponse sendText(int status, String text) throws IOException { return support.sendText(status, text); }
     @Override public HttpResponse sendJson(int status, Object value) throws IOException { return support.sendJson(status, value); }
     @Override public SseEmitter sse() throws IOException { return support.sse(); }
-    @Override public boolean isResponded() { return support.isResponded(); }
+    @Override public boolean isCommitted() { return support.isCommitted(); }
 
-    // -- HttpContext seam --
+    // -- HttpExchange seam --
 
-    @Override public HttpContext setPathVars(Map<String, String> vars) { return support.setPathVars(vars); }
-    @Override public HttpContext setMaxBodySize(long maxBodySize) { return support.setMaxBodySize(maxBodySize); }
+    @Override public HttpExchange setPathVars(Map<String, String> vars) { return support.setPathVars(vars); }
+    @Override public HttpExchange setMaxBodySize(long maxBodySize) { return support.setMaxBodySize(maxBodySize); }
 
     /** The body ceiling currently in force (mirrors the support object). */
     public long bodyLimit() { return support.bodyLimit(); }
 
     /** The policy object under the exchange, for direct assertions. */
-    public HttpContextSupport context() { return support; }
+    public HttpExchangeSupport context() { return support; }
 }

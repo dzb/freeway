@@ -53,9 +53,9 @@ class Http2ProtocolTest {
         var server = HttpServer.create(TestHttp.engine(),
             TestServerConfig.loopback(), HttpPipeline.of(Route.get("/mismatch", ctx -> {
                 ctx.setHeader("Content-Length", "5");
-                ctx.output(new ByteArrayInputStream(
+                ctx.body(new ByteArrayInputStream(
                     "hello world".getBytes(StandardCharsets.UTF_8)), 5);
-            }), Route.get("/ok", ctx -> ctx.send(200, "ok"))));
+            }), Route.get("/ok", ctx -> ctx.sendText(200, "ok"))));
         server.start();
         try (Socket socket = new Socket("127.0.0.1", server.port())) {
             socket.setSoTimeout(5000);
@@ -134,7 +134,7 @@ class Http2ProtocolTest {
         // RFC 7540 §6.9: a zero increment on the connection flow-control
         // window is a connection error — GOAWAY(PROTOCOL_ERROR).
         var server = HttpServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(), HttpPipeline.of(Route.get("/", ctx -> ctx.send(200, "ok"))));
+            TestServerConfig.loopback(), HttpPipeline.of(Route.get("/", ctx -> ctx.sendText(200, "ok"))));
         server.start();
         try (Socket socket = new Socket("127.0.0.1", server.port())) {
             socket.setSoTimeout(5000);
@@ -179,7 +179,7 @@ class Http2ProtocolTest {
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                 }
-                ctx.send(200, "ok");
+                ctx.sendText(200, "ok");
             })));
         server.start();
         try (Socket socket = new Socket("127.0.0.1", server.port())) {
@@ -272,7 +272,7 @@ class Http2ProtocolTest {
         var server = HttpServer.create(TestHttp.engine(),
             HttpServerConfig.defaults().withHost("127.0.0.1").withPort(port).withBacklog(0).withShutdownGrace(Duration.ofSeconds(1)), HttpPipeline.of(Route.post("/upload", ctx -> {
                 ctx.body();
-                ctx.send(200, "ok");
+                ctx.sendText(200, "ok");
             })));
         server.start();
         try (var sock = new Socket("127.0.0.1", port)) {
@@ -314,7 +314,7 @@ class Http2ProtocolTest {
         // uploader). It lingers for a bounded window, then resets the stream.
         var server = HttpServer.create(TestHttp.engine(),
             TestServerConfig.loopback(),
-            HttpPipeline.of(Route.post("/reject", ctx -> ctx.send(413, ""))));
+            HttpPipeline.of(Route.post("/reject", ctx -> ctx.sendText(413, ""))));
         server.start();
         try (Socket socket = new Socket("127.0.0.1", server.port())) {
             socket.setSoTimeout(5000);
@@ -370,7 +370,7 @@ class Http2ProtocolTest {
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                 }
-                ctx.send(200, "ok");
+                ctx.sendText(200, "ok");
             })));
         server.start();
         try {
@@ -458,7 +458,7 @@ class Http2ProtocolTest {
         var server = HttpServer.create(TestHttp.engine(),
             TestServerConfig.loopback(), HttpPipeline.of(Route.get("/", ctx -> {
                 ctx.body();
-                ctx.send(200, "ok");
+                ctx.sendText(200, "ok");
             })));
         server.start();
         try {
@@ -517,8 +517,8 @@ class Http2ProtocolTest {
         var server = HttpServer.create(TestHttp.engine(),
             HttpServerConfig.defaults().withHost("127.0.0.1").withPort(0).withBacklog(0).withShutdownGrace(Duration.ofSeconds(1)), HttpPipeline.of(Route.post("/trailer", ctx -> {
                 ctx.body();
-                ctx.send(200, "ok");
-            }), Route.get("/", ctx -> ctx.send(200, "ok"))));
+                ctx.sendText(200, "ok");
+            }), Route.get("/", ctx -> ctx.sendText(200, "ok"))));
         server.start();
         try {
             byte[] preface = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n".getBytes(
@@ -578,7 +578,7 @@ class Http2ProtocolTest {
         // (RFC 7540 §6.5.2 requires the value to be ≥ 16384).
         String big = "x".repeat(50000);
         var server = HttpServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(), HttpPipeline.of(Route.get("/", ctx -> ctx.send(200, big))));
+            TestServerConfig.loopback(), HttpPipeline.of(Route.get("/", ctx -> ctx.sendText(200, big))));
         server.start();
         try {
             byte[] preface = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n".getBytes(StandardCharsets.US_ASCII);
@@ -646,7 +646,7 @@ class Http2ProtocolTest {
         // connection with COMPRESSION_ERROR (GOAWAY code 9) instead of being
         // buffered without bound.
         var server = HttpServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(), HttpPipeline.of(Route.get("/", ctx -> ctx.send(200, "ok"))));
+            TestServerConfig.loopback(), HttpPipeline.of(Route.get("/", ctx -> ctx.sendText(200, "ok"))));
         server.start();
         try {
             byte[] preface = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n".getBytes(StandardCharsets.US_ASCII);
@@ -715,7 +715,7 @@ class Http2ProtocolTest {
                 } finally {
                     active.decrementAndGet();
                 }
-                ctx.send(200, "ok");
+                ctx.sendText(200, "ok");
             })));
         server.start();
         try {
@@ -792,7 +792,7 @@ class Http2ProtocolTest {
                     active.decrementAndGet();
                 }
                 try {
-                    ctx.send(200, "ok");
+                    ctx.sendText(200, "ok");
                 } catch (IOException ignored) {
                     // writing to a reset stream must fail cleanly — expected
                 }
@@ -842,7 +842,7 @@ class Http2ProtocolTest {
     @Test
     void h2cPriorKnowledgeGetsServerSettingsFirst() throws Exception {
         var server = HttpServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(), HttpPipeline.of(Route.get("/", ctx -> ctx.send(200, "ok"))));
+            TestServerConfig.loopback(), HttpPipeline.of(Route.get("/", ctx -> ctx.sendText(200, "ok"))));
         server.start();
         try {
             byte[] preface = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n".getBytes(
@@ -908,7 +908,7 @@ class Http2ProtocolTest {
         // sends no frames for longer than readTimeout) must not be torn down.
         var server = HttpServer.create(TestHttp.engine(),
             TestServerConfig.loopback().withMaxBodySize(16 * 1024 * 1024).withReadTimeout(Duration.ofSeconds(2)).withMaxConnections(64), HttpPipeline.of(Route.post("/", ctx ->
-                ctx.send(200, "ok:" + new String(ctx.body(), StandardCharsets.UTF_8)))));
+                ctx.sendText(200, "ok:" + new String(ctx.body(), StandardCharsets.UTF_8)))));
         server.start();
         try {
             byte[] preface = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n".getBytes(
@@ -1030,7 +1030,7 @@ class Http2ProtocolTest {
     void h2cUpgradeViaHttp1UpgradeHeader() throws Exception {
         int port = freePort();
         var server = HttpServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(port), HttpPipeline.of(Route.get("/ping", ctx -> ctx.send(200, "pong"))));
+            TestServerConfig.loopback(port), HttpPipeline.of(Route.get("/ping", ctx -> ctx.sendText(200, "pong"))));
         server.start();
         try {
             var client = HttpClient.newBuilder()
@@ -1055,7 +1055,7 @@ class Http2ProtocolTest {
         // RFC 7540 §6.8: after receiving GOAWAY the server must not create
         // new streams — a later HEADERS must be RST'd (REFUSED_STREAM).
         var server = HttpServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(), HttpPipeline.of(Route.get("/", ctx -> ctx.send(200, "ok"))));
+            TestServerConfig.loopback(), HttpPipeline.of(Route.get("/", ctx -> ctx.sendText(200, "ok"))));
         server.start();
         try (Socket socket = new Socket("127.0.0.1", server.port())) {
             socket.setSoTimeout(3000);
@@ -1130,7 +1130,7 @@ class Http2ProtocolTest {
         // RFC 7540 §4.3: a header block may be interrupted only by
         // CONTINUATION; SETTINGS mid-block must be a connection error.
         var server = HttpServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(), HttpPipeline.of(Route.get("/", ctx -> ctx.send(200, "ok"))));
+            TestServerConfig.loopback(), HttpPipeline.of(Route.get("/", ctx -> ctx.sendText(200, "ok"))));
         server.start();
         try (Socket socket = new Socket("127.0.0.1", server.port())) {
             socket.setSoTimeout(3000);
@@ -1193,7 +1193,7 @@ class Http2ProtocolTest {
         // RFC 7540 §4.3: ANY frame other than CONTINUATION mid-header-block
         // is a connection error — WINDOW_UPDATE included.
         var server = HttpServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(), HttpPipeline.of(Route.get("/", ctx -> ctx.send(200, "ok"))));
+            TestServerConfig.loopback(), HttpPipeline.of(Route.get("/", ctx -> ctx.sendText(200, "ok"))));
         server.start();
         try (Socket socket = new Socket("127.0.0.1", server.port())) {
             socket.setSoTimeout(3000);
@@ -1258,7 +1258,7 @@ class Http2ProtocolTest {
         // would encode as this large positive) are both legal and must not
         // kill the connection or poison the HPACK decoder.
         var server = HttpServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(), HttpPipeline.of(Route.get("/", ctx -> ctx.send(200, "ok"))));
+            TestServerConfig.loopback(), HttpPipeline.of(Route.get("/", ctx -> ctx.sendText(200, "ok"))));
         server.start();
         try (Socket socket = new Socket("127.0.0.1", server.port())) {
             socket.setSoTimeout(5000);
@@ -1293,7 +1293,7 @@ class Http2ProtocolTest {
         // RFC 7540 §6.5.2: SETTINGS_ENABLE_PUSH accepts only 0 or 1;
         // any other value is a connection error.
         var server = HttpServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(), HttpPipeline.of(Route.get("/", ctx -> ctx.send(200, "ok"))));
+            TestServerConfig.loopback(), HttpPipeline.of(Route.get("/", ctx -> ctx.sendText(200, "ok"))));
         server.start();
         try (Socket socket = new Socket("127.0.0.1", server.port())) {
             socket.setSoTimeout(3000);
@@ -1351,7 +1351,7 @@ class Http2ProtocolTest {
         // before closing the socket (RFC 7540 §6.8), so they stop creating
         // streams and can retry on a fresh connection.
         var server = HttpServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(), HttpPipeline.of(Route.get("/", ctx -> ctx.send(200, "ok"))));
+            TestServerConfig.loopback(), HttpPipeline.of(Route.get("/", ctx -> ctx.sendText(200, "ok"))));
         server.start();
         try (Socket socket = new Socket("127.0.0.1", server.port())) {
             socket.setSoTimeout(3000);

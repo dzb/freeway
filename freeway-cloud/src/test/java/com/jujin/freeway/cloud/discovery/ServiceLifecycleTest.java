@@ -4,7 +4,7 @@ import com.jujin.freeway.cloud.CloudModule;
 
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
-import com.jujin.freeway.cloud.internal.RegistryStore;
+import com.jujin.freeway.cloud.discovery.internal.RegistryStore;
 import com.jujin.freeway.http.HttpModule;
 import com.jujin.freeway.http.HttpServer;
 import org.junit.jupiter.api.AfterEach;
@@ -97,7 +97,7 @@ class ServiceLifecycleTest {
                 .add("admin", (com.jujin.freeway.cloud.discovery.ServiceDeclaration)
                     container -> com.jujin.freeway.cloud.discovery.ServiceInstance.of(
                     "admin-svc", "admin-1",
-                    com.jujin.freeway.cloud.discovery.Endpoint.of("http", "0.0.0.0", 9091)));
+                    com.jujin.freeway.cloud.discovery.ServiceEndpoint.of("http", "0.0.0.0", 9091)));
         }
     }
 }

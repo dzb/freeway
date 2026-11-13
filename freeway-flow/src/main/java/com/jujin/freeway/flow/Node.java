@@ -11,7 +11,7 @@ import java.util.Objects;
 /**
  * Node
  */
-public class Node {
+public final class Node {
     private final Graph graph;
     private final String id;
     private final String title;
@@ -46,10 +46,10 @@ public class Node {
             ? Map.of()
             : Collections.unmodifiableMap(new LinkedHashMap<>(spec.data()));
 
-        if (spec.meta() == null || spec.meta().isEmpty()) {
+        if (spec.metadata() == null || spec.metadata().isEmpty()) {
             this.metas = Map.of();
         } else {
-            this.metas = Collections.unmodifiableMap(new LinkedHashMap<>(spec.meta()));
+            this.metas = Collections.unmodifiableMap(new LinkedHashMap<>(spec.metadata()));
         }
 
         if (links == null || links.isEmpty()) {
@@ -77,14 +77,14 @@ public class Node {
      * then refuses a graph the engine runs perfectly well.
      */
     boolean iterates() {
-        return type == NodeType.LOOP && metaAsString("$for") != null;
+        return type == NodeType.LOOP && metadataAsString("$for") != null;
     }
-    public Map<String, Object> metas() { return metas; }
+    public Map<String, Object> metadata() { return metas; }
     public Map<String, Object> data() { return data; }
 
-    public Object meta(String key) { return metas.get(key); }
+    public Object metadata(String key) { return metas.get(key); }
 
-    public String metaAsString(String key) {
+    public String metadataAsString(String key) {
         Object tmp = metas.get(key);
         if (tmp == null) return null;
         if (tmp instanceof String) return (String) tmp;
@@ -93,13 +93,13 @@ public class Node {
 
     /** Returns the meta value cast to the requested type. */
     @SuppressWarnings("unchecked")
-    public <T> T metaAs(String key) {
+    public <T> T metadataAs(String key) {
         return (T) metas.get(key);
     }
 
     /** Returns the meta value cast to the requested type, or {@code def}. */
     @SuppressWarnings("unchecked")
-    public <T> T metaOrDefault(String key, T def) {
+    public <T> T metadataOrDefault(String key, T def) {
         return (T) metas.getOrDefault(key, def);
     }
 

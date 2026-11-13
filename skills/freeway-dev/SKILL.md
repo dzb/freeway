@@ -1,6 +1,6 @@
 ---
 name: freeway-dev
-description: 基于 Freeway 框架构建 Java 应用。当用户提到 Freeway、module、ModuleEx、SubModule、FreewayApp、IoC 容器、DbModule、HttpModule、AppRuntime、路由、ORM、EventBus、Defer、ScopedCache、HealthCheck、HealthFilter、PooledConnection、PostgresDialect、SchemaEntity、freeway-ext、CloudModule、ServiceDiscovery、RegistryFleetModule、RemoteCaller、RemoteProxyFactory、RpcExport、CloudEventBus、event mesh、service discovery、microservices 等框架相关术语时触发。涵盖模块编写、依赖注入、HTTP API、数据库操作、事务、事件总线、类型转换、延迟执行、验证、连接池、数据库方言、Schema 迁移等所有方面。同时也适用于回答 Freeway API 用法、项目结构、最佳实践和代码生成类问题。
+description: 基于 Freeway 框架构建 Java 应用。当用户提到 Freeway、module、ModuleEx、SubModule、FreewayApp、IoC 容器、DbModule、HttpModule、AppRuntime、路由、ORM、EventBus、Defer、ScopedCache、HealthCheck、HealthFilter、PooledConnection、PostgresDialect、SchemaEntity、freeway-ext、CloudModule、ServiceDiscovery、FleetRegistryModule、RemoteCaller、RemoteProxyFactory、RpcExport、MeshEventBus、event mesh、service discovery、microservices 等框架相关术语时触发。涵盖模块编写、依赖注入、HTTP API、数据库操作、事务、事件总线、类型转换、延迟执行、验证、连接池、数据库方言、Schema 迁移等所有方面。同时也适用于回答 Freeway API 用法、项目结构、最佳实践和代码生成类问题。
 ---
 
 # Freeway Development Skill
@@ -15,9 +15,9 @@ Freeway is a JDK 25+ Java framework built around compose-first modules, explicit
 - `HttpModule`, `HttpServer`, `Route`, `HttpFilter`, `HealthCheck`
 - `DbModule`, `Database.create`, `Orm`, `Schema`, `MigrationRunner`
 - `EventBus`, `RuntimeHook`, `Defer`, `ScopedCache`, `ScopeBoundary`
-- `CloudModule`, `ServiceDiscovery`, `ServiceRegistry`, `RegistryFleetModule`,
-  `RemoteCaller`, `RemoteProxyFactory`, `RpcExport`, `CloudEventBus`,
-  `CloudEventSubscription`
+- `CloudModule`, `ServiceDiscovery`, `ServiceRegistry`, `FleetRegistryModule`,
+  `RemoteCaller`, `RemoteProxyFactory`, `RpcExport`, `MeshEventBus`,
+  `MeshSubscription`
 - service registration/discovery, registry node deployment, RPC between services,
   event mesh configuration; API usage, module layout, and code generation for Freeway projects
 
@@ -43,13 +43,13 @@ Freeway is a JDK 25+ Java framework built around compose-first modules, explicit
   store, a deployable registry node, and a fleet client; caching is the discovery
   implementation's own policy via `CachingServiceDiscovery`), remote invocation (RPC
   over HTTP with discovery + load balancing + resilience), an explicit event mesh
-  (`CloudEventBus`, at-most-once, optional keepalive), health/readiness (a warming
+  (`MeshEventBus`, at-most-once, optional keepalive), health/readiness (a warming
   instance is not discoverable until its contributors pass), observability, secrets,
   object storage, and hot TLS rotation in both directions. `CloudModule` is the 8-module bundle; every sub-module is also placeable
   alone. Third-party discovery backends (Consul) live in `freeway-ext`
 - external adapters live in `freeway-ext`
 
-Scope primitives: `Defer` and `ScopedCache` share one `ScopeSession`. Use `Defer.within(Runnable|Supplier)` and `Defer.rollback()` for manual rollback (there is no scope-handle overload). A cache scope opened inside a `Defer` action scope attaches to it: values live until that action scope closes, while the access window is the cache block (and the action drain) — outside it `ScopedCache.isActive()` is false and `get` does not cache. `ScopeBoundary.within()` follows the same attach rule for `Scope.THREAD` beans.
+Scope primitives: `Defer` and `ScopedCache` share one `ScopeSession`. Use `Defer.within(Runnable|Supplier)` and `Defer.rollback()` for manual rollback (there is no scope-handle overload). A cache scope opened inside a `Defer` action scope attaches to it: values live until that action scope closes, while the access window is the cache block (and the action drain) — outside it `ScopedCache.isActive()` is false and `get` does not cache. `ScopeBoundary.within()` follows the same attach rule for `Scope.BOUNDARY` beans.
 
 ## Canonical Entrypoints
 

@@ -1,6 +1,6 @@
 package com.jujin.freeway.db.internal;
 
-import com.jujin.freeway.db.DatabaseStats;
+import com.jujin.freeway.db.PoolStats;
 import com.jujin.freeway.db.Pool;
 import com.jujin.freeway.db.PoolConfig;
 import com.jujin.freeway.db.PooledConnection;
@@ -283,14 +283,14 @@ public final class PoolDefault implements Pool {
     }
 
     @Override
-    public DatabaseStats stats() {
+    public PoolStats stats() {
         int longLeased = 0;
         for (PooledConnectionImpl conn : active) {
             if (conn.isLeaked(LEAK_THRESHOLD)) {
                 longLeased++;
             }
         }
-        return new DatabaseStats(
+        return new PoolStats(
             active.size(),
             idle.size(),
             total.get(),

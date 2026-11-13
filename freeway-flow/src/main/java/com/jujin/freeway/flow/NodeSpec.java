@@ -14,7 +14,7 @@ import java.util.function.Consumer;
  *
  * <p>Nodes are created via {@link GraphSpec#addNode(String, NodeType)}
  * or convenience methods like {@link GraphSpec#addStart(String)}.
- * {@link #linkAdd(String)} and {@link #linkAdd(String, Consumer)}
+ * {@link #linkTo(String)} and {@link #linkTo(String, Consumer)}
  * store pending links that are collected and instantiated by
  * {@link GraphSpec} during {@code create()}.
  */
@@ -49,7 +49,7 @@ public final class NodeSpec {
         return this;
     }
 
-    public NodeSpec meta(Map<String, Object> meta) {
+    public NodeSpec metadata(Map<String, Object> meta) {
         if (meta != null && !meta.isEmpty()) {
             this.meta.putAll(meta);
         }
@@ -57,7 +57,7 @@ public final class NodeSpec {
         return this;
     }
 
-    public NodeSpec metaPut(String key, Object value) {
+    public NodeSpec putMetadata(String key, Object value) {
         if (key != null && !key.isEmpty()) {
             this.meta.put(key, value);
         }
@@ -106,14 +106,14 @@ public final class NodeSpec {
      * Stores a pending link from this node to {@code to}.
      * The link is instantiated later by {@link GraphSpec#create()}.
      */
-    public NodeSpec linkAdd(String to) {
+    public NodeSpec linkTo(String to) {
         pendingLinks.add(new PendingLink(
             Objects.requireNonNull(to, "to must not be null"), null));
         touch();
         return this;
     }
 
-    public NodeSpec linkAdd(String to, Consumer<LinkSpec> configure) {
+    public NodeSpec linkTo(String to, Consumer<LinkSpec> configure) {
         pendingLinks.add(new PendingLink(
             Objects.requireNonNull(to, "to must not be null"), configure));
         touch();
@@ -149,7 +149,7 @@ public final class NodeSpec {
         return title;
     }
 
-    public Map<String, Object> meta() {
+    public Map<String, Object> metadata() {
         return Collections.unmodifiableMap(meta);
     }
 

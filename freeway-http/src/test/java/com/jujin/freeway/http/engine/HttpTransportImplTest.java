@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
 
 import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.commons.json.JsonCodecDefault;
-import com.jujin.freeway.http.HttpContextSupport;
+import com.jujin.freeway.http.HttpExchangeSupport;
 import com.jujin.freeway.http.HttpServerConfig;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -26,14 +26,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class HttpTransportImplTest {
 
-    private record Fixture(HttpTransportImpl transport, HttpContextSupport ctx) {}
+    private record Fixture(HttpTransportImpl transport, HttpExchangeSupport ctx) {}
 
     private static Fixture exchange(byte[] raw, long contentLength,
             boolean chunked, Map<String, List<String>> headers, long limit) {
         var transport = new HttpTransportImpl("POST", "/", null, headers,
             new ByteArrayInputStream(raw), contentLength, chunked,
             new ByteArrayOutputStream(), true, false, null, "");
-        var ctx = new HttpContextSupport(transport, new JsonCodecDefault(),
+        var ctx = new HttpExchangeSupport(transport, new JsonCodecDefault(),
             new CoercerDefault(), limit,
             HttpServerConfig.CompressionConfig.DEFAULT, null);
         return new Fixture(transport, ctx);
@@ -65,6 +65,20 @@ class HttpTransportImplTest {
             5, false, Map.of(), 10);
 
         assertTrue(f.transport().drainRequestBody(f.ctx().bodyLimit()));
+    }
+
+    @Test
+    void committedFlagFlipsOnlyWhenTheResponseIsWritten() throws Exception {
+        Fixture f = exchange("hello".getBytes(StandardCharsets.ISO_8859_1),
+            5, false, Map.of(), 10);
+        assertFalse(f.transport().isCommitted(),
+            "a fresh transport has not written a response");
+
+        f.ctx().sendText(200, "ok");
+
+        assertTrue(f.transport().isCommitted(),
+            "a written response has started, and the support object reads that fact");
+        assertTrue(f.ctx().isCommitted());
     }
 
     @Test

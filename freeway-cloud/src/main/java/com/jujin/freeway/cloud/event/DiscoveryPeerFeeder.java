@@ -17,7 +17,7 @@ import com.jujin.freeway.cloud.discovery.ServiceInstance;
  * Feeds the mesh's discovered peer set from the bound {@link ServiceDiscovery}:
  * on every tick it asks for the instances of this node's own service and hands
  * the whole answer — this node excluded — to
- * {@code CloudEventBus#replaceDiscoveredPeers}.
+ * {@code MeshEventBus#replaceDiscoveredPeers}.
  *
  * <p>The bus's snapshot semantics are what make a poll loop safe: an instance
  * that left discovery stops being dialed on the next tick, and a tick that

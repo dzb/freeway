@@ -8,8 +8,8 @@ import javax.net.ssl.SSLContext;
  * The one place an outbound {@link HttpClient} starts: connect timeout and,
  * when configured, the transport's TLS context.
  *
- * <p>Three cloud paths open clients — RPC ({@code CloudHttpClientDefault}),
- * registry writes ({@code RegistryNodeClient}) and the mesh dialer
+ * <p>Three cloud paths open clients — RPC ({@code RpcHttpClientDefault}),
+ * registry writes ({@code FleetRegistryClient}) and the mesh dialer
  * ({@code PeerConnector}) — and each had its own builder with the same two
  * rules. They differ in what they add afterwards; the base is shared.</p>
  */

@@ -15,6 +15,8 @@ class RequestViewTest {
 
     @Test
     void httpExchangeAndWebSocketSessionShareTheReadOnlyFace() {
+        assertTrue(RequestHead.class.isAssignableFrom(RequestView.class),
+            "RequestView extends RequestHead");
         assertTrue(RequestView.class.isAssignableFrom(HttpRequest.class),
             "HttpRequest extends RequestView");
         assertTrue(RequestView.class.isAssignableFrom(WebSocketSession.class),
@@ -32,9 +34,14 @@ class RequestViewTest {
             .collect(Collectors.toList());
 
         assertEquals(
-            List.of("header", "headers", "headers", "method", "path",
-                "pathVar", "pathVars", "queryParam", "queryParams", "queryParams"),
+            List.of("header", "headers", "pathVar", "pathVars",
+                "queryParam", "queryParams"),
             declared,
             "RequestView is exactly these read accessors — add to it consciously, in both halves");
+        assertEquals(
+            List.of("headers", "method", "path", "queryParams"),
+            Arrays.stream(RequestHead.class.getDeclaredMethods())
+                .map(method -> method.getName()).sorted().toList(),
+            "RequestHead is the four request facts every transport and view owns");
     }
 }

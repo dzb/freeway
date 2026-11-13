@@ -2,7 +2,7 @@ package demo;
 
 import com.jujin.freeway.boot.Launch;
 import com.jujin.freeway.boot.FreewayApp;
-import com.jujin.freeway.cloud.event.CloudEventModule;
+import com.jujin.freeway.cloud.event.EventMeshModule;
 import com.jujin.freeway.http.HttpModule;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.ModuleEx;
@@ -27,11 +27,11 @@ public final class NodeA {
     public static void main(String[] args) throws Exception {
         // A's own HTTP port — must differ from B's (both run locally).
         System.setProperty(HttpModule.ConfigKeys.SERVER_PORT, "18081");
-        // CloudEventBus: dial B; A declares no subscriptions (outbound-only).
+        // MeshEventBus: dial B; A declares no subscriptions (outbound-only).
         System.setProperty(ConfigKeys.EVENT_ENABLED, "true");
         System.setProperty(ConfigKeys.EVENT_PEERS, "127.0.0.1:18080");
 
-        var app = FreewayApp.run(Launch.of(args), new HttpModule(), new CloudEventModule(), new ModuleEx() {
+        var app = FreewayApp.run(Launch.of(args), new HttpModule(), new EventMeshModule(), new ModuleEx() {
             @Override
             public void bind(Binder binder) {
                 // The local counterpart: prints to show a LOCAL publish never
@@ -42,7 +42,7 @@ public final class NodeA {
             }
         });
 
-        var mesh = app.get(com.jujin.freeway.cloud.event.CloudEventBus.class);
+        var mesh = app.get(com.jujin.freeway.cloud.event.MeshEventBus.class);
         EventBus bus = app.get(EventBus.class);
 
         // Let the mesh handshake settle.

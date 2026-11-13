@@ -1,5 +1,6 @@
 package com.jujin.freeway.http.websocket;
 
+import com.jujin.freeway.http.internal.WebSocketCloseReason;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
@@ -151,11 +152,11 @@ class WebSocketSessionSupportTest {
 
     @Test
     void closeReasonTruncationRules() {
-        assertEquals("", WebSocketSessionSupport.truncateCloseReason(null));
-        assertEquals("", WebSocketSessionSupport.truncateCloseReason(""));
-        assertEquals("bye", WebSocketSessionSupport.truncateCloseReason("bye"));
+        assertEquals("", WebSocketCloseReason.truncate(null));
+        assertEquals("", WebSocketCloseReason.truncate(""));
+        assertEquals("bye", WebSocketCloseReason.truncate("bye"));
         // An ASCII reason is cut at exactly 123 bytes.
         assertEquals(123,
-            WebSocketSessionSupport.truncateCloseReason("x".repeat(200)).length());
+            WebSocketCloseReason.truncate("x".repeat(200)).length());
     }
 }

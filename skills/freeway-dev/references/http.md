@@ -8,8 +8,8 @@ Examples below are minimal snippets. They omit imports and app-specific domain t
 - `HttpEngine`
 - `FreewayHttpEngine`
 - `HttpServer`
-- `HttpContext`
-- `HttpTransport`, `ResponseHead`, `HttpContextSupport` (engine SPI — see below)
+- `HttpExchange`
+- `HttpTransport`, `ResponseHead`, `HttpExchangeSupport` (engine SPI — see below)
 - `WebSocketTransport`, `WebSocketSessionSupport`
 - `Route`, `RouteGroup`, `WebSocketRoute`, `WebSocketGroup`
 - `HttpFilter`, `ScopeFilter`, `ErrorHandler`, `HealthFilter`, `HealthCheck`
@@ -22,7 +22,7 @@ Examples below are minimal snippets. They omit imports and app-specific domain t
 - `freeway.http.server.backlog`
 - `freeway.http.server.shutdown-grace`
 - `freeway.http.cors.*`
-- `freeway.http.request-scope.enabled` (opt-in per-request value scope; `Scope.THREAD` services/caches live for one request)
+- `freeway.http.request-scope.enabled` (opt-in per-request value scope; `Scope.BOUNDARY` services/caches live for one request)
   Use for tenant/auth context, request-level permission caches, audit context and request-lived resources;
   not for DB connections/transactions, global state, SSE/WebSocket sessions or background jobs. It does not propagate to child threads.
 - `freeway.http.health.enabled`
@@ -47,7 +47,7 @@ Freeway supports two path variable syntaxes. They match identically at runtime �
 ```java
 // Lambda — stateless handlers, no injected dependencies
 binder.contribute(Route.class)
-    .add(Route.get("/", ctx -> ctx.send(200, "Hello")))
+    .add(Route.get("/", ctx -> ctx.sendText(200, "Hello")))
     .add(Route.get("/users/:id", ctx -> ctx.sendJson(200, ctx.pathVar("id"))))
     .add(Route.get("/posts/{id}", ctx -> ctx.sendJson(200, ctx.pathVar("id"))))
     .add(Route.get("/items/{id:\\d+}", ctx -> ctx.sendJson(200, ctx.pathVar("id"))));
@@ -70,23 +70,28 @@ An engine plugs into the seam by **composition** — no framework class is
 subclassed (`AbstractHttpContext`/`AbstractWebSocketSession` are gone):
 
 1. Implement `HttpTransport` — the request bytes in (`method`, `path`,
-   `queryParams`, `headers`, `bodyStream`, TLS/remote) and the response bytes
+   `queryParams`, `headers`, `framedBodyStream`, TLS/remote) and the response bytes
    out (`writeResponse(head, byte[])`, `openSse`; the stream/file defaults
    buffer, override them to stream). Contract edges: the request snapshots are
-   immutable with lower-cased names, `bodyStream()` returns the
+   immutable with lower-cased names, `framedBodyStream()` returns the
    transport-framed stream and translates native limits (e.g. Undertow's
-   `RequestTooBigException`) into `BodyTooLargeException`, and **no body bytes
+   `RequestTooBigException`) into `BodyTooLargeException`, **no body bytes
    are written when `head.sendsBodyBytes()` is false** — a HEAD keeps the
-   declared `Content-Length` without reading the source.
-2. Build one transport + one `HttpContextSupport` **per request**:
-   `new HttpContextSupport(transport, jsonCodec, coercer, config.maxBodySize(),
+   declared `Content-Length` without reading the source — and `isCommitted()`
+   flips immediately before the first head byte. A buffering transport may
+   finalize the length of the body it materialized (including HEAD); a streaming
+   transport leaves a missing length to its framing (`Transfer-Encoding:
+   chunked` for HTTP/1.1, never for HTTP/2).
+2. Build one transport + one `HttpExchangeSupport` **per request**:
+   `new HttpExchangeSupport(transport, jsonCodec, coercer, config.maxBodySize(),
    config.compression(), correlationId)` and pass *that* to
    `ExchangeHandler.handle`. There is no `reset()` and no pool — per-request
    state cannot leak, and the support owns status/header validation, `Date`,
    `Content-Length`, the gzip decision, `Vary`, body limiting and coercion.
 3. Serialize the committed `ResponseHead` (status, `headRequest`, headers in
-   wire order). `Content-Length` is already final in `head.headers()`; add only
-   your protocol's own framing (`Connection`, chunked). Apply headers by
+   wire order). A declared `Content-Length` is already final; a buffering
+   transport may add the length it materialized, while a streaming transport
+   leaves it to framing (chunked on HTTP/1.1, absent on HTTP/2). Apply headers by
    replace-per-name so the head's list is the wire's final state.
 4. WebSocket: implement `WebSocketTransport` (frame operations; `close` gets a
    reason already truncated to 123 bytes) and compose
@@ -102,7 +107,7 @@ what it must pass.
 - `HttpModule` automatically contributes a `RuntimeHook` that starts and stops the server — no manual hook registration needed.
 - `HealthCheck` is in `com.jujin.freeway.http.filter`.
 - `HttpServer.create(engine, config, pipeline[, eventSink])` 是唯一的派生点：独立构建零容器（引擎自己 `new FreewayHttpEngine(Wiring.defaults(json, coercer))`，部件用 `HttpPipeline.of(routes).withFilter(...)/.withCors(...)/.withStaticFiles(...)` 累加）。
-- 容器路径由 `HttpModule` 走同一个 `create`：键由值类型自己读（`HttpServerConfig.from` / `CorsFilter.from` / `HealthFilter.from` / `SslSettings.from`），路由/过滤器/静态资源/异常映射用 `contribute(...)`；要换引擎或引擎契约用 `bind(HttpEngine.class)` / `bind(HttpServerConfig.class)` 的 `.primary()`。
+- 容器路径由 `HttpModule` 走同一个 `create`：键由值类型自己读（`HttpServerConfig.from` / `CorsFilter.from` / `HealthFilter.from` / `SslConfig.from`），路由/过滤器/静态资源/异常映射用 `contribute(...)`；要换引擎或引擎契约用 `bind(HttpEngine.class)` / `bind(HttpServerConfig.class)` 的 `.primary()`。
 - Engine selection: `HttpModule` binds `FreewayHttpEngine` (default); add an extension module (Undertow/Jetty) to override via `.primary()`.
 - TLS hot reload is event-driven (WatchService, debounced) with the poll at `ssl.reload-interval` as fallback; either layer alone drives the same snapshot comparison.
-- HTTP/2 rapid-reset guard: cancels arriving before the server responded, past `h2.reset-burst-limit` inside `h2.reset-window`, trip the connection with `GOAWAY(ENHANCE_YOUR_CALM)`. Post-response cancels never count.
+- HTTP/2 rapid-reset guard: cancels arriving before the server committed a response, past `h2.reset-burst-limit` inside `h2.reset-window`, trip the connection with `GOAWAY(ENHANCE_YOUR_CALM)`. Post-response cancels never count.

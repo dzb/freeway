@@ -26,7 +26,7 @@ public final class WebSocketReadLoop {
      * Blocking frame read loop. Drives the listener callbacks until the
      * connection closes or an error occurs.
      */
-    public static void readLoop(InputStream in, OutputStream out,
+    public static void readLoop(InputStream in,
                          WebSocketConnection connection,
                          WebSocketListener listener) {
         connection.markOpen();

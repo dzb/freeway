@@ -10,7 +10,7 @@ import java.util.Objects;
 
 /**
  * Consumer-side transport for remote invocation: turns a
- * {@code mapping.method} call into one request over {@link CloudHttpClient}.
+ * {@code mapping.method} call into one request over {@link RpcHttpClient}.
  *
  * <p>Wire shape (see docs/freeway-cloud-design.md §5.2):
  * {@code POST /rpc/{mapping}/{method}} with the positional arguments as a
@@ -18,7 +18,7 @@ import java.util.Objects;
  * the remote handler map to 4xx plus the {@code X-RPC-Exception} /
  * {@code X-RPC-Message} headers and surface as
  * {@link RemoteInvocationException}; everything else reuses the transport
- * failure semantics of {@link CloudException} — with one refinement: since
+ * failure semantics of {@link RpcException} — with one refinement: since
  * the wire verb is POST (non-idempotent), ambiguous outcomes (timeout,
  * mid-flight I/O, 5xx) are retried only for operations marked
  * {@link Idempotent} (or when the explicit invoke overload says so).
@@ -41,10 +41,10 @@ public final class RemoteCaller {
     public static final String EXCEPTION_MESSAGE_HEADER = "X-RPC-Message";
     private static final String CONTENT_TYPE = MediaTypes.JSON;
 
-    private final CloudHttpClient http;
+    private final RpcHttpClient http;
     private final JsonCodec codec;
 
-    public RemoteCaller(CloudHttpClient http, JsonCodec codec) {
+    public RemoteCaller(RpcHttpClient http, JsonCodec codec) {
         this.http = Objects.requireNonNull(http, "http");
         this.codec = Objects.requireNonNull(codec, "codec");
     }
@@ -72,7 +72,7 @@ public final class RemoteCaller {
         String method,
         List<?> args,
         Class<T> returnType
-    ) throws CloudException {
+    ) throws RpcException {
         return invoke(serviceId, mapping, method, args, returnType, null, false);
     }
 
@@ -89,7 +89,7 @@ public final class RemoteCaller {
         List<?> args,
         Class<T> returnType,
         java.time.Duration timeout
-    ) throws CloudException {
+    ) throws RpcException {
         return invoke(serviceId, mapping, method, args, returnType, timeout, false);
     }
 
@@ -108,7 +108,7 @@ public final class RemoteCaller {
         Class<T> returnType,
         java.time.Duration timeout,
         boolean idempotent
-    ) throws CloudException {
+    ) throws RpcException {
         RpcPaths.validateSegment(mapping, "mapping");
         RpcPaths.validateSegment(method, "method");
         List<?> positional = args == null ? List.of() : args;
@@ -121,14 +121,14 @@ public final class RemoteCaller {
         }
         String body = "[" + String.join(",", encoded) + "]";
 
-        CloudRequest request = new CloudRequest("POST",
+        RpcRequest request = new RpcRequest("POST",
             RpcPaths.endpoint(mapping, method),
             java.util.Map.of(
                 "Content-Type", CONTENT_TYPE,
                 VERSION_HEADER, VERSION),
             body.getBytes(StandardCharsets.UTF_8))
-            .idempotentWith(idempotent);
-        CloudResponse response;
+            .withIdempotent(idempotent);
+        RpcResponse response;
         try {
             if (timeout != null && !timeout.isZero() && !timeout.isNegative()) {
                 // The deadline rides into the orchestration itself: without it
@@ -142,11 +142,11 @@ public final class RemoteCaller {
         } catch (java.util.concurrent.CompletionException ce) {
             // orTimeout deadline → uniform timeout semantics
             if (ce.getCause() instanceof java.util.concurrent.TimeoutException) {
-                throw CloudException.timeout(serviceId, ce.getCause());
+                throw RpcException.timeout(serviceId, ce.getCause());
             }
             throw ce.getCause() instanceof RuntimeException re ? re : ce;
         }
-        if (!response.is2xx()) {
+        if (!response.isSuccess()) {
             throw businessException(serviceId, response);
         }
         byte[] reply = response.body();
@@ -157,7 +157,7 @@ public final class RemoteCaller {
         try {
             return codec.fromJson(new String(reply, StandardCharsets.UTF_8), returnType);
         } catch (RuntimeException e) {
-            throw CloudException.unreadableReply(
+            throw RpcException.unreadableReply(
                 "Service '" + serviceId + "' returned an unreadable "
                     + returnType.getName() + ": " + e.getMessage(), e);
         }
@@ -167,7 +167,7 @@ public final class RemoteCaller {
      * Business failure inside the remote handler: deterministic and therefore
      * never retryable — unlike transport failures, replaying it cannot help.
      */
-    private CloudException businessException(String serviceId, CloudResponse response) {
+    private RpcException businessException(String serviceId, RpcResponse response) {
         String exClass = header(response, EXCEPTION_CLASS_HEADER);
         if (exClass != null) {
             // Layer 1 — decode and sanitize at this single call site: the same
@@ -181,7 +181,7 @@ public final class RemoteCaller {
             exClass = sanitizePeerText(decode(exClass));
             String message = sanitizePeerText(decode(java.util.Objects.requireNonNullElse(
                 header(response, EXCEPTION_MESSAGE_HEADER), "")));
-            return CloudException.business(
+            return RpcException.business(
                 "Remote handler '" + exClass + "' on '" + serviceId + "' failed"
                     + (message.isEmpty() ? "" : ": " + message),
                 response.status(),
@@ -190,7 +190,7 @@ public final class RemoteCaller {
         // Only the server-authored reject reason is echoed — never the whole
         // header map, which routinely carries tokens and cookies into logs.
         var reason = header(response, "X-RPC-Reject-Reason");
-        throw CloudException.rejected(
+        throw RpcException.rejected(
             "Service '" + serviceId + "' rejected rpc call"
                 + (reason == null ? "" : ": " + sanitizePeerText(decode(reason))),
             response.status(), null);
@@ -222,7 +222,7 @@ public final class RemoteCaller {
         }
     }
 
-    private static String header(CloudResponse response, String name) {
+    private static String header(RpcResponse response, String name) {
         // Wire headers arrive lower-cased (JDK HttpClient normalizes);
         // match case-insensitively so the constant names stay readable.
         for (var entry : response.headers().entrySet()) {

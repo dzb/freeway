@@ -3,7 +3,7 @@ package com.jujin.freeway.http.engine;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.commons.metrics.Metrics;
-import com.jujin.freeway.http.HttpContext;
+import com.jujin.freeway.http.HttpExchange;
 import com.jujin.freeway.http.ExchangeHandler;
 import com.jujin.freeway.http.HttpServerConfig;
 
@@ -31,7 +31,7 @@ record SessionContext(
      * classification). Error handling stays with each protocol session so
      * HTTP/1.1 and HTTP/2 keep their distinct failure behavior.
      */
-    void executeRequest(HttpContext context) throws Exception {
+    void executeRequest(HttpExchange context) throws Exception {
         registry().requestsInFlight.incrementAndGet();
         metrics().requestsTotal().increment();
         long startNanos = System.nanoTime();

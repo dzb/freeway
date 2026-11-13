@@ -1,13 +1,13 @@
 package com.jujin.freeway.http.filter;
 
-import com.jujin.freeway.http.HttpContext;
+import com.jujin.freeway.http.HttpExchange;
 import com.jujin.freeway.http.route.RouteHandler;
 import com.jujin.freeway.ioc.ScopeBoundary;
 import java.util.Objects;
 
 /**
  * Opt-in request-scoped boundary: opens a container value scope around one HTTP
- * request, so {@code Scope.THREAD} services and scoped cache values live for the
+ * request, so {@code Scope.BOUNDARY} services and scoped cache values live for the
  * request and are released when it ends.
  *
  * <p>It is not a transaction boundary — commit/rollback and deferred events
@@ -31,7 +31,7 @@ public final class ScopeFilter implements HttpFilter {
     }
 
     @Override
-    public void doFilter(HttpContext ctx, RouteHandler next) throws Exception {
+    public void doFilter(HttpExchange ctx, RouteHandler next) throws Exception {
         boundary.withinChecked(() -> next.handle(ctx));
     }
 

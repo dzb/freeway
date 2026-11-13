@@ -73,7 +73,7 @@ class MarkerAndConcurrencyTest {
         });
 
         assertEquals("primary", container.get(Cache.class).name());
-        assertTrue(container.isActiveBinding(Cache.class, Primary.class));
+        assertTrue(container.isActiveBindingMarked(Cache.class, Primary.class));
         container.close();
     }
 
@@ -91,16 +91,16 @@ class MarkerAndConcurrencyTest {
             binder.bind(Cache.class).to(FastCache.class).marker(Fast.class);
             binder.bind(Cache.class).to(SlowCache.class).marker(Slow.class).primary();
         });
-        assertFalse(primary.isActiveBinding(Cache.class, Fast.class),
+        assertFalse(primary.isActiveBindingMarked(Cache.class, Fast.class),
             "a non-primary marked binding is not the selected binding");
-        assertTrue(primary.isActiveBinding(Cache.class, Slow.class),
+        assertTrue(primary.isActiveBindingMarked(Cache.class, Slow.class),
             "the primary binding is the selected binding");
 
         Container unique = Freeway.create(binder ->
             binder.bind(Cache.class).to(FastCache.class).marker(Fast.class));
-        assertTrue(unique.isActiveBinding(Cache.class, Fast.class),
+        assertTrue(unique.isActiveBindingMarked(Cache.class, Fast.class),
             "the only binding is the selected binding");
-        assertFalse(unique.isActiveBinding(Cache.class, Slow.class),
+        assertFalse(unique.isActiveBindingMarked(Cache.class, Slow.class),
             "an absent marker must not match the selected binding");
         primary.close();
         unique.close();

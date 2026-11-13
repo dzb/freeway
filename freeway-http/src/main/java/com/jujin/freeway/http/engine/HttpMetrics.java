@@ -49,7 +49,7 @@ final class HttpMetrics {
         return metrics.counter("freeway.http.h2.connections");
     }
 
-    Metrics.Counter websocketConnections() {
+    Metrics.Counter webSocketConnections() {
         return metrics.counter("freeway.http.websocket.connections");
     }
 

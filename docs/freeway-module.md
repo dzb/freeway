@@ -60,7 +60,7 @@ A library that ships more than one module annotates the umbrella module: the cla
 ```java
 @SubModule({
     CloudContextModule.class,
-    CloudRpcModule.class,
+    RpcModule.class,
     /* … */
 })
 public final class CloudModule implements ModuleEx {
@@ -70,7 +70,7 @@ public final class CloudModule implements ModuleEx {
 }
 ```
 
-The declaration is static data read while the composition is assembled — not a method the framework calls back into — so the caller still decides what is placed. A submodule is an ordinary module: placing `CloudRpcModule.class` alone is the subset form, and no exclusion list exists because taking the bundle apart is just composing the modules you want.
+The declaration is static data read while the composition is assembled — not a method the framework calls back into — so the caller still decides what is placed. A submodule is an ordinary module: placing `RpcModule.class` alone is the subset form, and no exclusion list exists because taking the bundle apart is just composing the modules you want.
 
 ### What composition guarantees
 
@@ -89,7 +89,8 @@ Failures surface where the composition is assembled — the code that places the
 
 **Binding order is the pre-order over the placed modules**: a bundle's own `bind()` runs before the modules it declares, and siblings bind in the order they were placed. It is deterministic but **not a contract** — sequencing belongs to `RuntimeHook` anchors (`before`/`after` ids) and contribution `order()`, not to where a module sits. Loading resolves each class declaration while binding, so a class declaration is constructed only then.
 
-The structure is still visible, in the startup log rather than through an API — the container renders the composition it bound, ready for the log:
+The structure is visible through `Container.describe()` / `AppRuntime.describe()`
+as metadata, and the startup log renders the same composition for humans:
 
 ```
 Loaded 9 module(s):
@@ -100,13 +101,22 @@ Loaded 9 module(s):
     …
 ```
 
-The root line is the application's name: `application` unless the launch names it (`FreewayApp.create(...).name("order-service")`, or `Freeway.create("order-service", new OrderModule())` without boot — the named container entry takes module instances, since a named class-declaring overload would make a lone name ambiguous). It is presentation only — no binding, ordering or identity depends on it — and it appears in composition errors too, as the first segment of the path that names a duplicate (`order-service → CloudModule → HttpModule`).
+The root line is the application's name: `application` unless the launch names it
+(`FreewayApp.create(...).name("order-service")`, or
+`Freeway.create("order-service", new OrderModule())` without boot). A named
+composition can carry instances or `ModuleDeclaration` values; pass at least one,
+because a lone name is ambiguous between the two varargs overloads. The name is
+presentation only — no binding, ordering or identity depends on it — and it
+appears in composition errors too, as the first segment of the path that names a
+duplicate (`order-service → CloudModule → HttpModule`).
 
 ### Entry points
 
 ```java
 Freeway.create(OrderModule.class, HttpModule.class);      // returns the Container
 Freeway.create("order-service", new OrderModule());       // the same, with a named root
+Freeway.create("order-service",                          // explicit mixed declarations,
+    ModuleDeclaration.of(OrderModule.class));             // also with a named root
 FreewayApp.create(OrderModule.class, CloudModule.class).start();  // returns the AppRuntime
 FreewayApp.create(OrderModule.class).args("--freeway.profile=dev").start();
 FreewayApp.create(OrderModule.class).name("order-service").start();
@@ -143,6 +153,23 @@ AppRuntime app = FreewayApp.create(new AppModule()).autoDiscovery(false).start()
 ```
 
 `Freeway.create` performs no discovery at all.
+
+## Inspecting a running composition
+
+`Container.describe()` returns a metadata-only `RuntimeDescription`: the module
+tree, registered binding identity/scope/markers and contribution ids/order. It
+does not realize lazy services and exposes no service instance or config value.
+
+`AppRuntime.describe()` adds lifecycle state, active profile names and configured
+key names. This is the stable inspection surface for tooling and coding agents;
+the startup log remains a human-readable rendering of the same composition.
+
+```java
+try (AppRuntime app = FreewayApp.create(OrderModule.class).start()) {
+    AppRuntimeDescription info = app.describe();
+    System.out.println(info.container().bindings());
+}
+```
 
 ## Composition Rules
 

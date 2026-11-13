@@ -68,9 +68,9 @@ freeway-cloud  (com.jujin.freeway.cloud)
 ### 3.1 模块与 bundle
 
 `CloudModule` 是**标准云 bundle**：类上用 `@SubModule` 声明 8 个标准模块
-`CloudContextModule` / `CloudSecretModule` /
-`CloudDiscoveryModule` / `CloudRpcModule` / `CloudObserveModule` /
-`CloudResilienceModule` / `CloudHealthModule` / `CloudStorageModule`；放置
+`CloudContextModule` / `SecretModule` /
+`DiscoveryModule` / `RpcModule` / `ObserveModule` /
+`ResilienceModule` / `HealthModule` / `StorageModule`；放置
 `CloudModule` 就放置它们（前序，在 bundle 之后）。绑定全在各模块的 `bind()`
 里，`CloudModule.bind()` 是 bundle 的共享面（当前为空），容器在 bind 之前就拿到
 整棵树。
@@ -85,9 +85,9 @@ freeway-cloud  (com.jujin.freeway.cloud)
       CloudModule.class);                // 整包
   FreewayApp.run(
       new OrderModule(),
-      new CloudRpcModule());             // 只要一个，按自己的方式配
+      new RpcModule());             // 只要一个，按自己的方式配
   ```
-- `CloudEventModule` 是**可选 add-on，不在 bundle 内**：它会打开自己的监听与出站
+- `EventMeshModule` 是**可选 add-on，不在 bundle 内**：它会打开自己的监听与出站
   拨号，需要 WebSocket 事件网格时显式安装。
 - **装配校验在组装组合时完成**：同一实例重复放两次折叠（共享实例是正常用法），
   同 class 的第二个声明直接 `IllegalStateException` 并把两条路径都点出来；
@@ -101,26 +101,34 @@ com.jujin.freeway.cloud
 ├── annotation/   @Local 后端标记
 ├── context/      InvocationContext, TraceContext, PrincipalContext, Baggage,
 │                 Propagator, CloudContextModule
-├── discovery/    Endpoint, Health, ServiceInstance, ServiceDiscovery(+Default),
+├── discovery/    ServiceEndpoint, ServiceHealth, ServiceInstance, ServiceDiscovery(+Default),
 │                 ServiceRegistry(+Default), ServiceDeclaration,
-│                 LoadBalancer(+Default), CloudDiscoveryModule
-├── rpc/          CloudHttpClient(+Default), CloudRequest/CloudResponse,
-│                 CloudException, TransportSecurity(+Default), RemoteCaller,
+│                 LoadBalancer(+Default), DiscoveryModule
+│                 registry/ FleetRegistryModule, FleetRegistryClient,
+│                 FleetServiceRegistry, FleetServiceDiscovery, RegistryNodes
+├── rpc/          RpcHttpClient(+Default), RpcRequest/RpcResponse,
+│                 RpcException, TransportSecurity(+Default), RemoteCaller,
 │                 RemoteProxyFactory, Idempotent, RpcExport, RpcEndpoint,
-│                 CloudRpcModule
-├── event/        CloudEventModule, PeerHub, PeerConnection, CloudEventEnvelope,
-│                 CloudEventInterceptor（可选 add-on）
-├── observe/      Tracer(+Default), MetricsDefault, MetricsSnapshot, CloudObserveModule
-├── resilience/   CircuitBreaker/RateLimiter/Retryer(+Default), CloudResilienceModule
-├── health/       CloudHealthContributor, HealthResult, CloudHealthModule
-├── secret/       SecretStore(+Default), SecretSymbolSource, CloudSecretModule
+│                 RpcModule
+├── event/        EventMeshModule, PeerHub, PeerConnection, MeshEnvelope,
+│                 MeshInterceptor（可选 add-on）
+├── observe/      Tracer(+Default), MetricsDefault, MetricsSnapshot, ObserveModule
+├── resilience/   CircuitBreaker/RateLimiter/Retryer(+Default), ResilienceModule
+├── health/       CloudHealthContributor, HealthModule (HealthResult is the shared HTTP value type)
+├── secret/       SecretStore(+Default), SecretSymbolSource, SecretModule
 ├── storage/      ObjectStorage(+Default), ObjectMetadata/ObjectEntry/PutResult,
 │                 StorageException, ObjectStoredEvent/ObjectDeletedEvent,
-│                 CloudStorageModule
-└── internal/     非公开实现细节：内置 Propagator、PropagationFilter/TracingFilter、
-                  ReadyHandler、MetricsHandler、RegistryStore、RegistryRenewal、
-                  RegistryLifecycleHook、DiscoveryConnectionHook、
-                  HttpServiceDeclaration、BackendTypeGuard、ActiveBindingProbe
+│                 StorageModule
+├── context/internal/   AuthPropagator、BaggagePropagator、TracePropagator、
+│                       PropagationFilter
+├── discovery/internal/ RegistryStore、RegistryRenewal、RegistryLifecycleHook、
+│                       DiscoveryConnectionHook、ReadinessGate、
+│                       RegistryHealthContributor
+├── health/internal/    ReadyHandler
+├── observe/internal/   MetricsHandler、TracingFilter
+└── internal/           跨领域共享机制：HttpServiceDeclaration、ServiceIdentity、
+                        BackendTypeGuard、ActiveBindingProbe、OptionalBinding、
+                        CloudHttpClients、ConstantTime
 ```
 
 可见性是刻意的：`internal/` 里的类型可以 `public`（跨包装配需要），但不在
@@ -175,32 +183,32 @@ stop（逆序）:
 |---|---|
 | `serviceId`（普通字符串，无公开类型） | 是谁 |
 | `ServiceInstance` | 有哪些可用实例 |
-| `Endpoint` | 怎么到达 |
-| `Health` | 实例当下能不能用（发现层维护，不在实例里） |
+| `ServiceEndpoint` | 怎么到达 |
+| `ServiceHealth` | 实例当下能不能用（发现层维护，不在实例里） |
 | `InvocationContext` | 跨边界传播什么 |
 
 `ServiceId` **有意不是公开类型**（见 `docs/ARCHITECTURE.md`）：服务 id 就是
 字符串，归一化（trim + 非空守卫）由 ioc 的 `ServiceIds.normalize` 在绑定 id
 上隐式完成；`ServiceInstance.serviceId()`、`Container.get(type, id)`、
-`CloudHttpClient.call(serviceId, …)` 共用同一个字符串，cloud 不另造包装类型
+`RpcHttpClient.call(serviceId, …)` 共用同一个字符串，cloud 不另造包装类型
 或第二套归一化。
 
 ```java
-public record Endpoint(String scheme, String host, int port, String basePath) {
+public record ServiceEndpoint(String scheme, String host, int port, String basePath) {
     public URI uri();
 }
 
 public record ServiceInstance(
-    String serviceId, String instanceId, Endpoint endpoint, Map<String,String> metadata) {}
+    String serviceId, String instanceId, ServiceEndpoint endpoint, Map<String,String> metadata) {}
 
-public record Health(boolean live, boolean ready, Instant lastSeen) {
-    public static Health up();        // 注册即就绪
-    public static Health starting();  // 已登记、尚未就绪
+public record ServiceHealth(boolean live, boolean ready, Instant lastSeen) {
+    public static ServiceHealth up();        // 注册即就绪
+    public static ServiceHealth starting();  // 已登记、尚未就绪
     public boolean isStale(Duration maxAge);
 }
 ```
 
-- `Endpoint` 构造期规范化 basePath（空 → `""`、补 `/`、去尾斜杠）并校验
+- `ServiceEndpoint` 构造期规范化 basePath（空 → `""`、补 `/`、去尾斜杠）并校验
   整个元组可渲染为合法 URI——坏定位符在装配期报错，不留到请求线程。
   IPv6 字面量按 RFC 3986 加方括号（容忍已带括号的入参）。
 - `instanceId` 与位置解耦：容器重调度换 IP/端口仍是同一实例，只更新
@@ -240,7 +248,7 @@ public record Health(boolean live, boolean ready, Instant lastSeen) {
   instanceId 默认派生，可用 `registry.service-instance-id` 钉住。
 - **身份的两个 auto**（值写不出来，只能推导，且启动时打一行说明选了哪个）：
   `registry.service-scheme=auto`（默认）跟随 HTTP 服务器是否启用 TLS
-  （`HttpServer.secure()`，1.5.5 起转述 `HttpEngine.secure()`：谁终止 TLS 谁回答，
+  （`HttpServer.isSecure()`，1.5.5 起转述 `HttpEngine.isSecure()`：谁终止 TLS 谁回答，
   适配器引擎忽略 `freeway.http.ssl.*` 也不会把 https 节点注册成 `http://`）——
   注册的 `http/https` 与网格拨号的 `ws/wss` 出自
   同一次推导，开 TLS 不会漏改而注册出 `http://`；`registry.service-host=auto`
@@ -273,11 +281,11 @@ public record Health(boolean live, boolean ready, Instant lastSeen) {
 ```java
 public record RpcExport(String mapping, Class<?> type, boolean propagateMessage) {
     public static RpcExport of(String mapping, Class<?> type);
-    public RpcExport propagateMessages();   // 允许把异常 message 带过边界
+    public RpcExport withPropagatedMessages();   // 允许把异常 message 带过边界
 }
 ```
 
-`RpcExport` 是**数据贡献**：`CloudRpcModule` 在 `HTTP_SERVER` 之前解析全部
+`RpcExport` 是**数据贡献**：`RpcModule` 在 `HTTP_SERVER` 之前解析全部
 申报，为每个 mapping 构建一张方法表（`RpcTarget`，`MethodHandle` 派发），
 再挂一条通配路由 `POST /rpc/{mapping}/{method}`。导出面**只包含显式列出的
 mapping**，没有"导出全部方法"的开关。mapping 重名、方法重载冲突在启动期
@@ -291,13 +299,13 @@ mapping**，没有"导出全部方法"的开关。mapping 重名、方法重载�
 ```java
 binder.bind(UserApi.class).to(c -> RemoteProxyFactory
     .of(c.get(RemoteCaller.class))
-    .serviceId("user-service").mapping("user").timeout(deadline)
+    .withServiceId("user-service").withMapping("user").withTimeout(deadline)
     .build(UserApi.class));
 ```
 
 `RemoteProxyFactory` 只有纯远端一种模式（`of(RemoteCaller)`）。`RemoteCaller`
 是原始传输面：`invoke(serviceId, mapping, method, args, returnType
-[, timeout [, idempotent]])`。`CloudHttpClient` 是更下一层的通用 HTTP 面
+[, timeout [, idempotent]])`。`RpcHttpClient` 是更下一层的通用 HTTP 面
 （`call` / `callAsync`，异步只把最后一段 socket 等待移出调用线程，编排不变）。
 
 **线上协议 v1**
@@ -312,7 +320,7 @@ binder.bind(UserApi.class).to(c -> RemoteProxyFactory
 成功：`200` + `application/json`；handler 返回 `null` → `200` 空体，consumer
 得 `null`。
 
-业务失败：`400`，**类恒跨界**，消息只在 `.propagateMessages()` 时跨界。
+业务失败：`400`，**类恒跨界**，消息只在 `.withPropagatedMessages()` 时跨界。
 
 | 头/体 | 内容 |
 |---|---|
@@ -324,7 +332,7 @@ binder.bind(UserApi.class).to(c -> RemoteProxyFactory
 / 参数数组畸形。响应带 `X-RPC-Reject-Reason`。头值一律 form-encoded：它经常
 携带控制字符，HTTP 层拒绝 CTL，否则会把一个谨慎的 4xx 变成未处理的 500。
 
-**错误映射总表**——`CloudException.kind()` 是这张表的结构化形态，一个值
+**错误映射总表**——`RpcException.kind()` 是这张表的结构化形态，一个值
 对应一种调用方动作：
 
 | 对端情形 | consumer 抛出（`kind()`） | retryable |
@@ -349,8 +357,8 @@ binder.bind(UserApi.class).to(c -> RemoteProxyFactory
 **幂等与重放门**：重试必须重新选实例（换 discovery 刷新后的不同实例），
 不 hammer 死实例；重放前过两道门——① 类别门（连接失败/超时 retryable）；
 ② 幂等门（timeout / 中途 I/O / 5xx 属"结果未知"，仅对幂等操作重放）。
-`CloudRequest` 按动词派生幂等性（RFC 9110：GET/HEAD/PUT/DELETE/OPTIONS/TRACE
-幂等，POST/PATCH/未知否），`idempotentWith(...)` 显式覆盖；RPC 线上恒为
+`RpcRequest` 按动词派生幂等性（RFC 9110：GET/HEAD/PUT/DELETE/OPTIONS/TRACE
+幂等，POST/PATCH/未知否），`withIdempotent(...)` 显式覆盖；RPC 线上恒为
 POST，幂等性由 consumer 接口的 `@Idempotent`（方法级或接口级）声明，每次
 调用反射读取。模糊结局的熔断计数不受幂等门影响——它仍是真实的服务失败。
 
@@ -360,7 +368,7 @@ POST，幂等性由 consumer 接口的 `@Idempotent`（方法级或接口级）�
 ### 5.3 跨节点事件 events
 
 立场：**平面分离**。`EventBus` 是进程内广播 + 流的主通道，不知道有任何传输；
-跨节点广播是 `CloudEventBus` 门面（出站 `publish`、入站投递到门面的订阅表），
+跨节点广播是 `MeshEventBus` 门面（出站 `publish`、入站投递到门面的订阅表），
 一条事实是否出境由调用点决定。跨节点是**至多一次（at-most-once）**，并如实
 说明——不做 ack/重投；需要可靠、按键有序投递时用 Kafka 平面（ext 的
 `freeway-mq-kafka`，`KafkaEvents`）。
@@ -395,7 +403,7 @@ POST，幂等性由 consumer 接口的 `@Idempotent`（方法级或接口级）�
 host+port；同一 origin 只保留一条连接，规则是**字典序小的一方发起的连接胜出**
 （两侧同规则，同时拨号必然收敛到一条）。
 
-**出站管道**：`CloudEventBus.publish(topic, payload[, subject])`（Defer 感知：
+**出站管道**：`MeshEventBus.publish(topic, payload[, subject])`（Defer 感知：
 事务内缓冲，提交后才出境，回滚即弃）→ 按 peer 声明的订阅前缀过滤（filter-then-
 translate：无人感兴趣就不序列化）→ 逐连接**入队**。每连接一个 256 帧的有界队列 +
 自己的发送线程：发布线程从不等待 peer（一次阻塞写就能挂死 HTTP/Defer 线程），
@@ -419,13 +427,13 @@ CLASS 帧照解析、按 channel 弃投并计数（`stats().droppedLegacy()`）�
 
 **拨号名单有两个来源**：`freeway.cloud.event.peers`（静态，连接器整个生命周期不变）与
 **发现快照**——`freeway.cloud.event.discovery-feed-ms` 设了即开：事件模块按间隔向绑定的
-`ServiceDiscovery` 查询本服务实例，整份送进 `CloudEventBus.replaceDiscoveredPeers`（本节点
+`ServiceDiscovery` 查询本服务实例，整份送进 `MeshEventBus.replaceDiscoveredPeers`（本节点
 被排除；一次查询失败保留原集合，不能把一次故障读成“全员离场”），实际拨的集合是二者并集。
 快照里缺了的地址 = 离开网格的节点：中断它的拨号循环、优雅断开已连上的出站会话，并从名单里
 删掉——**重连路径以名单为准**，所以断开本身不会把它拨回来。两个事实分开而不是合并，是因为
 发现后端“什么都没发现”不能取消静态列表，而只有发现来的那一半才允许收缩。
 
-**装配与关停**：`CloudEventModule` 显式安装；`freeway.cloud.event.enabled`
+**装配与关停**：`EventMeshModule` 显式安装；`freeway.cloud.event.enabled`
 显式值优先（Boolean 词表，由容器 Coercer 解析：true/false、yes/no、on/off、1/0），
 未设时"配了 peers"即为开启，什么都不设则模块保持
 惰性（装模块本身不产生副作用）。停机时停拨号器再关连接，出站连接发
@@ -443,7 +451,7 @@ CLASS 帧照解析、按 channel 弃投并计数（`stats().droppedLegacy()`）�
   （`/healthz`、`/health/live`、`/health/ready`、`/metrics`）不建 span。
 - 入站 `PropagationFilter`（order `-110`）执行 extract → 合并 → `runWith`，
   并把入站 traceId 写入 MDC。
-- `Metrics` 是 commons 的 SPI，`CloudObserveModule` 把模块自有的一个
+- `Metrics` 是 commons 的 SPI，`ObserveModule` 把模块自有的一个
   `MetricsDefault` 注册表**按三角色绑定**：具体类（单例）、`Metrics` SPI
   （primary，覆盖容器内置 `NoopMetrics`）、`/metrics` 路由读取的
   `MetricsSnapshot` 导出视图——三方永远指向同一注册表。`/metrics` 按
@@ -452,8 +460,8 @@ CLASS 帧照解析、按 channel 弃投并计数（`stats().droppedLegacy()`）�
 - **诚实的能力边界**：目前只有 4 条**无标签**序列——`cloud.rpc.calls`、
   `cloud.rpc.failures`、`cloud.rpc.duration`、`tracer.span.duration`。没有
   labels、没有按服务归因、没有网格指标（§8.2）。
-- 换导出后端 = 不装 `CloudObserveModule`，自行 primary 绑定 `Metrics` /
-  `Tracer` 并提供导出路由（见 `CloudObserveModule` javadoc）。
+- 换导出后端 = 不装 `ObserveModule`，自行 primary 绑定 `Metrics` /
+  `Tracer` 并提供导出路由（见 `ObserveModule` javadoc）。
 
 ### 5.5 韧性 resilience
 
@@ -465,29 +473,29 @@ CLASS 帧照解析、按 channel 弃投并计数（`stats().droppedLegacy()`）�
 - `RateLimiterDefault`：令牌桶，burst 默认 1（严格速率）；**默认关闭**。
 - `RetryerDefault`：指数退避 + **抖动**（base/2..base，避免重试同步）。
 
-**默认在 `CloudHttpClient` 层统一生效**（最稳定、最容易落地的路径）：
+**默认在 `RpcHttpClient` 层统一生效**（最稳定、最容易落地的路径）：
 
 ```
 rateLimiter.tryAcquire()
   → breaker.allowRequest()
   → 传输尝试： discovery.instances → loadBalancer.choose → 拼 URL
               → 注入 InvocationContext → httpClient.send
-  → CloudResponse / CloudException
+  → RpcResponse / RpcException
 （重试从 rate-limit 步重新开始，每次尝试重新选实例）
 ```
 
 - **本地拒绝语义**：circuit-open / rate-limited 是 retryable=false 的
-  `CloudException`（限流重试会立即再失败），且计入 `cloud.rpc.failures`。
+  `RpcException`（限流重试会立即再失败），且计入 `cloud.rpc.failures`。
   限流先于熔断——本地拒绝不消耗半开探针名额。
 - 派发期的非预期本地异常（坏 URL/头、discovery 后端缺陷）统一映射为
-  `CloudException.dispatch`（retryable=false）：调用面单一，半开探针总有
+  `RpcException.dispatch`（retryable=false）：调用面单一，半开探针总有
   结局，熔断器不会卡在半开。
 - 聚合开关 `freeway.cloud.rpc.resilience = auto | off`：`auto`（默认）由细项
   键治理；`off` 是显式总闸（NO_RETRY / NOOP / UNLIMITED，忽略全部细项键），
   是 mesh 接管与故障诊断的逃生口，启动期校验非法值即失败。
 - 超时**不受**韧性治理，永远生效（`rpc.connect-timeout` /
   `rpc.request-timeout`）。
-- 未装 `CloudResilienceModule` 时 client 退化到内置默认（3 次重试 / 100ms
+- 未装 `ResilienceModule` 时 client 退化到内置默认（3 次重试 / 100ms
   起退避 / 阈值 5 / 无限限流），默认值与配置层同源于 `CloudModule.ConfigKeys` 的
   `*_DEFAULT` 常量——一个数只有一个来源。
 - `@Retry` / `@CircuitBreak` / `@RateLimit` 注解 + `Advisor` 织入**未交付**
@@ -495,13 +503,13 @@ rateLimiter.tryAcquire()
 
 ### 5.6 健康检查 health
 
-`CloudHealthModule` 贡献两个**路径固定（不可配）**的 K8s 语义端点：
+`HealthModule` 贡献两个**路径固定（不可配）**的 K8s 语义端点：
 
 - `/health/live` —— 进程存活，固定 `{"status":"ok"}`。
 - `/health/ready` —— 聚合 `CloudHealthContributor` 集合（contribute 模式），
   全健康 `200`，否则 `503`。
 
-注册表就绪由 `RegistryHealthContributor`（随 `CloudDiscoveryModule` 交付）
+注册表就绪由 `RegistryHealthContributor`（随 `DiscoveryModule` 交付）
 提供，语义只声明框架**验证得到**的事实：
 
 - 从未注册过（无 HTTP 模块、无服务声明）→ 报 `not registered`，而不是一句
@@ -516,7 +524,7 @@ rateLimiter.tryAcquire()
 
 `freeway-http` 自身的 `/healthz`（`freeway.http.health.*`）是**另一套**端点：
 http 探针在 `HttpModule`/`HealthFilter`，cloud 探针只在装
-`CloudHealthModule` 时注册。两者语义独立，不要配成同一路径互相抢占。
+`HealthModule` 时注册。两者语义独立，不要配成同一路径互相抢占。
 
 ### 5.7 密钥 secret
 
@@ -571,7 +579,7 @@ API**，遵循 `Database`/`Pool` 模式，并发交给虚拟线程。
 - **传输加密（mTLS）**：`TransportSecurity`（`sslContext()`，默认常量
   `NONE` 即开发态明文）。core 用 JDK `SSLContext` + 文件型
   keystore/truststore（PKCS12/JKS，键见 `docs/freeway-config.md`）：
-  `CloudRpcModule` 按键解析——keystore 为空 → `NONE`，否则构建
+  `RpcModule` 按键解析——keystore 为空 → `NONE`，否则构建
   `TransportSecurityDefault`。**同一条出站安全面同时服务 RPC（`https://`）
   与事件网格（`wss://`）**：网格不是第二个配置面。能力由运行时配置决定，
   静态 marker 表达不了条件能力，故 core 不预铺 `@Mtls` / `@None`；自定义
@@ -636,7 +644,7 @@ API**，遵循 `Database`/`Pool` 模式，并发交给虚拟线程。
   的桥接缝。**广播域的同型接缝已于 1.5.5 按同一判例拆除**：本地
   `EventBus.publish` 曾按模块装载悄悄出境（`EventSink` 扇出桥 + `publishInbound`
   入站漏斗 + `@Topic` 类型路由注解——本文件同节"不做路由注解"条目的违例者），
-  现总线不知传输、云生广播走显式 `CloudEventBus`、持久流走 `KafkaEvents`，
+  现总线不知传输、云生广播走显式 `MeshEventBus`、持久流走 `KafkaEvents`，
   `freeway-ioc` 与 `freeway-cloud` 之间不再有事件桥接缝。
 - **注解路由 / `@CloudClient` 透明 bean / `CloudExporter` 自动导出 / `@CloudEvent`
   注解实体**：导出、调用与事件路由都是显式声明，不往业务类型上挂路由注解，
@@ -681,10 +689,10 @@ API**，遵循 `Database`/`Pool` 模式，并发交给虚拟线程。
 
 | 能力 | 接缝 | 最小收口动作 |
 |---|---|---|
-| 注册 / 发现后端（Nacos、K8s endpoints 由 ext 适配；**freeway 自家后端已在本体交付**：节点 = `RegistryServerModule` 组合，客户端 = `RegistryFleetModule`，写入扇出/发现并集，零第三方依赖；**Consul 在 ext**） | `ServiceRegistry` + `ServiceDiscovery` | 一个适配器模块 + 真实后端测试；`renew` 已返回 boolean，自愈契约现成 |
+| 注册 / 发现后端（Nacos、K8s endpoints 由 ext 适配；**freeway 自家后端已在本体交付**：节点 = `RegistryServerModule` 组合，客户端 = `FleetRegistryModule`，写入扇出/发现并集，零第三方依赖；**Consul 在 ext**） | `ServiceRegistry` + `ServiceDiscovery` | 一个适配器模块 + 真实后端测试；`renew` 已返回 boolean，自愈契约现成 |
 | 密钥后端（Vault、KMS） | `SecretStore` | 适配器自理租约/TTL（SPI 无 `reload()`），文件轮换语义已定 |
 | 对象存储后端（S3 兼容） | `ObjectStorage` | 版本能力与版本寻址的读/删一起排期，不要只交一半 |
-| 指标导出（OTel/Prometheus push） | 不装 `CloudObserveModule`，primary 绑定 `Metrics` + 自备导出路由 | 顺带把 §8.2 的标签维度一起设计 |
+| 指标导出（OTel/Prometheus push） | 不装 `ObserveModule`，primary 绑定 `Metrics` + 自备导出路由 | 顺带把 §8.2 的标签维度一起设计 |
 | trace 导出（OTLP） | 同上（`Tracer`） | `tracestate` 已透传，`TraceContext` 够用 |
 | Kafka 持久流平面 | `KafkaEvents`（`freeway-mq-kafka` 已在 ext） | 可靠投递走它，不是网格 |
 
@@ -697,11 +705,11 @@ API**，遵循 `Database`/`Pool` 模式，并发交给虚拟线程。
 | zone / canary 默认策略 | weight 已被 `LoadBalancerDefault` 读取；zone/canary 仍只是 metadata，"标了没用" | 在 metadata 存在时优先按 zone，无 metadata 时保持加权轮询 |
 | ~~网格丢弃计数指标~~ **已交付（1.5.7）**：`/metrics` 暴露 `cloud_event.*` 系列（published/frames_queued/frames_dropped/send_failures/inbound_delivered/dropped_legacy/dropped_no_subscriber/peers），标签维度仍待做 |
 | ~~网格应用层心跳~~ **已交付（1.5.7）**：`WebSocketListener.onPong` 可见 + mesh 侧 `MeshKeepalive`（`event.keepalive-ms`，两腿共用策略），无协议变更（复用 WS ping/pong） |
-| ~~readiness 发布到注册表 + startup probe~~ **已交付（1.5.7）**：`ServiceRegistry.markReady`（默认 no-op，适配器免改）+ 注册以 `Health.starting()` + 就绪门（贡献者全通过才翻位）；启动探针语义即"未就绪 = 不进发现结果" |
+| ~~readiness 发布到注册表 + startup probe~~ **已交付（1.5.7）**：`ServiceRegistry.markReady`（默认 no-op，适配器免改）+ 注册以 `ServiceHealth.starting()` + 就绪门（贡献者全通过才翻位）；启动探针语义即"未就绪 = 不进发现结果" |
 | ~~出站证书轮换~~ **已交付（1.5.7）**：`rpc.tls.reload-interval` 设了即开——`SSLContext` 只建一次，`KeyManager`/`TrustManager` 委托给可轮换材料（size/mtime + 节流、失败保留旧材料）。**不是**重建 context：JDK `HttpClient` 构建时就捕获它，重建要重开连接池与在途结算 |
 
-| 每方法韧性策略 | 现在整个 `CloudHttpClient` 一套阈值，读与写该有不同的重试观 | `@Idempotent` 同级的每方法声明（超时/重试上限），由 `RemoteProxyFactory` 读取 |
-| 本地调用的韧性注解（`@Retry` / `@CircuitBreak` / `@RateLimit` + `Advisor` 织入） | 三个 SPI 目前只在 `CloudHttpClient` 出站路径统一生效（§5.5）：进程内直连的慢依赖没有同一套治理，应用得手写模板代码 | 复用 ioc 已有的 `Binding.advise` / `Advisor.wrap(selector, advice)`，读方法级（退到类级）注解并复用同一批 SPI；注解只做选择，阈值仍是现有键，不新增第二套配置 |
+| 每方法韧性策略 | 现在整个 `RpcHttpClient` 一套阈值，读与写该有不同的重试观 | `@Idempotent` 同级的每方法声明（超时/重试上限），由 `RemoteProxyFactory` 读取 |
+| 本地调用的韧性注解（`@Retry` / `@CircuitBreak` / `@RateLimit` + `Advisor` 织入） | 三个 SPI 目前只在 `RpcHttpClient` 出站路径统一生效（§5.5）：进程内直连的慢依赖没有同一套治理，应用得手写模板代码 | 复用 ioc 已有的 `Binding.advise` / `Advisor.wrap(selector, advice)`，读方法级（退到类级）注解并复用同一批 SPI；注解只做选择，阈值仍是现有键，不新增第二套配置 |
 
 ### 8.3 交付标准（沿用实施计划）
 
@@ -727,8 +735,8 @@ API**，遵循 `Database`/`Pool` 模式，并发交给虚拟线程。
 | 2026-09-12 | 审计轮次：失败获得 `kind()`（13 值）；`ServiceRegistry.renew` 返回 boolean 并自愈；readiness 只说框架验证得到的事（3 次失败判不健康、未注册报 `not registered`、关停期不健康）；密钥按 size + 全精度 mtime 轮换；网格出站 TLS 与 RPC 共用一条安全面，明文 + token 启动告警；停机加 `registry.shutdown-drain` / `rpc.shutdown-grace` 与 WS `1001 going away`；contribution id 统一 `freeway.cloud.*`；`@Local` 收敛到参数/字段并覆盖 `Metrics` / `TransportSecurity`；补充可选输入规则与 `Wiring` 兼容构造 |
 | 2026-09-13 | 模块组合改树：`ModuleEx.subModules()` 与 `ModuleTree` 删除，组合成为入口构建的 `ModuleNode` 值（容器持有，`Container.moduleTree()`）；伞模块 `CloudModule` 改为片段工厂 `CloudModules.standard()`，应用可替换或取出其中任一模块 |
 | 2026-09-14 | 结构节点由"命名分组"改为"bundle 模块"：`group` 概念删除，`ModuleEx` 的 bundle 类用 `@SubModule` 声明子模块（构建树时展开，非回调）；`CloudModules.standard()` 工厂删除，恢复为 `CloudModule` + `@SubModule`，子模块仍可单独放置取子集（无排除 API） |
-| 2026-09-12 | 配置面审计：`registry.service-scheme` / `service-host` / `shutdown-drain` 默认改为 `auto`（分别跟随 HTTP 服务器 TLS、推导可路由地址、由注册表后端回答），网格拨号方案改读解析出的实例端点；布尔键统一 `Coercer` 解析（垃圾值启动失败，不再静默 `false`）；override 文件重复键启动告警点名两个文件；新增 `HttpServer.secure()` 与 `ServiceRegistry.drainWindow()` |
+| 2026-09-12 | 配置面审计：`registry.service-scheme` / `service-host` / `shutdown-drain` 默认改为 `auto`（分别跟随 HTTP 服务器 TLS、推导可路由地址、由注册表后端回答），网格拨号方案改读解析出的实例端点；布尔键统一 `Coercer` 解析（垃圾值启动失败，不再静默 `false`）；override 文件重复键启动告警点名两个文件；新增 `HttpServer.isSecure()` 与 `ServiceRegistry.drainWindow()` |
 | 2026-09-12 | 文档合并：本文取代 `freeway-cloud-unified-design.md` / `freeway-cloud-events-design.md` / `freeway-cloud-rpc-design.md` / `freeway-cloud-implementation-plan.md`；四份文档仍然有效的排除项与能力边界（无应用层心跳、MQ 语义、全局成员视图、webhook 出站、`@CloudEvent` 注解实体）与 core 后续项（含 `Advisor` 织入、网格心跳）并入 §5 / §7 / §8；配置键清单移出为对 `docs/freeway-config.md` 的索引 |
-| 2026-09-14 | 兼容不再是目标：`AGENTS.md` 的可选输入规则删除"记录作为适配器装配点保留旧 arity 委托构造器"（上一轮 09-12 写入）——新增组件直接改变规范构造器形状，编译错误即迁移路径；随之删除 `CloudHttpClientDefault.Wiring` 的 9 参兼容构造（ext `RemoteRpcContract` 同批改传 10 参）与 `freeway-log.properties` 的过渡读取（旧名只检测、告警，不加载） |
-| 2026-09-24 | 广播域平面分离：拆除 `EventSink` 桥——`EventBridge`/`EventBridgePolicy`/`EventBusInbound`/`@Topic`/`Keyed` 删除，`subscriptions`/`allowed-types`/`allowed-topics`/`dedup.*` 四键退役；`CloudEventBus` 显式门面（`publish` topic 定址、Defer 提交耦合、订阅申报-only 且订阅表=入站闸门）；ext kafka 改独立平面 `KafkaEvents`；在途 CLASS 帧解析后按因弃投并计数，wire 格式不变 |
+| 2026-09-14 | 兼容不再是目标：`AGENTS.md` 的可选输入规则删除"记录作为适配器装配点保留旧 arity 委托构造器"（上一轮 09-12 写入）——新增组件直接改变规范构造器形状，编译错误即迁移路径；随之删除 `RpcHttpClientDefault.Wiring` 的 9 参兼容构造（ext `RemoteRpcContract` 同批改传 10 参）与 `freeway-log.properties` 的过渡读取（旧名只检测、告警，不加载） |
+| 2026-09-24 | 广播域平面分离：拆除 `EventSink` 桥——`EventBridge`/`EventBridgePolicy`/`EventBusInbound`/`@Topic`/`Keyed` 删除，`subscriptions`/`allowed-types`/`allowed-topics`/`dedup.*` 四键退役；`MeshEventBus` 显式门面（`publish` topic 定址、Defer 提交耦合、订阅申报-only 且订阅表=入站闸门）；ext kafka 改独立平面 `KafkaEvents`；在途 CLASS 帧解析后按因弃投并计数，wire 格式不变 |
 | 2026-09-28 | 组合面收敛：`ModuleNode` 移入 `ioc.internal` 包私有（`Container.moduleTree()` 删除，历史行所记的公开树值不再有效），应用命名走 `FreewayApp.name` / `Freeway.create(String, …)` |

@@ -192,13 +192,13 @@ class SingletonServiceImpl implements SingletonService {
     @Override public String name() { return "singleton"; }
 }
 
-class ThreadScopedDep {}
+class BoundaryScopedDep {}
 
 class ConsumerWithThreadDep {
-    final ThreadScopedDep dep;
+    final BoundaryScopedDep dep;
 
     @Inject
-    ConsumerWithThreadDep(ThreadScopedDep dep) { this.dep = dep; }
+    ConsumerWithThreadDep(BoundaryScopedDep dep) { this.dep = dep; }
 }
 
 interface BaseService { String name(); }
@@ -206,10 +206,10 @@ interface BaseService { String name(); }
 interface ExtendedService extends BaseService {}
 
 class ExtendedServiceImpl implements ExtendedService {
-    final ThreadScopedDep dep;
+    final BoundaryScopedDep dep;
 
     @Inject
-    ExtendedServiceImpl(ThreadScopedDep dep) { this.dep = dep; }
+    ExtendedServiceImpl(BoundaryScopedDep dep) { this.dep = dep; }
 
     @Override public String name() { return "extended"; }
 }

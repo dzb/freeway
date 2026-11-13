@@ -22,7 +22,7 @@ class DatabaseResourceLifecycleTest {
 
             db.transaction(() -> db.execute("insert into t values (1)"));
 
-            DatabaseStats stats = db.stats();
+            PoolStats stats = db.stats();
             assertEquals(0, stats.active());
             assertEquals(1, stats.idle());
             assertEquals(1, stats.total());
@@ -66,7 +66,7 @@ class DatabaseResourceLifecycleTest {
             db.transaction(() -> holder[0] = db.batch("insert into t values (?)"));
 
             assertThrows(SqlException.class,
-                () -> holder[0].rows(new Object[]{1}).execute(),
+                () -> holder[0].rowsRaw(new Object[]{1}).execute(),
                 "consuming a transaction-bound BatchQuery after commit must fail loudly");
         }
     }
@@ -142,7 +142,7 @@ class DatabaseResourceLifecycleTest {
 
             db.transaction(() -> {
                 db.execute("insert into t values (1)");
-                db.batch("insert into t values (?)").rows(new Object[]{2}).execute();
+                db.batch("insert into t values (?)").rowsRaw(new Object[]{2}).execute();
                 assertEquals(2L, db.query("select count(*) from t").one(Long.class).orElseThrow());
             });
 

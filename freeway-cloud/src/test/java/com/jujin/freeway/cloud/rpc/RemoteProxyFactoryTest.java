@@ -33,23 +33,23 @@ class RemoteProxyFactoryTest {
         RemoteCaller caller = new RemoteCaller(stubClient(), new JsonCodecDefault());
         assertThrows(NullPointerException.class, () -> RemoteProxyFactory.of(null));
         assertThrows(IllegalStateException.class, () ->
-            RemoteProxyFactory.of(caller).mapping("x").build(EchoApi.class));   // no serviceId
+            RemoteProxyFactory.of(caller).withMapping("x").build(EchoApi.class));   // no serviceId
         assertThrows(IllegalStateException.class, () ->
-            RemoteProxyFactory.of(caller).serviceId("s").build(EchoApi.class));  // no mapping
+            RemoteProxyFactory.of(caller).withServiceId("s").build(EchoApi.class));  // no mapping
         assertThrows(IllegalArgumentException.class, () ->
-            RemoteProxyFactory.of(caller).serviceId("s").mapping("x")
+            RemoteProxyFactory.of(caller).withServiceId("s").withMapping("x")
                 .build(String.class));                                          // not an interface
     }
 
     @Test
     void idempotentMarkerRidesIntoTheOutgoingRequest() {
         // A recording transport: the marker's path is proxy → RemoteCaller →
-        // CloudRequest, so a stub client that captures request.idempotent()
+        // RpcRequest, so a stub client that captures request.idempotent()
         // pins the whole chain without a server.
         List<Boolean> seen = new ArrayList<>();
-        CloudHttpClient recording = new CloudHttpClient() {
+        RpcHttpClient recording = new RpcHttpClient() {
             @Override
-            public CloudResponse call(String serviceId, CloudRequest request) {
+            public RpcResponse call(String serviceId, RpcRequest request) {
                 seen.add(request.idempotent());
                 return ok();
             }
@@ -60,7 +60,7 @@ class RemoteProxyFactoryTest {
         RemoteCaller caller = new RemoteCaller(recording, new JsonCodecDefault());
 
         StockApi stock = RemoteProxyFactory.of(caller)
-            .serviceId("stock").mapping("stock")
+            .withServiceId("stock").withMapping("stock")
             .build(StockApi.class);
         assertEquals("ok", stock.quote("ACME"));
         assertEquals("ok", stock.trade("ACME", 10));
@@ -69,17 +69,17 @@ class RemoteProxyFactoryTest {
 
         seen.clear();
         CatalogApi catalog = RemoteProxyFactory.of(caller)
-            .serviceId("catalog").mapping("catalog")
+            .withServiceId("catalog").withMapping("catalog")
             .build(CatalogApi.class);
         assertEquals("ok", catalog.find("SKU-1"));
         assertEquals(List.of(true), seen, "a type-level marker covers every method");
     }
 
     /** A transport that answers {@code "ok"} for every call. */
-    private static CloudHttpClient stubClient() {
-        return new CloudHttpClient() {
+    private static RpcHttpClient stubClient() {
+        return new RpcHttpClient() {
             @Override
-            public CloudResponse call(String serviceId, CloudRequest request) {
+            public RpcResponse call(String serviceId, RpcRequest request) {
                 return ok();
             }
 
@@ -88,8 +88,8 @@ class RemoteProxyFactoryTest {
         };
     }
 
-    private static CloudResponse ok() {
-        return new CloudResponse(200, Map.of(),
+    private static RpcResponse ok() {
+        return new RpcResponse(200, Map.of(),
             "\"ok\"".getBytes(java.nio.charset.StandardCharsets.UTF_8));
     }
 
@@ -97,7 +97,7 @@ class RemoteProxyFactoryTest {
     void objectMethodsAreAnsweredLocally() {
         RemoteCaller caller = new RemoteCaller(stubClient(), new JsonCodecDefault());
         EchoApi api = RemoteProxyFactory.of(caller)
-            .serviceId("s").mapping("m").build(EchoApi.class);
+            .withServiceId("s").withMapping("m").build(EchoApi.class);
 
         // No transport is reached: identity semantics stay Java's.
         assertEquals(api, api);

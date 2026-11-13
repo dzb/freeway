@@ -43,7 +43,7 @@ class ScopeProxyAdvisorTest {
         List<AutoCloseable> closed = new ArrayList<>();
 
         ScopedCache.within(() -> {
-            ScopedCache.get("k", () -> (AutoCloseable) () -> closed.add(null));
+            ScopedCache.computeIfAbsent("k", () -> (AutoCloseable) () -> closed.add(null));
         });
 
         container.close();
@@ -113,13 +113,13 @@ class ScopeProxyAdvisorTest {
     }
 
     @Test
-    void singletonThroughIndirectInterfaceRejectsThreadScopedDependency() {
+    void singletonThroughIndirectInterfaceRejectsBoundaryScopedDependency() {
         // Bind ExtendedServiceImpl under BaseService — an indirect interface.
         // ExtendedServiceImpl extends ExtendedService extends BaseService.
         // findOwnerBinding must walk ExtendedService → BaseService to find the binding.
         Container container = Freeway.create(binder -> {
             binder.bind(BaseService.class).to(ExtendedServiceImpl.class).scope(Scope.SINGLETON);
-            binder.bind(ThreadScopedDep.class).to(ThreadScopedDep.class).scope(Scope.THREAD);
+            binder.bind(BoundaryScopedDep.class).to(BoundaryScopedDep.class).scope(Scope.BOUNDARY);
         });
 
         // trigger proxy realization via ScopedCache (thread scope)
@@ -131,15 +131,15 @@ class ScopeProxyAdvisorTest {
     }
 
     @Test
-    void singletonThroughInterfaceRejectsThreadScopedDependency() {
+    void singletonThroughInterfaceRejectsBoundaryScopedDependency() {
         Container container = Freeway.create(binder -> {
             binder.bind(SingletonService.class).to(SingletonServiceImpl.class).scope(Scope.SINGLETON);
-            binder.bind(ThreadScopedDep.class).to(ThreadScopedDep.class).scope(Scope.THREAD);
+            binder.bind(BoundaryScopedDep.class).to(BoundaryScopedDep.class).scope(Scope.BOUNDARY);
         });
 
         assertThrows(RuntimeException.class, () ->
             container.create(ConsumerWithThreadDep.class),
-                "Singleton injected with thread-scoped dep should fail");
+                "Singleton injected with boundary-scoped dep should fail");
     }
 
     @Test
@@ -303,7 +303,7 @@ class ScopeProxyAdvisorTest {
         ScopedCounter.destroyed.set(0);
 
         Container container = Freeway.create(binder ->
-            binder.bind(ScopedCounter.class).to(ScopedCounter.class).scope(Scope.THREAD)
+            binder.bind(ScopedCounter.class).to(ScopedCounter.class).scope(Scope.BOUNDARY)
         );
         ScopeBoundary boundary = container.get(ScopeBoundary.class);
 
@@ -341,14 +341,14 @@ class ScopeProxyAdvisorTest {
         // (type, id) alone, so two containers binding the same type under the
         // same id shared ONE value inside a scope.
         Container a = Freeway.create(binder ->
-            binder.bind(ScopedCounter.class).to(ScopedCounter.class).scope(Scope.THREAD).id("counter"));
+            binder.bind(ScopedCounter.class).to(ScopedCounter.class).scope(Scope.BOUNDARY).id("counter"));
         Container b = Freeway.create(binder ->
-            binder.bind(ScopedCounter.class).to(ScopedCounter.class).scope(Scope.THREAD).id("counter"));
+            binder.bind(ScopedCounter.class).to(ScopedCounter.class).scope(Scope.BOUNDARY).id("counter"));
 
         a.get(ScopeBoundary.class).within(() -> assertNotSame(
             a.get(ScopedCounter.class, "counter"),
             b.get(ScopedCounter.class, "counter"),
-            "each container realizes its own thread-scoped value"));
+            "each container realizes its own boundary-scoped value"));
         a.close();
         b.close();
     }
@@ -359,7 +359,7 @@ class ScopeProxyAdvisorTest {
         ScopedCounter.destroyed.set(0);
 
         Container container = Freeway.create(binder ->
-            binder.bind(ScopedCounter.class).to(ScopedCounter.class).scope(Scope.THREAD)
+            binder.bind(ScopedCounter.class).to(ScopedCounter.class).scope(Scope.BOUNDARY)
         );
         ScopeBoundary boundary = container.get(ScopeBoundary.class);
 
@@ -390,7 +390,7 @@ class ScopeProxyAdvisorTest {
         ScopedCounter.destroyed.set(0);
 
         Container container = Freeway.create(binder ->
-            binder.bind(ScopedCounter.class).to(ScopedCounter.class).scope(Scope.THREAD)
+            binder.bind(ScopedCounter.class).to(ScopedCounter.class).scope(Scope.BOUNDARY)
         );
         ScopeBoundary boundary = container.get(ScopeBoundary.class);
 
@@ -420,7 +420,7 @@ class ScopeProxyAdvisorTest {
     @Test
     void withinPropagatesReturnValue() {
         Container container = Freeway.create(binder ->
-            binder.bind(ScopedCounter.class).to(ScopedCounter.class).scope(Scope.THREAD)
+            binder.bind(ScopedCounter.class).to(ScopedCounter.class).scope(Scope.BOUNDARY)
         );
         ScopeBoundary boundary = container.get(ScopeBoundary.class);
 
@@ -434,7 +434,7 @@ class ScopeProxyAdvisorTest {
         ScopedCounter.destroyed.set(0);
 
         Container container = Freeway.create(binder ->
-            binder.bind(ScopedCounter.class).to(ScopedCounter.class).scope(Scope.THREAD)
+            binder.bind(ScopedCounter.class).to(ScopedCounter.class).scope(Scope.BOUNDARY)
         );
         ScopeBoundary boundary = container.get(ScopeBoundary.class);
 
@@ -456,7 +456,7 @@ class ScopeProxyAdvisorTest {
         ScopedCounter.destroyed.set(0);
 
         Container container = Freeway.create(binder ->
-            binder.bind(ScopedCounter.class).to(ScopedCounter.class).scope(Scope.THREAD)
+            binder.bind(ScopedCounter.class).to(ScopedCounter.class).scope(Scope.BOUNDARY)
         );
         ScopeBoundary boundary = container.get(ScopeBoundary.class);
 
@@ -478,7 +478,7 @@ class ScopeProxyAdvisorTest {
         ScopedCounter.destroyed.set(0);
 
         Container container = Freeway.create(binder ->
-            binder.bind(ScopedCounter.class).to(ScopedCounter.class).scope(Scope.THREAD)
+            binder.bind(ScopedCounter.class).to(ScopedCounter.class).scope(Scope.BOUNDARY)
         );
 
         ScopedCache.within(() -> {
@@ -495,7 +495,7 @@ class ScopeProxyAdvisorTest {
     @Test
     void withinRefusesAfterContainerClose() {
         Container container = Freeway.create(binder ->
-            binder.bind(ScopedCounter.class).to(ScopedCounter.class).scope(Scope.THREAD)
+            binder.bind(ScopedCounter.class).to(ScopedCounter.class).scope(Scope.BOUNDARY)
         );
         ScopeBoundary boundary = container.get(ScopeBoundary.class);
 
@@ -510,22 +510,22 @@ class ScopeProxyAdvisorTest {
     void threadScopedProxyRejectsInvocationAfterClose() {
         // Regression: the singleton path throws "Container is closed" from
         // realize() when a proxy obtained before close() is invoked after
-        // close, but realizeThreadScoped() had no such check — a THREAD proxy
+        // close, but realizeBoundaryScoped() had no such check — a BOUNDARY proxy
         // silently realized a fresh value after the container was sealed.
         ScopedCounter.created.set(0);
         ScopedCounter.destroyed.set(0);
         Container container = Freeway.create(binder ->
-            binder.bind(ScopedApi.class).to(ScopedCounter.class).scope(Scope.THREAD)
+            binder.bind(ScopedApi.class).to(ScopedCounter.class).scope(Scope.BOUNDARY)
         );
         ScopeBoundary boundary = container.get(ScopeBoundary.class);
-        ScopedApi api = container.get(ScopedApi.class); // lazy THREAD proxy
+        ScopedApi api = container.get(ScopedApi.class); // lazy BOUNDARY proxy
 
         boundary.within(() -> {
             container.close();
             IllegalStateException ex = assertThrows(IllegalStateException.class, api::id,
-                "invoking a THREAD proxy after close must throw");
+                "invoking a BOUNDARY proxy after close must throw");
             assertTrue(ex.getMessage().contains("Container is closed"),
-                "a THREAD proxy invoked after close must report the sealed container, got: "
+                "a BOUNDARY proxy invoked after close must report the sealed container, got: "
                     + ex.getMessage());
         });
 
@@ -636,7 +636,7 @@ class ScopeProxyAdvisorTest {
 
         Container container = Freeway.create(
             binder -> {
-                binder.bind(ScopedApi.class).to(ScopedCounter.class).scope(Scope.THREAD);
+                binder.bind(ScopedApi.class).to(ScopedCounter.class).scope(Scope.BOUNDARY);
                 binder.bind(ScopedSingletonService.class).to(ScopedSingletonService.class);
             }
         );
@@ -659,17 +659,17 @@ class ScopeProxyAdvisorTest {
     }
 
     @Test
-    void singletonRejectsDirectInjectionOfThreadScopedConcrete() {
+    void singletonRejectsDirectInjectionOfBoundaryScopedConcrete() {
         Container container = Freeway.create(
             binder -> {
-                binder.bind(ScopedCounter.class).to(ScopedCounter.class).scope(Scope.THREAD);
+                binder.bind(ScopedCounter.class).to(ScopedCounter.class).scope(Scope.BOUNDARY);
                 binder.bind(ScopedSingleton.class).to(ScopedSingleton.class);
             }
         );
 
         RuntimeException ex = assertThrows(RuntimeException.class, () -> container.get(ScopedSingleton.class));
         assertInstanceOf(IllegalStateException.class, ex.getCause());
-        assertTrue(ex.getCause().getMessage().contains("cannot directly inject thread-scoped concrete"),
+        assertTrue(ex.getCause().getMessage().contains("cannot directly inject boundary-scoped concrete"),
             "the dedicated scope-compat diagnostic must be reachable even when no scope is open "
                 + "(not masked by 'No open scope' from realization)");
     }

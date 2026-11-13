@@ -108,7 +108,7 @@ class SymbolSourceReplacementTest {
                 .to(c -> new ViewSource(
                     c.extension(SymbolProvider.class), c.get(Coercer.class)))
                 .primary();
-            binder.contribute(SymbolProvider.class).add(ClassTier.class);
+            binder.contribute(SymbolProvider.class).addDeferred(ClassTier.class);
         });
 
         assertEquals("class-tier", container.get(SymbolSource.class).resolve("class.tier", null),

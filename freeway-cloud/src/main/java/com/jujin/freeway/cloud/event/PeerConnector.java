@@ -562,7 +562,7 @@ final class PeerConnector implements AutoCloseable {
                         return null;
                     }
                     case MeshFrame.Event event ->
-                        hub.receive(CloudEventEnvelope.parse(event.text()));
+                        hub.receive(MeshEnvelope.parse(event.text()));
                     case MeshFrame.EventBeforeHello ignored -> {
                         // The CE pipeline is only for admitted peers. Before
                         // the ack the peer never ran our admission — a

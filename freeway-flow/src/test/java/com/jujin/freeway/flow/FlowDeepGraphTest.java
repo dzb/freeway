@@ -19,16 +19,16 @@ class FlowDeepGraphTest {
             var cursor = spec.addStart("start");
             for (int i = 0; i < chain; i++) {
                 String id = "a" + i;
-                cursor.linkAdd(id);
+                cursor.linkTo(id);
                 cursor = spec.addActivity(id).task("@noop");
             }
-            cursor.linkAdd("fork");
+            cursor.linkTo("fork");
             var fork = spec.addParallel("fork").task("@noop");
-            fork.linkAdd("left");
-            fork.linkAdd("right");
-            spec.addActivity("left").task("@noop").linkAdd("join");
-            spec.addActivity("right").task("@noop").linkAdd("join");
-            spec.addInclusive("join").task("@noop").linkAdd("end");
+            fork.linkTo("left");
+            fork.linkTo("right");
+            spec.addActivity("left").task("@noop").linkTo("join");
+            spec.addActivity("right").task("@noop").linkTo("join");
+            spec.addInclusive("join").task("@noop").linkTo("end");
             spec.addEnd("end");
         }).create();
 

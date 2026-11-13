@@ -23,7 +23,7 @@ import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
  * The hub: registry of live peer connections + the server-side WS endpoint
  * ({@code /cloud/event}) + the inbound dispatch pipeline.
  *
- * <p>Lifecycle: constructed by {@link CloudEventModule} at bind time,
+ * <p>Lifecycle: constructed by {@link EventMeshModule} at bind time,
  * {@link #wire(Wiring)} runs from a RuntimeHook ordered <em>after</em>
  * {@code freeway.http.server}: the mesh origin is the node identity, which
  * needs the port the node actually serves on. A peer that dials during that
@@ -38,7 +38,7 @@ import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
  * Registration, wiring, interception and frame dispatch are the connector's and
  * the session handler's business and stay inside this package; an application
  * that wants a different view of the mesh contributes a
- * {@link CloudEventInterceptor} or reads the peers, it does not drive them.</p>
+ * {@link MeshInterceptor} or reads the peers, it does not drive them.</p>
  */
 public final class PeerHub implements WebSocketEndpoint {
 
@@ -51,10 +51,10 @@ public final class PeerHub implements WebSocketEndpoint {
     private volatile java.util.concurrent.ScheduledExecutorService scheduler;
     /** Contributed at hook time, read per inbound frame on WS threads —
      *  copy-on-write keeps add-after-wire safe without external locking. */
-    private final List<CloudEventInterceptor> interceptors = new CopyOnWriteArrayList<>();
+    private final List<MeshInterceptor> interceptors = new CopyOnWriteArrayList<>();
     /** The broadcast plane this hub feeds: inbound frames arrive here, and
      *  the declared subscriptions (its table) are the hello prefixes peers pull. */
-    private volatile CloudEventBus facade;
+    private volatile MeshEventBus facade;
     private volatile JsonCodec codec;
     private volatile String origin;
     private volatile String serviceId;
@@ -65,7 +65,7 @@ public final class PeerHub implements WebSocketEndpoint {
      * One-shot wiring for the hub — every cross-module input in one place,
      * so the values cannot drift apart at a call site.
      *
-     * @param facade     the CloudEventBus owning subscriptions and delivery
+     * @param facade     the MeshEventBus owning subscriptions and delivery
      * @param codec      JSON codec for frames and acks
      * @param serviceId  logical service id (envelope source)
      * @param instanceId this node's mesh identity; blank derives one
@@ -73,7 +73,7 @@ public final class PeerHub implements WebSocketEndpoint {
      * @param keepaliveMs ping interval for half-open detection; 0 = off
      */
     record Wiring(
-        CloudEventBus facade,
+        MeshEventBus facade,
         JsonCodec codec,
         String serviceId,
         String instanceId,
@@ -92,7 +92,7 @@ public final class PeerHub implements WebSocketEndpoint {
         this.scheduler = java.util.concurrent.Executors.newSingleThreadScheduledExecutor(
             Thread.ofVirtual().name("cloud-mesh-keepalive-", 0).factory());
         this.wired = true;
-        LOG.info("CloudEventBus wired: origin={} subscriptions={}", origin, facade.prefixes());
+        LOG.info("MeshEventBus wired: origin={} subscriptions={}", origin, facade.prefixes());
         warnWhenUnauthenticated();
     }
 
@@ -106,14 +106,14 @@ public final class PeerHub implements WebSocketEndpoint {
      */
     private void warnWhenUnauthenticated() {
         if (token.isBlank()) {
-            LOG.warn("CloudEventBus has no mesh token — any peer that can reach the "
+            LOG.warn("MeshEventBus has no mesh token — any peer that can reach the "
                 + "endpoint may connect; set {} to require one",
                 ConfigKeys.EVENT_TOKEN);
         }
     }
 
     /** Registers an inbound interceptor (called by the module from contributions). */
-    void addInterceptor(CloudEventInterceptor interceptor) {
+    void addInterceptor(MeshInterceptor interceptor) {
         interceptors.add(Objects.requireNonNull(interceptor, "interceptor"));
     }
 
@@ -224,7 +224,7 @@ public final class PeerHub implements WebSocketEndpoint {
     }
 
     List<String> subscriptions() {
-        CloudEventBus f = facade;
+        MeshEventBus f = facade;
         return f == null ? List.of() : f.prefixes();
     }
 
@@ -287,7 +287,7 @@ public final class PeerHub implements WebSocketEndpoint {
                         LOG.warn("Duplicate hello from peer — closing");
                         session.close(1002, "duplicate hello");
                     }
-                    case MeshFrame.Event event -> receive(CloudEventEnvelope.parse(event.text()));
+                    case MeshFrame.Event event -> receive(MeshEnvelope.parse(event.text()));
                     case MeshFrame.EventBeforeHello ignored -> {
                         // Admission gate: receive() hands frames to the
                         // broadcast plane, but the token check lives in the
@@ -422,7 +422,7 @@ public final class PeerHub implements WebSocketEndpoint {
      * count and never invents one.
      */
     LongConsumer droppedFrameSink() {
-        CloudEventBus f = facade;
+        MeshEventBus f = facade;
         return f == null ? frames -> { } : f::framesDroppedInTransit;
     }
 
@@ -456,16 +456,16 @@ public final class PeerHub implements WebSocketEndpoint {
     // ── inbound pipeline (shared by server + client legs) ─────────────────
 
     /** Dispatches one decoded wire frame through interceptors → the broadcast plane. */
-    void receive(CloudEventEnvelope.Parsed frame) {
+    void receive(MeshEnvelope.Parsed frame) {
         if (EventOrigin.isOwn(origin, frame.origin())) {
             return; // our own event looped back through the mesh — drop
         }
-        for (CloudEventInterceptor interceptor : interceptors) {
+        for (MeshInterceptor interceptor : interceptors) {
             if (!interceptor.onInbound(frame)) {
                 return; // dropped by interceptor
             }
         }
-        CloudEventBus f = facade;
+        MeshEventBus f = facade;
         if (f != null) {
             // The plane owns channel routing, the subscription gate and trace
             // restoration — this hub stays the connection/protocol machine.

@@ -14,7 +14,7 @@ import java.util.function.Consumer;
  * Immutable chainable SQL builder.
  * <p>
  * Fully compatible with {@link Database#query(String, Object...)} and {@link Database#execute(String, Object...)} —
- * pass {@link #sql()} and {@link #args()} directly. Supports {@code ?} positional parameters and
+ * pass {@link #toSql()} and {@link #args()} directly. Supports {@code ?} positional parameters and
  * {@code :name} / {@code $name} named parameters.
  * <p>
  * Examples:
@@ -26,18 +26,18 @@ import java.util.function.Consumer;
  * Sql q = Sql.select("*").from("users");
  * if (name != null)  q = q.where("name LIKE ?", name);
  * if (status != 0)   q = q.where("status = ?", status);
- * db.query(q.sql(), q.args()).list(User.class);
+ * db.query(q.toSql(), q.args()).list(User.class);
  *
  * // named parameter style
  * Sql q = Sql.select("*").from("users").where("name = :name", name);
- * db.query(q.sql(), q.args()).list(User.class);
+ * db.query(q.toSql(), q.args()).list(User.class);
  *
  * // UPDATE
  * Sql.update("users").setExpression("name = ?", name).setExpression("status = ?", status)
  *     .where("id = ?", id);
  *
  * // INSERT
- * Sql.insert("users").setColumn("name", name).setColumn("status", status);
+ * Sql.insert("users").value("name", name).value("status", status);
  *
  * // DELETE
  * Sql.delete("users").where("id = ?", id);
@@ -202,7 +202,7 @@ public final class Sql {
             null, List.of(), tableName, List.of(), List.of(), List.of());
     }
 
-    /** INSERT:{@code Sql.insert("users").setColumn("name", v).setColumn("status", v)} */
+    /** INSERT:{@code Sql.insert("users").value("name", v).value("status", v)} */
     public static Sql insert(String tableName) {
         return new Sql(null, List.of(), Clauses.NONE, new Object[0], new Object[0],
             null, List.of(), tableName, List.of(), List.of(), List.of());
@@ -287,7 +287,7 @@ public final class Sql {
      * {@code where("id in (?)", sub)}. Spliced bare it merges the subquery's own
      * {@code WHERE} into this one, and the statement is rejected by the driver
      * rather than here — so a bare splice is refused at build time, with the fix
-     * in the message. For a column slot use {@link #setColumn(String, Object)},
+     * in the message. For a column slot use {@link #value(String, Object)},
      * which parenthesizes for you.
      */
     public Sql where(String expr, Object... values) {
@@ -339,7 +339,7 @@ public final class Sql {
 
     private Sql addGroupedCondition(String connector, Consumer<Group> builder) {
         Group group = buildGroup(builder);
-        return addCondition(connector, group.sql(), group.args());
+        return addCondition(connector, group.toSql(), group.args());
     }
 
     /**
@@ -401,7 +401,7 @@ public final class Sql {
         }
 
         requireNoHaving();
-        return withClausesAndArgs(clauses.withHaving(group.sql()),
+        return withClausesAndArgs(clauses.withHaving(group.toSql()),
             args, concat(havingArgs, group.args()));
     }
 
@@ -421,14 +421,12 @@ public final class Sql {
         requireSelectable("OFFSET");
         requireNoPendingJoin("OFFSET");
         if (n < 0) throw new IllegalArgumentException("OFFSET must be >= 0, got " + n);
-        if (clauses.limit() == null) {
-            throw new IllegalStateException(
-                "OFFSET requires a LIMIT — bare OFFSET is invalid SQL on MySQL and SQLite"
-            );
-        }
         if (clauses.offset() != null) {
             throw new IllegalStateException("OFFSET is already declared");
         }
+        // Offset-only is valid in the reference grammar and each dialect
+        // renders its own spelling: MySQL/SQLite get LIMIT <max>, H2 gets
+        // OFFSET n ROWS, PostgreSQL keeps its explicit supported form.
         return withClauses(clauses.withOffset(n));
     }
 
@@ -445,7 +443,7 @@ public final class Sql {
      *
      * <p>RETURNING produces rows, so consume the statement via
      * {@link Database#query(Sql)} (or {@link Database#query(String, Object...)}
-     * with {@link #sql()} / {@link #args()}) to read the returned columns;
+     * with {@link #toSql()} / {@link #args()}) to read the returned columns;
      * {@link Database#execute(Sql)} discards RETURNING output and only reports
      * affected rows. Dialects without RETURNING (MySQL/MariaDB) reject the
      * statement through the {@code Database} convenience methods, which
@@ -550,7 +548,7 @@ public final class Sql {
 
     /**
      * One INSERT assignment: a plain column name plus its value
-     * ({@code Sql.insert("users").setColumn("name", name)}).
+     * ({@code Sql.insert("users").value("name", name)}).
      *
      * <p>INSERT-only, and the name says so — the mode used to be guessed from
      * the fragment's characters, which rejected legitimate quoted column names
@@ -571,22 +569,22 @@ public final class Sql {
      * <p>A {@link Sql} value is SQL rather than data: it renders as a
      * <b>parenthesized scalar subquery</b> in this column's slot, and its
      * parameters ride along at that position. So
-     * {@code setColumn("tenant_id", Sql.select("id").from("tenants"))} renders
+     * {@code value("tenant_id", Sql.select("id").from("tenants"))} renders
      * {@code VALUES ((SELECT id FROM tenants))} — the form every dialect
      * accepts, and the only shape of a nested query that fits one column. The
      * parentheses are the renderer's because this API takes a bare name and a
      * value, not a fragment; in {@link #setExpression(String, Object)} the
      * caller writes the fragment and therefore writes them.</p>
      */
-    public Sql setColumn(String column, Object value) {
-        requireUpdateOrInsert("setColumn");
+    public Sql value(String column, Object value) {
+        requireUpdateOrInsert("value");
         if (!isInsert()) {
             throw new IllegalStateException(
-                "setColumn() is INSERT-only — use setExpression(\"column = ?\", value)"
+                "value() is INSERT-only — use setExpression(\"column = ?\", value)"
                     + " for UPDATE"
             );
         }
-        requireNoPendingJoin("setColumn");
+        requireNoPendingJoin("value");
         requireColumnName(column);
         List<String> newTargets = new ArrayList<>(dmlTargets);
         newTargets.add(column);
@@ -600,7 +598,7 @@ public final class Sql {
         // grouping to its caller (setExpression("tenant_id = (?)", sub)).
         if (value instanceof Sql nested) {
             requireScalarSubquery(nested);
-            newValues.add(new InlineValue(nested.sql(), nested.args()));
+            newValues.add(new InlineValue(nested.toSql(), nested.args()));
         } else {
             newValues.add(value);
         }
@@ -625,7 +623,7 @@ public final class Sql {
             return;
         }
         throw new IllegalArgumentException(
-            "setColumn() renders a Sql value as a scalar subquery, but "
+            "value() renders a Sql value as a scalar subquery, but "
                 + describe(nested) + " is not a plain SELECT — a column slot "
                 + "holds one row-producing query, and a compound (UNION) or a "
                 + "DML statement parenthesized as an expression is not one. "
@@ -776,7 +774,7 @@ public final class Sql {
         // into several lines of log.
         return new IllegalArgumentException(
             "'" + column.replaceAll("\\s+", " ") + "' is not a column name — "
-                + "setColumn() takes one column per value, and expressions belong "
+                + "value() takes one column per value, and expressions belong "
                 + "in setExpression(\"column = ?\", value). A name may be qualified "
                 + "(users.name) and any part may be quoted for your dialect "
                 + "(`my col`, \"my col\", [my col])."
@@ -796,14 +794,14 @@ public final class Sql {
      * {@link Sql} value must arrive through parentheses —
      * {@code setExpression("tenant_id = (?)", sub)} — the same rule every
      * fragment method follows and enforces (see {@link #where}). {@link
-     * #setColumn} is the one that differs, because a column name is not a
+     * #value} is the one that differs, because a column name is not a
      * fragment and there is nowhere for you to write them.</p>
      */
     public Sql setExpression(String expr, Object value) {
         requireUpdateOrInsert("setExpression");
         if (!isUpdate()) {
             throw new IllegalStateException(
-                "setExpression() is UPDATE-only — use setColumn(\"column\", value)"
+                "setExpression() is UPDATE-only — use value(\"column\", value)"
                     + " for INSERT"
             );
         }
@@ -823,7 +821,7 @@ public final class Sql {
     // ====================== output ======================
 
     /** Produces the complete SQL string, rendered in the reference (PostgreSQL) grammar. */
-    public String sql() {
+    public String toSql() {
         requireNoPendingJoin("render SQL");
         return buildSql(null);
     }
@@ -833,7 +831,7 @@ public final class Sql {
      * Throws {@link SqlException} if the SQL uses features the dialect does not
      * support (e.g. {@code RETURNING} on MySQL, {@code ON CONFLICT} on MySQL).
      */
-    public String sql(Dialect dialect) {
+    public String toSql(Dialect dialect) {
         Objects.requireNonNull(dialect, "dialect");
         String result = buildSql(dialect);
         if (clauses.returning() != null && !dialect.supportsReturning()) {
@@ -853,7 +851,7 @@ public final class Sql {
         if (isInsert()) {
             if (dmlTargets.isEmpty()) {
                 throw new SqlException(
-                    "INSERT requires at least one column — call setColumn(\"column\", value) before building"
+                    "INSERT requires at least one column — call value(\"column\", value) before building"
                 );
             }
             var cols = String.join(", ", dmlTargets);
@@ -973,7 +971,7 @@ public final class Sql {
             return addGroupedCondition(notConnector(conditions), builder);
         }
 
-        public String sql() {
+        public String toSql() {
             if (conditions.isEmpty()) {
                 throw new IllegalStateException("Group must contain at least one condition");
             }
@@ -993,7 +991,7 @@ public final class Sql {
 
         private Group addGroupedCondition(String connector, Consumer<Group> builder) {
             Group group = buildGroup(builder);
-            return addCondition(connector, group.sql(), group.args());
+            return addCondition(connector, group.toSql(), group.args());
         }
     }
 
@@ -1034,11 +1032,21 @@ public final class Sql {
         if (clauses.orderBy() != null) {
             out.append(" ORDER BY ").append(clauses.orderBy());
         }
-        if (clauses.limit() != null) {
-            out.append(" LIMIT ").append(clauses.limit());
-        }
-        if (clauses.offset() != null) {
-            out.append(" OFFSET ").append(clauses.offset());
+        if (dialect == null) {
+            // Reference grammar: no dialect selected yet.
+            if (clauses.limit() != null) {
+                out.append(" LIMIT ").append(clauses.limit());
+            }
+            if (clauses.offset() != null) {
+                out.append(" OFFSET ").append(clauses.offset());
+            }
+        } else if (clauses.limit() != null && clauses.offset() != null) {
+            out.append(' ').append(dialect.limitOffsetClause(
+                clauses.limit(), clauses.offset()));
+        } else if (clauses.limit() != null) {
+            out.append(' ').append(dialect.limitClause(clauses.limit()));
+        } else if (clauses.offset() != null) {
+            out.append(' ').append(dialect.offsetOnlyClause(clauses.offset()));
         }
         if (clauses.conflictColumns() != null) {
             if (clauses.conflictDoNothing()) {
@@ -1071,7 +1079,7 @@ public final class Sql {
             if (cte.columns() != null && !cte.columns().isBlank()) {
                 sb.append(" (").append(cte.columns().trim()).append(")");
             }
-            sb.append(" AS (").append(cte.query().sql()).append(")");
+            sb.append(" AS (").append(cte.query().toSql()).append(")");
         }
         sb.append(' ');
         return sb.toString();
@@ -1109,8 +1117,8 @@ public final class Sql {
         // call. The right side does need them — `A ∪ (B ∪ C)` is not
         // `A ∪ B ∪ C`, and dropping them would silently re-associate what the
         // caller grouped.
-        String combined = (compoundQuery == null ? "(" + sql() + ")" : sql())
-            + " " + operator + " (" + other.sql() + ")";
+        String combined = (compoundQuery == null ? "(" + toSql() + ")" : toSql())
+            + " " + operator + " (" + other.toSql() + ")";
         Object[] combinedArgs = concat(args(), other.args());
         // The combined text already contains both sides' ON clauses and
         // combinedArgs already holds every bind, so a head list here would
@@ -1331,13 +1339,13 @@ public final class Sql {
      * enforced. It belongs here rather than in prose because the failure without
      * it is a statement that reads as valid SQL, means something else, and is
      * rejected by the driver rather than by this call. {@link
-     * #setColumn(String, Object)} does not come through here: it has no fragment
+     * #value(String, Object)} does not come through here: it has no fragment
      * for the caller to write parentheses in, so it renders them itself.
      */
     private static void appendValue(StringBuilder sb, List<Object> matched, Object value) {
         if (value instanceof Sql sql) {
             requireParens(sb, sql);
-            sb.append(sql.sql());
+            sb.append(sql.toSql());
             appendArgs(matched, sql.args());
             return;
         }
@@ -1357,7 +1365,7 @@ public final class Sql {
      *
      * <p>So the caller owns the grouping and this checks they did: the
      * placeholder they wrote must be the one inside {@code (?)}. {@link
-     * #setColumn} does not consult this — it has no fragment for the caller to
+     * #value} does not consult this — it has no fragment for the caller to
      * write parentheses in, so the renderer adds them itself.
      */
     private static void requireParens(StringBuilder sb, Sql spliced) {
@@ -1368,7 +1376,7 @@ public final class Sql {
                     + "subquery merges into the enclosing statement. Splicing "
                     + describe(spliced) + " as-is would render "
                     + "… in SELECT … WHERE …, which the database rejects far "
-                    + "from this call. For a column slot use setColumn(\"col\", "
+                    + "from this call. For a column slot use value(\"col\", "
                     + "sub), which parenthesizes for you."
             );
         }
@@ -1442,16 +1450,16 @@ public final class Sql {
     public boolean equals(Object o) {
         if (this == o) return true;
         if (!(o instanceof Sql sql)) return false;
-        String s = sql(); return Objects.equals(s, sql.sql());
+        String s = toSql(); return Objects.equals(s, sql.toSql());
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(sql());
+        return Objects.hash(toSql());
     }
 
     @Override
     public String toString() {
-        return sql();
+        return toSql();
     }
 }

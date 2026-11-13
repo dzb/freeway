@@ -4,13 +4,13 @@ import com.jujin.freeway.cloud.CloudModule;
 
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
-import com.jujin.freeway.cloud.discovery.Endpoint;
+import com.jujin.freeway.cloud.discovery.ServiceEndpoint;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.cloud.discovery.ServiceRegistry;
-import com.jujin.freeway.cloud.internal.AuthPropagator;
-import com.jujin.freeway.cloud.rpc.CloudHttpClient;
-import com.jujin.freeway.cloud.rpc.CloudRequest;
-import com.jujin.freeway.http.HttpContext;
+import com.jujin.freeway.cloud.context.internal.AuthPropagator;
+import com.jujin.freeway.cloud.rpc.RpcHttpClient;
+import com.jujin.freeway.cloud.rpc.RpcRequest;
+import com.jujin.freeway.http.HttpExchange;
 import com.jujin.freeway.http.HttpModule;
 import com.jujin.freeway.http.HttpServer;
 import com.jujin.freeway.http.route.Route;
@@ -35,7 +35,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Verified-identity propagation end-to-end: an inbound {@code x-principal}
  * header binds the principal for the request scope, and the outbound
- * CloudHttpClient call re-injects it so the callee sees the same identity.
+ * RpcHttpClient call re-injects it so the callee sees the same identity.
  */
 class PrincipalPropagationTest {
 
@@ -56,7 +56,7 @@ class PrincipalPropagationTest {
         try (AppRuntime app = FreewayApp.create(new IdentityModule(), new HttpModule()).add(CloudModule.class).start()) {
             HttpServer server = app.get(HttpServer.class);
             app.get(ServiceRegistry.class).register(
-                ServiceInstance.of("svc", "i1", Endpoint.of("http", server.host(), server.port()), Map.of()));
+                ServiceInstance.of("svc", "i1", ServiceEndpoint.of("http", server.host(), server.port()), Map.of()));
 
             HttpClient client = HttpClient.newHttpClient();
             HttpRequest request = HttpRequest.newBuilder(
@@ -83,7 +83,7 @@ class PrincipalPropagationTest {
         try (AppRuntime app = FreewayApp.create(new IdentityModule(), new HttpModule()).add(CloudModule.class).start()) {
             HttpServer server = app.get(HttpServer.class);
             app.get(ServiceRegistry.class).register(
-                ServiceInstance.of("svc", "i1", Endpoint.of("http", server.host(), server.port()), Map.of()));
+                ServiceInstance.of("svc", "i1", ServiceEndpoint.of("http", server.host(), server.port()), Map.of()));
 
             HttpClient client = HttpClient.newHttpClient();
             HttpRequest request = HttpRequest.newBuilder(
@@ -114,23 +114,23 @@ class PrincipalPropagationTest {
             b.contribute(Route.class).add(Route.get("/api/echo", ctx -> {
                 CALLEE_PRINCIPAL.set(InvocationContext.current()
                     .map(InvocationContext::principal).orElse(null));
-                ctx.send(200, "ok");
+                ctx.sendText(200, "ok");
             }));
         }
 
         static class CallHandler implements RouteHandler {
-            private final CloudHttpClient client;
+            private final RpcHttpClient client;
 
-            CallHandler(CloudHttpClient client) {
+            CallHandler(RpcHttpClient client) {
                 this.client = client;
             }
 
             @Override
-            public void handle(HttpContext ctx) throws Exception {
+            public void handle(HttpExchange ctx) throws Exception {
                 ENTRY_PRINCIPAL.set(InvocationContext.current()
                     .map(InvocationContext::principal).orElse(null));
-                client.call("svc", CloudRequest.get("/api/echo"));
-                ctx.send(200, "ok");
+                client.call("svc", RpcRequest.get("/api/echo"));
+                ctx.sendText(200, "ok");
             }
         }
     }

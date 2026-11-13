@@ -4,7 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.jujin.freeway.cloud.discovery.Endpoint;
+import com.jujin.freeway.cloud.discovery.ServiceEndpoint;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -20,7 +20,7 @@ import org.junit.jupiter.api.Test;
 class CachingServiceDiscoveryTest {
 
     private static final ServiceInstance INSTANCE =
-        ServiceInstance.of("svc", "i1", Endpoint.of("http", "127.0.0.1", 8080));
+        ServiceInstance.of("svc", "i1", ServiceEndpoint.of("http", "127.0.0.1", 8080));
 
     /** Counts backend calls; fails on demand. */
     private static final class Backend implements ServiceDiscovery {

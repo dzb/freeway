@@ -37,7 +37,7 @@ public record ResponseHead(int status, boolean headRequest, List<Header> headers
 
     /** True when this status permits a message body: 204, 205 and 304 do not. */
     public boolean allowsBody() {
-        return status != 204 && status != 205 && status != 304;
+        return HttpStatus.allowsBody(status);
     }
 
     /**

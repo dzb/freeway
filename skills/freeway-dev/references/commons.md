@@ -70,7 +70,7 @@ freeway.log.file.flush-interval=250       # ms; 0 = flush per record
 ## Canonical Snippets
 
 ```java
-String json = JsonUtils.stringify(Map.of("name", "Alice"));
+String json = JsonUtils.toJson(Map.of("name", "Alice"));
 
 Defer.within(() -> {
     db.execute("UPDATE ...");
@@ -78,6 +78,6 @@ Defer.within(() -> {
 });
 
 ScopedCache.within(() -> {
-    Connection conn = ScopedCache.get("tx", () -> pool.borrow().connection());
+    Connection conn = ScopedCache.computeIfAbsent("tx", () -> pool.borrow().connection());
 });
 ```

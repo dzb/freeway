@@ -41,7 +41,7 @@ final class ServiceRuntime {
      */
     private final Object realizeLock = new Object();
 
-    /** The lazy proxy served for each interface binding (SINGLETON/THREAD). */
+    /** The lazy proxy served for each interface binding (SINGLETON/BOUNDARY). */
     private final Map<ServiceKey, Object> proxyCache = new ConcurrentHashMap<>();
     /** Realized singleton targets — what shutdown runs lifecycle on. */
     private final Map<ServiceKey, Object> targetCache = new ConcurrentHashMap<>();
@@ -103,8 +103,8 @@ final class ServiceRuntime {
     }
 
     private <T> T realize(BindingImpl<T> binding) {
-        if (binding.scope() == Scope.THREAD) {
-            return realizeThreadScoped(binding);
+        if (binding.scope() == Scope.BOUNDARY) {
+            return realizeBoundaryScoped(binding);
         }
         ServiceKey key = new ServiceKey(binding.type(), binding.id());
         // Fast path: an interface proxy re-enters realize() on EVERY method
@@ -135,8 +135,8 @@ final class ServiceRuntime {
         });
     }
 
-    private <T> T realizeThreadScoped(BindingImpl<T> binding) {
-        // Kept even though get() now checks on the way in: a THREAD-scope proxy
+    private <T> T realizeBoundaryScoped(BindingImpl<T> binding) {
+        // Kept even though get() now checks on the way in: a boundary-scope proxy
         // outlives the get() that produced it, and its target is realized on
         // the first METHOD CALL, not at get() time. A holder invoking that
         // proxy after close() never passes through get() again, so this is the
@@ -158,7 +158,7 @@ final class ServiceRuntime {
         ScopeKey scoped = new ScopeKey(this, key);
         // Lifecycle travels with the cache entry: scope exit runs it even when
         // the container closed first, and no process-wide side set is needed.
-        return withCycleGuard(key, () -> binding.type().cast(ScopedCache.get(scoped,
+        return withCycleGuard(key, () -> binding.type().cast(ScopedCache.computeIfAbsent(scoped,
             binding::directInstance, v -> {
             Lifecycle.invokePreDestroy(v);
             if (v instanceof AutoCloseable c) {

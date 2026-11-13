@@ -4,18 +4,23 @@ import java.io.IOException;
 import java.io.OutputStream;
 
 
-final class PingFrame extends BaseFrame {
+final class PingFrame implements Http2Frame {
+    private final FrameHeader header;
+
+    @Override
+    public FrameHeader header() { return header; }
+
     public final byte[] body;
 
-    public PingFrame(FrameHeader header, byte[] body) { super(header); this.body = body; }
+    public PingFrame(FrameHeader header, byte[] body) { this.header = header; this.body = body; }
 
     public PingFrame() {
-        super(new FrameHeader(8, FrameType.PING, FrameFlag.NONE, 0));
+        this.header = new FrameHeader(8, FrameType.PING, FrameFlag.NONE, 0);
         body = new byte[8];
     }
 
     public PingFrame(PingFrame ack) {
-        super(new FrameHeader(8, FrameType.PING, FrameFlag.FlagSet.of(FrameFlag.ACK), 0));
+        this.header = new FrameHeader(8, FrameType.PING, FrameFlag.FlagSet.of(FrameFlag.ACK), 0);
         body = ack.body;
     }
 

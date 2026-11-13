@@ -43,7 +43,7 @@ class QuerySemanticsTest {
             SqlException ex = assertThrows(
                 SqlException.class,
                 () -> db.query("select 1 where 1 in (:ids)")
-                    .param("ids", List.of())
+                    .bind("ids", List.of())
                     .one(Integer.class)
             );
             assertTrue(ex.getMessage().contains("empty collection"),
@@ -62,7 +62,7 @@ class QuerySemanticsTest {
             SqlException ex = assertThrows(
                 SqlException.class,
                 () -> db.query("select 1 where 1 in (:ids)")
-                    .param("ids", new Object[0])
+                    .bind("ids", new Object[0])
                     .one(Integer.class)
             );
             assertTrue(ex.getMessage().contains("empty collection"),
@@ -108,8 +108,8 @@ class QuerySemanticsTest {
             assertThrows(
                 SqlException.class,
                 () -> db.query("select 1 where 1 in ($ids)")
-                    .param("ids", List.of(1, 2))
-                    .param("extra", 3)
+                    .bind("ids", List.of(1, 2))
+                    .bind("extra", 3)
                     .one(Integer.class)
             );
         }

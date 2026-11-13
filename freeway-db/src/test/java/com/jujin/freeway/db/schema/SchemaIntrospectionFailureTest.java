@@ -2,7 +2,7 @@ package com.jujin.freeway.db.schema;
 
 import com.jujin.freeway.db.BatchQuery;
 import com.jujin.freeway.db.Database;
-import com.jujin.freeway.db.DatabaseStats;
+import com.jujin.freeway.db.PoolStats;
 import com.jujin.freeway.db.ExecuteResult;
 import com.jujin.freeway.db.IsolationLevel;
 import com.jujin.freeway.db.PoolConfig;
@@ -82,8 +82,64 @@ class SchemaIntrospectionFailureTest {
             "no DDL may run when table introspection failed: " + db.executedSql);
     }
 
-    /** PostgresDialect without IF NOT EXISTS — forces the existingIndexes (pg_indexes) path. */
-    private static final class PgIndexesDialect extends PostgresDialect {
+    /** Postgres dialect without IF NOT EXISTS — forces the existingIndexes (pg_indexes) path. */
+    private static final class PgIndexesDialect implements Dialect {
+        private final PostgresDialect base = new PostgresDialect();
+
+        @Override
+        public String dialectId() {
+            return base.dialectId();
+        }
+
+        @Override
+        public String truncateTable(String tableName) {
+            return base.truncateTable(tableName);
+        }
+
+        @Override
+        public boolean dropTableCascade() {
+            return base.dropTableCascade();
+        }
+
+        @Override
+        public String generatedClause() {
+            return base.generatedClause();
+        }
+
+        @Override
+        public String defaultUUIDType() {
+            return base.defaultUUIDType();
+        }
+
+        @Override
+        public boolean dollarQuoting() {
+            return base.dollarQuoting();
+        }
+
+        @Override
+        public boolean escapeStringPrefix() {
+            return base.escapeStringPrefix();
+        }
+
+        @Override
+        public Set<String> existingTables(Database db) {
+            return base.existingTables(db);
+        }
+
+        @Override
+        public Set<String> existingColumns(Database db, String tableName) {
+            return base.existingColumns(db, tableName);
+        }
+
+        @Override
+        public Set<String> existingIndexes(Database db, String tableName) {
+            return base.existingIndexes(db, tableName);
+        }
+
+        @Override
+        public Set<String> reservedWords() {
+            return base.reservedWords();
+        }
 
         @Override
         public boolean supportsIndexIfNotExists() {
@@ -251,7 +307,7 @@ class SchemaIntrospectionFailureTest {
         }
 
         @Override
-        public DatabaseStats stats() {
+        public PoolStats stats() {
             return null;
         }
 
