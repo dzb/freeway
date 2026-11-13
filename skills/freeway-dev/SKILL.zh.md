@@ -88,8 +88,8 @@ public class AppModule implements ModuleEx {
 | `Binding<T>` | 绑定配置链：`to()` → `scope()` → `id()` → `primary()` → `marker()` → `advise()` |
 | `ModuleEx` | `@FunctionalInterface`，模块入口：`void bind(Binder)` |
 | `Freeway` | 容器启动：`Freeway.create(ModuleEx...)` |
-| `ScopeBoundary` | `ScopeBoundary.within()` 进入 Thread 作用域 |
-| `Scope` | 枚举：`SINGLETON`、`THREAD`、`PROTOTYPE` |
+| `ScopeBoundary` | `ScopeBoundary.within()` 进入 BOUNDARY 作用域 |
+| `Scope` | 枚举：`SINGLETON`、`BOUNDARY`、`PROTOTYPE` |
 | `Extension<V>` | 框架内部：聚合贡献值，通过 `container.extension(Class)` 访问。应用代码注入 `List<V>` 或 `Map<String, V>` |
 | `EventBus` | 进程内发布-订阅 |
 | `RuntimeHook` | 生命周期 start/stop 扩展点 |
@@ -145,18 +145,35 @@ Freeway.create(binder -> {
 
 | 方法 | 用途 | 约束 |
 |------|------|------|
-| `.to(Class)` | 接口 → 实现类 | 实现类需有无参或 `@Inject` 构造器 |
+| `.to(Class)` | 接口 → 实现类 | 实现类须有**唯一构造器并标 `@Inject`**（见“构造器选择”） |
 | `.to(c -> ...)` | Provider 工厂；返回已创建实例时即等价于旧的实例绑定 | 按作用域策略调用，SINGLETON 下只调用一次 |
 | `.id("name")` | 命名标识 | 同一类型 + id 唯一 |
 | `.primary()` | 设置为主绑定 | 无 id 注入时默认使用 primary |
 | `.marker(Annotation...)` | 添加标记注解 | `binder.bind(Cache.class).to(FastCache.class).marker(Fast.class)` |
-| `.scope(Scope)` | 作用域 | `SINGLETON`(默认) / `THREAD` / `PROTOTYPE` |
+| `.scope(Scope)` | 作用域 | `SINGLETON`(默认) / `BOUNDARY` / `PROTOTYPE` |
 | `.advise(Consumer<Advisor>)` | AOP 织入 | 仅接口→类绑定 |
 
 > **何时用 Provider**：`.to(Class)` 只覆盖“容器能通过构造器注入自行构造”的实现。
 > 当构造需要混入配置/普通值、需要按配置分支、需要聚合 contribution、或要绑定已创建对象时，
 > 必须用 `.to(c -> ...)` 显式给出构造逻辑。Provider 只接管“如何构造”；
 > singleton 仍只实现一次，生命周期（字段注入 / `@PostConstruct` / `@PreDestroy`）仍由容器管理。
+
+#### 构造器选择
+
+`BeanIntrospector.selectConstructor(type, @Inject.class)` 分三级：
+
+1. 恰有一个构造器标了 `@Inject` → 选它（标了两个及以上直接抛
+   `Multiple @Inject constructors found on <类型>`）；
+2. 否则若有**无参构造器** → 选无参，**即使还有参数更多的构造器**；
+3. 否则选参数最多的那个。
+
+只写第 1 级，别让第 2、3 级可达：容器构造的类应当**只有一个构造器，并标 `@Inject`**。
+只有第 1 级是源码明确陈述的决定；第 2、3 级是容器在推断，而推断正是会静默出错的地方。
+第 2 级正是"顺手留一个没标注解的便利构造器"会静默丢掉全部参数注入的原因——不报错，
+对象就那么被造出来，依赖是空的。两个参数个数相同的构造器更隐蔽：第 3 级的比较用的是
+`>`，等参数时取 `getDeclaredConstructors()` 里先出现的那个，而这个顺序 JVM 不作保证，
+换编译器或调换源码顺序就可能换赢家。构造确实要分支时（配置项、普通值、运行时参数），
+用 provider 绑定，不要留第二个构造器让容器去猜。
 
 ### 服务获取
 
@@ -229,7 +246,8 @@ public record ServerConfig(
 public class UserService {
     private final UserRepository repo;
 
-    // 构造器注入（框架内部推荐）
+    // 构造器注入：唯一构造器 + @Inject（见“构造器选择”，不标就走不到第 1 级）
+    @Inject
     public UserService(UserRepository repo) {
         this.repo = repo;
     }
@@ -249,7 +267,7 @@ Primary 解析使用 `binding.primary()` DSL，不是注解。
 |-------|------|----------|
 | `SINGLETON` | 每个容器一个实例 | 容器 `close()` 时 |
 | `PROTOTYPE` | 每次解析创建新实例 | 容器不持有，不自动销毁 |
-| `THREAD` | 每个 scope session 一个实例 | 拥有它的 session 关闭时；在 `Defer` action scope 内附着时随该 action scope 关闭 |
+| `BOUNDARY` | 每个 `ScopeBoundary.within(...)` 边界一个实例 | 边界关闭时；在 `Defer` action scope 内附着时随该 action scope 关闭 |
 
 `ScopeBoundary.within()` 基于 JDK 25 `ScopedValue`，虚拟线程零 overhead，支持嵌套。若在 `Defer.within` 内打开，值/bean 附着到该 action scope，活到它关闭。
 
@@ -553,7 +571,7 @@ public interface RequestContext {
     String correlationId();
 }
 
-// 接口绑定为 THREAD 作用域
+// 接口绑定为 BOUNDARY 作用域
 binder.bind(RequestContext.class).to(RequestContextDefault.class).scope(Scope.BOUNDARY);
 
 // Singleton 注入接口 — 容器自动生成 proxy，每次调用委托到当前作用域的实例

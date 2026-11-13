@@ -9,7 +9,7 @@ Examples below are minimal snippets. They omit imports and app-specific domain t
 - Module composition - the ordered modules handed to `Freeway.create(...)` / `FreewayApp.run(...)`; a module class with `@SubModule` is a bundle and placing it places its submodules; `Freeway.create(appName, ...)` names the root line the startup log shows
 - `Binding<T>` - `to(Class)`, `to(c -> ...)` (provider), `id(String)`, `primary()`, `marker(Annotation...)`, `scope(Scope)`, `advise(...)`; there is no `to(instance)`
 - `ModuleEx` - module entry-point type: `bind(Binder)`
-- `Scope` - `SINGLETON`, `THREAD`, `PROTOTYPE`
+- `Scope` - `SINGLETON`, `BOUNDARY`, `PROTOTYPE`
 - `ScopeBoundary` - `within(...)`
 - `Extension<V>` - framework-internal aggregation handle. Access via `container.extension(Class)`. Application code injects `List<V>` or `Map<String, V>`, not `Extension<V>` directly.
 - `Contribution<T>` - contribution DSL from `Binder.contribute(Class)`: `add(T)`, `add(id, T)`, `addDeferred(Class)`, `addDeferred(id, factory)`; composition-time only — the stores seal when the container is built
@@ -62,6 +62,26 @@ Prefer `.to(Class)` whenever constructor injection is sufficient. Use the provid
 The provider owns only *how the object is built*. Scope and lifecycle still apply: a singleton
 provider runs once per container, and the produced object still receives field injection,
 `@PostConstruct`, and `@PreDestroy`.
+
+### Constructor selection
+
+`BeanIntrospector.selectConstructor(type, @Inject.class)` decides which constructor the container
+calls, in three tiers:
+
+1. exactly one constructor annotated `@Inject` — that one wins (two or more throw
+   `Multiple @Inject constructors found on <type>`);
+2. otherwise a no-arg constructor — **even when a larger one exists**;
+3. otherwise the constructor with the most parameters.
+
+Write to tier 1 and leave the other tiers unreachable: a class the container constructs should have
+**one constructor, annotated `@Inject`**. Only that tier is a decision the source states; tiers 2 and
+3 are the container inferring, and the inference is what goes wrong quietly. Tier 2 is why a
+convenience constructor left unannotated next to the intended one silently drops every parameter
+injection — no warning, the object is just built without its dependencies. Two constructors of the
+same arity are the quietest failure of all: the `>` in tier 3's comparison keeps whichever appears
+first in `getDeclaredConstructors()`, an order the JVM does not specify, so the winner can change
+with the compiler or a source reorder. When construction genuinely branches (settings, plain values,
+runtime config), bind a provider — do not leave a second constructor for the container to infer.
 
 ## Choosing id, primary, marker, and contributions
 
