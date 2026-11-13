@@ -3194,272 +3194,404 @@ Behaviour changes (no call sites need changing, but worth knowing):
 
 ### Added
 
-- **HTTP/2 入站 RST 突发熔断（freeway-http）** — 滑动窗口内"未响应即取消"超过阈值即
-  `GOAWAY(ENHANCE_YOUR_CALM)` 并拆除连接（CVE-2023-44487 家族）。仅存活且未提交响应
-  的流参与计数：响应后取消（正常客户端行为）与已回收死流的 RST 永不触发熔断。
-  经 `freeway.http.h2.reset-burst-limit`（默认 200，`0` 禁用）/
-  `freeway.http.h2.reset-window`（默认 10s）可配，全链路 `HttpConfigKeys` →
-  `HttpServerConfig`（校验 + Builder）→ `Http2Session` 落到新建的重载构造器。
-- **TLS 证书重载事件驱动（freeway-http）** — `WatchService` 即时触发 + 防抖重调度：
-  watcher 线程只做信号（零 I/O、零睡眠），快照/digest/重载全部收敛到单 scheduler
-  线程，`check()` 的公开 monitor 换成私有锁；轮询保留为 NFS 等不可靠文件系统的
-  兜底，任一层单独即可驱动同一快照比较。
-- **回归覆盖** — RST 熔断与自定义限额、取消提交语义、GOAWAY last-id、watcher
-  60s 轮询下数秒重载、迁移 owner-token 接管、池外来连接拒绝、`Defer` Error 保形、
-  `CallBus` null 实参透传。1879 用例全绿。
+- **HTTP/2 inbound RST burst circuit breaking (freeway-http)** — when
+  "cancelled without a response" exceeds the threshold inside a sliding window,
+  the connection gets `GOAWAY(ENHANCE_YOUR_CALM)` and is torn down (the
+  CVE-2023-44487 family). Only live streams whose response is uncommitted count:
+  cancels after the response (normal client behaviour) and RSTs on already-reaped
+  dead streams never trip the breaker. Configurable via
+  `freeway.http.h2.reset-burst-limit` (default 200, `0` disables) /
+  `freeway.http.h2.reset-window` (default 10s), plumbed end to end
+  `HttpConfigKeys` → `HttpServerConfig` (validation + Builder) → `Http2Session`,
+  landing on the newly added overloaded constructor.
+- **TLS certificate reload becomes event-driven (freeway-http)** — a
+  `WatchService` triggers immediately with debounced rescheduling: the watcher
+  thread only signals (zero I/O, zero sleeps), while snapshot/digest/reload all
+  converge onto one scheduler thread, and `check()`'s public monitor becomes a
+  private lock; polling stays as the fallback for unreliable filesystems such as
+  NFS, and either layer alone can drive the same snapshot comparison.
+- **Regression coverage** — RST breaking with custom limits, cancel-after-commit
+  semantics, GOAWAY last-id, watcher reload within seconds under 60 s polling,
+  migration owner-token takeover, pool foreign-connection rejection, `Defer`
+  Error shape preservation, `CallBus` null-argument passthrough. 1879 cases
+  green.
 
 ### Changed
 
-- **GOAWAY last-stream-id 改报 `lastHandledStreamId`（freeway-http）** — 被拒流只推进
-  `lastSeenStreamId`（重放校验不变），不再谎称"可能已处理"而误导对端放弃重试
-  （RFC 7540 §6.8）。
-- **公开 monitor 收敛为私有锁** — `Extension`（含内部类 `Entry.before/after` 同锁）、
-  `LazyValue`、`ScopedCache.Session`、`Defer.DeferredSupplier`、`SslReloader`。
-  全仓确认无 `wait/notify` 配对后落地，行为不变。
-- **现代惯用法收敛（全模块，无行为变更）** — pattern switch（`JsonLeaves` 18 分支、
-  shutdown 三路分发、`PeerHub` 前缀；编译器强制 arm 序）、`equals` 模式匹配、
-  immutable 工厂（`copyOf`/`of`——保序 Map 与 live-view 按三条保留规则排除）、
-  `Thread.ofPlatform` 线程构建器、字符集显式化、raw-type 清理、FQ/import 整洁。
-- **`Extension.asMap` 文档写明快照语义** — 返回不可变 point-in-time 快照，后续贡献
-  仅新调用可见；不改名（`asMap` 描述形态，时间性归文档层，见评估）。
+- **GOAWAY's last-stream-id reports `lastHandledStreamId` (freeway-http)** — a
+  rejected stream only advances `lastSeenStreamId` (replay validation
+  unchanged), so the frame no longer lies that it "may have been processed" and
+  misleads the peer into giving up retries (RFC 7540 §6.8).
+- **Public monitors converge to private locks** — `Extension` (including inner
+  `Entry.before/after` under the same lock), `LazyValue`, `ScopedCache.Session`,
+  `Defer.DeferredSupplier`, `SslReloader`. Landed after confirming repo-wide that
+  no `wait/notify` pairs on them; behaviour unchanged.
+- **Modern idiom convergence (all modules, no behaviour change)** — pattern
+  switches (`JsonLeaves`' 18 branches, shutdown's three-way dispatch, `PeerHub`'s
+  prefixes; the compiler enforces arm order), `equals` pattern matching, immutable
+  factories (`copyOf`/`of` — order-preserving Maps and live views excluded under
+  three keep rules), `Thread.ofPlatform` builders, explicit charsets, raw-type
+  cleanup, and FQ/import hygiene.
+- **`Extension.asMap`'s docs state the snapshot semantics** — it returns an
+  immutable point-in-time snapshot; later contributions are visible only to new
+  calls. Not renamed (`asMap` describes the shape; the temporality belongs to the
+  doc layer, per the assessment).
 
 ### Fixed
 
-- **迁移锁双竞态（freeway-db）** — stale 接管由"先查后无条件删"改为
-  `executed_at` 条件删除（0 行即退让）；`release` 按写入 `description` 列的 owner
-  token 条件删除，迁移超时被接管后慢 owner 的晚释放不再误删新锁。
-- **连接池释放外来连接（freeway-db）** — 硬转 `PooledConnectionImpl` 的
-  `ClassCastException` 改为指引型 `SqlException`（释连接到错池）。
-- **`Defer.supply` 的 Error 包装（freeway-commons）** — `Error` 原类型透传并缓存，
-  checked/exception 仍保持既有包装形状（首版改动曾打破既有测试，已收窄回兼容）。
-- **`CallBus` 代理 null 实参（freeway-ioc）** — `List.of(args)` 改与
-  `RemoteProxyFactory` 一致的 null 容忍视图，接口方法 null 实参正常分发。
-- **`Node` 构造不再原地排序调用方列表（freeway-flow）** — 改为拷贝后排序。
-- **`WebSocket` accept-key 编码（freeway-http）** — 固定 UTF-8：原平台编码 +
-  `length()` 当字节数，非 ASCII 下 digest 截断。
-- **配置热重载 WatchKey 重挂（freeway-boot）** — `reset()` 进 finally，失败迭代
-  不再静默退订目录。
-- **H2 preface 解码（freeway-http）** — 按 US-ASCII，消除平台默认编码依赖。
+- **Two migration-lock races (freeway-db)** — stale takeover changes from "check
+  then unconditionally delete" to a conditional delete on `executed_at` (0 rows
+  means back off); `release` deletes conditionally on the owner token written
+  into the `description` column, so after a timed-out migration is taken over,
+  the slow owner's late release no longer deletes the new lock.
+- **The pool releasing a foreign connection (freeway-db)** — the hard cast to
+  `PooledConnectionImpl`'s `ClassCastException` becomes a guiding `SqlException`
+  (the connection was released to the wrong pool).
+- **`Defer.supply`'s Error wrapping (freeway-commons)** — an `Error` passes
+  through with its original type and is cached; checked/exception keeps the
+  existing wrapping shape (the first version broke existing tests and has been
+  narrowed back to compatible).
+- **`CallBus` proxy null arguments (freeway-ioc)** — `List.of(args)` becomes a
+  null-tolerant view consistent with `RemoteProxyFactory`, so an interface
+  method's null arguments dispatch normally.
+- **`Node` construction no longer sorts the caller's list in place
+  (freeway-flow)** — it copies first, then sorts.
+- **`WebSocket` accept-key encoding (freeway-http)** — fixed to UTF-8: the old
+  code used the platform encoding plus `length()` as the byte count, truncating
+  the digest on non-ASCII.
+- **Config hot reload's WatchKey re-registration (freeway-boot)** — `reset()`
+  moves into a finally, so a failed iteration no longer silently unsubscribes
+  the directory.
+- **H2 preface decoding (freeway-http)** — decoded as US-ASCII, removing the
+  platform default charset dependency.
 
 ## [1.5.0] — 2026-09-05
 
 ### Changed
 
-- **CLASS 通道入站默认拒绝（freeway-cloud，安全，破坏性）** — `PeerHub.receive()`
-  的 CLASS 通道 deserialization 改为 deny-by-default：`allowed-types` 未配置时
-  一律丢弃 CLASS 事件，不再回退到"接受任意类"。此前空 allowlist 语义为"放行任意
-  类"，配合未认证端点构成任意类加载 + 反射反序列化面；TOPIC 通道（通用 JSON、
-  无类解析）保留"空 = 全放行"的既有文档语义不变。`allowed-types` 为空的启动告警
-  文案同步更新为"CLASS 事件将被丢弃"。E2E 测试 `keyedEventsPreserveTheOrderingSubject`
-  相应改为显式白名单其类型。
-- **freeway-cloud 内部结构收敛（无行为变更）** — 按结构审计收口
-  落地一组机械重构：`PeerConnector` 的地址
-  解析（`toUri`/`parsePort`/`sameEndpoint`）抽为 `PeerAddress` record（解析 + 渲染 +
-  端点相等，顺带消除 `URI.getHost()` 的 IPv6 括号歧义）；`PeerHub.ServerSessionHandler`
-  的握手准入（origin + token + subscribe 解析）抽为纯方法 `validateHello` +
-  `HelloAdmission` 结果类型，与已独立的 `receive` 入站门对称；`CloudHttpClientDefault`
-  的 3 个 telescoping 构造器收敛为 `Wiring` record + 单一构造器；逗号切分列表解析抽为
-  `internal/ConfigLists`（`splitAndTrim` + 列表 `spec`）；`CloudEventLifecycleHook`
-  剩余裸 `resolve` 改走 `SymbolSpec`；`freeway-boot` 依赖声明降为 test 作用域（main
-  零引用）。
-- **`SymbolSource` 新增 `resolve(SymbolSpec<T>)` 默认方法（ioc 公共接口，向后兼容）** —
-  取代全项目 32 处 `spec.parse(symbols.resolve(spec.key(), null))` 二段式样板，改为
-  一步 `symbols.resolve(spec)`。默认方法向后兼容（现有 `SymbolSource` 实现类无需改动），
-  键名、默认值、解析器仍由 `SymbolSpec` 单点声明。`freeway-db` / `freeway-cloud` /
-  `freeway-boot` / `freeway-commons` 的全部调用点与 javadoc 示例已同步。纯机械收口，
-  零行为变更。
-- **`XDefault`/`XImpl` 命名定稿（freeway-commons/ioc/db/http/flow/cloud，破坏性更名）** —
-  命名判据定为「外部的可代换性」：角色实现可被外部替换（`.primary()` 绑定 / 构造选择 /
-  配置激活）时，框架的默认实现定名 `XDefault`，与功能包归属无关——cloud 的可替换默认
-  全部安置于各自功能包（discovery / resilience / observe / storage / secret / rpc，
-  `internal` 不再容纳可替换默认），即便留在 `internal` 也不改变定名（如 `db/internal`
-  的 `PoolDefault` 仍可被外部 `.primary()` 替换）；无外部可代换性的实现件定名 `XImpl`。
-  定稿的净更名（相对 1.4.0）：
-  - 定名 `XImpl`：`HttpContextDefault`→`HttpContextImpl`（内建引擎的上下文契约，ext
-    引擎自带各自实现）、`LoggerSourceDefault`→`LoggerSourceImpl`（注入路径硬连线单例，
-    从不查询绑定）、`PooledConnectionDefault`→`PooledConnectionImpl`（逐池工件类型，
-    Hikari 适配器自带自有连接类型）、`ProxyFactoryDefault`→`ProxyFactoryImpl`（包私有
-    接口 + 唯一实现，无外部可代换点）；
-  - 定名 `XDefault`：`FlowEngineImpl`→`FlowEngineDefault`（默认流程引擎）；
-    `TransportSecurityDefault` 维持可代换默认定名、自 `cloud.internal` 归入 `cloud.rpc`
-    （按 `freeway.cloud.rpc.tls.*` 键经 `fromKeyStore` 装配，ext 可绑替代实现）；
-    `CoercerDefault` / `ExchangeMetaDefault` 维持定名不变；
-  - `MetricsDefault` 的私有内部类 `DefaultCounter` / `DefaultTimer` → `CounterImpl` /
-    `TimerImpl`（清除 `DefaultX` 前缀残留，无 API 影响）。
-  判据与 `internal` 语义（不承诺稳定的实现细节，如 `RegistryStore` / `ConfigLists`）
-  写入 `CLAUDE.md` / `AGENTS.md` / `DEVELOPER-GUIDE.md`（AGENTS.md 同步「归置与后缀
-  正交」口径），各文档中的改名类引用统一为现行类名；freeway-ext 引用同锁步更名。
-- **cloud 配置键单源化与 `Wiring` withers（freeway-cloud，无行为变更）** — 七个配置键
-  的默认值在 `CloudConfigKeys` 以 `*_DEFAULT` 常量单点声明（RPC TLS keystore/truststore
-  四键空串默认、storage base-path、registry service-scheme），配置层与库内兜底不再双写；
-  RPC 请求/连接超时与 peer 网络超时常量在 config spec 与 `CloudHttpClientDefault.Wiring`
-  的库兜底间共享同一来源（未装模块时直接复用常量，两层不可能漂移）。`Wiring` 增 7 个
-  wither（`withPropagators` / `withRetryer` / `withBreaker` / `withRateLimiter` /
-  `withTransport` / `withRequestTimeout` / `withConnectTimeout`）供逐步定制。
+- **The CLASS channel denies inbound by default (freeway-cloud, security,
+  breaking)** — `PeerHub.receive()`'s CLASS channel deserialization becomes
+  deny-by-default: with `allowed-types` unconfigured, CLASS events are always
+  dropped instead of falling back to "accept any class". The empty-allowlist
+  semantics used to be "admit any class", which together with the unauthenticated
+  endpoint formed an arbitrary class-loading + reflective deserialization surface;
+  the TOPIC channel (plain JSON, no class resolution) keeps its documented
+  "empty = allow all" semantics unchanged. The startup warning for an empty
+  `allowed-types` is reworded to "CLASS events will be dropped". The E2E test
+  `keyedEventsPreserveTheOrderingSubject` accordingly whitelists its types
+  explicitly.
+- **freeway-cloud's internal structure converges (no behaviour change)** —
+  landed per the structural audit as a set of mechanical refactors:
+  `PeerConnector`'s address parsing (`toUri`/`parsePort`/`sameEndpoint`) is
+  extracted into the `PeerAddress` record (parsing + rendering + endpoint
+  equality, incidentally removing `URI.getHost()`'s IPv6 bracket ambiguity);
+  `PeerHub.ServerSessionHandler`'s handshake admission (origin + token +
+  subscribe parsing) is extracted into the pure method `validateHello` plus the
+  `HelloAdmission` result type, symmetric with the already-separated `receive`
+  inbound gate; `CloudHttpClientDefault`'s three telescoping constructors converge
+  into the `Wiring` record + one constructor; comma-splitting list parsing is
+  extracted into `internal/ConfigLists` (`splitAndTrim` + list `spec`);
+  `CloudEventLifecycleHook`'s remaining bare `resolve`s go through `SymbolSpec`;
+  and `freeway-boot`'s dependency declaration drops to test scope (zero main
+  references).
+- **`SymbolSource` gains the `resolve(SymbolSpec<T>)` default method (a public
+  ioc interface, backward compatible)** — replacing the project's 32 occurrences
+  of the two-step boilerplate `spec.parse(symbols.resolve(spec.key(), null))`
+  with one step, `symbols.resolve(spec)`. The default method is backward
+  compatible (existing `SymbolSource` implementations need no change), and the
+  key name, default and parser are still declared once, on the `SymbolSpec`. All
+  call sites and javadoc examples in `freeway-db` / `freeway-cloud` /
+  `freeway-boot` / `freeway-commons` are updated. Pure mechanical convergence,
+  zero behaviour change.
+- **`XDefault`/`XImpl` naming finalized (freeway-commons/ioc/db/http/flow/cloud,
+  breaking renames)** — the criterion settles as "external substitutability":
+  when a role implementation can be replaced externally (a `.primary()` binding /
+  construction choice / config activation), the framework's default implementation
+  is named `XDefault`, regardless of which feature package it lives in — cloud's
+  replaceable defaults all sit in their feature packages (discovery / resilience
+  / observe / storage / secret / rpc, and `internal` no longer houses replaceable
+  defaults), and staying in `internal` does not change the name (`db/internal`'s
+  `PoolDefault` is still externally `.primary()`-able); implementations with no
+  external substitutability are named `XImpl`. The net renames against 1.4.0:
+  - Named `XImpl`: `HttpContextDefault`→`HttpContextImpl` (the built-in engine's
+    context contract; ext engines bring their own), `LoggerSourceDefault`→
+    `LoggerSourceImpl` (a hard-wired singleton on the injection path, never
+    consulting bindings), `PooledConnectionDefault`→`PooledConnectionImpl` (a
+    per-pool artefact type; the Hikari adapter brings its own connection type),
+    `ProxyFactoryDefault`→`ProxyFactoryImpl` (a package-private interface with one
+    implementation and no external substitution point);
+  - Named `XDefault`: `FlowEngineImpl`→`FlowEngineDefault` (the default flow
+    engine); `TransportSecurityDefault` keeps the substitutable-default name and
+    moves from `cloud.internal` into `cloud.rpc` (assembled via `fromKeyStore`
+    from the `freeway.cloud.rpc.tls.*` keys; ext can bind alternatives);
+    `CoercerDefault` / `ExchangeMetaDefault` keep their names;
+  - `MetricsDefault`'s private inner classes `DefaultCounter` / `DefaultTimer` →
+    `CounterImpl` / `TimerImpl` (clearing the `DefaultX` prefix residue, no API
+    impact).
+  The criterion and the `internal` semantics (implementation details with no
+  stability promise, like `RegistryStore` / `ConfigLists`) are written into
+  `CLAUDE.md` / `AGENTS.md` / `DEVELOPER-GUIDE.md` (AGENTS.md also gains the
+  "placement and suffix are orthogonal" stance), rename-class references across
+  the docs unify on the current names, and freeway-ext's references rename in
+  lockstep.
+- **cloud config keys single-sourced, and `Wiring` withers (freeway-cloud, no
+  behaviour change)** — seven config keys' defaults are declared once as
+  `*_DEFAULT` constants in `CloudConfigKeys` (the RPC TLS keystore/truststore
+  four keys' empty-string defaults, the storage base-path, the registry
+  service-scheme), so the config layer and the in-library fallbacks stop
+  double-writing; the RPC request/connect timeouts and the peer network timeout
+  constants share one source between the config spec and
+  `CloudHttpClientDefault.Wiring`'s library fallbacks (without the module, the
+  constants are reused directly, so the two layers cannot drift). `Wiring` gains
+  7 withers (`withPropagators` / `withRetryer` / `withBreaker` / `withRateLimiter`
+  / `withTransport` / `withRequestTimeout` / `withConnectTimeout`) for stepwise
+  customization.
 
-- **包结构收紧与文档口径同步（freeway-commons/ioc/boot/http/db/flow/cloud，无行为变更）** —
-  按 2026-09-05 包体结构审计的 B/C 清单落地：
-  - http 引擎体系可见性收紧：21 个包外零引用的 public 类型降 package-private
-    （engine 根 `SessionBufferedInput/OutputStream`；engine/ws `WebSocketFrame` /
-    `OpCode` / `CloseCode` / `WebSocketException`；engine/http2 `BaseFrame` 帧族 /
-    `FrameSerializer` / `Settings` 族），engine/ 剩余 public 只是引擎子包间契约
-    （Java 无子包可见性），已在 CLAUDE.md 写明；engine/ws 的静态读循环工具
-    `WebSocket` 更名 `WebSocketReadLoop`（消除"以协议命名工具"）。
-  - commons logging：`JULLoggerFactory` / `JULLoggerAdapter` / `JULMDCAdapter`
-    收 package-private（SPI 与 LogManager 按名加载的类型保持 public）。
-  - flow：引擎件 `Stepper` / `FlowContextImpl` 移入新建 `flow.internal`
-    （类仍为 public，仅供根包装配引用，无稳定性承诺）；根 package-info
-    增补 Stability 段。
-  - db：`RowMapperTest` 归位 internal 镜像测试包；新增 `DialectSyntaxTest`
-    直接单测四方言语法面（引号/保留字/DDL 片段/DML 子句）；`DatabaseHub.of(Map)`
-    根工厂取代 javadoc 引导构造 internal 类。
-  - `internal` 包（ioc/boot/http/db/cloud/flow）与 commons.util 补 package-info
-    （"no stability promise" / 包边界）；ioc `Container` 类 javadoc 从 import
-    之前归位（此前从不附着到接口）。
-  - `ContextExecutor` 定案：保留为公开 API（显式 `ScopedValue` 传播执行器），
-    util 包边界随之写入 package-info。
-  - 文档口径同步：CLAUDE.md 的 dialect 替换路径（内建默认 `PostgresDialect`
-    本身 `.primary()`；自定义方言 = id 绑定 + `freeway.db.dialect` 键）、
-    engine 公开面表述、`@Primary` 与 binding DSL 等价、`ExprEvaluator` ~600 行、
-    模块依赖图（db 的 ioc 实为 compile 且仅 DbModule 引用、cloud→boot 为
-    test scope、http 显式依赖 commons）；AGENTS.md 模块表同步；flow README
-    的 "GraphSpec2" 措辞修正（v2 由 `GraphSpec` 承载，`version=2` 标记）。
+- **Package structure tightens and doc stances sync
+  (freeway-commons/ioc/boot/http/db/flow/cloud, no behaviour change)** — landed
+  per the 2026-09-05 package structure audit's B/C lists:
+  - The http engine family's visibility tightens: 21 public types with zero
+    out-of-package references drop to package-private (engine root's
+    `SessionBufferedInput/OutputStream`; engine/ws's `WebSocketFrame` / `OpCode` /
+    `CloseCode` / `WebSocketException`; engine/http2's `BaseFrame` frame family /
+    `FrameSerializer` / the `Settings` family). The remaining public types in
+    engine/ are just contracts between the engine's subpackages (Java has no
+    sub-package visibility), noted in CLAUDE.md; and engine/ws's static read-loop
+    utility `WebSocket` is renamed `WebSocketReadLoop` (ending "naming a utility
+    after the protocol").
+  - commons logging: `JULLoggerFactory` / `JULLoggerAdapter` / `JULMDCAdapter`
+    become package-private (the types loaded by name via SPI and LogManager stay
+    public).
+  - flow: the engine parts `Stepper` / `FlowContextImpl` move into the new
+    `flow.internal` (classes stay public, referenced only by the root package's
+    assembly, no stability promise); the root package-info gains a Stability
+    section.
+  - db: `RowMapperTest` moves to the mirrored internal test package; a new
+    `DialectSyntaxTest` unit-tests the four dialects' syntax surfaces directly
+    (quoting/reserved words/DDL fragments/DML clauses); `DatabaseHub.of(Map)`'s
+    root factory replaces the javadoc steering readers to construct internal
+    classes.
+  - The `internal` packages (ioc/boot/http/db/cloud/flow) and commons.util gain
+    package-info files ("no stability promise" / package boundaries); ioc's
+    `Container` class javadoc moves above the imports (it had never attached to
+    the interface).
+  - `ContextExecutor` settles: it stays a public API (an executor with explicit
+    `ScopedValue` propagation), and the util package boundary is written into its
+    package-info.
+  - Doc stances sync: CLAUDE.md's dialect substitution path (the built-in default
+    `PostgresDialect` is itself `.primary()`-able; a custom dialect = an id
+    binding + the `freeway.db.dialect` key), the engine public-face wording, the
+    `@Primary`-and-binding-DSL equivalence, `ExprEvaluator`'s ~600 lines, the
+    module dependency graph (db's ioc is actually compile and referenced only by
+    DbModule, cloud→boot is test scope, http declares commons explicitly);
+    AGENTS.md's module table syncs; and flow README's "GraphSpec2" wording is
+    fixed (v2 is carried by `GraphSpec` with a `version=2` marker).
 
 ### Removed
 
-- **清理死依赖声明（根 `pom.xml`）** — 移除 `<dependencyManagement>` 中
-  `freeway-starter` / `freeway-starter-boot` / `freeway-starter-web` /
-  `freeway-starter-db` 四个条目。这些 artifact 在 `<modules>` 中无对应模块、
-  目录不存在、全仓无任何代码或模块引用（仅有 pom 自身声明），属早期规划的
-  残留。移除后 `dependencyManagement` 中的 7 个内部模块与 `<modules>` 完全
-  一一对应。对已发布 artifact 的坐标解析无影响（从未发布过这些 artifact）。
+- **Dead dependency declarations cleaned (root `pom.xml`)** — the
+  `<dependencyManagement>` entries for `freeway-starter` / `freeway-starter-boot`
+  / `freeway-starter-web` / `freeway-starter-db` are removed. These artifacts
+  have no matching module in `<modules>`, no directories, and zero references
+  from any code or module (only the pom's own declarations) — leftovers from
+  early planning. After removal the 7 internal modules in
+  `<dependencyManagement>` correspond one-to-one with `<modules>`. No effect on
+  resolving released artifacts (these were never released).
 
 ### Fixed
 
-- **一个进程可导出多个 RPC mapping（freeway-cloud）** — `RpcEndpoint.of()` 此前恒
-  返回同一路由模式 `Route.post("/rpc/{mapping}/{method}")`，第二次导出与第一次争夺
-  同一 trie 节点，启动即 `IllegalStateException: Duplicate route detected: POST
-  /rpc/{mapping}/{method}`，与类 javadoc「each mapping you hand to `of()` becomes
-  reachable」相悖，而报错信息完全不指向真因。现把 mapping 编入路径字面量
-  （`/rpc/<mapping>/{method}`），并在导出时校验 mapping 名（复用
-  `RpcPaths.validateSegment`，非法名当场失败而非请求期静默遮蔽兄弟 mapping）。
-  对外 URL 形状与调用侧代码均不变。新增回归：两 mapping 并存可达、跨前缀仍 404、
-  非法名导出即抛。
-- **RPC 拒绝详情不再把 4xx 放大成 500** — `X-RPC-Reject-Reason` 此前直写原文，而
-  `method` 段经路径 URL 解码可以携带 CR/LF；freeway-http 拒绝头值中的控制字符，于是
-  `POST /rpc/user/greet%0d%0aX-Injected%3a...` 得到 500 加一行 SEVERE 日志，精心
-  区分的 400/404 契约被替换成服务端故障。现按 wire 文档既有约定对该头 form-encode
-  （与 `X-RPC-Exception` / `X-RPC-Message` 一致，消费侧本就解码），错误体改由
-  `JsonCodec` 序列化并删除手写 `escape()`（只处理 `\\` 与 `"`，控制字符会产出非法
-  JSON）。CRLF 响应头注入经实证本就被 HTTP 层拦下，修的是被它顺带毁掉的状态码。
-- **网格入站分片文本帧不再丢事件** — client 侧 `PeerConnector` 用的是 JDK
-  `WebSocket.Listener`，按**帧**回调；此前非末帧直接忽略，后续 CONTINUATION 帧单独
-  解析失败还会 `abort()` 连接。对端服务端在 4MiB 以上即分片发送（入站上限 16MB），
-  因此 4–16MiB 的事件必然丢帧并反复断链，而服务端入站经引擎已合并、两侧语义不对称。
-  新增 `TextMessageAssembler` 负责重组，并按与服务端同源的上限（16MiB）拒绝超长
-  消息——"对端永不置 FIN"不能换成无界内存。
-- **`callAsync` 与 `close()` 的登记竞态** — future 此前在任务提交**之后**才加入
-  `inFlight`；若 `close()` 恰在两步之间完成遍历，被 `shutdownNow` 丢弃的任务就没人
-  结算。现改为在 `close()` 的同一监视器下"先登记再提交"，关闭窗口内的调用同步抛
-  `IllegalStateException`（与 `requireUsable` 同型）。
-- **注册钩子停止期不再掩盖真因** — `RegistryLifecycleHook.stop()` 在 try 之外执行
-  `container.get(ServiceRegistry.class)`，容器半拆时该查找抛出的异常会顶替正在发生
-  的失败。现按 best-effort 处理：注册表不可得即一条 WARN 加清理跟踪实例，租约自然
-  过期。
-- **RPC 未装 resilience 模块时重试策略不再被静默置空（freeway-cloud）** —
-  `CloudHttpClientDefault` 此前把解析后的默认 retryer 存入 `this.retryer` 字段（死字段，
-  只写不读），却把可能为 null 的原始参数直接传给 `ResiliencePolicy`——未装 resilience
-  模块（retryer 为 null）时，一旦遇到可重试失败，`retryer.shouldRetry` 即 NPE。现删除
-  死字段，改用解析后的非 null retryer 构造策略，缺省时回退
-  `RetryerDefault.withDefaults()`。
-- **HTTP/2 流被 RST 后不再向该流写响应帧（freeway-http，含偶发 flaky 修复）** —
-  此前 `Http2Stream.close()` 在流因 RST 结束时仍执行 `outputStream.close()`，向一个已结束
-  的流发送 `DATA END_STREAM`；被唤醒的 handler 还会继续执行 `ctx.send(200,...)` 写 stray 帧，
-  与同一连接上的后续请求响应交错。该竞态违反 RFC 7540 §8.1（流被 RST 后不得再发送该流帧），
-  真实客户端会据此发 GOAWAY 关闭连接，导致 `Http2ProtocolTest.h2cResetStreamWithNoErrorReleasesHandler`
-  偶发失败。现统一收敛：为流加 `peerReset`（对端 RST）与 `responseAborted`（服务端主动 RST）
-  两标记，`close()` 在任一标记下不写任何响应帧；handler 后续的 `ctx.send`/`write` 在
-  `peerReset` 下直接干净抛 `IOException` 收尾而非边写边错。覆盖全部发 RST 的路径——
-  对端 `RST_STREAM`、`abortResponse()`（PROTOCOL_ERROR）、`sendReset()`（异常路径）、
-  `dispatchToStream` 捕获的流错误、`WINDOW_UPDATE` 发送窗溢出（FLOW_CONTROL_ERROR）——以上
-  路径发完 RST 后均不再补 END_STREAM。`sendReset()` 改为基于 `responseAborted` 的幂等
-  （重复调用只发一次 RST）。正常完成路径（handler 主动 `close`）因 `outputStream.closed`
-  守卫不重复写帧，行为不变。
-- **`SslContextFactory` 空 keystore 密码不再 NPE（freeway-http，P3 卫生）** —
-  `keyStorePassword` 为 `null` 时 `password.toCharArray()` 直接抛 NPE（混淆的栈而非配置错误）。
-  无密码 keystore（如空密码 PKCS#12）本就合法，`KeyStore.load` 期望 `null` 字符数组而非空数组。
-  新增 `keyStorePasswordChars` 把 `null` 原样透传，消除 NPE 且不破坏无密码 keystore 场景
-  （`loadKeyStore` / `defaultKeyManagers` / SNI `SniKeyManager` 三处调用点统一走该 helper）。
-- **批量收口 cloud 模块 P3 卫生项（freeway-cloud / freeway-http，无行为变更）** —
-  - `ReadyHandler`：`/health/ready` 的每个 contributor 检查加 2s 超时预算（虚拟线程
-    + `Future.get(timeout)`），某 contributor 阻塞即判不健康，而非拖挂探针端点并堆积探针线程（P3-8）。
-  - `TracerDefault`：span 构造期捕获**所属线程**的 `Frame`，`restoreThreadState` 用其操作
-    span 栈——修复跨线程 `close` 后所属线程的 span 栈残留 stale 项、后续 MDC/`diagId` 错乱（P3-11）。
-  - `CloudHttpClientDefault`：breakers/rateLimiters 按 `serviceId` 分片，加 1024 容量上限兜底
-    （超限驱逐一个），防 churning 注册表来源下无界增长（P3-1）。
-  - `PeerConnector`：握手超时(10s)/重连退避(1s/30s)由硬编码私有常量改为经 `SymbolSpec` 可配
-    （`freeway.cloud.events.handshake-timeout-ms` / `backoff-base-ms` / `backoff-max-ms` /
-    `connect-timeout-ms`，默认值与原有硬编码一致，行为不变）；`CloudEventLifecycleHook` 透传（P3-5）。
-  - 注：`Baggage` 上限（P3-10）经核对已在 `BaggagePropagator` 传播层落地（inject/extract 截断
-    到 `MAX_ENTRIES` / `MAX_ENCODED_LENGTH`），故不在构造器加帽，以免破坏 oversized 传播回归测试。
-- **网格会话强制 hello-first 握手（freeway-cloud，安全）** — `PeerHub` / `PeerConnector`
-  两端各持逐会话握手状态机：hello/ack 之前到达的 CE 帧一律按协议错误处理（服务端关
-  1002、client 侧 abort），不再可能落入 `hub.receive()`——此前任何能建立 WebSocket 的
-  客户端都可跳过 token 门禁的 hello 准入直接注入 TOPIC 事件（`allowed-topics` 默认放行
-  任意主题）。hello 每次会话仅一次，重复 hello 按协议错误处理。新增
-  `PeerHubHandshakeStateTest` 等回归（先于修复验证为红）。
-- **网格重连语义修正（freeway-cloud）** — 是否重连不再由"谁调用 close()"决定：出站侧
-  `close()` 只负责拆除传输，`handleDisconnect` 一律重拨，除非 hub 注册表仍服务该
-  origin（重复解析残留 twin 的抑制场景保留）；sink 发送失败导致的摘除
-  （unregister + close）现在会重拨，不再静默丢失对端直到重启。新增
-  `PeerConnectorReconnectTest` 回归。
-- **出站调用异常头净化与事件源身份回退链（freeway-cloud）** — `RemoteCaller` 对 peer
-  异常头只解码净化一次，同一份干净值同时供外层消息与 `RemoteInvocationException`
-  （其构造器仍自净化）使用，CRLF 伪造与超长值无法经 cause 链进入日志；
-  `CloudEventLifecycleHook` 解析网格自身份改走与 `HttpServiceDeclaration` 相同的
-  registry service-id → `freeway.app.name` → freeway-app 回退链，注册身份与事件源
-  身份保持一致。
-- **TLS 热重载跟随生效引擎（freeway-http）** — `SslReloader` 此前无条件装配到内建
-  `FreewayHttpEngine`：ext 引擎（Undertow/Jetty）成为 primary `HttpEngine` 后，
-  reloader 监视并重载的是一个从未启动的引擎，TLS 热重载静默失效。`HttpModule` 现在
-  先探测当前生效的 HttpEngine 绑定是否仍是本模块的内建绑定
-  （`container.isActiveBinding(HttpEngine.class, Builtin.class)`，只查绑定元数据、
-  不实例化引擎），是才装配 reloader；否则记日志说明证书轮换属生效引擎模块的职责。
-  内建引擎路径行为不变。新增 fake primary 引擎 + 不存在 keystore 的启动回归。
-- **`/metrics` 三角色同实例绑定（freeway-cloud）** — observe 模块把同一个
-  `MetricsDefault` 实例以三个角色注册（具体类、`Metrics` primary、`MetricsSnapshot`），
-  `/metrics` 导出视图不再对解析出的 JDK 代理做 instanceof 判定（代理只实现被请求的
-  接口，首请求即抛）；替换 metrics 后端 = 不装 `CloudObserveModule` 自行装配。
-  `CloudObserveModule` / `MetricsSnapshot` / `MetricsHandler` 上"自动跟随"的 javadoc
-  声明随之下修。新增标准装配 200 导出、ext 式 primary 替换无歧义、双 primary 响亮
-  失败（`AmbiguousBindingException`）回归。
+- **One process could export multiple RPC mappings (freeway-cloud)** —
+  `RpcEndpoint.of()` always returned the same route pattern
+  `Route.post("/rpc/{mapping}/{method}")`, so a second export fought the first
+  for the same trie node and startup failed with
+  `IllegalStateException: Duplicate route detected: POST /rpc/{mapping}/{method}`,
+  contradicting the class javadoc's "each mapping you hand to `of()` becomes
+  reachable", with an error message pointing nowhere near the cause. The mapping
+  is now baked into the path literal (`/rpc/<mapping>/{method}`), and the
+  mapping name is validated at export (reusing `RpcPaths.validateSegment`, so an
+  illegal name fails on the spot instead of silently shadowing a sibling mapping
+  at request time). The outward URL shape and caller-side code are unchanged. New
+  regressions: two mappings coexisting and reachable, cross-prefix still 404, and
+  an illegal name throwing at export.
+- **RPC rejection details no longer magnify a 4xx into a 500** —
+  `X-RPC-Reject-Reason` used to carry the raw text, and the `method` segment,
+  having gone through path URL decoding, could carry CR/LF; freeway-http rejects
+  control characters in header values, so
+  `POST /rpc/user/greet%0d%0aX-Injected%3a...` got a 500 plus a SEVERE log line,
+  replacing the carefully distinguished 400/404 contract with a server fault. The
+  header is now form-encoded per the existing wire-doc convention (consistent
+  with `X-RPC-Exception` / `X-RPC-Message`, which consumers already decode), the
+  error body is serialized by `JsonCodec`, and the hand-written `escape()`
+  (which handled only `\\` and `"`, producing invalid JSON for control
+  characters) is deleted. CRLF response-header injection was already blocked by
+  the HTTP layer in practice; what got fixed is the status code it took down with
+  it.
+- **mesh inbound fragmented text frames no longer lose events** — the client
+  side's `PeerConnector` used the JDK `WebSocket.Listener`, which callbacks per
+  **frame**; non-final frames were ignored outright, and a subsequent
+  CONTINUATION frame failing to parse alone would `abort()` the connection. Peer
+  servers fragment above 4 MiB (the inbound cap is 16 MB), so events of 4–16 MiB
+  necessarily lost frames and broke the link repeatedly, while the server's
+  inbound was already merged by the engine — asymmetric semantics on the two
+  sides. A `TextMessageAssembler` is added to reassemble, rejecting over-long
+  messages at the same server-side cap (16 MiB) — "the peer never sends FIN"
+  must not be answered with unbounded memory.
+- **The race between `callAsync` and `close()`** — the future used to join
+  `inFlight` **after** the task was submitted; if `close()` finished its
+  traversal between the two steps, a task dropped by `shutdownNow` had nobody to
+  settle it. Registration now happens "register first, then submit" under
+  `close()`'s monitor, and a call inside the closing window throws
+  `IllegalStateException` synchronously (the same shape as `requireUsable`).
+- **The registry hook's stop no longer masks the real failure** —
+  `RegistryLifecycleHook.stop()` executed `container.get(ServiceRegistry.class)`
+  outside its try, so when the container was half-torn-down, that lookup's
+  exception displaced the failure already in progress. It is now best-effort: if
+  the registry is unobtainable, one WARN plus tracking the instance for cleanup,
+  and the lease expires naturally.
+- **The RPC retry policy is no longer silently nulled without the resilience
+  module (freeway-cloud)** — `CloudHttpClientDefault` stored the resolved default
+  retryer into the `this.retryer` field (a dead field, written never read) but
+  passed the possibly-null raw parameter straight to `ResiliencePolicy` — so
+  without the resilience module (retryer null), the first retryable failure hit
+  `retryer.shouldRetry` with an NPE. The dead field is deleted; the policy is
+  built with the resolved non-null retryer, falling back to
+  `RetryerDefault.withDefaults()` when absent.
+- **HTTP/2 streams no longer receive response frames after being RST
+  (freeway-http, including a flaky fix)** — `Http2Stream.close()` used to run
+  `outputStream.close()` even when the stream ended by RST, sending
+  `DATA END_STREAM` to a finished stream; the woken handler would then run
+  `ctx.send(200,...)`, writing stray frames interleaved with later responses on
+  the same connection. The race violated RFC 7540 §8.1 (after a stream is RST,
+  no more frames for it may be sent), and real clients respond with GOAWAY
+  closing the connection — the cause of
+  `Http2ProtocolTest.h2cResetStreamWithNoErrorReleasesHandler`'s flakiness. It
+  now converges uniformly: streams gain the `peerReset` (peer RST) and
+  `responseAborted` (server-initiated RST) markers, and `close()` writes no
+  response frames under either; a handler's later `ctx.send`/`write` under
+  `peerReset` throws a clean `IOException` to finish rather than erroring
+  mid-write. All RST-sending paths are covered — peer `RST_STREAM`,
+  `abortResponse()` (PROTOCOL_ERROR), `sendReset()` (exception paths), stream
+  errors caught in `dispatchToStream`, and `WINDOW_UPDATE` send-window overflow
+  (FLOW_CONTROL_ERROR) — and none of them appends END_STREAM after the RST.
+  `sendReset()` becomes idempotent on `responseAborted` (repeated calls send one
+  RST). The normal completion path (a handler-initiated close) already had the
+  `outputStream.closed` guard preventing duplicate frames, so it is unchanged.
+- **`SslContextFactory` no longer NPEs on an empty keystore password
+  (freeway-http, P3 hygiene)** — a `null` `keyStorePassword` hit
+  `password.toCharArray()` and threw an NPE (a confusing stack rather than a
+  config error). A passwordless keystore (e.g. an empty-password PKCS#12) is
+  legal, and `KeyStore.load` expects a `null` char array rather than an empty
+  one. The new `keyStorePasswordChars` passes `null` through verbatim, removing
+  the NPE without breaking the passwordless-keystore case (the three call sites
+  `loadKeyStore` / `defaultKeyManagers` / SNI's `SniKeyManager` all route through
+  the helper).
+- **cloud module P3 hygiene items closed in bulk (freeway-cloud / freeway-http,
+  no behaviour change)**:
+  - `ReadyHandler`: each `/health/ready` contributor check gets a 2 s timeout
+    budget (a virtual thread + `Future.get(timeout)`), so one blocked contributor
+    judges unhealthy instead of hanging the probe endpoint and piling up probe
+    threads (P3-8).
+  - `TracerDefault`: span construction captures the **owning thread**'s `Frame`,
+    and `restoreThreadState` uses it to operate the span stack — fixing a
+    cross-thread `close` leaving stale items on the owning thread's span stack
+    and garbling later MDC/`diagId` (P3-11).
+  - `CloudHttpClientDefault`: breakers/rateLimiters shard by `serviceId` with a
+    1024-capacity bound (evicting one when over), preventing unbounded growth
+    under a churning registry source (P3-1).
+  - `PeerConnector`: handshake timeout (10 s)/reconnect backoff (1 s/30 s) move
+    from hard-coded private constants to `SymbolSpec`-configurable
+    (`freeway.cloud.events.handshake-timeout-ms` / `backoff-base-ms` /
+    `backoff-max-ms` / `connect-timeout-ms`, defaults identical to the previous
+    hard-coded values, behaviour unchanged); `CloudEventLifecycleHook` plumbs
+    them through (P3-5).
+  - Note: `Baggage`'s limits (P3-10) were verified to already live at the
+    `BaggagePropagator` propagation layer (inject/extract truncate to
+    `MAX_ENTRIES` / `MAX_ENCODED_LENGTH`), so the constructor is not capped again,
+    which would break the oversized-propagation regression test.
+- **mesh sessions enforce a hello-first handshake (freeway-cloud, security)** —
+  `PeerHub` / `PeerConnector` each hold a per-session handshake state machine:
+  CE frames arriving before hello/ack are protocol errors (the server closes
+  1002; the client side aborts) and can no longer reach `hub.receive()` — any
+  client that could establish a WebSocket previously skipped the token-gated
+  hello admission and injected TOPIC events directly (`allowed-topics` defaulted
+  to allowing any topic). Hello is once per session, and a repeated hello is a
+  protocol error. New regressions including `PeerHubHandshakeStateTest` (red
+  before the fix).
+- **mesh reconnection semantics corrected (freeway-cloud)** — whether to
+  reconnect no longer depends on "who called close()": the outbound side's
+  `close()` only tears down the transport, and `handleDisconnect` re-dials
+  uniformly, unless the hub registry still serves that origin (the suppression
+  case for duplicates leaving a twin behind is kept); a removal caused by a sink
+  send failure (unregister + close) now re-dials instead of silently losing the
+  peer until restart. The new `PeerConnectorReconnectTest` covers it.
+- **Outbound call exception-header sanitization and the event source's identity
+  fallback chain (freeway-cloud)** — `RemoteCaller` decodes and sanitizes the
+  peer exception header exactly once, with the same clean value feeding both the
+  outer message and `RemoteInvocationException` (whose constructor still
+  sanitizes itself), so CRLF forgeries and overlong values cannot enter logs via
+  the cause chain; and `CloudEventLifecycleHook` resolves the mesh's own identity
+  through the same registry service-id → `freeway.app.name` → freeway-app
+  fallback chain as `HttpServiceDeclaration`, keeping the registered identity and
+  the event source identity consistent.
+- **TLS hot reload follows the effective engine (freeway-http)** — `SslReloader`
+  was assembled onto the built-in `FreewayHttpEngine` unconditionally: once an ext
+  engine (Undertow/Jetty) became the primary `HttpEngine`, the reloader watched
+  and reloaded an engine that never started, silently breaking TLS hot reload.
+  `HttpModule` now first probes whether the active `HttpEngine` binding is still
+  this module's built-in one
+  (`container.isActiveBinding(HttpEngine.class, Builtin.class)`, reading binding
+  metadata only, never instantiating the engine), and assembles the reloader only
+  then; otherwise it logs that certificate rotation is the effective engine
+  module's responsibility. The built-in engine path is unchanged. A new startup
+  regression uses a fake primary engine with a nonexistent keystore.
+- **`/metrics` binds one instance under three roles (freeway-cloud)** — the
+  observe module registers the same `MetricsDefault` instance under three roles
+  (the concrete class, `Metrics` primary, and `MetricsSnapshot`), so the
+  `/metrics` export view no longer instanceof-checks the resolved JDK proxy (the
+  proxy implements only the requested interface and threw on the first request);
+  replacing the metrics backend = skip `CloudObserveModule` and assemble your
+  own. The "follows automatically" javadoc claims on `CloudObserveModule` /
+  `MetricsSnapshot` / `MetricsHandler` are corrected downward. New regressions:
+  the standard assembly exporting 200, an ext-style primary replacement with no
+  ambiguity, and two primaries failing loudly (`AmbiguousBindingException`).
 
 ### Documentation
 
-- **事件网格入站安全与生产 token 配置** — `docs/freeway-cloud-events-design.md`
-  新增 §4.3「入站门禁：token 与双白名单（生产部署必读）」：厘清三道入站门
-  （`token` 对等认证 / `allowed-types` CLASS 反序列化 / `allowed-topics`
-  TOPIC 注入）各自不同的空值语义，并给出多节点生产部署配置 token 的四条
-  约束（全节点取值一致、经 `FREEWAY_CLOUD_EVENTS_TOKEN` 注入而非写进配置
-  文件、常量时间比较防探测、轮换需滚动重启）；同时记录"不内置默认 token"
-  的决策理由——硬编码默认值等于公开密码、制造安全错觉；随机默认值会让
-  mesh 因 token 不一致而直接断连。
-- **修正过期文档描述** — `DEVELOPER-GUIDE.md` 与 `freeway-config.md` 中
-  "空 allowlist = 放行全部"的表述已随上述行为变更同步：CLASS 通道为
-  deny-by-default，仅 TOPIC 通道保留"空 = 放行全部"。生产样例配置
-  `application-prod.properties.sample` / `.json.sample` 补上 events 段与
-  token 注入提示。
-- **`secret.file` / `secret.keys` 的真实生效方式** — 这两个键直读 JVM 系统属性
-  （密钥提供方参与符号解析，不能经该链读取自身配置），因此写进 `application.*`
-  或 `FREEWAY_*` 环境变量**静默无效**，而白名单失效正好意味着"任意符号名先查环境
-  变量"的锋利默认继续生效。`docs/freeway-config.md` 的密钥表与环境变量映射小节
-  补上"仅 `-D`"标注与例外说明。
-- **熔断结果上报的线程亲和契约** — `CircuitBreaker` javadoc 写明：半开探针由
-  `allowRequest()` 的调用线程持有，`onSuccess` / `onFailure` 必须同线程结算，
-  否则探针不计账、电路停在 HALF_OPEN 直到 open window 重新 arm。
-- **RPC 导出面文档同步** — `DEVELOPER-GUIDE.md` 与
-  `docs/freeway-remote-callbus-design.md` §3.2 改为描述每次导出各自的
-  `/rpc/<mapping>/{method}` 路由（多 mapping 并存）与导出期 mapping 名校验。
+- **Event mesh inbound security and production token configuration** —
+  `docs/freeway-cloud-events-design.md` gains §4.3 "Inbound gating: token and the
+  two allowlists (required reading for production)": it separates the three
+  inbound gates' differing empty-value semantics (`token` peer authentication /
+  `allowed-types` CLASS deserialization / `allowed-topics` TOPIC injection) and
+  gives four constraints for configuring tokens across a multi-node production
+  deployment (all nodes agree on the value, inject via
+  `FREEWAY_CLOUD_EVENTS_TOKEN` rather than writing it into config files,
+  constant-time comparison against probing, rotation requires a rolling
+  restart); it also records why no default token is built in — a hard-coded
+  default is a published password that manufactures a security illusion, and a
+  random default would split the mesh at startup over token mismatch.
+- **Stale doc statements corrected** — "empty allowlist = allow all" in
+  `DEVELOPER-GUIDE.md` and `freeway-config.md` syncs with the behaviour change
+  above: the CLASS channel is deny-by-default, and only the TOPIC channel keeps
+  "empty = allow all". The production samples
+  `application-prod.properties.sample` / `.json.sample` gain an events section
+  and the token injection hint.
+- **How `secret.file` / `secret.keys` actually take effect** — these two keys
+  read the JVM system properties directly (the secret provider participates in
+  symbol resolution and cannot read its own config through that chain), so
+  putting them in `application.*` or `FREEWAY_*` environment variables is
+  **silently ineffective** — and the allowlist's deadness is exactly what keeps
+  the sharp default of "any symbol name consults environment variables first"
+  working. `docs/freeway-config.md`'s secrets table and env-mapping section gain
+  the "‑D only" annotation and the exception note.
+- **The thread-affinity contract of circuit-breaker reporting** —
+  `CircuitBreaker`'s javadoc states: the half-open probe is held by the thread
+  calling `allowRequest()`, and `onSuccess` / `onFailure` must settle on the same
+  thread — otherwise the probe does not count and the circuit stays HALF_OPEN
+  until the open window re-arms.
+- **RPC export surface docs sync** — `DEVELOPER-GUIDE.md` and
+  `docs/freeway-remote-callbus-design.md` §3.2 now describe each export's own
+  `/rpc/<mapping>/{method}` route (multiple mappings coexisting) and the
+  export-time mapping-name validation.
 
 ## [1.4.0] — 2026-09-02
 
