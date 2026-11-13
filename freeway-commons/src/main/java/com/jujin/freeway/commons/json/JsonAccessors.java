@@ -15,7 +15,7 @@ final class JsonAccessors {
 
     /**
      * The scalar readers delegate to the same {@link Coercer} the typed JSON
-     * path uses, so a node getter and {@code JsonCodec.convert} cannot disagree
+     * path uses, so a node getter and {@code JsonCodec.coerce} cannot disagree
      * about "1", "yes" or "1.5". They used to be a second, stricter rule set
      * (JSON literals only), which made {@code {"b":1}} readable through one
      * path and rejected through the other. The built-in coercer is used here

@@ -26,7 +26,7 @@ import org.slf4j.LoggerFactory;
  * shape only. The legacy solon-flow {@code layout} format was dropped in favor
  * of this explicit (V, E) representation.</p>
  */
-public class GraphSpec {
+public final class GraphSpec {
     public static final int VERSION = 3;
     private static final Logger LOG = LoggerFactory.getLogger(GraphSpec.class);
 
@@ -102,7 +102,7 @@ public class GraphSpec {
         return this;
     }
 
-    public GraphSpec metaPut(String key, Object value) {
+    public GraphSpec putMetadata(String key, Object value) {
         if (key != null && !key.isEmpty()) {
             meta.put(key, value);
         }
@@ -110,7 +110,7 @@ public class GraphSpec {
         return this;
     }
 
-    public GraphSpec meta(Map<String, Object> meta) {
+    public GraphSpec metadata(Map<String, Object> meta) {
         if (meta != null && !meta.isEmpty()) {
             this.meta.putAll(meta);
         }
@@ -283,7 +283,7 @@ public class GraphSpec {
     }
 
     public String toJson() {
-        return JsonUtils.stringify(toMap());
+        return JsonUtils.toJson(toMap());
     }
 
     public static GraphSpec fromText(String text) {
@@ -312,7 +312,7 @@ public class GraphSpec {
         if (dom.containsKey("entry")) {
             blueprint.entry(dom.getString("entry"));
         }
-        blueprint.meta(toMap(dom.getObject("meta")));
+        blueprint.metadata(toMap(dom.getObject("meta")));
 
         JsonArray nodesDom = dom.getArray("nodes");
         if (nodesDom == null) {
@@ -327,7 +327,7 @@ public class GraphSpec {
             NodeType nodeType = NodeType.of(typeStr);
             NodeSpec node = blueprint.addNode(nodeId, nodeType);
             node.title(nodeDom.getString("title"));
-            node.meta(toMap(nodeDom.getObject("meta")));
+            node.metadata(toMap(nodeDom.getObject("meta")));
             node.data(toMap(nodeDom.getObject("data")));
             node.when(nodeDom.getString("when"));
             node.task(nodeDom.getString("task"));
@@ -342,7 +342,7 @@ public class GraphSpec {
                 String to = requireString(linkDom, "to", "Link at index " + i);
                 LinkSpec link = blueprint.link(from, to);
                 link.title(linkDom.getString("title"));
-                link.meta(toMap(linkDom.getObject("meta")));
+                link.metadata(toMap(linkDom.getObject("meta")));
                 link.when(linkDom.getString("when"));
                 Integer priority = linkDom.containsKey("priority") ? linkDom.getInt("priority") : null;
                 if (priority != null) {
@@ -360,12 +360,12 @@ public class GraphSpec {
         if (graph.start() != null) {
             blueprint.entry(graph.start().id());
         }
-        blueprint.meta(graph.metas());
+        blueprint.metadata(graph.metadata());
 
         for (Node node : graph.nodes().values()) {
             NodeSpec nodeBlueprint = blueprint.addNode(node.id(), node.type());
             nodeBlueprint.title(node.title());
-            nodeBlueprint.meta(node.metas());
+            nodeBlueprint.metadata(node.metadata());
             nodeBlueprint.data(node.data());
             if (node.when() != null) {
                 if (node.when().handler() != null) {
@@ -386,7 +386,7 @@ public class GraphSpec {
         for (Link link : graph.links()) {
             LinkSpec linkBlueprint = blueprint.link(link.prevId(), link.nextId());
             linkBlueprint.title(link.title());
-            linkBlueprint.meta(link.metas());
+            linkBlueprint.metadata(link.metadata());
             if (link.when() != null) {
                 if (link.when().handler() != null) {
                     linkBlueprint.when(link.when().handler());
@@ -420,7 +420,7 @@ public class GraphSpec {
         return resolveEntry();
     }
 
-    public Map<String, Object> meta() {
+    public Map<String, Object> metadata() {
         return Collections.unmodifiableMap(meta);
     }
 

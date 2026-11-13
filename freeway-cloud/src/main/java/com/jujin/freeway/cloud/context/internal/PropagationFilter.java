@@ -1,0 +1,86 @@
+package com.jujin.freeway.cloud.context.internal;
+
+import com.jujin.freeway.cloud.context.InvocationContext;
+import com.jujin.freeway.cloud.context.Propagator;
+import com.jujin.freeway.http.HttpExchange;
+import com.jujin.freeway.http.filter.HttpFilter;
+import com.jujin.freeway.http.route.RouteHandler;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.function.Supplier;
+
+/**
+ * Inbound propagation filter: extracts the invocation context from request
+ * headers via every contributed {@link Propagator}, merges the parts, and
+ * binds the result for the request scope (ScopedValue, virtual-thread safe).
+ * Outbound injection happens in the {@code RpcHttpClient} layer — the same
+ * context, the same propagators, one pipeline.
+ */
+public final class PropagationFilter implements HttpFilter {
+
+    private final Supplier<List<Propagator>> propagators;
+
+    /**
+     * Takes the contributed view lazily: this filter is itself a deferred
+     * contribution, so its constructor runs while other modules' propagators
+     * may still be unpublished. Resolving the list here would freeze that
+     * prefix; {@code doFilter} reads it after composition, when the store is
+     * complete.
+     */
+    public PropagationFilter(Supplier<List<Propagator>> propagators) {
+        this.propagators = Objects.requireNonNull(propagators, "propagators");
+    }
+
+    /** Outermost built-in filter: every later filter and handler must see the
+     *  inbound context. {@code TracingFilter} sits just inside it ({@code -105}). */
+    @Override
+    public int order() {
+        return -110;
+    }
+
+    @Override
+    public void doFilter(HttpExchange ctx, RouteHandler next) throws Exception {
+        Map<String, String> headers = flatten(ctx.headers());
+        InvocationContext inbound = null;
+        for (Propagator propagator : propagators.get()) {
+            inbound = merge(inbound, propagator.extract(headers));
+        }
+        // A blank merge means every propagator found nothing (they report absent parts as an
+        // all-unset context): binding it would invent a context the request never carried — the
+        // same rule the async carrier applies to a blank captured context.
+        if (inbound == null || inbound.carriesNothing()) {
+            next.handle(ctx);
+            return;
+        }
+        InvocationContext.runWith(inbound, () -> {
+            next.handle(ctx);
+            return null;
+        });
+    }
+
+    private static InvocationContext merge(InvocationContext acc, InvocationContext part) {
+        if (acc == null) {
+            return part;
+        }
+        if (part == null) {
+            return acc;
+        }
+        return InvocationContext.of(
+            part.trace() != null ? part.trace() : acc.trace(),
+            part.principal() != null ? part.principal() : acc.principal(),
+            part.baggage() != null ? part.baggage() : acc.baggage());
+    }
+
+    private static Map<String, String> flatten(Map<String, java.util.List<String>> multi) {
+        Map<String, String> single = new HashMap<>();
+        multi.forEach((name, values) -> {
+            if (values != null && !values.isEmpty()) {
+                single.put(name, values.getFirst());
+            }
+        });
+        return single;
+    }
+}

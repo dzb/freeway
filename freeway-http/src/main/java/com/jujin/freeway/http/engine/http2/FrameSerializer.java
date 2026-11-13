@@ -11,11 +11,11 @@ final class FrameSerializer {
 
     private FrameSerializer() {}
 
-    public static BaseFrame deserialize(InputStream inputStream) throws IOException {
+    public static Http2Frame deserialize(InputStream inputStream) throws IOException {
         return deserialize(inputStream, DEFAULT_MAX_FRAME_SIZE);
     }
 
-    public static BaseFrame deserialize(InputStream inputStream, int maxFrameSize) throws IOException {
+    public static Http2Frame deserialize(InputStream inputStream, int maxFrameSize) throws IOException {
         return deserialize(inputStream, maxFrameSize, new byte[9]);
     }
 
@@ -24,7 +24,7 @@ final class FrameSerializer {
      * per-frame read loop avoids one allocation. The buffer is owned by the
      * connection's single reader thread — never share it across threads.
      */
-    public static BaseFrame deserialize(InputStream inputStream, int maxFrameSize,
+    public static Http2Frame deserialize(InputStream inputStream, int maxFrameSize,
                                         byte[] headerBuffer) throws IOException {
         readFully(inputStream, headerBuffer);
         FrameFlag.validate(headerBuffer[4], FrameType.fromValue(headerBuffer[3] & 0xFF));

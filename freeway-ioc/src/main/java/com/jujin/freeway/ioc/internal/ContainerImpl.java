@@ -5,6 +5,8 @@ import com.jujin.freeway.commons.bean.BeanIntrospector;
 import com.jujin.freeway.commons.coercion.CoerceRule;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.coercion.CoercerDefault;
+import com.jujin.freeway.commons.json.JsonCodec;
+import com.jujin.freeway.commons.json.JsonCodecDefault;
 import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.commons.metrics.NoopMetrics;
 import com.jujin.freeway.commons.scoped.ScopedCache;
@@ -12,7 +14,9 @@ import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.event.EventBus;
 import com.jujin.freeway.ioc.LoggerSource;
 import com.jujin.freeway.ioc.MissingBindingException;
+import com.jujin.freeway.ioc.ModuleDeclaration;
 import com.jujin.freeway.ioc.ModuleEx;
+import com.jujin.freeway.ioc.RuntimeDescription;
 import com.jujin.freeway.ioc.ScopeBoundary;
 import com.jujin.freeway.ioc.annotation.Builtin;
 import com.jujin.freeway.ioc.annotation.Inject;
@@ -83,8 +87,9 @@ public final class ContainerImpl implements Container {
      * This is the assembling side of the entry ladder: a declaration list becomes module nodes
      * here, and {@link ModuleNode} stays structure and invariants.
      */
-    public static Container of(ModuleEx... modules) {
-        return new ContainerImpl(ModuleNode.app(ModuleNode.DEFAULT_APP_NAME, nodes(modules)));
+    public static Container of(ModuleDeclaration... declarations) {
+        return new ContainerImpl(ModuleNode.app(
+            ModuleNode.DEFAULT_APP_NAME, nodes(declarations)));
     }
 
     /**
@@ -92,14 +97,8 @@ public final class ContainerImpl implements Container {
      * composition errors show as the application line. Presentation only: the
      * name carries no identity (the container's bindings do not depend on it).
      */
-    public static Container of(String name, ModuleEx... modules) {
-        return new ContainerImpl(ModuleNode.app(name, nodes(modules)));
-    }
-
-    /** Same, for modules named by class (each instantiated when the container loads). */
-    @SafeVarargs
-    public static Container of(Class<? extends ModuleEx>... types) {
-        return new ContainerImpl(ModuleNode.app(ModuleNode.DEFAULT_APP_NAME, nodes(types)));
+    public static Container of(String name, ModuleDeclaration... declarations) {
+        return new ContainerImpl(ModuleNode.app(name, nodes(declarations)));
     }
 
     /**
@@ -112,22 +111,14 @@ public final class ContainerImpl implements Container {
         return new ContainerImpl(ModuleNode.app(ModuleNode.DEFAULT_APP_NAME));
     }
 
-    /** One node per declared module instance; a null array is the empty declaration list. */
-    private static ModuleNode[] nodes(ModuleEx... modules) {
-        ModuleEx[] declared = modules == null ? new ModuleEx[0] : modules;
+    /** One node per declaration; a null array is the empty declaration list. */
+    private static ModuleNode[] nodes(ModuleDeclaration... declarations) {
+        ModuleDeclaration[] declared =
+            declarations == null ? new ModuleDeclaration[0] : declarations;
         ModuleNode[] nodes = new ModuleNode[declared.length];
         for (int i = 0; i < declared.length; i++) {
-            nodes[i] = ModuleNode.of(Objects.requireNonNull(declared[i], "module"));
-        }
-        return nodes;
-    }
-
-    /** One node per declared module class. */
-    private static ModuleNode[] nodes(Class<? extends ModuleEx>... types) {
-        Objects.requireNonNull(types, "module types");
-        ModuleNode[] nodes = new ModuleNode[types.length];
-        for (int i = 0; i < types.length; i++) {
-            nodes[i] = ModuleNode.of(Objects.requireNonNull(types[i], "module type"));
+            nodes[i] = ModuleNode.of(
+                Objects.requireNonNull(declared[i], "module declaration"));
         }
         return nodes;
     }
@@ -155,6 +146,12 @@ public final class ContainerImpl implements Container {
         registerBuiltin(SymbolSource.class, c -> symbolSource, "SymbolSource");
         registerBuiltin(Metrics.class, c -> NoopMetrics.INSTANCE, "Metrics");
         registerBuiltin(Coercer.class, c -> coercer, "Coercer");
+        // JSON is a base capability, not an HTTP feature: cloud RPC/events and
+        // any future module may resolve it without installing HttpModule. The
+        // codec reads the container's Coercer, so a substituted coercer still
+        // governs every decode; a substituted JsonCodec with .primary() wins.
+        registerBuiltin(JsonCodec.class,
+            c -> new JsonCodecDefault(c.get(Coercer.class)), "JsonCodec");
         registerBuiltin(LoggerSource.class, c -> LoggerSourceDefault.INSTANCE, "LoggerSource");
         registerBuiltin(ScopeBoundary.class, c -> this::scopedWithin, "ScopeBoundary");
         // The bus realizes on first resolution — always after every module has
@@ -163,13 +160,19 @@ public final class ContainerImpl implements Container {
         // close is deferred past every lifecycle callback (see Shutdown); a bus
         // that was never resolved has nothing to close.
         registerBuiltin(EventBus.class, EventBus::create, "EventBus");
-        // Composition, in three acts: bind every module, create the deferred
-        // contributions (config layer first), then seal the contribution
-        // window — from here the extension stores are immutable and the read
-        // side needs no locks.
+        // Composition and final build are separate acts. The config layer is
+        // constructed, published and initialized first, because its providers
+        // and rules must be final before any consumer is constructed. Every
+        // remaining contribution is then constructed and published; only after
+        // that seal do its field injection and @PostConstruct run. A service
+        // realized from a field-injection chain therefore sees the complete
+        // extension view, never the prefix that happened to be drained.
         new BinderImpl(this, contributions).load(moduleTree);
-        contributions.drain();
+        contributions.constructConfig();
+        contributions.initializeConfig();
+        contributions.constructEntries();
         contributions.seal();
+        contributions.initializeEntries();
         LOG.info("Loaded {} module(s):\n{}", moduleTree.bindOrder().size(), moduleTree.render());
     }
 
@@ -184,6 +187,17 @@ public final class ContainerImpl implements Container {
     /** The composition this container bound — package-visible to the internal structure tests. */
     ModuleNode moduleTree() {
         return moduleTree;
+    }
+
+    @Override
+    public RuntimeDescription describe() {
+        requireOpen();
+        return new RuntimeDescription(
+            moduleTree.name(),
+            moduleTree.describeModules(),
+            bindingIndex.describe(),
+            contributions.describe()
+        );
     }
 
     @Override
@@ -226,32 +240,6 @@ public final class ContainerImpl implements Container {
             return value;
         } catch (Exception ex) {
             throw new RuntimeException("Unable to instantiate " + type.getName(), ex);
-        }
-    }
-
-    /**
-     * Post-constructs an already-injected instance without registering it.
-     *
-     * <p>For contributions. {@code Contribution.add(Class)} promises to invoke
-     * {@code @PostConstruct} (see its javadoc), and unlike {@link
-     * #create(Class)} the contribution must ask for it: a contribution is not a
-     * binding, it never enters the service caches, and therefore {@link
-     * Shutdown} does not walk it. That one-sidedness is the contribution
-     * contract as written — it can start something, and nothing stops it —
-     * and it is exactly why the caller-owned {@code create} does not
-     * post-construct on its own: there, the same gap would be a silent leak
-     * with no contract behind it.
-     * </p>
-     *
-     * <p>The one-shot guard is a no-op on this path: contributions are drained
-     * once, from the constructor, where no realize scope is open — so
-     * {@link #claimPostConstruct} always answers true. It stays because the
-     * rule is one rule, and a second caller cannot tell whether it is the first.
-     * </p>
-     */
-    void postConstruct(Object instance) {
-        if (claimPostConstruct(instance)) {
-            Lifecycle.invokePostConstruct(instance);
         }
     }
 
@@ -372,7 +360,7 @@ public final class ContainerImpl implements Container {
     }
 
     @Override
-    public <T> boolean isActiveBinding(
+    public <T> boolean isActiveBindingMarked(
         Class<T> type,
         Class<? extends Annotation>... markers
     ) {

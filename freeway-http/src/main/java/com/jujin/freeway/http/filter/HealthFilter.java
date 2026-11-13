@@ -6,7 +6,7 @@ import com.jujin.freeway.ioc.symbol.SymbolSource;
 import com.jujin.freeway.ioc.symbol.SymbolSpec;
 import com.jujin.freeway.http.HttpStatus;
 
-import com.jujin.freeway.http.HttpContext;
+import com.jujin.freeway.http.HttpExchange;
 import com.jujin.freeway.http.route.PathPattern;
 import com.jujin.freeway.http.route.RouteHandler;
 import com.jujin.freeway.http.HttpModule.ConfigKeys;
@@ -95,11 +95,18 @@ public final class HealthFilter implements HttpFilter {
     }
 
     @Override
-    public void doFilter(HttpContext ctx, RouteHandler next) throws Exception {
+    public void doFilter(HttpExchange ctx, RouteHandler next) throws Exception {
         if (enabled && "GET".equalsIgnoreCase(ctx.method())
                 && healthPath.equals(PathPattern.normalize(
                     ctx.path()))) {
-            ctx.sendJson(HttpStatus.OK, healthCheck.check());
+            var result = healthCheck.check();
+            if (result.healthy()) {
+                ctx.sendJson(HttpStatus.OK, java.util.Map.of("status", "ok"));
+            } else {
+                ctx.sendJson(HttpStatus.SERVICE_UNAVAILABLE,
+                    java.util.Map.of("status", "unhealthy",
+                        "detail", result.detail()));
+            }
             return;
         }
         next.handle(ctx);

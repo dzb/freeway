@@ -189,13 +189,13 @@ class ContainerCloseTest {
 
     @Test
     void threadScopedValueCleanedUpAfterContainerClose() {
-        // A THREAD-scope value realized inside an open scope, then the
+        // A boundary-scope value realized inside an open scope, then the
         // container closes while the scope is still open: scope exit must
         // still run lifecycle cleanup — closing the container must not
         // unregister the value.
         ScopeValue.destroyed = 0;
         Container container = Freeway.create(binder ->
-            binder.bind(ScopeValue.class).to(ScopeValue.class).scope(Scope.THREAD));
+            binder.bind(ScopeValue.class).to(ScopeValue.class).scope(Scope.BOUNDARY));
         ScopeBoundary boundary = container.get(ScopeBoundary.class);
 
         boundary.within(() -> {

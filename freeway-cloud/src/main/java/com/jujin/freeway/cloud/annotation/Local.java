@@ -10,7 +10,7 @@ import java.lang.annotation.Target;
  * extension module may replace. Core modules mark their defaults with
  * {@code .marker(Local.class)} (or a module-level {@code @Marker(Local.class)}),
  * and an adapter binds its alternative with {@code .primary()}; this marker is
- * what {@code isActiveBinding(type, Local.class)} and the backend-type guard ask
+ * what {@code isActiveBindingMarked(type, Local.class)} and the backend-type guard ask
  * about.
  *
  * <pre>{@code

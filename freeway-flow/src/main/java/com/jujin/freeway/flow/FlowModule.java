@@ -38,7 +38,7 @@ import org.slf4j.LoggerFactory;
  * </ul>
  */
 @Marker(Builtin.class)
-public class FlowModule implements ModuleEx {
+public final class FlowModule implements ModuleEx {
 
     private static final Logger LOG = LoggerFactory.getLogger(FlowModule.class);
 

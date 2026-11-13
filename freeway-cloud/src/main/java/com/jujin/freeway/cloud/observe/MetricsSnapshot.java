@@ -5,7 +5,7 @@ package com.jujin.freeway.cloud.observe;
  * registries that can expose themselves for scraping (the built-in
  * {@code MetricsDefault} renders Prometheus text).
  *
- * <p>{@code CloudObserveModule} binds its own {@code MetricsDefault}
+ * <p>{@code ObserveModule} binds its own {@code MetricsDefault}
  * instance under both {@code Metrics} and {@code MetricsSnapshot}, and the
  * {@code /metrics} route serves whichever {@code MetricsSnapshot} binding is
  * active. A replacement metrics backend therefore binds its registry under

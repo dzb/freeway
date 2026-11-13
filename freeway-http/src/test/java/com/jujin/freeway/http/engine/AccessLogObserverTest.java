@@ -48,7 +48,7 @@ class AccessLogObserverTest {
     void theEventCarriesPeerAgentAndStatus() throws Exception {
         List<HttpExchangeEvent> events = new CopyOnWriteArrayList<>();
         var server = HttpServer.create(TestHttp.engine(), TestServerConfig.loopback(),
-            HttpPipeline.of(Route.get("/ok", ctx -> ctx.send(200, "ok"))),
+            HttpPipeline.of(Route.get("/ok", ctx -> ctx.sendText(200, "ok"))),
             event -> {
                 if (event instanceof HttpExchangeEvent exchange) {
                     events.add(exchange);
@@ -75,7 +75,7 @@ class AccessLogObserverTest {
         List<HttpExchangeEvent> events = new CopyOnWriteArrayList<>();
         var server = HttpServer.create(TestHttp.engine(), TestServerConfig.loopback(),
             // Default health filter answers /healthz before dispatch.
-            HttpPipeline.of(Route.get("/ok", ctx -> ctx.send(200, "ok"))),
+            HttpPipeline.of(Route.get("/ok", ctx -> ctx.sendText(200, "ok"))),
             event -> {
                 if (event instanceof HttpExchangeEvent exchange) {
                     events.add(exchange);
@@ -104,7 +104,7 @@ class AccessLogObserverTest {
             .withEnabled(true)
             .withAllowedOrigins(List.of("http://example.test"));
         var server = HttpServer.create(TestHttp.engine(), TestServerConfig.loopback(),
-            HttpPipeline.of(Route.get("/ok", ctx -> ctx.send(200, "ok"))).withCors(cors),
+            HttpPipeline.of(Route.get("/ok", ctx -> ctx.sendText(200, "ok"))).withCors(cors),
             event -> {
                 if (event instanceof HttpExchangeEvent exchange) {
                     events.add(exchange);

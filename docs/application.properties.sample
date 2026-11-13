@@ -348,7 +348,7 @@
 
 
 # ================================
-#  Cloud / CloudEventBus (freeway-cloud)
+#  Cloud / MeshEventBus (freeway-cloud)
 # ================================
 
 # Enable cross-node event mesh for distributed event publishing.

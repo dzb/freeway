@@ -4,15 +4,20 @@ import java.io.IOException;
 import java.io.OutputStream;
 
 
-final class WindowUpdateFrame extends BaseFrame {
+final class WindowUpdateFrame implements Http2Frame {
+    private final FrameHeader header;
+
+    @Override
+    public FrameHeader header() { return header; }
+
     private int windowSizeIncrement;
 
     public WindowUpdateFrame(FrameHeader header) {
-        super(header);
+        this.header = header;
     }
 
     public WindowUpdateFrame(int streamId, int windowSizeIncrement) {
-        super(new FrameHeader(4, FrameType.WINDOW_UPDATE, FrameFlag.NONE, streamId));
+        this.header = new FrameHeader(4, FrameType.WINDOW_UPDATE, FrameFlag.NONE, streamId);
         this.windowSizeIncrement = windowSizeIncrement;
     }
 

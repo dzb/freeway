@@ -8,7 +8,7 @@ import java.util.Map;
 /**
  * Link
  */
-public class Link implements Comparable<Link> {
+public final class Link implements Comparable<Link> {
     private final Graph graph;
 
     private final String nextId;
@@ -32,25 +32,25 @@ public class Link implements Comparable<Link> {
         this.priority = spec.priority();
         this.when = new ConditionDesc(graph, spec.when(), spec.whenHandler());
 
-        if (spec.meta() == null) {
+        if (spec.metadata() == null) {
             this.metas = Collections.emptyMap();
         } else {
-            this.metas = Collections.unmodifiableMap(new LinkedHashMap<>(spec.meta()));
+            this.metas = Collections.unmodifiableMap(new LinkedHashMap<>(spec.metadata()));
         }
     }
 
     public Graph graph() { return graph; }
     public String title() { return title; }
-    public Map<String, Object> metas() { return metas; }
-    public Object meta(String key) { return metas.get(key); }
+    public Map<String, Object> metadata() { return metas; }
+    public Object metadata(String key) { return metas.get(key); }
 
     /** Returns the meta value cast to the requested type. */
     @SuppressWarnings("unchecked")
-    public <T> T metaAs(String key) { return (T) metas.get(key); }
+    public <T> T metadataAs(String key) { return (T) metas.get(key); }
 
     /** Returns the meta value cast to the requested type, or {@code def}. */
     @SuppressWarnings("unchecked")
-    public <T> T metaOrDefault(String key, T def) {
+    public <T> T metadataOrDefault(String key, T def) {
         return (T) metas.getOrDefault(key, def);
     }
 

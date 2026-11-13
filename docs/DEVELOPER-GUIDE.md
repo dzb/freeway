@@ -9,7 +9,7 @@ Lambda handlers are the simplest way to get started:
 ```java
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
-import com.jujin.freeway.http.HttpContext;
+import com.jujin.freeway.http.HttpExchange;
 import com.jujin.freeway.http.route.Route;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.ModuleEx;
@@ -25,7 +25,7 @@ public class App {
     public static final class AppModule implements ModuleEx {
         public void bind(Binder b) {
             b.contribute(Route.class).add(Route.get("/", ctx ->
-                ctx.send(200, "Hello Freeway")));
+                ctx.sendText(200, "Hello Freeway")));
         }
     }
 }
@@ -64,12 +64,12 @@ public class App {
             private final UserService service;
             public GetUser(UserService service) { this.service = service; }
 
-            public void handle(HttpContext ctx) throws Exception {
+            public void handle(HttpExchange ctx) throws Exception {
                 // send/sendJson throw IOException, so the branches cannot
                 // sit in ifPresentOrElse lambdas — use explicit statements.
                 var user = service.findById(ctx.pathVar("id").orElseThrow());
                 if (user.isEmpty()) {
-                    ctx.send(404, "Not found");
+                    ctx.sendText(404, "Not found");
                     return;
                 }
                 ctx.sendJson(200, user.orElseThrow());
@@ -156,13 +156,14 @@ For the full module patterns, see [freeway-module.md](freeway-module.md).
 
 | Type | Purpose |
 |------|---------|
-| `Container` | Service lookup: `get(Class)`, `get(Class, String)`, `get(Class, Annotation...)`, `extension(Class)`, `create(Class)`, `close()`. `create` is `new` **plus dependency resolution** — constructor and `@Inject` fields are satisfied, but it is caller-owned, so it runs no `@PostConstruct` (see [Scopes](#scopes)) |
+| `Container` | Service lookup: `get(Class)`, `get(Class, String)`, `get(Class, Annotation...)`, `extension(Class)`, `create(Class)`, `describe()`, `close()`. `create` is `new` **plus dependency resolution** — constructor and `@Inject` fields are satisfied, but it is caller-owned, so it runs no `@PostConstruct` (see [Scopes](#scopes)) |
 | `ModuleEx` | Module entry-point type: `bind(Binder)`. Named to avoid `java.lang.Module` conflict |
+| `ModuleDeclaration` | A placed module: class declaration or configured instance; the single owner of no-arg construction and `@SubModule` metadata |
 | `Binder` | Binding and contribution DSL |
 | `Binding` | Service binding configuration: target, id, primary, scope, advisor |
-| `Freeway` | Container bootstrap for composing modules: `Freeway.create(ModuleEx...)` |
+| `Freeway` | Container bootstrap for composing modules: `Freeway.create(ModuleEx...)`, `Freeway.create(Class...)`, or a mixed `ModuleDeclaration...` list |
 | `RuntimeHook` | Start/stop lifecycle extension consumed by `AppRuntime` |
-| `ScopeBoundary` | Executes work inside a `Scope.THREAD` boundary via `within()` |
+| `ScopeBoundary` | Executes work inside a `Scope.BOUNDARY` boundary via `within()` |
 | `LoggerSource` | Owner-aware logger factory service |
 
 `ServiceId` is intentionally not a public type. String ids keep the API direct. Blank service ids are rejected. Internal normalization is handled by `ServiceIds`.
@@ -204,7 +205,7 @@ Freeway.create(binder -> {
     binder.bind(Cache.class).to(c -> new Cache(c.get(Config.class)));
 
     // scope
-    binder.bind(RequestState.class).to(RequestState.class).scope(Scope.THREAD);
+    binder.bind(RequestState.class).to(RequestState.class).scope(Scope.BOUNDARY);
 
     // advice (requires interface binding)
     binder.bind(UserService.class).to(UserServiceImpl.class).advise(advisor ->
@@ -327,10 +328,10 @@ assembly by adding `.primary()` or a qualifier, rather than making consumers dep
 |-------|----------|
 | `SINGLETON` | Default. One instance per container. Destroyed on `close()`. |
 | `PROTOTYPE` | New instance every resolution. Not retained by the container. |
-| `THREAD` | One instance per **scope session**, built as the scope opens and destroyed when its owning session closes; inside a `Defer` action scope it attaches and lives until that action scope closes. `ScopedValue` does not propagate, so a child thread sees none of it. |
+| `BOUNDARY` | One instance per **scope session**, built as the scope opens and destroyed when its owning session closes; inside a `Defer` action scope it attaches and lives until that action scope closes. `ScopedValue` does not propagate, so a child thread sees none of it. |
 
 ```java
-binder.bind(RequestState.class).to(RequestState.class).scope(Scope.THREAD);
+binder.bind(RequestState.class).to(RequestState.class).scope(Scope.BOUNDARY);
 
 ScopeBoundary boundary = container.get(ScopeBoundary.class);
 boundary.within(() -> {
@@ -341,21 +342,21 @@ boundary.within(() -> {
 // (inside a Defer action scope, destruction happens when that scope closes)
 ```
 
-`ScopeBoundary.within()` uses JDK 25 `ScopedValue`, so there is no `ThreadLocal` overhead on virtual threads. Nesting is supported — inner scopes shadow outer scopes. Internally, thread-scoped services are cached via `ScopedCache` (see [Scope primitives](#scope-primitives-defer--scopedcache--scopeboundary)). A value scope opened inside a `Defer` action scope attaches to it: beans are resolvable inside the `ScopeBoundary.within` block, live until the action scope closes, and are not resolvable from outside that block.
+`ScopeBoundary.within()` uses JDK 25 `ScopedValue`, so there is no `ThreadLocal` overhead on virtual threads. Nesting is supported — inner scopes shadow outer scopes. Internally, boundary-scoped services are cached via `ScopedCache` (see [Scope primitives](#scope-primitives-defer--scopedcache--scopeboundary)). A value scope opened inside a `Defer` action scope attaches to it: beans are resolvable inside the `ScopeBoundary.within` block, live until the action scope closes, and are not resolvable from outside that block.
 
-**Scope compatibility rule:** A singleton cannot directly inject a thread-scoped concrete class. Use an interface with proxy support instead:
+**Scope compatibility rule:** A singleton cannot directly inject a boundary-scoped concrete class. Use an interface with proxy support instead:
 
 ```java
 // OK — singleton injects interface, gets a lazy proxy
-binder.bind(ScopedApi.class).to(ScopedCounter.class).scope(Scope.THREAD);
+binder.bind(ScopedApi.class).to(ScopedCounter.class).scope(Scope.BOUNDARY);
 binder.bind(ScopedSingletonService.class).to(ScopedSingletonService.class);
 
-// WRONG — singleton injects concrete thread-scoped class
-binder.bind(ScopedCounter.class).to(ScopedCounter.class).scope(Scope.THREAD);
+// WRONG — singleton injects concrete boundary-scoped class
+binder.bind(ScopedCounter.class).to(ScopedCounter.class).scope(Scope.BOUNDARY);
 binder.bind(ScopedSingleton.class).to(ScopedSingleton.class); // fails
 ```
 
-#### Where a `Scope.THREAD` service can be used
+#### Where a `Scope.BOUNDARY` service can be used
 
 The scope is **session**-level, not request-level: an instance is built as
 `ScopeBoundary.within(...)` opens and destroyed when its owning session closes — at
@@ -364,7 +365,7 @@ attached to one. `ScopedValue` does not propagate, so a child thread inherits
 nothing. Whatever the unit of work
 is, that unit is what you wrap.
 
-The framework opens no thread scope on its own, so **the caller opens it**:
+The framework opens no boundary scope on its own, so **the caller opens it**:
 
 ```java
 ScopeBoundary boundary = container.get(ScopeBoundary.class);
@@ -379,12 +380,12 @@ Two consequences worth knowing before you reach for it:
 
 - **A class-based route handler cannot take one.** `HttpModule` builds
   handlers at startup, on a thread with no open scope, so a
-  thread-scoped constructor argument fails at boot with
+  boundary-scoped constructor argument fails at boot with
   `No open scope for type X — wrap the call in container.get(ScopeBoundary.class).within(() -> ...)`.
   That refusal is the design working: resolving outside a scope throws rather
   than quietly handing back a process-wide singleton, which is the one
-  behaviour that would make a thread-scoped service a lie.
-- **Reaching a thread-scoped service from a singleton** goes through an
+  behaviour that would make a boundary-scoped service a lie.
+- **Reaching a boundary-scoped service from a singleton** goes through an
   interface the singleton can hold a proxy for — see the compatibility rule
   above. The proxy resolves the instance when a method is actually called, so
   it resolves inside whatever scope is open at that moment.
@@ -397,7 +398,7 @@ paired: a service the container realizes through a binding gets both.
 | How the instance is produced | `@PostConstruct` | `@PreDestroy` |
 |---|---|---|
 | `binder.bind(X.class).to(X.class)` (SINGLETON) | yes | yes, on `close()` |
-| `Scope.THREAD` | yes | on owning session close — one instance per `within()` block; attached to an enclosing `Defer` action scope, it closes with that scope |
+| `Scope.BOUNDARY` | yes | on owning session close — one instance per `within()` block; attached to an enclosing `Defer` action scope, it closes with that scope |
 | `Scope.PROTOTYPE` | yes | never retained, so never |
 | `contribute(X.class)` | yes | **no** — a contribution is not a binding, so nothing tracks it for shutdown |
 | `container.create(X.class)` | **no** | no |
@@ -542,7 +543,7 @@ Extensions are contributed by entry type and consumed via `List<V>` or
 
 ```java
 // Module: contribute
-binder.contribute(Route.class).add(Route.get("/hello", ctx -> ctx.send(200, "hi")));
+binder.contribute(Route.class).add(Route.get("/hello", ctx -> ctx.sendText(200, "hi")));
 
 // named contributions with ordering
 binder.contribute(RuntimeHook.class)
@@ -573,16 +574,36 @@ public class Router {
         this.routes = List.copyOf(routes);
     }
 }
+
+// A consumer that is itself constructed during composition takes the
+// deferred form; it reads the sealed store after startup.
+public class LazyRouter {
+    private final Supplier<List<Route>> routes;
+    public LazyRouter(Supplier<List<Route>> routes) {
+        this.routes = routes;
+    }
+    List<Route> routes() { return routes.get(); }
+}
 ```
 
 Contribution injection: **constructor parameters consume contributions
 implicitly** — the constructor is the single mandatory injection point, so
 resolution failure is loud at startup and there is no silent-miss risk.
 Fields require an explicit `@Inject` (they are writable and can be
-forgotten). An explicit `@Inject("id")` on a `List`/`Map` injection point
-prefers a bound service with that id (letting you bind your own
+forgotten). An explicit `@Inject("id")` on a `List`/`Map`/`Supplier`
+injection point prefers a bound service with that id (letting you bind your own
 `List<Foo>`/`Map<String, Foo>` service and inject it by id); only when no
 such binding exists does resolution fall back to the contributed view.
+
+`List<V>`, `Map<String, V>` and their deferred
+`Supplier<List<V>>`/`Supplier<Map<String, V>>` forms all consume the
+same store. The `List`/`Map` read is **complete-or-throw**: while any
+declared contribution of that entry type is still unpublished, the store
+refuses the read instead of freezing the prefix that has landed. A
+contribution whose constructor runs during composition takes the
+`Supplier` form and reads after startup. The config chain
+(`SymbolProvider`/`CoerceRule`) is exempt because `SymbolSource` reads
+it live.
 
 **Choosing between List and Map:**
 
@@ -597,14 +618,14 @@ such binding exists does resolution fall back to the contributed view.
 |---|---|---|
 | `add(value)` — unnamed | ✅ | ❌ |
 | `add("id", value)` — named | ✅ | ✅ (keyed by id) |
-| `add(Class)` — auto-instantiated | ✅ | ✅ (keyed by auto-generated id) |
+| `addDeferred(Class)` — auto-instantiated | ✅ | ✅ (keyed by auto-generated id) |
 
 This means `List<V>` always gives you every contribution in order.
 `Map<String, V>` gives you only the ones you can look up by name.
 
-`Extension<V>` is intentionally not injectable — it is a mutable aggregation
-handle used by framework modules. Application code uses `List<V>` or
-`Map<String, V>` for consumption.
+`Extension<V>` is intentionally not injectable — it is the read-only view of an
+aggregation point. Writes go through `Contribution` only while modules bind;
+application code consumes `List<V>` or `Map<String, V>`.
 
 The entry type itself (e.g., `Route.class`) is the extension point identifier. Contributions are ordered via `add(id, value)` with `before/after`.
 
@@ -614,7 +635,7 @@ The three `add` variants are deliberately distinct, not an API gap waiting for a
 
 - `add(value)` — unnamed, insertion order. No id. Not in `asMap()`. Use when only iteration order matters (routing, filters) and id-based lookup is irrelevant.
 - `add(id, value)` — named, with explicit id. Supports `before/after`. Included in `asMap()`. Use when the consumer needs to resolve a specific entry by name (drivers, runtime hooks).
-- `add(Class)` — named, with auto-generated canonical id (`snake_name@package`). Supports `before/after`. Included in `asMap()`. Use when the class itself is the natural identifier.
+- `addDeferred(Class)` — named, with auto-generated canonical id (`snake_name@package`). Supports `before/after`. Included in `asMap()`. Use when the class itself is the natural identifier.
 
 `Extension.asMap()` returns only named contributions — this is by design, not a limitation. Unnamed entries serve iteration order; named entries serve identity. Forcing auto-generated ids onto unnamed entries would blur this distinction without solving a real problem.
 
@@ -622,7 +643,8 @@ Rules:
 - Contributions are accepted only while modules bind: the container seals every extension store at the end of composition, so a held `Ordering` handle (or a direct `container.extension(X).add(...)`) after startup fails with a "sealed" error instead of silently mutating a frozen view.
 - `add(value)` preserves insertion order.
 - `add(id, value)` enables `before/after` constraints for topological ordering.
-- `add(id, factory)` and `add(Class)` build the value in the deferred phase — after every module has bound, so construction can resolve any module's services; ordering declared on the returned handle reaches the entry when it lands. `add(Class)` generates a canonical id of `snake_name@package` (e.g. `email_sender@com.example.flow`).
+- `addDeferred(id, factory)` and `addDeferred(Class)` build the value in the construction phase — after every module has bound, so construction can resolve any module's services; ordering declared on the returned handle reaches the entry when it lands. `addDeferred(Class)` generates a canonical id of `snake_name@package` (e.g. `email_sender@com.example.flow`).
+- Construction and publication finish before field injection or `@PostConstruct`. The config layer (`SymbolProvider`/`CoerceRule`) is constructed, published and initialized first so its providers and rules are final before any consumer is built. For the non-config layer, every contribution is constructed and published before any of them is field-injected or post-constructed, so a class contribution's `@PostConstruct` sees the complete set and never runs against a partial store. An eager `List`/`Map` constructor parameter that cannot be complete is rejected at startup; use `Supplier` or an `@Inject` field instead.
 - Duplicate ids fail immediately. Generic `all()` ordering treats unknown order targets leniently — they are WARNed and ignored (a missing sibling is harmless for most extension points); strict consumers call `Extension.validateOrdering()`, which fails fast on any unknown reference (runtime-hook ordering in the boot layer does this, so a typo fails startup). Cycles fail at resolution time.
 - Constructor parameters are auto-resolved; fields require `@Inject`. (Contribution consumption via `List`/`Map` follows the same rule: constructor parameters implicit, fields explicit — see above.)
 
@@ -730,7 +752,7 @@ binder.contribute(EventSubscriber.class)
 **Planes are separate:** the bus never leaves the process — whether a fact
 crosses a boundary is decided at the call site, not by which modules are
 loaded. Cross-JVM broadcast is the cloud plane (see
-[CloudEventBus](freeway-cloud.md)); durable, per-key ordered
+[MeshEventBus](freeway-cloud.md)); durable, per-key ordered
 streams are the Kafka plane (see [Kafka](#kafka-freeway-mq-kafka)). A fact
 that must live on two planes is published on both, deliberately.
 
@@ -957,6 +979,24 @@ Duration ttl = LOCK_TTL.parse(symbols.resolve(LOCK_TTL.key(), null),    // coerc
 Absent/blank values fall back to the spec default, required specs fail
 fast, and the same chain backs `@Symbol` injection.
 
+### Runtime inspection
+
+`Container.describe()` returns `RuntimeDescription` — module metadata, binding
+identity/scope/markers and contribution ids/order. `AppRuntime.describe()` adds
+state, active profiles and configured key names. The snapshot never realizes a
+lazy service and never carries a service instance or a config value:
+
+```java
+try (AppRuntime app = FreewayApp.create(MyModule.class).start()) {
+    AppRuntimeDescription info = app.describe();
+    List<RuntimeDescription.BindingDescription> bindings =
+        info.container().bindings();
+}
+```
+
+The startup log remains the human-readable rendering; the description is the
+stable machine-readable surface for tools and coding agents.
+
 ---
 
 ## HTTP
@@ -965,25 +1005,28 @@ Three-layer architecture: **engine layer** handles transport (socket I/O, protoc
 
 | Category | Main Types |
 |----------|------------|
-| Core | `HttpEngine`, `HttpContext`, `HttpFilter`, `HttpModule`, `HttpServer`, `JsonCodec` |
-| Engine (shared) | `FreewayHttpEngine`, `HttpContextImpl`, `HttpSession`, `HttpServerHandleImpl`, `SessionBufferedInputStream/OutputStream`, `FixedLengthInputStream`, `ChunkedInputStream` |
+| Core | `HttpEngine`, `HttpExchange`, `HttpExchangeSupport`, `HttpTransport`, `ResponseHead`, `HttpFilter`, `HttpModule`, `HttpServer`, `JsonCodec` |
+| Engine (shared) | `FreewayHttpEngine`, `HttpTransportImpl`, `HttpExchangeSupport`, `HttpSession`, `HttpServerHandleImpl`, `SessionBufferedInputStream/OutputStream`, `FixedLengthInputStream`, `ChunkedInputStream` |
 | Engine (HTTP/1.x) | `HttpConnection`, `Http1xSession`, `Http1xParser` in `engine/` |
 | Engine (HTTP/2) | `Http2Connection`, `Http2Stream`, `FrameSerializer`, `HPackContext` etc in `engine/http2/` |
-| Engine (WebSocket) | `WebSocketFrame`, `WebSocketSessionImpl`, `WebSocketUtils` etc in `engine/ws/` |
+| Engine (WebSocket) | `WebSocketFrame`, `WebSocketConnection`, `WebSocketUtils` etc in `engine/ws/` |
 | Routing | `Route`, `RouteGroup`, `RouteIndex`, `PathPattern` |
 | Body | `BodyHandler`, `MultipartForm` |
-| WebSocket | `WebSocketSession`, `WebSocketListener`, `WebSocketRoute`, `WebSocketGroup`, `WebSocketIndex` |
+| WebSocket | `WebSocketSession`, `WebSocketSessionSupport`, `WebSocketTransport`, `WebSocketListener`, `WebSocketRoute`, `WebSocketGroup`, `WebSocketIndex` |
 | SSE | `SseEmitter`, `SseEvent` |
-| Built-ins | `JsonCodecDefault`, `CorsFilter`, `HealthFilter`, `HealthCheck`, `StaticResourceMount`, `ErrorHandler` |
+| Built-ins | `JsonCodecDefault`, `CorsFilter`, `HealthFilter`, `HealthCheck`, `StaticResourceMount`, `ErrorMapper` |
 
 Engine internals (`engine/` and sub-packages) are implementation details — `FreewayHttpEngine` is the only public class. `JdkHttpEngine`/`JdkHttpContext` have been removed; the built-in engine is the sole default.
+
+At runtime, `HttpServer.routeDescriptions()` and `HttpServer.webSocketPaths()` expose the
+registered method/path identities for diagnostics and tools, without returning handlers.
 
 ### Routes
 
 ```java
 // Module contribution
 binder.contribute(Route.class)
-    .add(Route.get("/", ctx -> ctx.send(200, "Hello")))
+    .add(Route.get("/", ctx -> ctx.sendText(200, "Hello")))
     .add(Route.get("/users/{id}", ctx -> {
         String id = ctx.pathVar("id");
         ctx.sendJson(200, userService.findById(id));
@@ -1018,7 +1061,7 @@ public static final class UserHandlers {
             this.service = service;
         }
 
-        public void handle(HttpContext ctx) throws Exception {
+        public void handle(HttpExchange ctx) throws Exception {
             int page = Integer.parseInt(ctx.queryParam("page").orElse("1"));
             ctx.sendJson(200, service.list(page));
         }
@@ -1031,10 +1074,10 @@ public static final class UserHandlers {
             this.service = service;
         }
 
-        public void handle(HttpContext ctx) throws Exception {
+        public void handle(HttpExchange ctx) throws Exception {
             var user = service.findById(ctx.pathVar("id").orElseThrow());
             if (user.isEmpty()) {
-                ctx.send(404, "Not found");
+                ctx.sendText(404, "Not found");
                 return;
             }
             ctx.sendJson(200, user.orElseThrow());
@@ -1124,10 +1167,10 @@ next request on the same connection is bounded by the configured limit again.
 ```java
 ctx.setStatus(201);
 ctx.setHeader("X-Custom", "value");
-ctx.send(200, "plain text");
+ctx.sendText(200, "plain text");
 ctx.sendJson(200, object);
-ctx.output("text".getBytes());
-ctx.output("text");  // UTF-8 convenience
+ctx.body("text".getBytes());
+ctx.text("text");  // UTF-8 convenience
 ```
 
 Response header values must be **ISO-8859-1 encodable** (the charset the
@@ -1141,9 +1184,9 @@ injected header on the wire. Header names must be RFC 7230 tokens.
 ```java
 // Implement HttpFilter
 public class AuthFilter implements HttpFilter {
-    public void doFilter(HttpContext ctx, RouteHandler next) throws Exception {
+    public void doFilter(HttpExchange ctx, RouteHandler next) throws Exception {
         if (ctx.header("Authorization") == null) {
-            ctx.send(401, "Unauthorized");
+            ctx.sendText(401, "Unauthorized");
             return;
         }
         next.handle(ctx);
@@ -1158,12 +1201,12 @@ Built-in filters: `CorsFilter` (configurable CORS via `freeway.http.cors.*` keys
 
 #### Request-scoped services (`ScopeFilter`)
 
-`ScopeFilter` is the opt-in HTTP boundary for `Scope.THREAD` services and
+`ScopeFilter` is the opt-in HTTP boundary for `Scope.BOUNDARY` services and
 `ScopedCache` values. Enable it with
 `freeway.http.request-scope.enabled=true`, or contribute it explicitly:
 
 ```java
-binder.contribute(HttpFilter.class).add(ScopeFilter.class);
+binder.contribute(HttpFilter.class).addDeferred(ScopeFilter.class);
 ```
 
 ```properties
@@ -1173,7 +1216,7 @@ freeway.http.request-scope.enabled=true
 
 It runs at order **-40** — after the built-in CORS (`-100`) and health (`-50`)
 filters, before application filters (`0`). Each request therefore gets one
-scope; values and `Scope.THREAD` services are reused inside it and released when
+scope; values and `Scope.BOUNDARY` services are reused inside it and released when
 the request finishes, on both the normal and exception paths.
 
 **Use it when the request needs shared, request-lived state:**
@@ -1191,7 +1234,7 @@ Typical composition:
 
 ```text
 ScopeFilter (-40)
-  ├── auth/tenant filter (-30)      fills RequestContext (Scope.THREAD)
+  ├── auth/tenant filter (-30)      fills RequestContext (Scope.BOUNDARY)
   ├── authorization filter (-20)    reads RequestContext + ScopedCache
   ├── route handler
   │     ├── singleton service through an interface proxy
@@ -1218,7 +1261,7 @@ instances to work that outlives the request.
 Two implementation notes:
 
 - A class-based route handler is built at composition time, so it cannot take a
-  `Scope.THREAD` concrete type in its constructor; inject an **interface proxy**
+  `Scope.BOUNDARY` concrete type in its constructor; inject an **interface proxy**
   into a singleton and call it during the request.
 - `ScopeFilter` is global to the server. For only a subset of routes, contribute
   a custom filter that decides whether to call `ScopeBoundary.withinChecked(...)`.
@@ -1239,11 +1282,15 @@ binder.bind(HealthCheck.class).to(MyDbHealthCheck.class);
 public class MyDbHealthCheck implements HealthCheck {
     private final Database db;
     public MyDbHealthCheck(Database db) { this.db = db; }
-    public Object check() {
-        return Map.of("status", db.ping() ? "ok" : "degraded", "db", db.ping());
+    public HealthResult check() {
+        return db.ping() ? HealthResult.ok() : HealthResult.unhealthy("database down");
     }
 }
 ```
+
+A healthy result answers 200 with `{"status":"ok"}`; an unhealthy result answers 503 with
+`{"status":"unhealthy","detail":...}`. The same `HealthResult` is consumed by cloud readiness
+contributors, so HTTP and cloud probes cannot disagree on the result shape.
 
 Config:
 
@@ -1263,10 +1310,24 @@ binder.contribute(StaticResourceMount.class)
 
 // Options
 StaticResourceMount.classpath("/assets", "/static")
-    .withCacheMaxAgeSeconds(3600)
+    .withCacheMaxAge(Duration.ofHours(1))
     .withImmutable(true)            // sets Cache-Control: immutable
     .withFallthrough(true);         // pass to next handler on 404
+
+// History-mode SPA (vue-router createWebHistory, React Router, ...):
+// extensionless GET/HEAD paths that neither the mount nor the route chain
+// serves fall back to <mount>/index.html.
+StaticResourceMount.classpath("/", "/dist")
+    .withSpaFallback(true);
 ```
+
+`withSpaFallback(true)` implies fallthrough and adds the terminal hop nginx
+spells as `try_files $uri $uri/ /index.html`. Precedence is: a real asset, the
+route chain, a 405 for a path known under another method, then the SPA shell; a
+missing `.js` never receives HTML. The fallback is owned by the most specific
+matching mount (longest prefix, ties by contribution order), and a mount that
+opts in fails server creation if its `index.html` is missing. `withFallthrough`
+alone only hands the miss to the route chain — it does not serve the shell.
 
 Directory requests serve that directory's `index.html` — both at the mount
 root and in subdirectories (`/docs/` resolves to `docs/index.html`; a request
@@ -1322,12 +1383,11 @@ binder.contribute(WebSocketGroup.class)
 ### Exception Mapping
 
 ```java
-binder.contribute(ErrorHandler.class).add((ctx, ex) -> {
+binder.contribute(ErrorMapper.class).add(ex -> {
     if (ex instanceof NotFoundException) {
-        ctx.sendJson(404, Map.of("error", ex.getMessage()));
-        return true;  // handled
+        return Optional.of(ErrorResponse.of(404, "not_found", ex.getMessage()));
     }
-    return false;     // not handled, continues to next mapper
+    return Optional.empty();  // not handled, continues to next mapper
 });
 ```
 
@@ -1438,7 +1498,7 @@ List<User> users = db.query("SELECT * FROM users WHERE active = ?", true)
 
 // Named params (:$name or :name)
 User u = db.query("SELECT * FROM users WHERE id = :id")
-    .param("id", 42)
+    .bind("id", 42)
     .one(User.class)
     .orElseThrow();
 
@@ -1450,7 +1510,7 @@ try (var stream = db.query("SELECT * FROM big_table").stream(Row.class)) {
 // Execute (INSERT/UPDATE/DELETE)
 ExecuteResult r = db.execute("INSERT INTO users (name) VALUES (?)", "Alice");
 r.rows();   // affected rows
-r.key();    // generated key (may be null)
+r.generatedKey();    // generated key (may be null)
 ```
 
 Query paths:
@@ -1467,9 +1527,9 @@ Auto-mapping for records, beans, and basic types (`String`, `Long`, `Integer`, `
 // Raw Row access
 List<Row> rows = db.query("SELECT * FROM t").list(Row.class);
 Row r = rows.get(0);
-r.string("name");
-r.decimal("amount");
-r.dateTime("created_at");
+r.asString("name");
+r.asBigDecimal("amount");
+r.asLocalDateTime("created_at");
 
 // Custom mapper
 binder.contribute(RowMapping.class)
@@ -1497,7 +1557,7 @@ The conflict clause takes **column names**, not raw assignments, so the dialect 
 // PostgreSQL: ... ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name
 // MySQL:      ... ON DUPLICATE KEY UPDATE name = VALUES(name)
 Sql upsert = Sql.insert("users")
-    .setColumn("id", id).setColumn("name", name)
+    .value("id", id).value("name", name)
     .onConflict("id").doUpdateSet("name");
 db.execute(upsert);
 ```
@@ -1650,73 +1710,89 @@ Database db = Database.create(Database.Wiring.defaults(config).withPool(pool));
 
 **IoC usage:** add `HikariPoolModule` to the launcher — it binds `HikariPool` as `id("hikari").primary()`, overriding the built-in `PoolDefault`. No config keys needed.
 
-`HikariPool` maps `PoolConfig` fields to Hikari's configuration (pool size, timeouts, health check query) and adapts Hikari's `HikariPoolMXBean` stats to `DatabaseStats`.
+`HikariPool` maps `PoolConfig` fields to Hikari's configuration (pool size, timeouts, health check query) and adapts Hikari's `HikariPoolMXBean` stats to `PoolStats`.
 
 ### Batch
 
 ```java
 List<ExecuteResult> results = db.batch("INSERT INTO t (a, b) VALUES (?, ?)")
-    .rows(new Object[]{1, "a"}, new Object[]{2, "b"})
+    .rowsRaw(new Object[]{1, "a"}, new Object[]{2, "b"})
     .execute();
 ```
 
     ### Dialect
 
-Database dialect controls DDL generation — identifier quoting, auto-increment clauses, and schema-introspection queries. Selection mirrors the config-driven pattern already used for pool engine and HTTP engine: bind an implementation by id, select it via a config key, and fall back to auto-detection from the JDBC URL.
+Database dialect controls DDL generation — identifier quoting, auto-increment clauses, and schema-introspection queries. Dialect selection is **by id**, because more than one dialect can be installed at once and a type-only lookup cannot say which database a connection belongs to.
 
 **Resolution chain:**
 
 ```
-freeway.db.dialect=mysql
+freeway.db.dialect=company
     │
-    └─ configured? ──yes──→ container.get(Dialect.class, "mysql")
+    └─ configured? ──yes──→ user binding Dialect@company
     │                            │
     │                            ├─ found? ──yes──→ use it
-    │                            └─ not found ──→ fail fast (unknown dialect id)
+    │                            └─ not found ──→ Dialect.ofId("company")
+    │                                              ├─ built-in? → use it
+    │                                              └─ unknown  → fail fast
     │
-    └─ not configured ──→ detect from freeway.db.url
+    └─ not configured ──→ detect id from freeway.db.url
                               │
                               ├─ :postgresql:  → "postgresql"
                               ├─ :mysql:       → "mysql"
                               ├─ :mariadb:     → "mysql"
-                              ├─ :h2:          → "h2" (MODE=MySQL/MariaDB → "mysql",
-                              │                  MODE=PostgreSQL → "postgresql")
+                              ├─ :h2:          → "h2" (MODE parsed into H2Dialect;
+                              │                  never remapped to Postgres/MySQL)
                               ├─ :sqlite:      → "sqlite"
                               └─ unknown scheme → fail fast: "No SQL dialect for
                                     JDBC URL ..." — an unrecognized URL
                                     (e.g. jdbc:oracle:...) never silently
                                     falls back to PostgreSQL
+
+                              then a user binding with the detected id wins;
+                              otherwise the built-in instance is used
 ```
 
 An explicit `freeway.db.dialect` always wins, and an unknown explicit id fails
 fast. Auto-detection from the JDBC URL is shared between standalone
 `Database.create` and `DbModule`; a `null`/blank URL (no database configured
-yet) is the only case that defaults to `PostgresDialect`.
+yet) is the only case that defaults to `PostgresDialect`. `DbModule` also binds
+the selected dialect as a `Dialect` service for direct injection.
 
 **Built-in dialects:**
 
 | id | Class | Target |
 |----|-------|--------|
-| `postgresql` | `PostgresDialect` | PostgreSQL — **default** (primary binding) |
-| `mysql` | `MySqlDialect` | MySQL, MariaDB, H2 with `MODE=MySQL`/`MODE=MariaDB` |
-| `h2` | `H2Dialect` | H2 (all modes except MySQL/PostgreSQL) |
+| `postgresql` / `postgres` | `PostgresDialect` | PostgreSQL — default |
+| `mysql` / `mariadb` | `MySqlDialect` | MySQL, MariaDB |
+| `h2` | `H2Dialect` | H2 native and every H2 `MODE` (mode-aware) |
 | `sqlite` | `SqliteDialect` | SQLite |
 
-`DbModule` binds all four: `PostgresDialect` as `id("postgresql").primary()`,
-plus `MySqlDialect` (`id("mysql")`), `H2Dialect` (`id("h2")`), and
-`SqliteDialect` (`id("sqlite")`). Custom dialects can be contributed by users
-or third-party modules — same pattern as `HikariPoolModule` for pool
-selection.
+The catalog is `Dialect.ofId(String)`. `DbModule` does not bind four dialect
+instances: it binds one **selected** `Dialect` service and resolves a user
+binding by requested id before consulting the catalog. Custom dialects can be
+contributed by users or third-party modules under their own id.
 
 **Dialect capabilities:** the `Dialect` interface declares capability flags
 the framework consults at runtime. Notably `supportsTransactionalDdl()`
-(PostgreSQL, H2, SQLite: true; MySQL/MariaDB: false — DDL implicitly commits)
-governs whether DDL can run inside a transaction, and
+(PostgreSQL, SQLite: true; H2 and MySQL/MariaDB: false — their DDL commits
+independently) governs whether DDL can run inside a transaction, and
 `backslashEscapesStrings()` (MySQL/MariaDB: true) tells the SQL scanner that a
 backslash escapes the next character inside ordinary single-quoted literals.
 Other flags cover `CREATE INDEX IF NOT EXISTS`, `RETURNING`, `ON CONFLICT`,
 `ALTER ... ADD COLUMN NOT NULL`, and lexer features (dollar quoting, bracket
 quoting, `#` comments, `E'...'` literals).
+
+**H2 modes:** H2's `MODE` is parsed from the JDBC URL and kept inside
+`H2Dialect`; it is not a dialect switch. Recognized values are `REGULAR`,
+`STRICT`, `LEGACY`, `PostgreSQL`, `MySQL`, `MariaDB`, `Oracle`,
+`MSSQLServer`, `DB2`, `Derby` and `HSQLDB`. H2 keeps its own
+`INFORMATION_SCHEMA`, DDL auto-commit semantics and types in every mode.
+H2 does not support `RETURNING`, does not support parameterized `ON CONFLICT`
+(so `supportsOnConflict()` is false), and uses `MERGE INTO ... KEY (...)` for
+`Orm.save()`. Its pagination is standard `OFFSET/FETCH`, working in native,
+PostgreSQL, MySQL and the other H2 modes. An explicit `freeway.db.dialect=h2`
+selects native H2; URL auto-detection preserves the URL mode.
 
 **Custom dialect — write once, select via config:**
 
@@ -1729,10 +1805,10 @@ public class MySqlDialect implements Dialect {
 }
 
 // 2. Bind in your module (or a dedicated MySqlDialectModule)
-binder.bind(Dialect.class).to(MySqlDialect.class).id("mysql").primary();
+binder.bind(Dialect.class).to(MySqlDialect.class).id("company");
 
 // 3. Select via config
-// freeway.db.dialect=mysql
+// freeway.db.dialect=company
 ```
 
 **Per-group override** — a `SchemaEntity` can carry its own dialect, overriding the global one:
@@ -1754,7 +1830,7 @@ Freeway provides two complementary mechanisms for database evolution: **Schema**
 
 #### Schema — Annotation-Driven Auto-DDL
 
-`Schema.ensure()` reads `@Table` / `@Column` / `@Id` / `@Generated` / `@Index` annotations and generates the corresponding DDL. It never drops or modifies existing columns. It is **not transactional** — each DDL statement runs on its own connection. On databases without transactional DDL (MySQL/MariaDB, see `Dialect.supportsTransactionalDdl()`), calling `ensure()` inside a user transaction is rejected with a `SqlException` (the DDL would implicitly commit and silently commit the transaction's pending work); on transactional-DDL databases (PostgreSQL, H2, SQLite) wrapping `ensure()` in a transaction is safe and rolls the whole schema back on failure.
+`Schema.ensure()` reads `@Table` / `@Column` / `@Id` / `@Generated` / `@Index` annotations and generates the corresponding DDL. It never drops or modifies existing columns. It is **not transactional** — each DDL statement runs on its own connection. On databases without transactional DDL (H2, MySQL/MariaDB, see `Dialect.supportsTransactionalDdl()`), calling `ensure()` inside a user transaction is rejected with a `SqlException` (the DDL would implicitly commit and silently commit the transaction's pending work); on transactional-DDL databases (PostgreSQL, SQLite) wrapping `ensure()` in a transaction is safe and rolls the whole schema back on failure.
 
 ```java
 /// Standalone usage
@@ -1826,8 +1902,8 @@ runner.run();  // idempotent — already-applied files are skipped
 
 Each migration runs in its own database transaction. The tracking table is `_migrations` (configurable). Applied migrations are **immutable** — modifying a SQL file that has already been applied causes a checksum mismatch error at startup. Checksum validation is **dual-track for line-ending compatibility**: the stored SHA-256 of the raw file bytes is compared first, and if that mismatches, the file is compared a second time with CRLF line endings normalized to LF — a pure line-ending change (e.g. a Windows checkout of a file recorded from LF) is accepted, while any real content change still fails. The stored row is never rewritten.
 
-On databases without transactional DDL (MySQL/MariaDB — DDL statements
-implicitly commit there), a migration that **contains DDL is rejected** with a
+On databases without transactional DDL (H2 and MySQL/MariaDB — DDL
+statements commit there), a migration that **contains DDL is rejected** with a
 `SqlException` before execution: the DDL would commit but the checksum row
 would be lost, and the next startup would re-run the DDL and fail. Split such
 DDL into separate migrations and make statements idempotent (`IF NOT EXISTS`),
@@ -1879,7 +1955,7 @@ binder.contribute(NamedDatabase.class)
 
 DatabaseRegistry registry = container.get(DatabaseRegistry.class);
 Database primary = registry.primary();
-Database audit = registry.get("audit");
+Database audit = registry.find("audit").orElseThrow();
 ```
 
 ---
@@ -1939,18 +2015,18 @@ twice, deliberately.
 eight standard modules with `@SubModule` (context propagation, secrets,
 discovery, remote invocation, observability, resilience, health, object
 storage); each of them is an ordinary module, so a subset is placed directly —
-and the event fabric is added explicitly (`CloudEventModule`) because it opens
+and the event fabric is added explicitly (`EventMeshModule`) because it opens
 a network listener of its own. Applications touch the cloud in three tiers:
 **ambient** (install the module — self-registration, `/health/live`,
 `/health/ready`, `/metrics`, metrics/tracing/resilience/propagation on every
-outbound call), **declarative** (`RpcExport`, `CloudEventSubscription`,
+outbound call), **declarative** (`RpcExport`, `MeshSubscription`,
 `CloudHealthContributor` — what this service offers), and **consumption**
-(`@Inject ServiceDiscovery` / `RemoteCaller` / `CloudEventBus` / `Metrics` /
+(`@Inject ServiceDiscovery` / `RemoteCaller` / `MeshEventBus` / `Metrics` /
 `SecretStore` / `ObjectStorage` — what it uses).
 
 **Service registration & discovery ships with three backends behind one seam:**
 the in-process store (the default — a single node needs nothing), the
-freeway-native fleet (`RegistryFleetModule` pointing at deployable registry
+freeway-native fleet (`FleetRegistryModule` pointing at deployable registry
 nodes — each an ordinary freeway application running `RegistryServerModule`;
 writes fan out to every node, reads union the answers), and third-party ext
 adapters (Consul). Switching is swapping the module and its keys; application
@@ -1988,8 +2064,8 @@ Lightweight graph-based workflow engine. Graphs are defined by the canonical `Gr
 // Programmatic
 GraphSpec bp = GraphSpec.create("orderFlow", spec -> {
     spec.entry("start");
-    spec.addStart("start").linkAdd("approve");
-    spec.addActivity("approve").task("@orderService").linkAdd("end");
+    spec.addStart("start").linkTo("approve");
+    spec.addActivity("approve").task("@orderService").linkTo("end");
     spec.addEnd("end");
 });
 Graph graph = bp.create();
@@ -2040,7 +2116,7 @@ it as `@name`, which the container resolves like any other binding.
 ```java
 FlowEngine engine = container.get(FlowEngine.class);
 engine.load(graph);
-engine.eval("orderFlow", FlowContext.of());
+engine.run("orderFlow", FlowContext.of());
 ```
 
 The walk is iterative: a chain of any length costs constant JVM stack, and
@@ -2080,7 +2156,7 @@ join counter re-arms each LOOP iteration for a fork-join inside a loop body.
 |------|---------|
 | `Graph` | Immutable runtime model — built from `GraphSpec` blueprints |
 | `GraphSpec` | Canonical DAG authoring surface with explicit `entry`, separated `nodes`/`links`, and the boot-time validation gate |
-| `FlowEngine` | Graph executor: `load`/`unload`/`graphs`, `eval` (fresh top-level run, or continuation via an evaluation for sub-graphs) |
+| `FlowEngine` | Graph executor: `load`/`unload`/`graphs`, `find`/`require`, `run` (fresh top-level run, or continuation via an execution for sub-graphs) |
 | `FlowDriver` | Pluggable task/condition executor + optional `PARALLEL` executor — contributed via `binder.contribute(FlowDriver.class)` |
 | `FlowDriverDefault` | Built-in driver: resolves `@name` against the container, `#graphId` via sub-graph runs; standalone with inline handlers when container is null |
 | `FlowInterceptor` | Contributed chain (flow-level `interceptFlow` + node `onNodeStart`/`onNodeEnd`); fixed at load, cannot change while running |
@@ -2099,9 +2175,9 @@ contributing to the same extension point:
 binder.contribute(FlowDriver.class)
     .add("custom", new MyCustomDriver());
 
-// Or use add(Class) for auto-instantiation via container.create()
+// Or use addDeferred(Class) for auto-instantiation via container.create()
 binder.contribute(FlowDriver.class)
-    .add(MyCustomDriver.class);
+    .addDeferred(MyCustomDriver.class);
 ```
 
 Graph definition: `{ "driver": "custom", ... }`
@@ -2136,7 +2212,7 @@ Defer.within(() -> {
 // no handle overloads: use Defer.within(Runnable|Supplier) + Defer.rollback()
 
 ScopedCache.within(() -> {
-    var conn = ScopedCache.get("conn", () -> dataSource.getConnection());
+    var conn = ScopedCache.computeIfAbsent("conn", () -> dataSource.getConnection());
     Defer.within(() -> Defer.defer(() -> conn.flush()));  // attaches to the action scope
 });
 ```
@@ -2213,11 +2289,11 @@ summary.
 - **`Container`** is the IoC boundary. Created via `Freeway.create()` for tests, received as a parameter in `RuntimeHook` callbacks and provider lambdas. Container is not injectable — use `@Inject` for service dependencies, not for the container itself.
 - **`AppRuntime`** is the application boundary above `Container`. It owns config, profiles, runtime state, startup, shutdown, and runtime hooks. Access services through `app.get(Class)` rather than reaching for the Container.
 - Service ids are **plain strings** and are normalized internally by `ServiceIds`. There is no public `ServiceId` type.
-- Service lifecycle is declared only with `bind().scope(...)`: `SINGLETON`, `PROTOTYPE`, `THREAD`.
+- Service lifecycle is declared only with `bind().scope(...)`: `SINGLETON`, `PROTOTYPE`, `BOUNDARY`.
 - **`Defer` and `ScopedCache`** are the two façades over one `ScopeSession` in Commons. `Defer` buffers actions until the enclosing action scope commits; `ScopedCache` memoizes values for the lifetime of a scope and closes them on exit. Inside a `Defer` action scope, `ScopedCache` attaches its values to that scope; the value access window is the cache block plus the action drain, while values themselves are cleaned when the action scope closes.
 - **Decision rule:** if the work should happen only after success, use `Defer`; if a value should be created once per scope and reused until cleanup, use `ScopedCache`.
 - **`Defer` triggers:** DB transaction commit, HTTP request completion, batch/job success boundaries, ordered post-commit side effects such as invalidate → rebuild → notify.
-- **`ScopedCache` triggers:** per-scope lookup tables, connections or handles held for the length of one `within()` block, repeated resolution of `Scope.THREAD` services, values that need one cleanup action when the scope exits. The access window is the block (and the action drain); outside it `isActive()` is false and `get` does not cache, even if an enclosing action scope still holds the values.
+- **`ScopedCache` triggers:** per-scope lookup tables, connections or handles held for the length of one `within()` block, repeated resolution of `Scope.BOUNDARY` services, values that need one cleanup action when the scope exits. The access window is the block (and the action drain); outside it `isActive()` is false and `get` does not cache, even if an enclosing action scope still holds the values.
 - Thread-scoped services use **`ScopeBoundary.within()`** to enter an execution boundary. Backed by JDK 25 `ScopedValue` — no `ThreadLocal` overhead on virtual threads. When nested in a `Defer` action scope, the scope attaches and its beans live until that action scope closes.
 - **`RuntimeHook`** provides start/stop extension points for modules. Ordered via `add(id, value).before()` / `.after()`. HTTP startup uses hook id `"freeway.http.server"` — no longer a side effect of resolving `HttpServer`.
 - **`LoggerSource`** is the built-in logger service. Commons registers a JUL-backed SLF4J provider unconditionally via `META-INF/services`; at startup `LogBootstrap.ensureProvider()` probes the classpath for external SLF4J providers (Logback, Log4j, slf4j-simple) and pins the `slf4j.provider` system property so the external provider wins — the JUL provider is the fallback only when no external provider is present (or the user sets `-Dslf4j.provider` explicitly).

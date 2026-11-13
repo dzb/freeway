@@ -64,11 +64,11 @@ class HttpSslActivationTest {
 
         app = FreewayApp.run(binder ->
             binder.contribute(Route.class)
-                .add(Route.get("/", ctx -> ctx.send(200, "ok"))));
+                .add(Route.get("/", ctx -> ctx.sendText(200, "ok"))));
 
-        assertTrue(app.get(com.jujin.freeway.http.SslSettings.class).enabled(),
+        assertTrue(app.get(com.jujin.freeway.http.SslConfig.class).enabled(),
             "a configured keystore must activate HTTPS without ssl.enabled");
-        assertTrue(app.get(com.jujin.freeway.http.HttpServer.class).secure(),
+        assertTrue(app.get(com.jujin.freeway.http.HttpServer.class).isSecure(),
             "the server must report the transport it was configured with — the cloud"
                 + " registry endpoint and mesh origin derive their scheme from it");
         assertEquals("CN=localhost",
@@ -88,11 +88,11 @@ class HttpSslActivationTest {
 
         app = FreewayApp.run(binder ->
             binder.contribute(Route.class)
-                .add(Route.get("/", ctx -> ctx.send(200, "ok"))));
+                .add(Route.get("/", ctx -> ctx.sendText(200, "ok"))));
 
-        assertFalse(app.get(com.jujin.freeway.http.SslSettings.class).enabled(),
+        assertFalse(app.get(com.jujin.freeway.http.SslConfig.class).enabled(),
             "the kill switch must suppress the configured keystore");
-        assertFalse(app.get(com.jujin.freeway.http.HttpServer.class).secure(),
+        assertFalse(app.get(com.jujin.freeway.http.HttpServer.class).isSecure(),
             "the kill switch must reach the server's reported transport too");
         // Plain HTTP on the same port: the TLS attempt would fail the read.
         assertEquals(200, plainGet(port));
@@ -106,7 +106,7 @@ class HttpSslActivationTest {
         IllegalStateException failure = assertThrows(IllegalStateException.class, () ->
             FreewayApp.run(binder ->
                 binder.contribute(Route.class)
-                    .add(Route.get("/", ctx -> ctx.send(200, "ok")))));
+                    .add(Route.get("/", ctx -> ctx.sendText(200, "ok")))));
         assertTrue(rootMessage(failure).contains("ssl.key-store"),
             "the failure must name the missing key: " + rootMessage(failure));
     }
@@ -119,7 +119,7 @@ class HttpSslActivationTest {
         Exception failure = assertThrows(Exception.class, () ->
             FreewayApp.run(binder ->
                 binder.contribute(Route.class)
-                    .add(Route.get("/", ctx -> ctx.send(200, "ok")))));
+                    .add(Route.get("/", ctx -> ctx.sendText(200, "ok")))));
         assertTrue(rootMessage(failure).contains("ssl.enabled"),
             "the failure must name the key: " + rootMessage(failure));
         assertTrue(rootMessage(failure).contains("yolo"),

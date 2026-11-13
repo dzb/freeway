@@ -106,9 +106,6 @@ public interface FlowContext {
 
     // --- engine-internal ---
 
-    /** @hidden sets the stop signal (the engine and {@link FlowEvaluation#stop()}). */
-    void stopped(boolean stopped);
-
     /**
      * @hidden Opens a branch-local write buffer on the calling thread: every
      *  write until the scope commits lands in the buffer, reads see

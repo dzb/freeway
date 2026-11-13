@@ -10,7 +10,7 @@ import java.util.concurrent.Executor;
  *
  * <p>ScopedValue bindings do NOT propagate to child threads: an async task
  * submitted to a plain executor sees no {@code Defer} scope, no
- * thread-scoped values, no transaction context. This wrapper makes the
+ * scoped values, no transaction context. This wrapper makes the
  * propagation explicit — the framework defaults to "no propagation" (async
  * work is deliberately decoupled from the submitting scope), and callers
  * who DO want a context value to reach the worker name the keys once:

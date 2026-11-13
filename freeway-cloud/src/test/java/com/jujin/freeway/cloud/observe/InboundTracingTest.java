@@ -61,11 +61,11 @@ class InboundTracingTest {
     /** Records the context and MDC as the handler sees them. */
     static class Handler implements com.jujin.freeway.http.route.RouteHandler {
         @Override
-        public void handle(com.jujin.freeway.http.HttpContext ctx) throws Exception {
+        public void handle(com.jujin.freeway.http.HttpExchange ctx) throws Exception {
             Seen.CONTEXT.set(InvocationContext.current().map(InvocationContext::trace).orElse(null));
             Seen.MDC_TRACE_ID.set(MDC.get("traceId"));
             Seen.MDC_SPAN_ID.set(MDC.get("spanId"));
-            ctx.send(200, "ok");
+            ctx.sendText(200, "ok");
         }
     }
 

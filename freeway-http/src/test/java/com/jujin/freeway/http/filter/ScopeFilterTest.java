@@ -16,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
  * The request boundary: one scope for the whole dispatch, the same
- * THREAD-scoped instance throughout, and cleanup on both normal and checked
+ * boundary-scoped instance throughout, and cleanup on both normal and checked
  * exception paths.
  */
 class ScopeFilterTest {
@@ -32,7 +32,7 @@ class ScopeFilterTest {
 
     private static Container container() {
         return Freeway.create(binder ->
-            binder.bind(ScopedValue.class).to(ScopedValue.class).scope(Scope.THREAD));
+            binder.bind(ScopedValue.class).to(ScopedValue.class).scope(Scope.BOUNDARY));
     }
 
     @Test

@@ -124,7 +124,7 @@ public final class Http2Connection {
 
     /**
      * Full constructor with a tuned reset burst guard: more than
-     * {@code resetBurstLimit} not-yet-responded inbound resets within
+     * {@code resetBurstLimit} not-yet-committed inbound resets within
      * {@code resetWindow} trips the connection (0 disables the guard).
      */
     public Http2Connection(Socket socket, InputStream inputStream, OutputStream outputStream,
@@ -247,23 +247,22 @@ public final class Http2Connection {
             int streamId = frame.header().streamId();
             Http2FrameValidator.requireClientStreamId(streamId);
 
-            switch (frame.header().type()) {
-                case SETTINGS -> {
+            switch (frame) {
+                case SettingsFrame settings -> {
                     // RFC 7540 §4.3: a header block may be interrupted only
                     // by CONTINUATION; any other frame is a connection error.
                     Http2FrameValidator.requireNotInHeaderBlock(
                         headerBlock.inHeaders);
-                    if (frame.header().flags().contains(FrameFlag.ACK)) {
+                    if (settings.header().flags().contains(FrameFlag.ACK)) {
                         continue;
                     }
-                    updateRemoteSettings((SettingsFrame) frame);
+                    updateRemoteSettings(settings);
                     sendSettingsAck();
                     continue;
                 }
-                case GOAWAY -> {
+                case GoawayFrame goaway -> {
                     Http2FrameValidator.requireNotInHeaderBlock(
                         headerBlock.inHeaders);
-                    var goaway = (GoawayFrame) frame;
                     if (goaway.errorCode != Http2ErrorCode.NO_ERROR)
                         throw new IOException("GOAWAY");
                     // RFC 7540 §6.8: after receiving GOAWAY the endpoint must
@@ -271,18 +270,18 @@ public final class Http2Connection {
                     goawaySentOrReceived = true;
                     continue;
                 }
-                case PING -> {
+                case PingFrame ping -> {
                     Http2FrameValidator.requireNotInHeaderBlock(
                         headerBlock.inHeaders);
-                    if (!frame.header().flags().contains(FrameFlag.ACK))
-                        sendPingAck((PingFrame) frame);
+                    if (!ping.header().flags().contains(FrameFlag.ACK))
+                        sendPingAck(ping);
                     continue;
                 }
-                case WINDOW_UPDATE -> {
+                case WindowUpdateFrame windowUpdate -> {
                     Http2FrameValidator.requireNotInHeaderBlock(
                         headerBlock.inHeaders);
                     if (streamId == 0) {
-                        int increment = ((WindowUpdateFrame) frame).increment();
+                        int increment = windowUpdate.increment();
                         Http2FrameValidator.requirePositiveWindowIncrement(
                             increment);
                         if (Http2FrameValidator.sendWindowOverflow(
@@ -295,19 +294,18 @@ public final class Http2Connection {
                     }
                     // Stream-level WINDOW_UPDATE dispatches below.
                 }
-                case NOT_IMPLEMENTED -> {
+                case NotImplementedFrame ignored -> {
                     Http2FrameValidator.requireNotInHeaderBlock(
                         headerBlock.inHeaders);
                     // RFC 7540 §5.5: ignore unknown/unimplemented frames.
                     continue;
                 }
-                case DATA -> {
+                case DataFrame dataFrame -> {
                     Http2FrameValidator.requireNotInHeaderBlock(
                         headerBlock.inHeaders);
                     if (streamId == 0) {
                         throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
                     }
-                    var dataFrame = (DataFrame) frame;
                     int flowLength = dataFrame.flowLength();
                     if (flowLength > receiveWindow.get()) {
                         throw new Http2Exception(
@@ -318,7 +316,7 @@ public final class Http2Connection {
                         sendConnectionWindowUpdate();
                     }
                 }
-                case HEADERS -> {
+                case HeadersFrame headers -> {
                     if (streamId == 0) {
                         throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
                     }
@@ -327,7 +325,8 @@ public final class Http2Connection {
                     if (streamId < lastSeenStreamId) {
                         throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
                     }
-                    headerBlock.add(((HeadersFrame) frame).headerBlock());
+                    headerBlock.add(headers.headerBlock());
+                    var flags = headers.header().flags();
                     if (streams.containsKey(streamId)) {
                         // Any HEADERS on an already-created stream is a trailer
                         // block (RFC 7540 §8.1.2.2) — the request pseudo-headers
@@ -336,32 +335,29 @@ public final class Http2Connection {
                         // not been applied yet, so state cannot drive the check.
                         // The shared handling decodes it to keep HPACK state in
                         // sync and discards the fields.
-                        headerBlock.endStream = frame.header().flags()
-                            .contains(FrameFlag.END_STREAM);
-                    } else if (frame.header().flags()
-                            .contains(FrameFlag.END_STREAM)) {
+                        headerBlock.endStream = flags.contains(FrameFlag.END_STREAM);
+                    } else if (flags.contains(FrameFlag.END_STREAM)) {
                         headerBlock.endStream = true;
                     }
-                    if (!frame.header().flags()
-                            .contains(FrameFlag.END_HEADERS)) {
+                    if (!flags.contains(FrameFlag.END_HEADERS)) {
                         headerBlock.start(streamId);
                         continue;
                     }
                     // END_HEADERS set — fall through to shared handling below.
                 }
-                case CONTINUATION -> {
+                case ContinuationFrame continuation -> {
                     if (!headerBlock.inHeaders
                             || streamId != headerBlock.openStreamId) {
                         throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
                     }
-                    headerBlock.add(((ContinuationFrame) frame).headerBlock());
-                    if (!frame.header().flags()
+                    headerBlock.add(continuation.headerBlock());
+                    if (!continuation.header().flags()
                             .contains(FrameFlag.END_HEADERS)) {
                         continue;
                     }
                     // Fall through to shared handling once the block completes.
                 }
-                case PRIORITY -> {
+                case PriorityFrame ignored -> {
                     Http2FrameValidator.requireNotInHeaderBlock(
                         headerBlock.inHeaders);
                     if (streamId == 0) {
@@ -369,10 +365,10 @@ public final class Http2Connection {
                     }
                     continue;
                 }
-                case PUSH_PROMISE -> {
+                case PushPromiseFrame ignored -> {
                     throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
                 }
-                case RST_STREAM -> {
+                case ResetStreamFrame ignored -> {
                     Http2FrameValidator.requireNotInHeaderBlock(
                         headerBlock.inHeaders);
                     // Any RST_STREAM (even error code 0) terminates the target
@@ -500,7 +496,7 @@ public final class Http2Connection {
      * ordinary client behavior — neither may trip the breaker.
      */
     void notePeerReset(Http2Stream target) throws IOException {
-        if (!target.isResponseCommitted()) {
+        if (!target.isCommitted()) {
             noteInboundReset();
         }
     }
@@ -533,7 +529,7 @@ public final class Http2Connection {
 
     /** Dispatches a frame to a stream, converting stream errors into a reset
      *  without tearing down the multiplexed connection. */
-    private void dispatchToStream(Http2Stream target, BaseFrame frame,
+    private void dispatchToStream(Http2Stream target, Http2Frame frame,
                                   int streamId) throws IOException {
         try {
             target.dispatch(frame, executor);

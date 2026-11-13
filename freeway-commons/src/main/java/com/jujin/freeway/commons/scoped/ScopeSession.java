@@ -1,9 +1,9 @@
 package com.jujin.freeway.commons.scoped;
 
-import java.util.ArrayDeque;
+import com.jujin.freeway.commons.util.TopologicalOrder;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Deque;
+import java.util.Comparator;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -273,98 +273,92 @@ public final class ScopeSession {
      */
     static List<Runnable> sort(List<DeferAction> actions) {
         Set<String> existingIds = new LinkedHashSet<>();
-        for (DeferAction a : actions) {
-            if (a.id() != null) existingIds.add(a.id());
+        for (DeferAction action : actions) {
+            if (action.id() != null) {
+                existingIds.add(action.id());
+            }
         }
         Set<String> constrainedIds = new LinkedHashSet<>();
-        for (DeferAction a : actions) {
-            if (a.id() == null) continue;
+        for (DeferAction action : actions) {
+            if (action.id() == null) {
+                continue;
+            }
             boolean hasRealConstraint = false;
-            for (String other : a.before()) {
-                if (existingIds.contains(other)) { hasRealConstraint = true; break; }
+            for (String other : action.before()) {
+                if (existingIds.contains(other)) {
+                    hasRealConstraint = true;
+                    break;
+                }
             }
             if (!hasRealConstraint) {
-                for (String other : a.after()) {
-                    if (existingIds.contains(other)) { hasRealConstraint = true; break; }
+                for (String other : action.after()) {
+                    if (existingIds.contains(other)) {
+                        hasRealConstraint = true;
+                        break;
+                    }
                 }
             }
             if (hasRealConstraint) {
-                constrainedIds.add(a.id());
-                for (String other : a.before()) constrainedIds.add(other);
-                for (String other : a.after()) constrainedIds.add(other);
+                constrainedIds.add(action.id());
+                constrainedIds.addAll(action.before());
+                constrainedIds.addAll(action.after());
             }
         }
 
         Map<String, DeferAction> byId = new LinkedHashMap<>();
-        for (DeferAction a : actions) {
-            if (a.id() != null) {
-                DeferAction prev = byId.putIfAbsent(a.id(), a);
-                if (prev != null) {
+        Map<DeferAction, Integer> positions = new LinkedHashMap<>();
+        Map<DeferAction, Set<DeferAction>> outgoing = new LinkedHashMap<>();
+        int index = 0;
+        for (DeferAction action : actions) {
+            positions.put(action, index++);
+            outgoing.put(action, new LinkedHashSet<>());
+            if (action.id() != null) {
+                DeferAction previous = byId.putIfAbsent(action.id(), action);
+                if (previous != null) {
                     throw new IllegalStateException(
-                        "Duplicate deferred action id '" + a.id() + "'"
-                    );
+                        "Duplicate deferred action id '" + action.id() + "'");
                 }
             }
         }
 
-        Map<String, Integer> indegree = new LinkedHashMap<>();
-        Map<String, List<String>> edges = new LinkedHashMap<>();
-        for (String id : constrainedIds) {
-            indegree.put(id, 0);
-            edges.put(id, new ArrayList<>());
-        }
+        // Current policy: constrained named actions form the topologically
+        // sorted band; unconstrained named actions follow in registration
+        // order, then unnamed actions in registration order.
+        Comparator<DeferAction> readyRank = Comparator
+            .comparingInt((DeferAction action) ->
+                action.id() != null && constrainedIds.contains(action.id()) ? 0
+                    : action.id() != null ? 1 : 2)
+            .thenComparingInt(positions::get);
 
-        for (DeferAction a : actions) {
-            if (a.id() == null || !constrainedIds.contains(a.id())) continue;
-            for (String other : a.before()) {
-                if (!byId.containsKey(other)) continue;
-                edges.computeIfAbsent(a.id(), k -> new ArrayList<>()).add(other);
-                indegree.merge(other, 1, Integer::sum);
+        for (DeferAction action : actions) {
+            if (action.id() == null || !constrainedIds.contains(action.id())) {
+                continue;
             }
-            for (String other : a.after()) {
-                if (!byId.containsKey(other)) continue;
-                edges.computeIfAbsent(other, k -> new ArrayList<>()).add(a.id());
-                indegree.merge(a.id(), 1, Integer::sum);
+            for (String other : action.before()) {
+                DeferAction target = byId.get(other);
+                if (target != null) {
+                    outgoing.get(action).add(target);
+                }
             }
-        }
-
-        Deque<String> queue = new ArrayDeque<>();
-        for (Map.Entry<String, Integer> e : indegree.entrySet()) {
-            if (e.getValue() == 0) queue.addLast(e.getKey());
-        }
-
-        List<String> orderedIds = new ArrayList<>();
-        while (!queue.isEmpty()) {
-            String id = queue.pollFirst();
-            orderedIds.add(id);
-            for (String neighbor : edges.getOrDefault(id, List.of())) {
-                int deg = indegree.get(neighbor) - 1;
-                indegree.put(neighbor, deg);
-                if (deg == 0) queue.addLast(neighbor);
+            for (String other : action.after()) {
+                DeferAction dependency = byId.get(other);
+                if (dependency != null) {
+                    outgoing.get(dependency).add(action);
+                }
             }
         }
 
-        if (orderedIds.size() < indegree.size()) {
+        TopologicalOrder.Result<DeferAction> result =
+            TopologicalOrder.sort(actions, outgoing, readyRank);
+        if (!result.complete()) {
             throw new IllegalStateException(
-                "Circular dependency detected in Defer action ordering"
-            );
+                "Circular dependency detected in Defer action ordering");
         }
-
-        List<Runnable> result = new ArrayList<>();
-        Map<String, DeferAction> remaining = new LinkedHashMap<>(byId);
-        for (String id : orderedIds) {
-            DeferAction a = remaining.remove(id);
-            if (a != null) result.add(a.action());
+        List<Runnable> ordered = new ArrayList<>(result.ordered().size());
+        for (DeferAction action : result.ordered()) {
+            ordered.add(action.action());
         }
-        for (DeferAction a : actions) {
-            if (a.id() != null && remaining.containsKey(a.id())) {
-                result.add(a.action());
-                remaining.remove(a.id());
-            }
-        }
-        for (DeferAction a : actions) {
-            if (a.id() == null) result.add(a.action());
-        }
-        return result;
+        return ordered;
     }
+
 }

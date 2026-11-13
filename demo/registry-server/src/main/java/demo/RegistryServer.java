@@ -2,7 +2,7 @@ package demo;
 
 import com.jujin.freeway.boot.Launch;
 import com.jujin.freeway.boot.FreewayApp;
-import com.jujin.freeway.cloud.discovery.CloudDiscoveryModule;
+import com.jujin.freeway.cloud.discovery.DiscoveryModule;
 import com.jujin.freeway.cloud.discovery.RegistryServerModule;
 import com.jujin.freeway.http.HttpModule;
 import java.util.concurrent.CountDownLatch;
@@ -21,7 +21,7 @@ public final class RegistryServer {
 
         FreewayApp.run(Launch.of(args),
             new HttpModule(),
-            new CloudDiscoveryModule(),
+            new DiscoveryModule(),
             new RegistryServerModule());
 
         System.out.println("Registry server listening on http://127.0.0.1:19090");

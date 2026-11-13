@@ -41,12 +41,12 @@ class RowTest {
 
             Row r = db.query("SELECT * from t").one(Row.class).orElseThrow();
 
-            assertEquals("hello", r.string("s"));
-            assertEquals(42, r.integer("i"));
+            assertEquals("hello", r.asString("s"));
+            assertEquals(42, r.asInt("i"));
             assertEquals(9999L, r.get("l", Long.class));
             assertEquals(3.14, r.get("d", Double.class));
-            assertTrue(r.booleanValue("b"));
-            assertEquals(new BigDecimal("123.45"), r.decimal("dec"));
+            assertTrue(r.asBoolean("b"));
+            assertEquals(new BigDecimal("123.45"), r.asBigDecimal("dec"));
         }
     }
 
@@ -59,9 +59,9 @@ class RowTest {
 
             Row r = db.query("SELECT * from t").one(Row.class).orElseThrow();
 
-            assertEquals(1, r.integer("id"));
-            assertNull(r.string("name"));
-            assertNull(r.integer("name")); // missing column returns null
+            assertEquals(1, r.asInt("id"));
+            assertNull(r.asString("name"));
+            assertNull(r.asInt("name")); // missing column returns null
         }
     }
 
@@ -71,10 +71,10 @@ class RowTest {
         values.put("name", "alice");
         Row row = new Row(values, new CoercerDefault());
 
-        assertEquals("alice", row.string("name"));
-        assertEquals("alice", row.string("NAME"));
-        assertEquals("alice", row.string("Name"));
-        assertNull(row.string("missing"));
+        assertEquals("alice", row.asString("name"));
+        assertEquals("alice", row.asString("NAME"));
+        assertEquals("alice", row.asString("Name"));
+        assertNull(row.asString("missing"));
     }
 
     // ===================== date / time types =====================
@@ -88,9 +88,9 @@ class RowTest {
 
             Row r = db.query("SELECT * from t").one(Row.class).orElseThrow();
 
-            assertEquals(LocalDate.of(2024, 6, 15), r.date("d"));
-            assertEquals(LocalDateTime.of(2024, 6, 15, 14, 30, 0), r.dateTime("dt"));
-            assertEquals(LocalTime.of(14, 30, 0), r.time("t"));
+            assertEquals(LocalDate.of(2024, 6, 15), r.asLocalDate("d"));
+            assertEquals(LocalDateTime.of(2024, 6, 15, 14, 30, 0), r.asLocalDateTime("dt"));
+            assertEquals(LocalTime.of(14, 30, 0), r.asLocalTime("t"));
         }
     }
 
@@ -103,7 +103,7 @@ class RowTest {
 
             Row r = db.query("SELECT * from t").one(Row.class).orElseThrow();
 
-            Instant inst = r.instant("ts");
+            Instant inst = r.asInstant("ts");
             assertNotNull(inst);
         }
     }
@@ -120,7 +120,7 @@ class RowTest {
 
             Row r = db.query("SELECT * from t").one(Row.class).orElseThrow();
 
-            assertEquals(id, r.uuid("id"));
+            assertEquals(id, r.asUuid("id"));
         }
     }
 
@@ -135,7 +135,7 @@ class RowTest {
 
             Row r = db.query("SELECT * from t").one(Row.class).orElseThrow();
 
-            BigInteger bi = r.bigInt("val");
+            BigInteger bi = r.asBigInteger("val");
             assertNotNull(bi);
             assertEquals("12345678901234567890", bi.toString());
         }
@@ -153,7 +153,7 @@ class RowTest {
 
             Row r = db.query("SELECT * from t").one(Row.class).orElseThrow();
 
-            byte[] output = r.bytes("data");
+            byte[] output = r.asBytes("data");
             assertNotNull(output);
             assertArrayEquals(input, output);
         }
@@ -168,7 +168,7 @@ class RowTest {
 
             Row r = db.query("SELECT * from t").one(Row.class).orElseThrow();
 
-            byte[] output = r.bytes("data");
+            byte[] output = r.asBytes("data");
             assertNotNull(output);
             assertEquals(0, output.length);
         }
@@ -183,7 +183,7 @@ class RowTest {
 
             Row r = db.query("SELECT * from t").one(Row.class).orElseThrow();
 
-            assertNull(r.bytes("data"));
+            assertNull(r.asBytes("data"));
         }
     }
 
@@ -228,8 +228,8 @@ class RowTest {
 
             Row r = db.query("SELECT original_name AS alias FROM t").one(Row.class).orElseThrow();
 
-            assertEquals("test", r.string("alias"));
-            assertNull(r.string("original_name"));
+            assertEquals("test", r.asString("alias"));
+            assertNull(r.asString("original_name"));
         }
     }
 
@@ -245,9 +245,9 @@ class RowTest {
             List<Row> rows = db.query("SELECT * from t order by id").list(Row.class);
 
             assertEquals(3, rows.size());
-            assertEquals("a", rows.get(0).string("label"));
-            assertEquals("b", rows.get(1).string("label"));
-            assertEquals("c", rows.get(2).string("label"));
+            assertEquals("a", rows.get(0).asString("label"));
+            assertEquals("b", rows.get(1).asString("label"));
+            assertEquals("c", rows.get(2).asString("label"));
         }
     }
 

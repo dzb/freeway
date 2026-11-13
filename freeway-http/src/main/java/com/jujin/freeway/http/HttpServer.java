@@ -3,8 +3,6 @@ package com.jujin.freeway.http;
 import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
@@ -16,8 +14,7 @@ import com.jujin.freeway.http.event.HttpErrorEvent;
 import com.jujin.freeway.http.event.HttpExchangeEvent;
 import com.jujin.freeway.http.event.HttpServerStartedEvent;
 import com.jujin.freeway.http.filter.CorsFilter;
-import com.jujin.freeway.http.filter.ErrorHandler;
-import com.jujin.freeway.http.filter.HealthFilter;
+import com.jujin.freeway.http.filter.ErrorMapper;
 import com.jujin.freeway.http.filter.HttpFilter;
 import com.jujin.freeway.http.route.RouteHandler;
 import com.jujin.freeway.http.route.RouteIndex;
@@ -35,11 +32,11 @@ public final class HttpServer implements AutoCloseable {
     static final Consumer<Object> NOOP_SINK = event -> {};
 
     private final RouteIndex routes;
-    private final WebSocketIndex websocketIndex;
+    private final WebSocketIndex webSocketIndex;
     private final CorsFilter corsFilter;
     private final List<StaticResourceMount> staticMounts;
     private final List<HttpFilter> filters;
-    private final List<ErrorHandler> errorHandlers;
+    private final List<ErrorMapper> errorMappers;
     private final HttpEngine engine;
     private final HttpServerConfig config;
     private final Consumer<Object> eventSink;
@@ -83,12 +80,12 @@ public final class HttpServer implements AutoCloseable {
      * body, a failed validation) without losing the ones it does not handle.
      */
     private static HttpPipeline builtInMapperLast(HttpPipeline pipeline) {
-        return pipeline.withErrorHandlers(ErrorHandler.defaults());
+        return pipeline.withErrorMappers(ErrorMapper.defaults());
     }
 
     /**
      * Assembled by {@link HttpModule} or {@link #create}: every part is in hand
-     * here, and {@link #secure()} is correct for any server that exists because
+     * here, and {@link #isSecure()} is correct for any server that exists because
      * it is the engine's own verdict, not something an assembler could get wrong.
      *
      * <p>The 4-argument form that used to sit here hard-coded {@code secure =
@@ -103,19 +100,32 @@ public final class HttpServer implements AutoCloseable {
         ReadinessProbe readinessProbe
     ) {
         this.routes = pipeline.routes();
-        this.websocketIndex = pipeline.websocketIndex();
+        this.webSocketIndex = pipeline.webSocketIndex();
         this.corsFilter = pipeline.corsFilter();
         this.staticMounts = pipeline.staticMounts();
-        this.errorHandlers = pipeline.errorHandlers();
-        // Application filters plus the built-in CORS/health filters share
-        // one ordered chain; inactive built-ins are skipped entirely so a
-        // no-op request never pays a virtual call.
-        var orderedFilters = new ArrayList<>(pipeline.filters());
-        HealthFilter healthFilter = pipeline.healthFilter();
-        if (healthFilter.isActive()) orderedFilters.add(healthFilter);
-        if (corsFilter.isActive()) orderedFilters.add(corsFilter);
-        orderedFilters.sort(Comparator.comparingInt(HttpFilter::order));
-        this.filters = List.copyOf(orderedFilters);
+        // A SPA mount whose index is missing can only ever 404 its own
+        // fallback; fail at the one derivation point instead of serving a
+        // silently broken shell. Probed once, before the engine starts.
+        for (StaticResourceMount mount : staticMounts) {
+            if (!mount.spaFallback()) {
+                continue;
+            }
+            try {
+                if (!mount.hasSpaIndex()) {
+                    throw new IllegalStateException(
+                        "SPA fallback mount '" + mount.mountPath()
+                            + "' has no index.html");
+                }
+            } catch (IOException ex) {
+                throw new IllegalStateException(
+                    "Unable to verify the SPA fallback index for mount '"
+                        + mount.mountPath() + "'", ex);
+            }
+        }
+        this.errorMappers = pipeline.errorMappers();
+        // The pipeline owns the final built-in/application filter order;
+        // the server just executes it.
+        this.filters = pipeline.filtersInOrder();
         this.filterChain = buildChain(this::dispatchToRoute, this.filters);
         this.engine = Objects.requireNonNull(engine, "engine");
         this.config = Objects.requireNonNull(config, "config");
@@ -154,12 +164,12 @@ public final class HttpServer implements AutoCloseable {
 
         this.exchangeHandler = new ExchangeHandler() {
             @Override
-            public void handle(HttpContext ctx) throws Exception {
+            public void handle(HttpExchange ctx) throws Exception {
                 request.handle(ctx);
             }
 
             @Override
-            public WebSocketMatch websocket(
+            public WebSocketMatch matchWebSocket(
                 String method,
                 String path,
                 String origin
@@ -175,9 +185,19 @@ public final class HttpServer implements AutoCloseable {
                         return null;
                     }
                 }
-                return websocketIndex.match(method, path);
+                return webSocketIndex.match(method, path);
             }
         };
+    }
+
+    /** Registered HTTP route identities in declaration order, without handlers. */
+    public List<RouteIndex.RouteDescription> routeDescriptions() {
+        return routes.descriptions();
+    }
+
+    /** Registered WebSocket paths in declaration order, without endpoints. */
+    public List<String> webSocketPaths() {
+        return webSocketIndex.paths();
     }
 
     public String host() {
@@ -202,15 +222,15 @@ public final class HttpServer implements AutoCloseable {
 
     /**
      * Whether this server serves TLS — the engine's verdict, read through
-     * {@link HttpEngine#secure()}. An engine that terminates TLS answers true
+     * {@link HttpEngine#isSecure()}. An engine that terminates TLS answers true
      * whatever the configuration says, and an adapter that ignores the built-in
      * {@code freeway.http.ssl.*} keys cannot make this server claim otherwise.
      * Answers the scheme question for collaborators that build the node's
      * externally visible identity (the cloud registry endpoint, the event mesh
      * origin), so they do not re-derive another module's presence rule.
      */
-    public boolean secure() {
-        return engine.secure();
+    public boolean isSecure() {
+        return engine.isSecure();
     }
 
     @Override
@@ -318,7 +338,7 @@ public final class HttpServer implements AutoCloseable {
         };
     }
 
-    private void dispatchToRoute(HttpContext ctx) throws Exception {
+    private void dispatchToRoute(HttpExchange ctx) throws Exception {
         if (!staticMounts.isEmpty()) {
             boolean anyMountMatched = false;
             boolean fallthroughMiss = false;
@@ -341,7 +361,7 @@ public final class HttpServer implements AutoCloseable {
             if (anyMountMatched && !fallthroughMiss) {
                 // Every matching mount is a non-fallthrough miss — a terminal
                 // 404, mirroring a single mount's direct serve() result.
-                ErrorResponses.notFound(ctx);
+                ErrorResponses.notFound().write(ctx);
                 return;
             }
         }
@@ -351,17 +371,44 @@ public final class HttpServer implements AutoCloseable {
         );
         if (match == null) {
             // Path known under other methods is a 405 with Allow (RFC 9110);
-            // only a path no method recognizes is a 404.
+            // only a path no method recognizes reaches the SPA terminal hop.
+            // Rewriting a 405 into the SPA shell would hide the API surface.
             var allowed = routes.methods(ctx.path());
             if (allowed.isEmpty()) {
-                ErrorResponses.notFound(ctx);
+                StaticResourceMount spa = mostSpecificMount(ctx.method(), ctx.path());
+                if (spa != null && spa.serveSpaFallback(ctx, ctx)) {
+                    return;
+                }
+                ErrorResponses.notFound().write(ctx);
             } else {
-                ErrorResponses.methodNotAllowed(ctx, String.join(", ", allowed));
+                ErrorResponses.methodNotAllowed(String.join(", ", allowed)).write(ctx);
             }
             return;
         }
         ctx.setPathVars(match.pathVariables());
         match.handler().handle(ctx);
+    }
+
+    /**
+     * The most specific mount that matches this request. The SPA terminal hop
+     * uses specificity rather than contribution order so a dedicated
+     * {@code /assets} mount keeps ownership of a missing asset even when a
+     * root SPA mount also matches; a tie stays with the earlier contribution.
+     */
+    private StaticResourceMount mostSpecificMount(String method, String path) {
+        StaticResourceMount selected = null;
+        int selectedLength = -1;
+        for (StaticResourceMount mount : staticMounts) {
+            if (!mount.matches(method, path)) {
+                continue;
+            }
+            int length = mount.mountPath().length();
+            if (length > selectedLength) {
+                selected = mount;
+                selectedLength = length;
+            }
+        }
+        return selected;
     }
 
     /**
@@ -372,21 +419,24 @@ public final class HttpServer implements AutoCloseable {
      *         committed and the transport failure is an expected quiet
      *         lifecycle event; false when the built-in 500 fallback was sent
      */
-    private boolean handleException(HttpContext ctx, Exception exception) {
-        for (ErrorHandler handler : errorHandlers) {
+    private boolean handleException(HttpExchange ctx, Exception exception) {
+        for (ErrorMapper mapper : errorMappers) {
             try {
-                if (handler.handle(ctx, exception)) return true;
-            } catch (Exception handlerEx) {
+                var mapped = mapper.map(exception);
+                if (mapped.isPresent()) {
+                    mapped.get().write(ctx);
+                    return true;
+                }
+            } catch (Exception mapperEx) {
                 LOG.warn(
-                    "Error handler {} failed while handling {}",
-                    handler.getClass().getSimpleName(),
+                    "Error mapper {} failed while handling {}",
+                    mapper.getClass().getSimpleName(),
                     String.valueOf(exception.getMessage()),
-                    handlerEx
+                    mapperEx
                 );
             }
         }
-        if (exception instanceof IOException
-                && ctx.isResponded()) {
+        if (exception instanceof IOException && ctx.isCommitted()) {
             // The response was already committed when the transport failed —
             // the peer disconnected mid-write. A 500 cannot be delivered and
             // this is an expected lifecycle event under concurrency (client
@@ -407,7 +457,7 @@ public final class HttpServer implements AutoCloseable {
             String.valueOf(exception.getMessage())
         );
         try {
-            ErrorResponses.internalError(ctx);
+            ErrorResponses.internalError().write(ctx);
         } catch (Exception sendEx) {
             LOG.error("Failed to send error response", sendEx);
         }

@@ -1,7 +1,7 @@
 package com.jujin.freeway.cloud.event;
 
 import com.jujin.freeway.cloud.context.InvocationContext;
-import com.jujin.freeway.cloud.internal.TracePropagator;
+import com.jujin.freeway.cloud.context.internal.TracePropagator;
 import java.util.LinkedHashMap;
 import java.util.Map;
 

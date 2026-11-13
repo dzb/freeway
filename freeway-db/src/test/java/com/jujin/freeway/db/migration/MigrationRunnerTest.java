@@ -7,6 +7,7 @@ import com.jujin.freeway.db.PoolConfig;
 import com.jujin.freeway.db.DbModule;
 import com.jujin.freeway.db.SqlException;
 import com.jujin.freeway.db.dialect.MySqlDialect;
+import com.jujin.freeway.db.dialect.PostgresDialect;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Freeway;
 import java.io.RandomAccessFile;
@@ -57,6 +58,9 @@ class MigrationRunnerTest {
         System.setProperty(URL_KEY, "jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1");
         System.setProperty(USER_KEY, "sa");
         System.setProperty(PASS_KEY, "");
+        // This test exercises MigrationRunner, not H2's DDL transaction
+        // semantics; H2 auto-commits DDL, so use the Postgres dialect explicitly.
+        System.setProperty(ConfigKeys.DIALECT, "postgresql");
 
         Container container = Freeway.create(new DbModule());
         Database db = container.get(Database.class);
@@ -89,6 +93,7 @@ class MigrationRunnerTest {
             assertEquals(0, runner.run());
         } finally {
             container.close();
+            System.clearProperty(ConfigKeys.DIALECT);
         }
     }
 
@@ -241,11 +246,11 @@ class MigrationRunnerTest {
 
         ClassLoader previous = Thread.currentThread().getContextClassLoader();
         try (URLClassLoader loader = new URLClassLoader(new URL[] { tempDir.toUri().toURL() }, null);
-             Database db = Database.create(PoolConfig.defaults(
+             Database db = Database.create(Database.Wiring.defaults(PoolConfig.defaults(
                      "jdbc:h2:mem:freeway_migration_large_" + UUID.randomUUID().toString().replace('-', '_') + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
                      "sa",
                      ""
-                 ))) {
+                 )).withDialect(new PostgresDialect()))) {
             Thread.currentThread().setContextClassLoader(loader);
             MigrationRunner runner = new MigrationRunner(db, MigrationRunner.Options.defaults());
 
@@ -804,11 +809,11 @@ class MigrationRunnerTest {
 
     private static Database tempDb(String name) {
         String dbName = name + "_" + UUID.randomUUID().toString().replace('-', '_');
-        return Database.create(PoolConfig.defaults(
+        return Database.create(Database.Wiring.defaults(PoolConfig.defaults(
                 "jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
                 "sa",
                 ""
-            ));
+            )).withDialect(new PostgresDialect()));
     }
 
     private static void restore(String key, String value) {

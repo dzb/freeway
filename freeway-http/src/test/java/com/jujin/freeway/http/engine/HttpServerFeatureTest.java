@@ -25,7 +25,7 @@ import java.util.zip.GZIPInputStream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-import com.jujin.freeway.http.HttpContext;
+import com.jujin.freeway.http.HttpExchange;
 import com.jujin.freeway.http.HttpServerConfig;
 import com.jujin.freeway.http.HttpServer;
 import com.jujin.freeway.http.HttpPipeline;
@@ -40,6 +40,7 @@ import com.jujin.freeway.http.staticfile.StaticResourceMount;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class HttpServerFeatureTest {
@@ -49,10 +50,10 @@ class HttpServerFeatureTest {
         var execution = new ArrayList<String>();
         var server = HttpServer.create(TestHttp.engine(),
             TestServerConfig.loopback(),
-                HttpPipeline.of(Route.get("/", ctx -> ctx.send(200, "ok")))
+                HttpPipeline.of(Route.get("/", ctx -> ctx.sendText(200, "ok")))
                 .withFilters(new HttpFilter() {
                 @Override
-                public void doFilter(HttpContext ctx, RouteHandler next)
+                public void doFilter(HttpExchange ctx, RouteHandler next)
                         throws Exception {
                     execution.add("late");
                     next.handle(ctx);
@@ -64,14 +65,14 @@ class HttpServerFeatureTest {
                 }
 
                 @Override
-                public void doFilter(HttpContext ctx, RouteHandler next)
+                public void doFilter(HttpExchange ctx, RouteHandler next)
                         throws Exception {
                     execution.add("early");
                     next.handle(ctx);
                 }
             }, new HttpFilter() {
                 @Override
-                public void doFilter(HttpContext ctx, RouteHandler next)
+                public void doFilter(HttpExchange ctx, RouteHandler next)
                         throws Exception {
                     execution.add("default");
                     next.handle(ctx);
@@ -98,10 +99,10 @@ class HttpServerFeatureTest {
         var server = HttpServer.create(TestHttp.engine(),
             TestServerConfig.loopback(port), HttpPipeline.of(Route.get("/text", ctx -> {
                 ctx.setHeader("Content-Type", "text/plain");
-                ctx.send(200, "A".repeat(1000));
+                ctx.sendText(200, "A".repeat(1000));
             }), Route.get("/small", ctx -> {
                 ctx.setHeader("Content-Type", "text/plain");
-                ctx.send(200, "tiny");
+                ctx.sendText(200, "tiny");
             })));
         server.start();
         try {
@@ -138,7 +139,7 @@ class HttpServerFeatureTest {
         int port = freePort();
         var server = HttpServer.create(TestHttp.engine(),
             TestServerConfig.loopback(port), HttpPipeline.of(Route.get("/stream", ctx ->
-                ctx.output(new ByteArrayInputStream(
+                ctx.body(new ByteArrayInputStream(
                     "hello-chunked-world".getBytes(StandardCharsets.UTF_8)), -1))));
         server.start();
         try {
@@ -160,7 +161,7 @@ class HttpServerFeatureTest {
         int port = freePort();
         var server = HttpServer.create(TestHttp.engine(),
             TestServerConfig.loopback(port), HttpPipeline.of(Route.get("/empty", ctx ->
-                ctx.output(new ByteArrayInputStream(new byte[0]), -1))));
+                ctx.body(new ByteArrayInputStream(new byte[0]), -1))));
         server.start();
         try {
             RawResponse resp = request(port, "/empty", "");
@@ -180,7 +181,7 @@ class HttpServerFeatureTest {
         var server = HttpServer.create(TestHttp.engine(),
             TestServerConfig.loopback(port), HttpPipeline.of(Route.get("/gz", ctx -> {
                 ctx.setHeader("Content-Type", "text/plain");
-                ctx.output(new ByteArrayInputStream(
+                ctx.body(new ByteArrayInputStream(
                     "compress-me-please".getBytes(StandardCharsets.UTF_8)), 18);
             })));
         server.start();
@@ -207,7 +208,7 @@ class HttpServerFeatureTest {
         int port = freePort();
         var server = HttpServer.create(TestHttp.engine(),
             TestServerConfig.loopback(port),
-            HttpPipeline.of(Route.get("/ok", ctx -> ctx.send(200, "ok"))),
+            HttpPipeline.of(Route.get("/ok", ctx -> ctx.sendText(200, "ok"))),
             event -> {
                 if (event instanceof HttpExchangeEvent exchange) {
                     accessLog.accept(exchange);
@@ -350,6 +351,114 @@ class HttpServerFeatureTest {
         } finally {
             server.stop();
         }
+    }
+
+
+    @Test
+    void spaFallbackServesDeepLinksWhileRoutesStayAuthoritative(@TempDir Path tempDir)
+            throws Exception {
+        Path root = Files.createDirectory(tempDir.resolve("dist"));
+        Files.writeString(root.resolve("index.html"), "spa shell");
+        int port = freePort();
+        var server = HttpServer.create(TestHttp.engine(), TestServerConfig.loopback(port),
+            HttpPipeline.of(Route.get("/api", ctx -> ctx.sendText(200, "api")))
+                .withStaticFiles(StaticResourceMount.directory("/", root).withSpaFallback(true)));
+        server.start();
+        try {
+            RawResponse index = request(port, "/", "");
+            assertEquals(200, status(index.headers));
+            assertEquals("spa shell", new String(index.body, StandardCharsets.UTF_8));
+
+            RawResponse deep = request(port, "/chat/42", "");
+            assertEquals(200, status(deep.headers));
+            assertEquals("spa shell", new String(deep.body, StandardCharsets.UTF_8));
+
+            RawResponse route = request(port, "/api", "");
+            assertEquals(200, status(route.headers));
+            assertEquals("api", new String(route.body, StandardCharsets.UTF_8),
+                "a real route must run before the SPA terminal hop");
+
+            RawResponse asset = request(port, "/missing.js", "");
+            assertEquals(404, status(asset.headers),
+                "a dotted last segment is an asset, never the SPA shell");
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
+    void spaFallbackIsOwnedByTheMostSpecificMount(@TempDir Path tempDir) throws Exception {
+        Path root = Files.createDirectory(tempDir.resolve("dist"));
+        Files.writeString(root.resolve("index.html"), "root shell");
+        Path assets = Files.createDirectory(tempDir.resolve("assets"));
+        int port = freePort();
+        var server = HttpServer.create(TestHttp.engine(), TestServerConfig.loopback(port),
+            HttpPipeline.of().withStaticFiles(
+                StaticResourceMount.directory("/", root).withSpaFallback(true),
+                StaticResourceMount.directory("/assets", assets)));
+        server.start();
+        try {
+            RawResponse deep = request(port, "/chat", "");
+            assertEquals(200, status(deep.headers));
+            assertEquals("root shell", new String(deep.body, StandardCharsets.UTF_8));
+
+            RawResponse asset = request(port, "/assets/missing.js", "");
+            assertEquals(404, status(asset.headers),
+                "the dedicated /assets mount owns its missing asset, not the root SPA");
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
+    void spaFallbackPicksTheLongestMatchingSpaMount(@TempDir Path tempDir) throws Exception {
+        Path root = Files.createDirectory(tempDir.resolve("root"));
+        Files.writeString(root.resolve("index.html"), "root shell");
+        Path app = Files.createDirectory(tempDir.resolve("app"));
+        Files.writeString(app.resolve("index.html"), "app shell");
+        int port = freePort();
+        var server = HttpServer.create(TestHttp.engine(), TestServerConfig.loopback(port),
+            HttpPipeline.of().withStaticFiles(
+                StaticResourceMount.directory("/", root).withSpaFallback(true),
+                StaticResourceMount.directory("/app", app).withSpaFallback(true)));
+        server.start();
+        try {
+            RawResponse deep = request(port, "/app/chat", "");
+            assertEquals(200, status(deep.headers));
+            assertEquals("app shell", new String(deep.body, StandardCharsets.UTF_8),
+                "the longest matching SPA mount owns the deep link");
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
+    void spaFallbackDoesNotRewriteMethodNotAllowed(@TempDir Path tempDir) throws Exception {
+        Path root = Files.createDirectory(tempDir.resolve("dist"));
+        Files.writeString(root.resolve("index.html"), "spa shell");
+        int port = freePort();
+        var server = HttpServer.create(TestHttp.engine(), TestServerConfig.loopback(port),
+            HttpPipeline.of(Route.post("/save", ctx -> ctx.sendText(200, "saved")))
+                .withStaticFiles(StaticResourceMount.directory("/", root).withSpaFallback(true)));
+        server.start();
+        try {
+            RawResponse response = request(port, "/save", "");
+            assertEquals(405, status(response.headers),
+                "a path known under another method is a 405, not the SPA shell");
+            assertFalse(new String(response.body, StandardCharsets.UTF_8).contains("spa shell"));
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
+    void spaFallbackMountWithoutIndexFailsAtServerCreation(@TempDir Path tempDir) throws Exception {
+        Path root = Files.createDirectory(tempDir.resolve("empty"));
+        IllegalStateException failure = assertThrows(IllegalStateException.class, () ->
+            HttpServer.create(TestHttp.engine(), TestServerConfig.loopback(),
+                HttpPipeline.of().withStaticFiles(
+                    StaticResourceMount.directory("/", root).withSpaFallback(true))));
+        assertTrue(failure.getMessage().contains("index.html"), failure.getMessage());
     }
 
     // ── raw HTTP/1.1 helpers ───────────────────────────────────

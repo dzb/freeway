@@ -4,144 +4,112 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 
+import com.jujin.freeway.http.ResponseHead;
+import com.jujin.freeway.http.internal.ResponseFraming;
 import com.jujin.freeway.http.sse.SseEmitter;
 
 /**
  * HTTP/1.x response writer: serializes the status line, headers, and body
- * straight onto the connection's buffered output stream. Stateless — one
- * shared instance reads everything from the context, so the hot path keeps
- * the pre-encoded byte constants and a single flush per response.
+ * straight onto the connection's buffered output stream.
+ *
+ * <p>One writer per response: the framing decision ({@code Content-Length},
+ * {@code Transfer-Encoding: chunked}, {@code Connection}) is computed once
+ * from the immutable {@link ResponseHead}, and the {@code headersWritten}
+ * flag cannot leak into the next request on a keep-alive connection.</p>
  */
 final class Http1xResponseWriter implements HttpResponseWriter {
 
-    static final Http1xResponseWriter INSTANCE = new Http1xResponseWriter();
-
-    // Pre-encoded constants for hot-path headers
     private static final byte[] HTTP11 = "HTTP/1.1 ".getBytes(StandardCharsets.ISO_8859_1);
     private static final byte[] CRLF = "\r\n".getBytes(StandardCharsets.ISO_8859_1);
     private static final byte[] COLSP = ": ".getBytes(StandardCharsets.ISO_8859_1);
     private static final byte[] CONN_KA = "Connection: keep-alive\r\n".getBytes(StandardCharsets.ISO_8859_1);
     private static final byte[] CONN_CLOSE = "Connection: close\r\n".getBytes(StandardCharsets.ISO_8859_1);
-    private static final byte[] CL_PREFIX = "Content-Length: ".getBytes(StandardCharsets.ISO_8859_1);
     private static final byte[] TE_CHUNKED = "Transfer-Encoding: chunked\r\n".getBytes(StandardCharsets.ISO_8859_1);
     private static final byte[] SPACE = " ".getBytes(StandardCharsets.ISO_8859_1);
     private static final byte[] TERMINAL_CHUNK = {'0', '\r', '\n', '\r', '\n'};
 
-    private Http1xResponseWriter() {}
+    private final OutputStream out;
+    private final boolean keepAlive;
+    private boolean headersWritten;
+    private boolean chunked;
 
-    @Override
-    public void writeHead(HttpContextImpl ctx) throws IOException {
-        writeStatusLineAndHeaders(ctx);
+    Http1xResponseWriter(OutputStream out, boolean keepAlive) {
+        this.out = out;
+        this.keepAlive = keepAlive;
     }
 
     @Override
-    public void writeBody(HttpContextImpl ctx, byte[] data) throws IOException {
-        writeBody(ctx, data, 0, data.length);
-    }
+    public void writeHead(ResponseHead head) throws IOException {
+        if (headersWritten) return;
+        headersWritten = true;
 
-    @Override
-    public void writeBody(HttpContextImpl ctx, byte[] data, int offset, int length)
-            throws IOException {
-        OutputStream rawOut = ctx.rawOut;
-        boolean bodyAllowed = ctx.allowsResponseBody();
-        boolean suppressBody =
-            ResponseFraming.suppressBodyBytes(bodyAllowed, ctx.method());
-        // HEAD response must report the same Content-Length as GET (RFC 7231 §4.3.2)
-        int contentLength = bodyAllowed ? length : 0;
+        boolean bodyAllowed = head.allowsBody();
+        chunked = bodyAllowed && !head.hasHeader("Content-Length");
 
-        // Headers are emitted once, on the first body write — a streaming
-        // response calls writeBody repeatedly.
-        if (!ctx.headersWritten) {
-            ctx.headersWritten = true;
-            if (bodyAllowed && ctx.chunkedResponse) {
-                rawOut.write(TE_CHUNKED);
-                if (!ctx.hasResponseHeader("Connection")) {
-                    rawOut.write(ctx.isKeepAlive() ? CONN_KA : CONN_CLOSE);
-                }
-            } else {
-                // Content-Length
-                if (bodyAllowed && !ctx.hasResponseHeader("Content-Length")) {
-                    rawOut.write(CL_PREFIX);
-                    rawOut.write(contentLengthBytes(contentLength));
-                    rawOut.write(CRLF);
-                }
-                // Connection
-                if (!ctx.hasResponseHeader("Connection")) {
-                    rawOut.write(ctx.isKeepAlive() ? CONN_KA : CONN_CLOSE);
-                }
-            }
-            rawOut.write(CRLF); // end headers
-        }
-
-        // Body
-        if (!suppressBody && length > 0) {
-            if (ctx.chunkedResponse) {
-                rawOut.write(Integer.toHexString(length).getBytes(
-                    StandardCharsets.ISO_8859_1));
-                rawOut.write(CRLF);
-                rawOut.write(data, offset, length);
-                rawOut.write(CRLF);
-            } else {
-                rawOut.write(data, offset, length);
-            }
-        }
-    }
-
-    @Override
-    public void end(HttpContextImpl ctx) throws IOException {
-        if (ctx.chunkedResponse && !ResponseFraming.suppressBodyBytes(
-                ctx.allowsResponseBody(), ctx.method())) {
-            // An empty chunked body never calls writeBody — emit the head
-            // (Transfer-Encoding + Connection) here so the terminal chunk
-            // has headers to follow.
-            if (!ctx.headersWritten) {
-                writeBody(ctx, new byte[0]);
-            }
-            ctx.rawOut.write(TERMINAL_CHUNK);
-        }
-        ctx.rawOut.flush();
-    }
-
-    @Override
-    public SseEmitter openSse(HttpContextImpl ctx) throws IOException {
-        // SSE terminates the HTTP/1.1 exchange: SseEmitter.complete() closes the
-        // shared buffered output stream, so this connection must not be reused.
-        // responded is still unset here (sse() marks it after openSse), so the
-        // normal setHeader() contract applies.
-        ctx.setKeepAlive(false);
-        ctx.setHeader("Connection", "close");
-
-        OutputStream rawOut = ctx.rawOut;
-        writeStatusLineAndHeaders(ctx);
-        rawOut.write("Transfer-Encoding: chunked".getBytes(StandardCharsets.ISO_8859_1));
-        rawOut.write(CRLF);
-        rawOut.write(CRLF);
-        rawOut.flush();
-        return new SseEmitter(new ChunkedOutputStream(rawOut));
-    }
-
-    /** Status line plus response headers, without the framing headers
-     *  (Content-Length/Transfer-Encoding/Connection) that writeHead adds
-     *  during the body write. */
-    private static void writeStatusLineAndHeaders(HttpContextImpl ctx)
-            throws IOException {
-        OutputStream rawOut = ctx.rawOut;
-        rawOut.write(HTTP11);
-        rawOut.write(statusCodeBytes(ctx.status()));
-        rawOut.write(SPACE);
-        rawOut.write(reasonBytes(ctx.status()));
-        rawOut.write(CRLF);
-        for (var entry : ctx.responseHeaderEntries()) {
-            // The bodyless-Content-Length rule lives in ResponseFraming so
-            // HTTP/2 applies the same one (RFC 9110 §8.6).
-            if (ResponseFraming.suppressesHeader(entry.getKey(), ctx.allowsResponseBody())) {
+        out.write(HTTP11);
+        out.write(statusCodeBytes(head.status()));
+        out.write(SPACE);
+        out.write(reasonBytes(head.status()));
+        out.write(CRLF);
+        for (ResponseHead.Header header : head.headers()) {
+            // Status-based body suppression owns Content-Length; the
+            // transport owns transfer framing, so a handler-supplied
+            // Transfer-Encoding cannot override chunked/known-length.
+            if (ResponseFraming.suppressesHeader(header.name(), bodyAllowed)
+                    || header.name().equalsIgnoreCase("Transfer-Encoding")) {
                 continue;
             }
-            rawOut.write(entry.getKey().getBytes(StandardCharsets.ISO_8859_1));
-            rawOut.write(COLSP);
-            rawOut.write(entry.getValue().getBytes(StandardCharsets.ISO_8859_1));
-            rawOut.write(CRLF);
+            out.write(header.name().getBytes(StandardCharsets.ISO_8859_1));
+            out.write(COLSP);
+            out.write(header.value().getBytes(StandardCharsets.ISO_8859_1));
+            out.write(CRLF);
         }
+        if (chunked) {
+            out.write(TE_CHUNKED);
+        }
+        if (!head.hasHeader("Connection")) {
+            out.write(keepAlive ? CONN_KA : CONN_CLOSE);
+        }
+        out.write(CRLF); // end headers
+    }
+
+    @Override
+    public void writeBody(ResponseHead head, byte[] data, int offset, int length)
+            throws IOException {
+        if (!headersWritten) writeHead(head);
+        if (!head.sendsBodyBytes() || length <= 0) return;
+        if (chunked) {
+            out.write(Integer.toHexString(length).getBytes(StandardCharsets.ISO_8859_1));
+            out.write(CRLF);
+            out.write(data, offset, length);
+            out.write(CRLF);
+        } else {
+            out.write(data, offset, length);
+        }
+    }
+
+    @Override
+    public void end(ResponseHead head) throws IOException {
+        if (!headersWritten) writeHead(head);
+        if (chunked && head.sendsBodyBytes()) {
+            out.write(TERMINAL_CHUNK);
+        }
+        out.flush();
+    }
+
+    @Override
+    public SseEmitter openSse(ResponseHead head) throws IOException {
+        // SSE terminates the HTTP/1.1 exchange: SseEmitter.close() closes the
+        // shared buffered output stream, so the connection must not be reused.
+        // The shared policy deliberately doesn't write Connection; this
+        // transport forces close and owns the chunked framing.
+        ResponseHead sseHead = head
+            .withoutHeader("Content-Length")
+            .withoutHeader("Transfer-Encoding")
+            .withHeader("Connection", "close");
+        writeHead(sseHead);
+        out.flush();
+        return new SseEmitter(new ChunkedOutputStream(out));
     }
 
     // Pre-encoded reason phrases indexed by status code
@@ -188,25 +156,5 @@ final class Http1xResponseWriter implements HttpResponseWriter {
             return STATUS_CODE_BYTES[status];
         }
         return String.valueOf(status).getBytes(StandardCharsets.ISO_8859_1);
-    }
-
-    // Pre-encoded Content-Length digits for common small body sizes (0-Ki)
-    // Lazily expanded: the first request with a given length populates the slot
-    private static final byte[][] CL_BYTES = new byte[4096][];
-    static {
-        for (int i = 0; i < 256; i++) {
-            CL_BYTES[i] = String.valueOf(i).getBytes(StandardCharsets.ISO_8859_1);
-        }
-    }
-
-    static byte[] contentLengthBytes(int length) {
-        if (length >= 0 && length < CL_BYTES.length) {
-            byte[] b = CL_BYTES[length];
-            if (b != null) return b;
-            b = String.valueOf(length).getBytes(StandardCharsets.ISO_8859_1);
-            CL_BYTES[length] = b;
-            return b;
-        }
-        return String.valueOf(length).getBytes(StandardCharsets.ISO_8859_1);
     }
 }

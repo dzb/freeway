@@ -35,17 +35,25 @@ public interface Contribution<T> {
     Contribution<T> add(T value);
 
     /**
-     * Adds a contribution by implementation class. The container instantiates
-     * the class, injects dependencies, and invokes {@code @PostConstruct}.
-     * An id is auto-generated as {@code snake_name@package} — the class simple
-     *  name in camel-to-snake form, plus the package it lives in, because two
-     *  packages may contribute the same simple name. {@code before/after}
-     *  ordering matches on that full id (e.g. {@code .after("core_bean@com.acme")}).
+     * Adds a contribution by implementation class. The container constructs
+     * the class and publishes it to the extension store; field injection and
+     * {@code @PostConstruct} run in the final-build phase. For the non-config
+     * layer that phase starts only after every contribution has been
+     * published; the config layer ({@code SymbolProvider}/{@code CoerceRule})
+     * is finalized first so its providers and rules are ready for consumers.
+     * The constructor therefore sees a complete extension view only if it
+     * takes the deferred {@code Supplier} form; an eager {@code List}/{@code
+     * Map} constructor parameter is rejected while entries are still
+     * unpublished.
+     * <p>An id is auto-generated as {@code snake_name@package} — the class
+     * simple name in camel-to-snake form, plus the package it lives in, because
+     * two packages may contribute the same simple name. {@code before/after}
+     * ordering matches on that full id (e.g. {@code .after("core_bean@com.acme")}).
      *
      * @param implClass the implementation class
      * @return an Ordering handle for declaring before/after constraints
      */
-    Ordering add(Class<? extends T> implClass);
+    Ordering addDeferred(Class<? extends T> implClass);
 
     /**
      * Adds a named contribution with ordering support. Duplicate ids are
@@ -62,14 +70,17 @@ public interface Contribution<T> {
     /**
      * Adds a named contribution built by a factory that receives the
      * {@link Container} — for entries whose construction needs services
-     * bound by any module. Instantiated in the same deferred phase as
-     * {@link #add(Class)}: after every module has bound, so declaration
-     * order cannot matter. Duplicate ids are rejected.
+     * bound by any module. Instantiated in the same construction phase as
+     * {@link #addDeferred(Class)}: after every module has bound, so declaration
+     * order cannot matter. The factory runs before the stores are complete;
+     * a read of a still-publishing extension point is refused, so defer it
+     * through {@code Supplier<List<E>>} when the read cannot wait. Duplicate
+     * ids are rejected.
      *
      * @param id      unique id for ordering
      * @param factory builds the contribution with the container
      * @return an Ordering handle for declaring before/after constraints
      * @throws IllegalStateException if the id is a duplicate
      */
-    Ordering add(String id, Function<Container, ? extends T> factory);
+    Ordering addDeferred(String id, Function<Container, ? extends T> factory);
 }

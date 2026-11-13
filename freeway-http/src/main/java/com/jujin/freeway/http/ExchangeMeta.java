@@ -4,7 +4,7 @@ import java.time.Instant;
 import java.util.Map;
 
 /**
- * Metadata of one exchange, shared by HTTP exchanges ({@link HttpContext})
+ * Metadata of one exchange, shared by HTTP exchanges ({@link HttpExchange})
  * and upgraded connections ({@link com.jujin.freeway.http.websocket.WebSocketSession}):
  * a correlation id, the start time, a security principal, and arbitrary
  * cross-cutting attributes.

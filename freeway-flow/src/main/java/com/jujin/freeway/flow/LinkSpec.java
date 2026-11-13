@@ -38,7 +38,7 @@ public final class LinkSpec {
         return this;
     }
 
-    public LinkSpec meta(Map<String, Object> meta) {
+    public LinkSpec metadata(Map<String, Object> meta) {
         if (meta != null && !meta.isEmpty()) {
             this.meta.putAll(meta);
         }
@@ -46,7 +46,7 @@ public final class LinkSpec {
         return this;
     }
 
-    public LinkSpec metaPut(String key, Object value) {
+    public LinkSpec putMetadata(String key, Object value) {
         if (key != null && !key.isEmpty()) {
             this.meta.put(key, value);
         }
@@ -86,7 +86,7 @@ public final class LinkSpec {
         return title;
     }
 
-    public Map<String, Object> meta() {
+    public Map<String, Object> metadata() {
         return Collections.unmodifiableMap(meta);
     }
 

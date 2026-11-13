@@ -5,12 +5,11 @@ import com.jujin.freeway.http.sse.SseEmitter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.channels.FileChannel;
-import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
  * Write side of an HTTP exchange: status, headers, bodies, files, and SSE.
- * Application handlers receive the combined {@link HttpContext}; framework
+ * Application handlers receive the combined {@link HttpExchange}; framework
  * components that only write (exception mappers, static files) should depend
  * on this interface.
  */
@@ -52,56 +51,43 @@ public interface HttpResponse {
      * Like {@link #setHeader}, this is a no-op once the response has been
      * committed.
      *
+     * @return this response for chaining
      * @throws IllegalArgumentException if the token is null or blank
      */
-    void addVary(String token);
+    HttpResponse addVary(String token);
 
     /**
      * Sends a response with the given status code and binary body.
      *
      * @return this response for chaining
      */
-    HttpResponse output(byte[] data) throws IOException;
+    HttpResponse body(byte[] data) throws IOException;
 
     /**
      * Sends the remaining bytes of the given stream as the response body.
-     * {@code contentLength} is advisory for implementations that can stream
-     * with a known length; the default buffers the stream and delegates to
-     * {@link #output(byte[])}.
+     * {@code contentLength} is the source length, or {@code -1} when unknown.
+     * A non-negative value becomes the framework-authoritative
+     * {@code Content-Length} when the body is not compressed; with compression
+     * the transport owns the encoded length and this value is only a source
+     * hint.
      */
-    default HttpResponse output(InputStream in, long contentLength)
-            throws IOException {
-        return output(in.readAllBytes());
-    }
+    HttpResponse body(InputStream in, long contentLength) throws IOException;
 
     /**
-     * Sends a byte range of a file. The default buffers the range and
-     * delegates to {@link #output(byte[])}; transports with a zero-copy or
-     * sendfile path override it.
+     * Sends a byte range of a file. Implementations may stream the range or
+     * use a zero-copy/sendfile path.
      */
-    default HttpResponse outputFile(Path file, long offset, long length)
-            throws IOException {
-        try (InputStream input = Files.newInputStream(file)) {
-            input.skipNBytes(offset);
-            if (length > Integer.MAX_VALUE) {
-                throw new IOException("File range too large to buffer");
-            }
-            return output(input.readNBytes((int) length));
-        }
-    }
+    HttpResponse file(Path file, long offset, long length) throws IOException;
 
     /**
      * Streams an already-open file channel as the response body, taking
      * ownership of the channel (the implementation closes it on success and
      * failure). Mainly used by the static-file layer to hand over a securely
      * opened channel for the sendfile fast path; application handlers can
-     * use {@link #outputFile(Path, long, long)} instead.
+     * use {@link #file(Path, long, long)} instead.
      */
-    default HttpResponse outputFile(FileChannel channel, long offset, long length)
-            throws IOException {
-        throw new UnsupportedOperationException(
-            "File-channel output is not supported");
-    }
+    HttpResponse file(FileChannel channel, long offset, long length)
+            throws IOException;
 
     /**
      * Sends a response with the given status code and text body.
@@ -109,7 +95,7 @@ public interface HttpResponse {
      *
      * @return this response for chaining
      */
-    HttpResponse output(String text) throws IOException;
+    HttpResponse text(String text) throws IOException;
 
     /**
      * Sends a JSON response for the given value.
@@ -117,19 +103,19 @@ public interface HttpResponse {
      *
      * @return this response for chaining
      */
-    HttpResponse outputJson(Object value) throws IOException;
+    HttpResponse json(Object value) throws IOException;
 
     /**
      * Sends a response with the given status code and text body.
-     * Convenience shorthand for {@code setStatus(s).output(t)}.
+     * Convenience shorthand for {@code setStatus(s).text(t)}.
      *
      * @return this response for chaining
      */
-    HttpResponse send(int status, String text) throws IOException;
+    HttpResponse sendText(int status, String text) throws IOException;
 
     /**
      * Sends a JSON response with the given status code.
-     * Convenience shorthand for {@code setStatus(s).outputJson(v)}.
+     * Convenience shorthand for {@code setStatus(s).json(v)}.
      *
      * @return this response for chaining
      */
@@ -142,26 +128,14 @@ public interface HttpResponse {
     SseEmitter sse() throws IOException;
 
     /**
-     * Whether the response has been committed (headers or body have started
-     * being written to the transport). Once committed, a subsequent transport
+     * True once the response has been committed: headers or body have begun
+     * being written to the transport. Once committed, a subsequent transport
      * failure (peer disconnect) can no longer be turned into an error response.
      */
-    default boolean isResponded() {
-        return false;
-    }
+    boolean isCommitted();
 
     /** Returns true if the response status allows a body. */
-    default boolean allowsResponseBody() {
-        int status = status();
-        return status != 204 && status != 205 && status != 304;
-    }
-
-    /**
-     * Returns true when the wire must not carry body bytes for this response
-     * and method: HEAD requests and the bodyless statuses already excluded by
-     * {@link #allowsResponseBody()}.
-     */
-    default boolean suppressBodyBytes(String method) {
-        return !allowsResponseBody() || "HEAD".equalsIgnoreCase(method);
+    default boolean allowsBody() {
+        return HttpStatus.allowsBody(status());
     }
 }

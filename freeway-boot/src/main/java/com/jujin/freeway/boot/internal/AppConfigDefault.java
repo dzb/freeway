@@ -4,10 +4,7 @@ import com.jujin.freeway.boot.AppConfig;
 
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
 
-import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -51,56 +48,9 @@ public final class AppConfigDefault implements AppConfig {
 
     private static final Logger LOG = LoggerFactory.getLogger(AppConfigDefault.class);
 
-    /**
-     * A filesystem override file and the role its <em>name</em> plays in the
-     * cascade. The role decides two things the reader cannot guess from the
-     * path: what to do when the file is not there, and whether the file's
-     * {@code freeway.profile} may surface.
-     */
-    enum Role {
-        /** A working-directory base file ({@code application.properties} /
-         *  {@code application.json}): optional on disk, and one of the layers
-         *  profile selection reads, so its {@code freeway.profile} is honored. */
-        BASE,
-        /** A profile variant ({@code application-<profile>.*}): optional on
-         *  disk, and its {@code freeway.profile} is ignored — the file name
-         *  already is the selection. */
-        PROFILE_VARIANT,
-        /** A file named explicitly by {@code freeway.config.file}: optional on
-         *  disk, but its absence is a configuration error worth naming. */
-        DECLARED
-    }
-
-    /** The ordered override files with their roles — a distinct type so the
-     *  path-only convenience constructor below stays unambiguous (two
-     *  {@code List} parameters would erase to the same signature). */
-    record OverrideFiles(List<OverrideFile> files) {
-        OverrideFiles {
-            files = List.copyOf(files);
-        }
-
-        List<Path> paths() {
-            return files.stream().map(OverrideFile::path).toList();
-        }
-    }
-
-    record OverrideFile(Path path, Role role) {
-        static OverrideFile base(Path path) {
-            return new OverrideFile(path, Role.BASE);
-        }
-
-        static OverrideFile variant(Path path) {
-            return new OverrideFile(path, Role.PROFILE_VARIANT);
-        }
-
-        static OverrideFile declared(Path path) {
-            return new OverrideFile(path, Role.DECLARED);
-        }
-    }
-
     private final ConfigSources sources;
-    /** Ordered filesystem override files (later wins over earlier). */
-    private final List<OverrideFile> overrideFiles;
+    /** Standard file family, roles, order and the one file-read implementation. */
+    private final ConfigFilePlan filePlan;
 
     /** Current file tier: the classpath baseline overlaid with the overrides. */
     private volatile Map<String, String> fileTier;
@@ -115,31 +65,33 @@ public final class AppConfigDefault implements AppConfig {
     /**
      * Tiered form: {@code sources} carries the cascade inputs the loader
      * resolved (cli → environment → files, plus the active profiles);
-     * {@code sources.files()} overlaid with {@code overrideFiles} forms the
+     * {@code sources.files()} overlaid with the filesystem plan forms the
      * file tier, which is watched and re-read on change.
      *
-     * <p>Files given as plain paths play the {@link Role#BASE} role — the
-     * caller supplies the cascade position, not a file name pattern.</p>
+     * <p>Files given as plain paths play the {@link ConfigFilePlan.Role#BASE}
+     * role — the caller supplies the cascade position, not a file name
+     * pattern.</p>
      *
      * @param overrideFiles ordered filesystem files merged over the baseline
      */
     public AppConfigDefault(ConfigSources sources, List<Path> overrideFiles) {
-        this(
-            sources,
-            new OverrideFiles(
-                Objects.requireNonNull(overrideFiles, "overrideFiles").stream()
-                    .map(OverrideFile::base)
-                    .toList()
-            )
-        );
+        this(sources, ConfigFilePlan.paths(overrideFiles), null);
     }
 
-    AppConfigDefault(ConfigSources sources, OverrideFiles overrideFiles) {
+    /** Package-visible role-preserving form for boot and its tests. */
+    AppConfigDefault(ConfigSources sources, ConfigFilePlan filePlan) {
+        this(sources, filePlan, null);
+    }
+
+    AppConfigDefault(
+        ConfigSources sources,
+        ConfigFilePlan filePlan,
+        ConfigFilePlan.Snapshot initialFiles
+    ) {
         this.sources = Objects.requireNonNull(sources, "sources");
-        Objects.requireNonNull(overrideFiles, "overrideFiles");
-        this.overrideFiles = overrideFiles.files();
-        reload();
-        this.watcher = ConfigFileWatcher.start(overrideFiles.paths(), this::reload);
+        this.filePlan = Objects.requireNonNull(filePlan, "filePlan");
+        apply(initialFiles != null ? initialFiles : filePlan.read());
+        this.watcher = ConfigFileWatcher.start(filePlan.paths(), this::reload);
     }
 
     /**
@@ -191,27 +143,38 @@ public final class AppConfigDefault implements AppConfig {
             SymbolProvider.of(() -> fileTier, SymbolProvider.TIER_FILES));
     }
 
-    /** Re-reads every override file over the baseline and swaps the file tier. */
+    /** Re-reads the plan and swaps the file tier. */
     private void reload() {
-        List<Map<String, String>> layers = new ArrayList<>(overrideFiles.size() + 1);
-        layers.add(sources.files());
+        apply(filePlan.read());
+    }
+
+    /**
+     * Applies one already-read snapshot. The snapshot is the only input: a
+     * caller that selected profiles from the base files can hand the same
+     * parsed maps back, so startup never reads a file twice and hot reload
+     * still gets one coherent point-in-time tier.
+     */
+    private void apply(ConfigFilePlan.Snapshot snapshot) {
+        Objects.requireNonNull(snapshot, "snapshot");
         // Who declared a key among the override files. A key in two of them is
         // a silent override today — later file wins — which is invisible at
         // the file that lost, so both are named (once per pair, so a hot
         // reload does not repeat it).
         Map<String, Path> declaredBy = new HashMap<>();
-        for (OverrideFile file : overrideFiles) {
-            Map<String, String> values = readOverride(file);
+        for (ConfigFilePlan.Loaded loaded : snapshot.files()) {
+            Path path = loaded.file().path();
+            Map<String, String> values = loaded.values();
             // Logging never reads the filesystem override files (it configures
             // itself from -D/env/classpath before this tier exists), so a
             // freeway.log.* key here is silently inert — name it.
-            LogKeyNotices.unread(
-                file.path().toString(), values, warnedUnreadLogKeys);
-            warnAboutDuplicateKeys(file.path(), values, declaredBy);
-            values.keySet().forEach(key -> declaredBy.putIfAbsent(key, file.path()));
-            layers.add(values); // later files win
+            LogKeyNotices.unread(path.toString(), values, warnedUnreadLogKeys);
+            Path name = path.getFileName();
+            ConfigCascade.warnAboutBootstrapKeys(
+                name != null ? name.toString() : path.toString(), values);
+            warnAboutDuplicateKeys(path, values, declaredBy);
+            values.keySet().forEach(key -> declaredBy.putIfAbsent(key, path));
         }
-        fileTier = ConfigMaps.overlay(layers);
+        fileTier = ConfigMaps.overlay(List.of(sources.files(), snapshot.values()));
     }
 
     /**
@@ -236,56 +199,6 @@ public final class AppConfigDefault implements AppConfig {
                     key, earlier, file, file.getFileName());
             }
         }
-    }
-
-    /**
-     * The file's parsed content; a missing/unreadable file contributes
-     * nothing. Parsed by the shared {@link ConfigFileReader} — a
-     * {@code .json} override file is JSON, everything else properties — so
-     * overrides parse identically to the startup cascade.
-     *
-     * <p>Every filesystem file passes through here — the working-directory
-     * base files, the profile variants and the {@code freeway.config.file}
-     * extras — so a bootstrap-only key is named whichever of them declares it,
-     * and a hot reload that re-reads an offending file warns again: the
-     * warning describes the file's current content, not the first time it was
-     * seen.
-     */
-    private static Map<String, String> readOverride(OverrideFile file) {
-        Path path = file.path();
-        if (!Files.isRegularFile(path)) {
-            // An absent working-directory file is the normal case. A path the
-            // user named explicitly is not: staying silent there is how a typo
-            // in freeway.config.file becomes "my overrides do nothing".
-            if (file.role() == Role.DECLARED) {
-                LOG.warn(
-                    "Config file {} is named by freeway.config.file but does not exist"
-                        + " — fix the path or drop it from that list",
-                    path
-                );
-            }
-            return Map.of();
-        }
-        Map<String, String> values;
-        try {
-            values = ConfigFileReader.read(path);
-        } catch (IOException e) {
-            // A file that exists but cannot be read is a real failure: skipping
-            // it drops every key it declares and lets startup continue with
-            // values nobody chose. The classpath baseline fails the same way,
-            // and on hot reload the watcher keeps the previous snapshot.
-            throw new IllegalStateException(
-                "Unable to load " + path + " — fix the path or its permissions", e);
-        }
-        Path name = path.getFileName();
-        ConfigCascade.warnAboutBootstrapKeys(
-            name != null ? name.toString() : path.toString(), values);
-        // A profile variant's file name already is the selection, so its own
-        // freeway.profile must not surface: AppConfig promises that the active
-        // list and the resolved value of that key cannot disagree.
-        return file.role() == Role.PROFILE_VARIANT
-            ? ConfigCascade.withoutActivationKey(values)
-            : values;
     }
 
     private static Map<String, String> cleaned(Map<String, String> values) {

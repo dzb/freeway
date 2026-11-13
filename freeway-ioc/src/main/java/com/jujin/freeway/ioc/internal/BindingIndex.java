@@ -1,12 +1,14 @@
 package com.jujin.freeway.ioc.internal;
 
 import com.jujin.freeway.ioc.AmbiguousBindingException;
+import com.jujin.freeway.ioc.RuntimeDescription;
 
 import java.lang.annotation.Annotation;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.function.Predicate;
@@ -93,6 +95,33 @@ final class BindingIndex {
             ? exact
             : scan(binding -> type.isAssignableFrom(binding.type()));
         return select(candidates, type, null);
+    }
+
+    /**
+     * Binding metadata in registration order. Reads only the already-sealed
+     * binding records, so no service is constructed and no cache is touched.
+     */
+    List<RuntimeDescription.BindingDescription> describe() {
+        List<RuntimeDescription.BindingDescription> descriptions =
+            new ArrayList<>(bindingOrder.size());
+        for (ServiceKey key : bindingOrder) {
+            BindingImpl<?> binding = bindings.get(key);
+            if (binding == null) {
+                continue;
+            }
+            TreeSet<String> markers = new TreeSet<>();
+            for (Class<?> marker : binding.markers()) {
+                markers.add(marker.getName());
+            }
+            descriptions.add(new RuntimeDescription.BindingDescription(
+                binding.type().getName(),
+                binding.id(),
+                binding.scope(),
+                binding.isPrimary(),
+                markers
+            ));
+        }
+        return List.copyOf(descriptions);
     }
 
     /**

@@ -69,7 +69,7 @@ public interface Database extends AutoCloseable {
         Dialect dialect = wiring.dialect() != null
             ? wiring.dialect()
             : Dialect.of(config.url());
-        return new DatabaseImpl(
+        return DatabaseImpl.assemble(
             config,
             new RowMapperResolver(effective, wiring.rowMappers(), Map.of()),
             wiring.pool(),
@@ -155,7 +155,7 @@ public interface Database extends AutoCloseable {
      * @see #query(String, Object...)
      */
     default Query query(Sql sql) {
-        return query(sql.sql(dialect()), sql.args());
+        return query(sql.toSql(dialect()), sql.args());
     }
 
     /**
@@ -185,7 +185,7 @@ public interface Database extends AutoCloseable {
      * @see #execute(String, Object...)
      */
     default ExecuteResult execute(Sql sql) {
-        return execute(sql.sql(dialect()), sql.args());
+        return execute(sql.toSql(dialect()), sql.args());
     }
 
     /**
@@ -256,7 +256,7 @@ public interface Database extends AutoCloseable {
     /**
      * Returns connection-pool statistics.
      */
-    DatabaseStats stats();
+    PoolStats stats();
 
     @Override
     void close();

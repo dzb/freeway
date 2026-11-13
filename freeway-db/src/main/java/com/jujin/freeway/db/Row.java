@@ -28,8 +28,8 @@ import java.util.UUID;
  * <p>Example:
  * <pre>{@code
  * Row row = db.query("SELECT id, name FROM users WHERE id = ?", 1).list(Row.class).get(0);
- * long id = row.longValue("id");
- * String name = row.string("name");
+ * long id = row.asLong("id");
+ * String name = row.asString("name");
  * }</pre>
  */
 public final class Row {
@@ -67,29 +67,29 @@ public final class Row {
         return coercer.coerce(raw(col), type);
     }
 
-    public String string(String col) { return get(col, String.class); }
+    public String asString(String col) { return get(col, String.class); }
 
-    public Integer integer(String col) { return get(col, Integer.class); }
+    public Integer asInt(String col) { return get(col, Integer.class); }
 
-    public Long longValue(String col) { return get(col, Long.class); }
+    public Long asLong(String col) { return get(col, Long.class); }
 
-    public Boolean booleanValue(String col) { return get(col, Boolean.class); }
+    public Boolean asBoolean(String col) { return get(col, Boolean.class); }
 
-    public BigDecimal decimal(String col) { return get(col, BigDecimal.class); }
+    public BigDecimal asBigDecimal(String col) { return get(col, BigDecimal.class); }
 
-    public BigInteger bigInt(String col) { return get(col, BigInteger.class); }
+    public BigInteger asBigInteger(String col) { return get(col, BigInteger.class); }
 
-    public LocalDate date(String col) { return get(col, LocalDate.class); }
+    public LocalDate asLocalDate(String col) { return get(col, LocalDate.class); }
 
-    public LocalDateTime dateTime(String col) { return get(col, LocalDateTime.class); }
+    public LocalDateTime asLocalDateTime(String col) { return get(col, LocalDateTime.class); }
 
-    public LocalTime time(String col) { return get(col, LocalTime.class); }
+    public LocalTime asLocalTime(String col) { return get(col, LocalTime.class); }
 
-    public Instant instant(String col) { return get(col, Instant.class); }
+    public Instant asInstant(String col) { return get(col, Instant.class); }
 
-    public UUID uuid(String col) { return get(col, UUID.class); }
+    public UUID asUuid(String col) { return get(col, UUID.class); }
 
-    public byte[] bytes(String col) { return get(col, byte[].class); }
+    public byte[] asBytes(String col) { return get(col, byte[].class); }
 
     @Override
     public String toString() {

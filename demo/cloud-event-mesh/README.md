@@ -8,16 +8,16 @@ crosses a process boundary only where the code says so, on a named plane.
 ┌────────────────────────────┐      WS mesh (CloudEvents 1.0)      ┌────────────────────────────┐
 │  Node A  (publisher)       │  ────────────────────────────────►  │  Node B  (subscriber)      │
 │  port 18081                │        /cloud/event                 │  port 18080                │
-│                            │                                     │  CloudEventBus subscription│
-│  CloudEventBus.publish(…)  ┼──── crosses the boundary ───►       │    → mirror line            │
+│                            │                                     │  MeshEventBus subscription│
+│  MeshEventBus.publish(…)  ┼──── crosses the boundary ───►       │    → mirror line            │
 │  bus.publish(...)     stays HERE                                 │  EventBus subscriber ──►   │
 └────────────────────────────┘                                     └────────────────────────────┘
 ```
 
 Node A publishes the same fact twice: once on the **mesh plane**
-(`CloudEventBus.publish` — leaves the JVM) and once on the **local bus**
-(`EventBus.publish` — never does, even with `CloudEventModule` loaded).
-Node B receives the mesh fact through a declared `CloudEventSubscription`
+(`MeshEventBus.publish` — leaves the JVM) and once on the **local bus**
+(`EventBus.publish` — never does, even with `EventMeshModule` loaded).
+Node B receives the mesh fact through a declared `MeshSubscription`
 and **mirrors it to its local bus on purpose** — one line, in the handler.
 
 ## What it demonstrates
@@ -25,11 +25,11 @@ and **mirrors it to its local bus on purpose** — one line, in the handler.
 | Capability | Where it shows |
 |---|---|
 | Plane separation: a local publish never crosses | `bus.publish` on A prints only on A — no peer receives it |
-| Explicit cross-JVM broadcast | `CloudEventBus.publish("greet.hello", …)` arrives on B |
-| Subscriptions are declared, not configured | B contributes a `CloudEventSubscription` — the same declaration drives the hello pull-prefix, the inbound gate, and delivery |
+| Explicit cross-JVM broadcast | `MeshEventBus.publish("greet.hello", …)` arrives on B |
+| Subscriptions are declared, not configured | B contributes a `MeshSubscription` — the same declaration drives the hello pull-prefix, the inbound gate, and delivery |
 | The subscription table **is** the allowlist | the declared `Class` is the only type inbound frames deserialize into; undeclared topics are dropped unread |
 | Remote facts become local facts only by mirroring | B's subscription handler calls `bus.publish(event)` — deliberate, visible, one line |
-| `Defer` commit coupling | (not exercised here — see `CloudEventBusTest` in freeway-cloud: rollback inside a transaction = nothing on the wire) |
+| `Defer` commit coupling | (not exercised here — see `MeshEventBusTest` in freeway-cloud: rollback inside a transaction = nothing on the wire) |
 
 For the durable, per-key ordered stream plane see `freeway-ext/freeway-mq-kafka`
 (`KafkaEvents`) — this demo keeps to the mesh.

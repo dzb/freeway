@@ -34,32 +34,6 @@ public final class FlowDriverDefault implements FlowDriver {
         return INSTANCE;
     }
 
-    public static Builder builder() {
-        return new Builder();
-    }
-
-    /** Fluent builder for standalone {@link FlowDriverDefault} instances. */
-    public static final class Builder {
-        private Container container;
-        private ExecutorService executor;
-
-        /** Sets the container for {@code @name} resolution. */
-        public Builder container(Container container) { this.container = container; return this; }
-
-        /**
-         * Sets a custom executor for {@code PARALLEL} node fan-out.
-         *
-         * <p><b>Pool sizing warning:</b> the parallel join awaits on the
-         * calling thread, so a fixed-size pool deadlocks when graphs nest
-         * {@code PARALLEL} nodes (outer branches occupy all workers while
-         * inner branches sit queued). Use a cached/unbounded executor, or
-         * size the pool to at least the worst-case number of concurrently
-         * running branches.
-         */
-        public Builder executor(ExecutorService executor) { this.executor = executor; return this; }
-        public FlowDriverDefault build() { return new FlowDriverDefault(container, executor); }
-    }
-
     @Override
     public ExecutorService executor() {
         return executor;
@@ -68,37 +42,37 @@ public final class FlowDriverDefault implements FlowDriver {
     // --- condition ---
 
     @Override
-    public boolean handleCondition(FlowEvaluation evaluation, ConditionDesc condition) throws Throwable {
+    public boolean handleCondition(FlowExecution execution, ConditionDesc condition) throws Throwable {
         if (condition.handler() != null) {
-            return condition.handler().test(evaluation.context());
+            return condition.handler().test(execution.context());
         }
         String description = condition.description();
         if (description != null && description.startsWith("@")) {
             return resolveHandler(description, ConditionHandler.class, "condition")
-                .test(evaluation.context());
+                .test(execution.context());
         }
-        return ExprEvaluator.evalCondition(description, evaluation.context().data());
+        return ExprEvaluator.evalCondition(description, execution.context().data());
     }
 
     // --- task ---
 
     @Override
-    public void handleTask(FlowEvaluation evaluation, TaskDesc task) throws Throwable {
+    public void handleTask(FlowExecution execution, TaskDesc task) throws Throwable {
         if (task.isEmpty()) {
             return;
         }
         if (task.handler() != null) {
-            task.handler().run(evaluation.context(), task.node());
+            task.handler().run(execution.context(), task.node());
             return;
         }
         String description = task.description();
         if (task.isGraphRef()) {
-            evaluation.runGraph(evaluation.engine().graphOrThrow(description.substring(1)));
+            execution.runGraph(execution.engine().require(description.substring(1)));
             return;
         }
         if (task.isHandlerRef()) {
             resolveHandler(description, TaskHandler.class, "task")
-                .run(evaluation.context(), task.node());
+                .run(execution.context(), task.node());
             return;
         }
         throw new IllegalArgumentException(
@@ -118,7 +92,7 @@ public final class FlowDriverDefault implements FlowDriver {
         if (container == null) {
             throw new IllegalStateException(
                 "No container configured — @name resolution requires one. "
-                    + "Use FlowDriverDefault.builder().container(...), or "
+                    + "Construct FlowDriverDefault with a Container, or "
                     + "install FlowModule for IoC-based resolution.");
         }
         Object handler;

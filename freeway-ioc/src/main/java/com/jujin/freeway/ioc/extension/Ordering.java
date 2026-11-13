@@ -2,7 +2,7 @@ package com.jujin.freeway.ioc.extension;
 
 /**
  * Ordering handle returned by the named {@link Contribution} adds —
- * {@code add(id, value)}, {@code add(id, factory)} and {@code add(Class)}.
+ * {@code add(id, value)}, {@code addDeferred(id, factory)} and {@code addDeferred(Class)}.
  *
  * <p>Declares ordering constraints relative to other named contributions.
  * A reference through {@link #before}/{@link #after} is required: an unknown

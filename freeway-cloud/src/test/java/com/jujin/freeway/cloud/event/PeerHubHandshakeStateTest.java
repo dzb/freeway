@@ -77,12 +77,12 @@ class PeerHubHandshakeStateTest {
         if (token != null) {
             System.setProperty(ConfigKeys.EVENT_TOKEN, token);
         }
-        List<ModuleEx> mods = new ArrayList<>(List.of(new HttpModule(), new CloudEventModule()));
+        List<ModuleEx> mods = new ArrayList<>(List.of(new HttpModule(), new EventMeshModule()));
         for (String prefix : subscriptions.split(",")) {
             if (!prefix.isBlank()) {
-                mods.add(binder -> binder.contribute(CloudEventSubscription.class)
+                mods.add(binder -> binder.contribute(MeshSubscription.class)
                     .add("test-" + prefix,
-                        CloudEventSubscription.of(prefix, String.class, delivered::add)));
+                        MeshSubscription.of(prefix, String.class, delivered::add)));
             }
         }
         return FreewayApp.run(mods.toArray(new ModuleEx[0]));
@@ -99,7 +99,7 @@ class PeerHubHandshakeStateTest {
         // Token configured: a hello-less attacker would be rejected by the
         // state machine (1002 "hello expected") before any token logic runs.
         node = startEventsNode("greet.", "s3cret");
-        List<CloudEventEnvelope.Parsed> intercepted = new ArrayList<>();
+        List<MeshEnvelope.Parsed> intercepted = new ArrayList<>();
         node.get(PeerHub.class).addInterceptor(frame -> {
             synchronized (intercepted) {
                 intercepted.add(frame);
@@ -144,9 +144,9 @@ class PeerHubHandshakeStateTest {
             System.setProperty(ConfigKeys.EVENT_ENABLED, "true");
             System.setProperty(ConfigKeys.EVENT_PEERS,
                 "127.0.0.1:" + fakeNode.get(HttpServer.class).port());
-            node = FreewayApp.run(new HttpModule(), new CloudEventModule());
+            node = FreewayApp.run(new HttpModule(), new EventMeshModule());
             PeerHub hub = node.get(PeerHub.class);
-            List<CloudEventEnvelope.Parsed> intercepted = new ArrayList<>();
+            List<MeshEnvelope.Parsed> intercepted = new ArrayList<>();
             hub.addInterceptor(frame -> {
                 synchronized (intercepted) {
                     intercepted.add(frame);
@@ -195,7 +195,7 @@ class PeerHubHandshakeStateTest {
             CompletableFuture<Void> opened = new CompletableFuture<>();
             WebSocket socket = HttpClient.newHttpClient().newWebSocketBuilder()
                 .buildAsync(URI.create("ws://127.0.0.1:" + port
-                        + CloudEventModule.EVENT_PATH),
+                        + EventMeshModule.EVENT_PATH),
                     new WebSocket.Listener() {
                         @Override
                         public void onOpen(WebSocket webSocket) {
@@ -247,7 +247,7 @@ class PeerHubHandshakeStateTest {
         public void bind(Binder binder) {
             binder.contribute(WebSocketRoute.class)
                 .add("fake-event", WebSocketRoute.of(
-                    CloudEventModule.EVENT_PATH, server.endpoint));
+                    EventMeshModule.EVENT_PATH, server.endpoint));
         }
     }
 }

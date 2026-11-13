@@ -138,7 +138,8 @@ Final Container API: `get(Class)`, `get(Class, String)`, `extension(Class)`, `cr
 2. The provider resolves all `ResolvableHandler` instances by calling
    `lh.resolve(() -> c.create(lh.handlerType()))` — a supplier, so the route
    package still does not name the container
-3. Passes the resolved handlers to `new RouteIndex(routes, groups)`
+3. Expands `RouteGroup` contributions once and passes the final, resolved routes to
+   `new RouteIndex(routes)` (same shape as `WebSocketIndex`)
 
 This keeps the IoC dependency boundary at the Module level, identical to the `freeway-db` pattern.
 
@@ -146,16 +147,16 @@ This keeps the IoC dependency boundary at the Module level, identical to the `fr
 
 ---
 
-## Class-Based Contribution Via `Contribution.add(Class)`
+## Class-Based Contribution Via `Contribution.addDeferred(Class)`
 
-**Decision:** `binder.contribute(T).add(MyImpl.class)` defers instantiation and injection until after all bindings are registered.
+**Decision:** `binder.contribute(T).addDeferred(MyImpl.class)` defers instantiation and injection until after all bindings are registered.
 
-**Why:** When `add(Class)` is called during `bind()`, the container's bindings are not yet fully registered — so `container.create(implClass)` would fail if `MyImpl` depends on bindings from the same module. The solution defers instantiation until after **every** module's `bind()` has run — a contributed class may depend on services declared by any module regardless of declaration order:
+**Why:** When `addDeferred(Class)` is called during `bind()`, the container's bindings are not yet fully registered — so `container.create(implClass)` would fail if `MyImpl` depends on bindings from the same module. The solution defers instantiation until after **every** module's `bind()` has run — a contributed class may depend on services declared by any module regardless of declaration order:
 
 ```java
 List<Runnable> pendingCreates = new ArrayList<>();
 
-// In add(Class):
+// In addDeferred(Class):
 pendingCreates.add(() -> {
     V instance = container.create(implClass);
     deferred.apply(ext.add(id, instance));
@@ -166,7 +167,7 @@ pendingCreates.add(() -> {
 for (var action : pendingCreates) action.run();
 ```
 
-The auto-generated id uses snake_case from the class name (`MyHandler` → `"my_handler"`). `DeferredOrdering` stores `before/after` ordering constraints during `add(Class)` and applies them to the real `Ordering` at flush time.
+The auto-generated id uses snake_case from the class name (`MyHandler` → `"my_handler"`). `DeferredOrdering` stores `before/after` ordering constraints during `addDeferred(Class)` and applies them to the real `Ordering` at flush time.
 
 **See also:** `BinderImpl.java`, `Contribution.java` (`freeway-ioc`)
 
@@ -196,7 +197,7 @@ freeway-commons         zero deps
 
 - HTTP engine: `FreewayHttpEngine` (built-in, no `.primary()`) vs `UndertowEngine` (with `.primary()`)
 - Connection pool: `PoolDefault` (built-in) vs `HikariPool` (with `.primary()`)
-- DB dialect: `PostgresDialect` (default) vs custom (with `.primary()`)
+- DB dialect: selection is by id, not `.primary()`; custom dialects bind under their `dialectId()`
 
 ---
 
@@ -257,7 +258,7 @@ RouteHandler resolve(Supplier<RouteHandler> factory) {
 
 **Decision:** A lightweight `DeferredOrdering` stores `before/after` ordering constraints during `bind()` and applies them post-instantiation.
 
-**Why:** `add(Class)` defers instantiation until after all modules have bound (`ContributionRegistry.drain()`), but the caller specifies ordering at `bind()` time. `DeferredOrdering` captures those ordering constraints eagerly and replays them onto the real `Ordering` (from `ext.add(id, instance)`) once the instance is created. This matches `Extension.Entry`'s behavior (append-only `before`/`after` lists). After composition the stores are sealed, so a deferred handle used later fails loudly instead of buffering constraints nothing will replay.
+**Why:** `addDeferred(Class)` defers instantiation until after all modules have bound (`ContributionRegistry.drain()`), but the caller specifies ordering at `bind()` time. `DeferredOrdering` captures those ordering constraints eagerly and replays them onto the real `Ordering` (from `ext.add(id, instance)`) once the instance is created. This matches `Extension.Entry`'s behavior (append-only `before`/`after` lists). After composition the stores are sealed, so a deferred handle used later fails loudly instead of buffering constraints nothing will replay.
 
 **See also:** `ContributionRegistry.DeferredOrdering`
 
@@ -327,11 +328,11 @@ JSON → GraphSpec.normalize() → new Graph
 
 ## Subgraph Driver Re-resolution
 
-**Decision:** `FlowEvaluation.runGraph()` calls `engine.driver(graph)` to resolve the subgraph's own driver, rather than reusing the parent's.
+**Decision:** `FlowExecution.runGraph()` calls `engine.driver(graph)` to resolve the subgraph's own driver, rather than reusing the parent's.
 
-**Why:** Subgraphs define their own `"driver"` field. Blindly propagating the parent's driver meant subgraphs with custom drivers would silently use the wrong one. The fix creates a new `FlowEvaluation` with the correctly resolved driver. The same `ExecState` instance is shared between parent and subgraph for parallel/inclusive node state tracking.
+**Why:** Subgraphs define their own `"driver"` field. Blindly propagating the parent's driver meant subgraphs with custom drivers would silently use the wrong one. The fix creates a new `FlowExecution` with the correctly resolved driver. The same `ExecState` instance is shared between parent and subgraph for parallel/inclusive node state tracking.
 
-**See also:** `FlowEvaluation.java:runGraph()` (`freeway-flow`)
+**See also:** `FlowExecution.java:runGraph()` (`freeway-flow`)
 
 ---
 
@@ -351,11 +352,11 @@ JSON → GraphSpec.normalize() → new Graph
 contributed as an `Extension<FlowInterceptor>` and frozen at load, so there is no per-eval mutable
 list to copy and the accumulation bug class this worked around is structurally gone.
 
-**Decision (original):** `FlowEngineDefault.eval()` always creates a new `FlowOptions` instance. If a non-null `options` is passed, its interceptor list is copied to the new instance before adding engine-level interceptors.
+**Decision (original):** `FlowEngineDefault.run()` always creates a new `FlowOptions` instance. If a non-null `options` is passed, its interceptor list is copied to the new instance before adding engine-level interceptors.
 
 **Why:** `FlowOptions.DEFAULT` is a public static singleton. The previous code mutating it via `options.interceptorAdd(interceptorList)` caused interceptor accumulation across multiple `eval()` calls sharing the same `DEFAULT` instance.
 
-**See also:** `FlowEngineDefault.java:eval()` (`freeway-flow`)
+**See also:** `FlowEngineDefault.java:run()` (`freeway-flow`)
 
 ---
 
@@ -366,10 +367,10 @@ list to copy and the accumulation bug class this worked around is structurally g
 **Why:** A graph that stops mid-way is a workflow defect; silently returning success hid it from callers and tests. The mechanism:
 
 - `ExecState` keeps a concurrent `Set<DeadEnd>` keyed per `(graphId, nodeId)`. An EXCLUSIVE node records a dead end when it matches no condition and has no default link (still logged as a warning). Joins record a *provisional* dead end each time they are entered but cannot activate; the final branch clears it. In 1.5.6 that increment → decide → mark/clear transition was collapsed into one step under the join node's own monitor (`ExecState.join`, with `joinReset` for a LOOP re-arm): the count and the marker used to live in two structures, so a branch preempted between them could re-mark a join that had already activated and report a dead end for a graph that ran to completion.
-- The completion check in `eval()` throws `FlowException("Graph '...' did not complete: dead end at node '...'")`, naming the stuck node and graph. **Exemption:** a run ended via `stop()` is not a dead end (stopping is intentional); an interceptor veto that never proceeds simply records nothing. v1/v2-era `interrupt()` and resume-replay exemptions retired with those mechanisms.
-- Sub-graph evals share the parent's `ExecState` (passed through `FlowEvaluation.runGraph()`), so a dead end recorded inside a sub-graph propagates to the caller's completion check. No reset is needed at eval start — a fresh `ExecState` is created per top-level evaluation.
+- The completion check in `run()` throws `FlowException("Graph '...' did not complete: dead end at node '...'")`, naming the stuck node and graph. **Exemption:** a run ended via `stop()` is not a dead end (stopping is intentional); an interceptor veto that never proceeds simply records nothing. v1/v2-era `interrupt()` and resume-replay exemptions retired with those mechanisms.
+- Sub-graph evals share the parent's `ExecState` (passed through `FlowExecution.runGraph()`), so a dead end recorded inside a sub-graph propagates to the caller's completion check. No reset is needed at eval start — a fresh `ExecState` is created per top-level evaluation.
 
-**See also:** `ExecState.java:DeadEnd` / `ExecState.join` / `ExecState.joinReset`, `FlowEngineDefault.java:eval()` / `exclusiveOut()` / `joinArrived()` (`freeway-flow`)
+**See also:** `ExecState.java:DeadEnd` / `ExecState.join` / `ExecState.joinReset`, `FlowEngineDefault.java:run()` / `exclusiveOut()` / `joinArrived()` (`freeway-flow`)
 
 ---
 
@@ -430,11 +431,11 @@ the double-merge hazard) is dissolved by v3's shape: there is exactly one interc
 engine, frozen at load, and `runGraph()`'s nested eval runs the same chain — every node of parent
 and child is visited exactly once by construction.
 
-**Decision (original):** Sub-graph evals inherit the caller's per-eval interceptors: `FlowEvaluation.runGraph()` stores the raw per-eval `FlowOptions` on the parent evaluation (`evalOptions`) and re-passes it to the sub-eval, so per-eval interceptors (`interceptFlow` / `onNodeStart` / `onNodeEnd`) cover sub-graph nodes too.
+**Decision (original):** Sub-graph evals inherit the caller's per-eval interceptors: `FlowExecution.runGraph()` stores the raw per-eval `FlowOptions` on the parent evaluation (`evalOptions`) and re-passes it to the sub-eval, so per-eval interceptors (`interceptFlow` / `onNodeStart` / `onNodeEnd`) cover sub-graph nodes too.
 
 **Why:** Previously a sub-graph call lost the caller's per-eval interceptors — nodes inside the sub-graph ran with only engine-level interceptors. Only the *raw* options are propagated: each eval merges the engine-level interceptor list itself, so nested evals never run engine-level interceptors twice.
 
-**See also:** `FlowEvaluation.java:runGraph()` / `evalOptions()`, `FlowEngineDefault.java:eval()` (`freeway-flow`)
+**See also:** `FlowExecution.java:runGraph()` / `evalOptions()`, `FlowEngineDefault.java:run()` (`freeway-flow`)
 
 ---
 

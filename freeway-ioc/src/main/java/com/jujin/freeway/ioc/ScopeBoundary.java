@@ -20,7 +20,7 @@ import java.util.function.Supplier;
  * <p>
  * The boundary itself is caller-defined (an HTTP request, a consumed message, a
  * batch, a WebSocket callback, a test). The only boundary-scoped lifecycle the
- * container currently provides is {@link Scope#THREAD}; callers choose where the
+ * container currently provides is {@link Scope#BOUNDARY}; callers choose where the
  * boundary starts and ends.
  * <p>
  * Scopes nest naturally: an inner {@code within()} temporarily shadows the outer scope;

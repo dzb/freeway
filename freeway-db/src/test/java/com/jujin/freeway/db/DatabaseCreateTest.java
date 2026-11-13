@@ -5,6 +5,7 @@ import com.jujin.freeway.db.PooledConnection;
 import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.db.dialect.Dialect;
 import com.jujin.freeway.db.dialect.H2Dialect;
+import com.jujin.freeway.db.dialect.H2Mode;
 import com.jujin.freeway.db.dialect.MySqlDialect;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -116,11 +117,24 @@ class DatabaseCreateTest {
     }
 
     @Test
+    void builtInDialectCatalogResolvesById() {
+        assertEquals("mysql", Dialect.ofId("MySQL").dialectId());
+        assertEquals("postgresql", Dialect.ofId("postgres").dialectId());
+        assertEquals("sqlite", Dialect.ofId("sqlite").dialectId());
+        assertEquals("h2", Dialect.ofId("h2").dialectId());
+
+        IllegalArgumentException unknown = assertThrows(
+            IllegalArgumentException.class, () -> Dialect.ofId("oracle"));
+        assertTrue(unknown.getMessage().contains("freeway.db.dialect"),
+            "unknown ids must point at the extension seam: " + unknown.getMessage());
+    }
+
+    @Test
     void detectsDialectFromJdbcUrl() {
         assertDialectForUrl("jdbc:mysql://localhost:3306/app", "mysql");
         assertDialectForUrl("jdbc:sqlite:/tmp/freeway_builder.db", "sqlite");
         assertDialectForUrl("jdbc:h2:mem:freeway_create_plain", "h2");
-        assertDialectForUrl("jdbc:h2:mem:freeway_create_mysqlmode;MODE=MySQL", "mysql");
+        assertDialectForUrl("jdbc:h2:mem:freeway_create_mysqlmode;MODE=MySQL", "h2");
         assertDialectForUrl("jdbc:postgresql://localhost/app", "postgresql");
     }
 
@@ -180,6 +194,12 @@ class DatabaseCreateTest {
     @Test
     void h2MemUrlResolvesWithoutThrowing() {
         assertEquals("h2", Dialect.of("jdbc:h2:mem:plain").dialectId());
+        assertEquals(H2Mode.NATIVE,
+            ((H2Dialect) Dialect.of("jdbc:h2:mem:plain")).mode());
+        assertEquals(H2Mode.POSTGRESQL,
+            ((H2Dialect) Dialect.of("jdbc:h2:mem:pg;MODE=PostgreSQL")).mode());
+        assertEquals(H2Mode.MYSQL,
+            ((H2Dialect) Dialect.of("jdbc:h2:mem:my;MODE=MySQL")).mode());
     }
 
     @Test
@@ -191,7 +211,7 @@ class DatabaseCreateTest {
         assertEquals("sqlite", Dialect.of("JDBC:Sqlite:/tmp/upper.db").dialectId());
         assertEquals("h2", Dialect.of("JDBC:H2:mem:upper").dialectId());
         assertEquals("postgresql", Dialect.of("JDBC:PostgreSQL://localhost/app").dialectId());
-        assertEquals("mysql", Dialect.of("jdbc:h2:mem:uppermode;MODE=MySQL").dialectId());
+        assertEquals("h2", Dialect.of("jdbc:h2:mem:uppermode;MODE=MySQL").dialectId());
     }
 
     @Test
@@ -225,7 +245,7 @@ class DatabaseCreateTest {
         Database db = mysqlDb();
         try (db) {
             SqlException ex = assertThrows(SqlException.class,
-                () -> db.execute(Sql.insert("users").setColumn("name", "john").returning("id")));
+                () -> db.execute(Sql.insert("users").value("name", "john").returning("id")));
             assertTrue(ex.getMessage().contains("RETURNING"),
                 "MySQL must reject RETURNING via execute(Sql): " + ex.getMessage());
         }
@@ -236,7 +256,7 @@ class DatabaseCreateTest {
         Database db = mysqlDb();
         try (db) {
             SqlException ex = assertThrows(SqlException.class,
-                () -> db.query(Sql.insert("users").setColumn("name", "john").returning("id")));
+                () -> db.query(Sql.insert("users").value("name", "john").returning("id")));
             assertTrue(ex.getMessage().contains("RETURNING"),
                 "MySQL must reject RETURNING via query(Sql): " + ex.getMessage());
         }
@@ -247,7 +267,7 @@ class DatabaseCreateTest {
         Database db = mysqlDb();
         try (db) {
             SqlException ex = assertThrows(SqlException.class,
-                () -> db.execute(Sql.insert("users").setColumn("id", 1).onConflict("id").doNothing()));
+                () -> db.execute(Sql.insert("users").value("id", 1).onConflict("id").doNothing()));
             assertTrue(ex.getMessage().contains("ON CONFLICT"),
                 "MySQL must reject ON CONFLICT via execute(Sql): " + ex.getMessage());
         }
@@ -291,8 +311,8 @@ class DatabaseCreateTest {
         }
 
         @Override
-        public DatabaseStats stats() {
-            return new DatabaseStats(0, 0, 0, 0, Integer.MAX_VALUE, 0, 0, 0);
+        public PoolStats stats() {
+            return new PoolStats(0, 0, 0, 0, Integer.MAX_VALUE, 0, 0, 0);
         }
 
         @Override

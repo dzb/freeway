@@ -1,19 +1,17 @@
 package com.jujin.freeway.http.filter;
 
-import java.util.Map;
+import com.jujin.freeway.http.HealthResult;
 
 /**
- * Produces the response body for the health endpoint.
- * The return value is serialized to JSON via {@code sendJson(200, result)}.
- * <p>
- * Bind a custom implementation to replace the default {@code {"status":"ok"}} response,
- * for example to check database connectivity or external service health.
+ * Produces the liveness result for the HTTP health endpoint. Bind a custom
+ * implementation with {@code .primary()} to replace the default; the result
+ * shape is shared with cloud readiness contributors.
  */
 @FunctionalInterface
 public interface HealthCheck {
 
-    Object check();
+    HealthResult check();
 
-    /** The default health check: always {@code {"status":"ok"}}. */
-    HealthCheck ALWAYS_OK = () -> Map.of("status", "ok");
+    /** The default health check: always {@link HealthResult#ok()}. */
+    HealthCheck ALWAYS_OK = HealthResult::ok;
 }

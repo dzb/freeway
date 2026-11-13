@@ -55,6 +55,13 @@ public interface AppRuntime extends AutoCloseable {
     /** Convenience: resolve a named service by type and id. */
     <T> T get(Class<T> type, String id);
 
+    /**
+     * Metadata snapshot of this application and its container. Contains no
+     * service instances and no configuration values, and does not realize
+     * lazy services. Available while the runtime's container is open.
+     */
+    AppRuntimeDescription describe();
+
     @Override
     void close();
 }

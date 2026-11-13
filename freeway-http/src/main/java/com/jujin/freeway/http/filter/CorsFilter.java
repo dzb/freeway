@@ -6,7 +6,7 @@ import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.jujin.freeway.http.HttpContext;
+import com.jujin.freeway.http.HttpExchange;
 import com.jujin.freeway.http.HttpStatus;
 import com.jujin.freeway.http.route.RouteHandler;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
@@ -201,7 +201,7 @@ public final class CorsFilter implements HttpFilter {
     }
 
     @Override
-    public void doFilter(HttpContext ctx, RouteHandler next) throws Exception {
+    public void doFilter(HttpExchange ctx, RouteHandler next) throws Exception {
         if (!enabled) {
             next.handle(ctx);
             return;
@@ -231,7 +231,7 @@ public final class CorsFilter implements HttpFilter {
                     .isPresent()) {
             if (acao == null) {
                 LOG.debug("CORS preflight rejected: origin '{}'", requestOrigin);
-                ctx.setStatus(HttpStatus.FORBIDDEN).output(new byte[0]);
+                ctx.setStatus(HttpStatus.FORBIDDEN).body(new byte[0]);
                 return;
             }
             if (methodsEcho != null) {
@@ -245,7 +245,7 @@ public final class CorsFilter implements HttpFilter {
             if (maxAge != null) {
                 ctx.setHeader("Access-Control-Max-Age", maxAge);
             }
-            ctx.send(HttpStatus.NO_CONTENT, "");
+            ctx.sendText(HttpStatus.NO_CONTENT, "");
             return;
         }
 

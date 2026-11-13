@@ -1,11 +1,11 @@
 package com.jujin.freeway.cloud.discovery;
 
 import com.jujin.freeway.cloud.internal.ConstantTime;
-import com.jujin.freeway.cloud.internal.RegistryStore;
+import com.jujin.freeway.cloud.discovery.internal.RegistryStore;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.commons.json.JsonObject;
 import com.jujin.freeway.commons.json.JsonUtils;
-import com.jujin.freeway.http.HttpContext;
+import com.jujin.freeway.http.HttpExchange;
 import com.jujin.freeway.http.route.RouteHandler;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 import com.jujin.freeway.ioc.symbol.SymbolSpec;
@@ -61,7 +61,7 @@ final class RegistryApi implements RouteHandler {
     }
 
     @Override
-    public void handle(HttpContext ctx) throws IOException {
+    public void handle(HttpExchange ctx) throws IOException {
         // Version first: a client that speaks a newer protocol gets a readable
         // 426 here instead of a 404 on whichever route moved. Older protocols
         // are accepted — the documented promise is "a server keeps accepting
@@ -82,7 +82,7 @@ final class RegistryApi implements RouteHandler {
             // A shared-secret check, not an identity system: the node is
             // reachable inside a trusted network, and the token keeps an
             // accidental writer from registering into it.
-            ctx.send(HttpStatus.UNAUTHORIZED, "");
+            ctx.sendText(HttpStatus.UNAUTHORIZED, "");
             return;
         }
         String method = ctx.method();
@@ -102,7 +102,7 @@ final class RegistryApi implements RouteHandler {
                     register(ctx);
                 }
             } else {
-                ctx.send(HttpStatus.METHOD_NOT_ALLOWED, "");
+                ctx.sendText(HttpStatus.METHOD_NOT_ALLOWED, "");
             }
         } catch (RuntimeException e) {
             // Advertising a malformed payload must surface as a 400, without leaking
@@ -116,7 +116,7 @@ final class RegistryApi implements RouteHandler {
      * the current token or the one being retired. Two live secrets is what makes
      * a rotation online: set the new value, move the writers, clear the old one.
      */
-    private boolean authorized(HttpContext ctx) {
+    private boolean authorized(HttpExchange ctx) {
         String current = symbols.resolve(TOKEN);
         String previous = symbols.resolve(TOKEN_PREVIOUS);
         if (current.isBlank() && previous.isBlank()) {
@@ -127,11 +127,11 @@ final class RegistryApi implements RouteHandler {
             || (!previous.isBlank() && ConstantTime.isEqual(previous, presented));
     }
 
-    private void discover(HttpContext ctx, String serviceId) throws IOException {
+    private void discover(HttpExchange ctx, String serviceId) throws IOException {
         ctx.sendJson(HttpStatus.OK, store.liveReady(serviceId, RegistryStore.DEFAULT_EVICTION));
     }
 
-    private void register(HttpContext ctx) throws IOException {
+    private void register(HttpExchange ctx) throws IOException {
         String json = ctx.bodyText();
         ServiceInstance instance = codec.fromJson(json, ServiceInstance.class);
         // A client that already knows it is warming registers as such in one
@@ -140,8 +140,8 @@ final class RegistryApi implements RouteHandler {
         // route traffic to it. Absent means ready, the pre-existing contract.
         Boolean ready = readinessOf(ctx);
         store.register(instance, ready != null && !ready
-            ? Health.starting()
-            : Health.up());
+            ? ServiceHealth.starting()
+            : ServiceHealth.up());
         ctx.sendJson(HttpStatus.OK, instance);
     }
 
@@ -150,7 +150,7 @@ final class RegistryApi implements RouteHandler {
      * so the bit rides the heartbeat an instance already sends — no extra round
      * trip. A node that ignores the body keeps the plain heartbeat.
      */
-    private void renew(HttpContext ctx, String serviceId, String instanceId) throws IOException {
+    private void renew(HttpExchange ctx, String serviceId, String instanceId) throws IOException {
         Boolean ready = readinessOf(ctx);
         boolean alive = ready == null
             ? store.renew(serviceId, instanceId)
@@ -160,14 +160,14 @@ final class RegistryApi implements RouteHandler {
 
     /** Explicit readiness flip, so a starting instance becomes discoverable at
      *  the moment it is ready rather than at the next heartbeat. */
-    private void ready(HttpContext ctx, String serviceId, String instanceId) throws IOException {
+    private void ready(HttpExchange ctx, String serviceId, String instanceId) throws IOException {
         Boolean ready = readinessOf(ctx);
         boolean applied = ready != null && store.markReady(serviceId, instanceId, ready);
         ctx.sendJson(applied ? HttpStatus.OK : HttpStatus.NOT_FOUND,
             Map.of("ready", Boolean.TRUE.equals(ready)));
     }
 
-    private void unregister(HttpContext ctx, String serviceId, String instanceId)
+    private void unregister(HttpExchange ctx, String serviceId, String instanceId)
             throws IOException {
         // By id, straight at the store: an instance that is still warming must
         // be removable, and the discovery view deliberately hides those.
@@ -177,7 +177,7 @@ final class RegistryApi implements RouteHandler {
     }
 
     /** Reads {@code {"ready":…}} from the body, or {@code ?ready=} from the query. */
-    private Boolean readinessOf(HttpContext ctx) throws IOException {
+    private Boolean readinessOf(HttpExchange ctx) throws IOException {
         String body = ctx.bodyText();
         if (body != null && !body.isBlank()) {
             JsonObject node = JsonUtils.parseObject(body);

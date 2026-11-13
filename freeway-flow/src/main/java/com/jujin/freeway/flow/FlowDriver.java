@@ -16,14 +16,14 @@ public interface FlowDriver {
     }
 
     /** When a node run starts. */
-    default void onNodeStart(FlowEvaluation evaluation, Node node) {}
+    default void onNodeStart(FlowExecution execution, Node node) {}
 
     /** When a node run ends. */
-    default void onNodeEnd(FlowEvaluation evaluation, Node node) {}
+    default void onNodeEnd(FlowExecution execution, Node node) {}
 
     /** Evaluates a condition reference. */
-    boolean handleCondition(FlowEvaluation evaluation, ConditionDesc condition) throws Throwable;
+    boolean handleCondition(FlowExecution execution, ConditionDesc condition) throws Throwable;
 
     /** Executes a task reference. */
-    void handleTask(FlowEvaluation evaluation, TaskDesc task) throws Throwable;
+    void handleTask(FlowExecution execution, TaskDesc task) throws Throwable;
 }

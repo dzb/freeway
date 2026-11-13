@@ -1,6 +1,6 @@
 package com.jujin.freeway.http.body;
 
-import com.jujin.freeway.http.HttpContext;
+import com.jujin.freeway.http.HttpExchange;
 
 /**
  * Handles an HTTP request whose body has been deserialized to a specific
@@ -15,5 +15,5 @@ public interface BodyHandler<T> {
      * @param ctx  the exchange context
      * @param body the deserialized request body
      */
-    void handle(HttpContext ctx, T body) throws Exception;
+    void handle(HttpExchange ctx, T body) throws Exception;
 }

@@ -2,23 +2,24 @@ package com.jujin.freeway.cloud;
 
 import com.jujin.freeway.cloud.annotation.Local;
 import com.jujin.freeway.cloud.context.CloudContextModule;
-import com.jujin.freeway.cloud.discovery.CloudDiscoveryModule;
+import com.jujin.freeway.cloud.discovery.DiscoveryModule;
 import com.jujin.freeway.cloud.discovery.LoadBalancer;
 import com.jujin.freeway.cloud.discovery.ServiceDiscovery;
 import com.jujin.freeway.cloud.discovery.ServiceRegistry;
-import com.jujin.freeway.cloud.health.CloudHealthModule;
-import com.jujin.freeway.cloud.observe.CloudObserveModule;
+import com.jujin.freeway.cloud.health.HealthModule;
+import com.jujin.freeway.cloud.observe.ObserveModule;
 import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.cloud.observe.Tracer;
-import com.jujin.freeway.cloud.resilience.CloudResilienceModule;
+import com.jujin.freeway.cloud.resilience.ResilienceModule;
 import com.jujin.freeway.cloud.resilience.Retryer;
 import com.jujin.freeway.cloud.resilience.RateLimiter;
-import com.jujin.freeway.cloud.rpc.CloudHttpClient;
-import com.jujin.freeway.cloud.rpc.CloudRpcModule;
-import com.jujin.freeway.cloud.secret.CloudSecretModule;
+import com.jujin.freeway.cloud.rpc.RpcHttpClient;
+import com.jujin.freeway.cloud.rpc.RpcModule;
+import com.jujin.freeway.cloud.rpc.RemoteCaller;
+import com.jujin.freeway.cloud.secret.SecretModule;
 import com.jujin.freeway.cloud.secret.SecretStore;
 import com.jujin.freeway.cloud.storage.ObjectStorage;
-import com.jujin.freeway.cloud.storage.CloudStorageModule;
+import com.jujin.freeway.cloud.storage.StorageModule;
 import com.jujin.freeway.ioc.event.AsyncCarrier;
 import com.jujin.freeway.http.route.Route;
 import com.jujin.freeway.ioc.Container;
@@ -47,13 +48,13 @@ class CloudModuleTest {
 
     private static final List<Class<?>> STANDARD = List.of(
         CloudContextModule.class,
-        CloudSecretModule.class,
-        CloudDiscoveryModule.class,
-        CloudRpcModule.class,
-        CloudObserveModule.class,
-        CloudResilienceModule.class,
-        CloudHealthModule.class,
-        CloudStorageModule.class);
+        SecretModule.class,
+        DiscoveryModule.class,
+        RpcModule.class,
+        ObserveModule.class,
+        ResilienceModule.class,
+        HealthModule.class,
+        StorageModule.class);
 
     @Test
     void cloudDeclaresEveryNamespaceItsKeyTableSpells() {
@@ -79,7 +80,7 @@ class CloudModuleTest {
             assertNotNull(container.get(SecretStore.class), "secret");
             assertNotNull(container.get(ServiceRegistry.class), "discovery: registry");
             assertNotNull(container.get(ServiceDiscovery.class), "discovery: client");
-            assertNotNull(container.get(CloudHttpClient.class), "rpc");
+            assertNotNull(container.get(RpcHttpClient.class), "rpc");
             assertNotNull(container.get(Tracer.class), "observe");
             assertNotNull(container.get(Retryer.class), "resilience");
             assertTrue(container.extension(Route.class).all().stream()
@@ -98,7 +99,7 @@ class CloudModuleTest {
             assertNotNull(container.get(AppMarkerModule.Marker.class));
             assertNotNull(container.get(ServiceRegistry.class));
             assertNotNull(container.get(ServiceDiscovery.class));
-            assertNotNull(container.get(CloudHttpClient.class));
+            assertNotNull(container.get(RpcHttpClient.class));
             assertNotNull(container.get(SecretStore.class));
             assertNotNull(container.get(Tracer.class));
             assertNotNull(container.get(Metrics.class));
@@ -114,8 +115,8 @@ class CloudModuleTest {
     void aModuleCanBePlacedWithoutTheRestOfTheBundle() {
         // The subset form: taking the bundle apart is placing the individual module — one cloud
         // module, configured by the application.
-        try (Container container = Freeway.create(CloudRpcModule.class)) {
-            assertNotNull(container.get(CloudHttpClient.class));
+        try (Container container = Freeway.create(RpcModule.class)) {
+            assertNotNull(container.get(RpcHttpClient.class));
             assertThrows(com.jujin.freeway.ioc.MissingBindingException.class,
                 () -> container.get(SecretStore.class),
                 "the rest of the bundle is absent because it was never placed");
@@ -123,11 +124,22 @@ class CloudModuleTest {
     }
 
     @Test
+    void rpcClientSubsetResolvesRemoteCallerWithoutHttpModule() {
+        // The client subset documented by RpcModule: discovery + RPC, no
+        // Freeway HttpModule. JsonCodec is a container builtin, so RemoteCaller
+        // does not depend on an unrelated module to be resolvable.
+        try (Container container = Freeway.create(
+                RpcModule.class, DiscoveryModule.class)) {
+            assertNotNull(container.get(RemoteCaller.class));
+        }
+    }
+
+    @Test
     void placingABundleAndASubmoduleOfItIsRefused() {
         IllegalStateException failure = assertThrows(IllegalStateException.class,
-            () -> Freeway.create(CloudModule.class, CloudRpcModule.class));
+            () -> Freeway.create(CloudModule.class, RpcModule.class));
 
-        assertTrue(failure.getMessage().contains(CloudRpcModule.class.getName()),
+        assertTrue(failure.getMessage().contains(RpcModule.class.getName()),
             "the duplicate names the submodule and the fix (place the class once): "
                 + failure.getMessage());
     }
@@ -166,7 +178,7 @@ class CloudModuleTest {
         // rate-limit.enabled defaults to false; without any config the
         // resolved limiter must be the no-op singleton, not a 100 req/s
         // token bucket from the library fallback.
-        try (Container container = Freeway.create(new CloudResilienceModule())) {
+        try (Container container = Freeway.create(new ResilienceModule())) {
             RateLimiter limiter = container.get(RateLimiter.class);
             assertTrue(limiter.tryAcquire());
             assertTrue(limiter.tryAcquire());

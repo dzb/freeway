@@ -13,8 +13,8 @@ import java.util.Objects;
  * <p>{@code serviceId} is the logical service name (plain string, same
  * namespace as container binding ids). {@code instanceId} is the stable
  * per-instance identity — a rescheduled container keeps its instanceId and
- * only updates its {@link Endpoint}. Health is deliberately NOT part of this
- * record (see {@link Health}).
+ * only updates its {@link ServiceEndpoint}. ServiceHealth is deliberately NOT part of this
+ * record (see {@link ServiceHealth}).
  *
  * @param serviceId  logical service name
  * @param instanceId stable instance identity, decoupled from location
@@ -24,7 +24,7 @@ import java.util.Objects;
 public record ServiceInstance(
     String serviceId,
     String instanceId,
-    Endpoint endpoint,
+    ServiceEndpoint endpoint,
     Map<String, String> metadata
 ) {
 
@@ -41,11 +41,11 @@ public record ServiceInstance(
         metadata = metadata == null ? Map.of() : Map.copyOf(metadata);
     }
 
-    public static ServiceInstance of(String serviceId, String instanceId, Endpoint endpoint) {
+    public static ServiceInstance of(String serviceId, String instanceId, ServiceEndpoint endpoint) {
         return new ServiceInstance(serviceId, instanceId, endpoint, Map.of());
     }
 
-    public static ServiceInstance of(String serviceId, String instanceId, Endpoint endpoint, Map<String, String> metadata) {
+    public static ServiceInstance of(String serviceId, String instanceId, ServiceEndpoint endpoint, Map<String, String> metadata) {
         return new ServiceInstance(serviceId, instanceId, endpoint, metadata);
     }
 

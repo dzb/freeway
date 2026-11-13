@@ -1,0 +1,188 @@
+package com.jujin.freeway.http.engine.ws;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.List;
+
+import com.jujin.freeway.http.internal.WebSocketCloseReason;
+import com.jujin.freeway.http.websocket.WebSocketTransport;
+
+/**
+ * The built-in engine's {@link WebSocketTransport}: one frame writer over a
+ * socket, owning the open/close state and the write lock. The session view
+ * (metadata, request snapshot) lives in {@code WebSocketSessionSupport},
+ * which composes this object and is what endpoints receive.
+ */
+public final class WebSocketConnection implements WebSocketTransport {
+
+    /** Messages larger than this are sent fragmented, so a single frame
+     *  never exceeds the receive-side cap (WebSocketFrame.MAX_FRAME_SIZE)
+     *  and peers with per-frame limits accept the message. */
+    private static final int MAX_FRAME_PAYLOAD = 16 * 1024 * 1024;
+
+    private final InputStream in;
+    private final OutputStream out;
+    private volatile boolean open = true;
+    private volatile int closeCode = 1006;
+    private volatile String closeReason = "";
+    private final Object writeLock = new Object();
+
+    public WebSocketConnection(InputStream in, OutputStream out) {
+        this.in = in;
+        this.out = out;
+    }
+
+    @Override public boolean isOpen() { return open; }
+
+    private void requireOpen() throws IOException {
+        if (!open) throw new IOException("WebSocket is closed");
+    }
+
+    @Override
+    public void sendText(String text) throws IOException {
+        // length() × 4 would overflow for > 1GB strings; the division form
+        // is mathematically equivalent and overflow-free.
+        if (text.length() <= MAX_FRAME_PAYLOAD / 4) { // cheap upper bound
+            writeFrame(new WebSocketFrame(OpCode.Text, true, text));
+            return;
+        }
+        writeFragmented(OpCode.Text, text.getBytes(StandardCharsets.UTF_8));
+    }
+
+    @Override
+    public void sendBinary(byte[] data) throws IOException {
+        if (data.length <= MAX_FRAME_PAYLOAD) {
+            writeFrame(new WebSocketFrame(OpCode.Binary, true, data));
+            return;
+        }
+        writeFragmented(OpCode.Binary, data);
+    }
+
+    /** Sends a message larger than one frame as a fragmented message
+     *  (RFC 6455 §5.4): the first frame carries the opcode with FIN=0, the
+     *  rest are CONTINUATION, the last with FIN=1. The whole sequence is
+     *  written under the write lock so no other frame (e.g. a ping) can
+     *  interleave; text is split at UTF-8 code-point boundaries so no
+     *  fragment ends mid-character. */
+    private void writeFragmented(OpCode opCode, byte[] data) throws IOException {
+        synchronized (writeLock) {
+            requireOpen();
+            int offset = 0;
+            boolean first = true;
+            while (offset < data.length) {
+                int end = Math.min(offset + MAX_FRAME_PAYLOAD, data.length);
+                if (end < data.length) {
+                    end = codePointBoundary(data, end);
+                }
+                WebSocketReadLoop.writeFrame(out, new WebSocketFrame(
+                    first ? opCode : OpCode.Continuation, end == data.length,
+                    Arrays.copyOfRange(data, offset, end)));
+                first = false;
+                offset = end;
+            }
+        }
+    }
+
+    /** Backs up to the start of the UTF-8 code point containing {@code pos}
+     *  (bytes 0x80-0xBF are continuation bytes of a multi-byte code point). */
+    private static int codePointBoundary(byte[] data, int pos) {
+        while (pos > 0 && (data[pos] & 0xC0) == 0x80) {
+            pos--;
+        }
+        return pos;
+    }
+
+    @Override
+    public void ping(byte[] data) throws IOException {
+        writeFrame(new WebSocketFrame(OpCode.Ping, true, data));
+    }
+
+    @Override
+    public void flush() throws IOException {
+        synchronized (writeLock) {
+            out.flush();
+        }
+    }
+
+    @Override
+    public void sendTextBatch(List<String> texts) throws IOException {
+        synchronized (writeLock) {
+            requireOpen();
+            for (String text : texts) {
+                WebSocketReadLoop.writeFrameNoFlush(out, new WebSocketFrame(OpCode.Text, true, text));
+            }
+            out.flush();
+        }
+    }
+
+    @Override
+    public void close(int code, String reason) throws IOException {
+        synchronized (writeLock) {
+            if (!open) return;
+            var closePayload = buildClosePayload(code, reason);
+            closeCode = code;
+            closeReason = reason == null ? "" : reason;
+            open = false;
+            WebSocketReadLoop.writeFrame(out,
+                new WebSocketFrame(OpCode.Close, true, closePayload));
+        }
+        // Wake the blocking read loop so a server-initiated close does not
+        // leave the session thread parked until the peer responds.
+        try {
+            in.close();
+        } catch (IOException ignored) {}
+    }
+
+    // --- package-private, used by the read loop ---
+
+    /** Synchronized frame write shared with the read loop's automatic pong/close replies. */
+    void writeFrame(WebSocketFrame frame) throws IOException {
+        synchronized (writeLock) {
+            requireOpen();
+            WebSocketReadLoop.writeFrame(out, frame);
+        }
+    }
+
+    /** Synchronized batched frame write without per-frame flush. */
+    void writeFrameNoFlush(WebSocketFrame frame) throws IOException {
+        synchronized (writeLock) {
+            requireOpen();
+            WebSocketReadLoop.writeFrameNoFlush(out, frame);
+        }
+    }
+
+    void markOpen() { open = true; }
+
+    void markClosed(CloseCode code, String reason) {
+        markClosed(code.value(), reason);
+    }
+
+    void markClosed(int code, String reason) {
+        closeCode = code;
+        closeReason = reason == null ? "" : reason;
+        open = false;
+    }
+
+    int closeCode() { return closeCode; }
+    String closeReason() { return closeReason; }
+
+    // --- internal ---
+
+    private static byte[] buildClosePayload(int code, String reason) {
+        if (!WebSocketFrame.isValidWireCloseCode(code)) {
+            throw new IllegalArgumentException("Invalid WebSocket close code: " + code);
+        }
+        // The reason arrives pre-truncated from WebSocketSessionSupport;
+        // truncate here too so this frame writer never emits an oversized
+        // payload no matter who calls it (the read loop's protocol closes).
+        byte[] reasonBytes = WebSocketCloseReason.utf8(reason);
+        byte[] payload = new byte[2 + reasonBytes.length];
+        payload[0] = (byte) (code >> 8 & 0xFF);
+        payload[1] = (byte) (code & 0xFF);
+        System.arraycopy(reasonBytes, 0, payload, 2, reasonBytes.length);
+        return payload;
+    }
+}

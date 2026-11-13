@@ -22,8 +22,8 @@ class PlantUmlDisplayFailureTest {
 
     private static Graph graph() {
         return Graph.create("display_failure", spec -> {
-            spec.addStart("s").linkAdd("a");
-            spec.addActivity("a").task("@task1").linkAdd("e");
+            spec.addStart("s").linkTo("a");
+            spec.addActivity("a").task("@task1").linkTo("e");
             spec.addEnd("e");
         });
     }
@@ -52,9 +52,9 @@ class PlantUmlDisplayFailureTest {
         // everything reports during node declaration and would keep this test
         // green even if the link path still swallowed.
         Graph withCondition = Graph.create("display_failure_link", spec -> {
-            spec.addStart("s").linkAdd("a");
+            spec.addStart("s").linkTo("a");
             spec.addActivity("a").task("@task1")
-                .linkAdd("e", ld -> ld.when("x > 5"));
+                .linkTo("e", ld -> ld.when("x > 5"));
             spec.addEnd("e");
         });
         IllegalStateException ex = assertThrows(IllegalStateException.class,

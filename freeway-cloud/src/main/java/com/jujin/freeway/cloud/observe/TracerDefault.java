@@ -18,7 +18,7 @@ import java.util.ArrayDeque;
  * context as the thread's {@linkplain InvocationContext#replaceAmbient ambient
  * fallback} (restored on close). Nested {@code start()} calls then chain
  * parent → child instead of producing sibling roots, and outbound propagation
- * ({@code CloudHttpClient}) sees the active trace on such threads. The ambient
+ * ({@code RpcHttpClient}) sees the active trace on such threads. The ambient
  * tier is same-thread only; cross-thread propagation still requires
  * {@code PropagationFilter}/{@code runWith}.
  *

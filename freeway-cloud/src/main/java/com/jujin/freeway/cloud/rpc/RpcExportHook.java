@@ -1,7 +1,7 @@
 package com.jujin.freeway.cloud.rpc;
 
 import com.jujin.freeway.commons.json.JsonCodec;
-import com.jujin.freeway.http.HttpContext;
+import com.jujin.freeway.http.HttpExchange;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.MissingBindingException;
 import com.jujin.freeway.ioc.RuntimeHook;
@@ -17,7 +17,7 @@ import org.slf4j.LoggerFactory;
  * that lets an application declare an export without ever holding a handler
  * instance, a codec or a route.
  *
- * <p>Runs before the HTTP server (see {@code CloudRpcModule}), which is what
+ * <p>Runs before the HTTP server (see {@code RpcModule}), which is what
  * makes one wildcard route enough: every dispatch table is built by the time
  * the route can receive a call. Everything that can be checked is checked
  * here — a duplicate mapping, an unbound handler type, an overloaded method —
@@ -81,7 +81,7 @@ final class RpcExportHook implements RuntimeHook {
     }
 
     /** The framework route's handler: gate on the export table, then the protocol. */
-    void serve(HttpContext ctx) throws IOException {
+    void serve(HttpExchange ctx) throws IOException {
         Map<String, RpcTarget> resolved = this.targets;
         JsonCodec json = this.codec;
         if (json == null) {

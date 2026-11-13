@@ -15,8 +15,8 @@ class ErrorResponsesTest {
 
     @Test
     void notFoundAnswersJson() throws Exception {
-        StubHttpContext ctx = new StubHttpContext();
-        ErrorResponses.notFound(ctx);
+        TestExchange ctx = new TestExchange();
+        ErrorResponses.notFound().write(ctx);
 
         assertEquals(404, ctx.status());
         assertTrue(ctx.responseHeader("Content-Type").startsWith("application/json"),
@@ -28,8 +28,8 @@ class ErrorResponsesTest {
 
     @Test
     void methodNotAllowedKeepsAllowAndAnswersJson() throws Exception {
-        StubHttpContext ctx = new StubHttpContext();
-        ErrorResponses.methodNotAllowed(ctx, "GET, HEAD");
+        TestExchange ctx = new TestExchange();
+        ErrorResponses.methodNotAllowed("GET, HEAD").write(ctx);
 
         assertEquals(405, ctx.status());
         assertEquals("GET, HEAD", ctx.responseHeader("Allow"),
@@ -41,8 +41,8 @@ class ErrorResponsesTest {
 
     @Test
     void internalErrorAnswersJson() throws Exception {
-        StubHttpContext ctx = new StubHttpContext();
-        ErrorResponses.internalError(ctx);
+        TestExchange ctx = new TestExchange();
+        ErrorResponses.internalError().write(ctx);
 
         assertEquals(500, ctx.status());
         assertTrue(ctx.responseHeader("Content-Type").startsWith("application/json"),

@@ -55,7 +55,7 @@ class JoinMarkerAtomicityTest {
                 engine.load(graph());
                 // Before the fix this throws on some rounds:
                 // "dead end at node 'gw' in graph 'parinc'".
-                engine.eval("parinc", FlowContext.of());
+                engine.run("parinc", FlowContext.of());
                 assertEquals(1, gatewayRuns.get(),
                     "the inclusive gateway must run exactly once, round " + round);
             }
@@ -92,21 +92,21 @@ class JoinMarkerAtomicityTest {
             });
             Graph graph = GraphSpec.create("gatewayshaped", spec -> {
                 spec.entry("s");
-                spec.addStart("s").linkAdd("fork");
+                spec.addStart("s").linkTo("fork");
                 var fork = spec.addParallel("fork").task("@noop");
-                fork.linkAdd("l");
-                fork.linkAdd("q");
-                spec.addLoop("l").task("@dummy").linkAdd("x");   // no $for: a gateway
-                spec.addActivity("x").task("@dummy").linkAdd("j");
-                spec.addActivity("q").task("@dummy").linkAdd("j");
-                spec.addInclusive("j").task("@dummy").linkAdd("e");
+                fork.linkTo("l");
+                fork.linkTo("q");
+                spec.addLoop("l").task("@dummy").linkTo("x");   // no $for: a gateway
+                spec.addActivity("x").task("@dummy").linkTo("j");
+                spec.addActivity("q").task("@dummy").linkTo("j");
+                spec.addInclusive("j").task("@dummy").linkTo("e");
                 spec.addEnd("e");
             }).create();
 
             assertDoesNotThrow(() -> engine.load(graph),
                 "a LOOP without $for fans out once, so both branches arrive once "
                     + "and the join is countable");
-            engine.eval("gatewayshaped", FlowContext.of());
+            engine.run("gatewayshaped", FlowContext.of());
 
             assertEquals(1, joinRuns.get(),
                 "one arrival from each branch, so the join fires exactly once");
@@ -150,16 +150,16 @@ class JoinMarkerAtomicityTest {
             });
             Graph graph = GraphSpec.create("loopfeedsjoin", spec -> {
                 spec.entry("s");
-                spec.addStart("s").linkAdd("l");
-                spec.addLoop("l").metaPut("$for", "item").metaPut("$in", List.of(1, 2, 3))
-                    .task("@dummy").linkAdd("a").linkAdd("j");
-                spec.addActivity("a").task("@dummy").linkAdd("j");
-                spec.addInclusive("j").task("@dummy").linkAdd("e");
+                spec.addStart("s").linkTo("l");
+                spec.addLoop("l").putMetadata("$for", "item").putMetadata("$in", List.of(1, 2, 3))
+                    .task("@dummy").linkTo("a").linkTo("j");
+                spec.addActivity("a").task("@dummy").linkTo("j");
+                spec.addInclusive("j").task("@dummy").linkTo("e");
                 spec.addEnd("e");
             }).create();
 
             engine.load(graph);
-            engine.eval("loopfeedsjoin", FlowContext.of());
+            engine.run("loopfeedsjoin", FlowContext.of());
 
             assertEquals(3, joinRuns.get(),
                 "one arrival from the loop and one from 'a' per iteration, so "
@@ -201,24 +201,24 @@ class JoinMarkerAtomicityTest {
     private static Graph nestedLoops(String order) {
         return GraphSpec.create("nested" + order, spec -> {
             spec.entry("s");
-            spec.addStart("s").linkAdd("outer");
+            spec.addStart("s").linkTo("outer");
             if ("innerFirst".equals(order)) {
-                spec.addLoop("inner").metaPut("$for", "k").metaPut("$in", List.of(7))
-                    .task("@dummy").linkAdd("a");
-                spec.addLoop("outer").metaPut("$for", "i").metaPut("$in", List.of(1, 2))
-                    .task("@dummy").linkAdd("fork");
+                spec.addLoop("inner").putMetadata("$for", "k").putMetadata("$in", List.of(7))
+                    .task("@dummy").linkTo("a");
+                spec.addLoop("outer").putMetadata("$for", "i").putMetadata("$in", List.of(1, 2))
+                    .task("@dummy").linkTo("fork");
             } else {
-                spec.addLoop("outer").metaPut("$for", "i").metaPut("$in", List.of(1, 2))
-                    .task("@dummy").linkAdd("fork");
-                spec.addLoop("inner").metaPut("$for", "k").metaPut("$in", List.of(7))
-                    .task("@dummy").linkAdd("a");
+                spec.addLoop("outer").putMetadata("$for", "i").putMetadata("$in", List.of(1, 2))
+                    .task("@dummy").linkTo("fork");
+                spec.addLoop("inner").putMetadata("$for", "k").putMetadata("$in", List.of(7))
+                    .task("@dummy").linkTo("a");
             }
             var fork = spec.addParallel("fork").task("@noop");
-            fork.linkAdd("inner");
-            fork.linkAdd("b");
-            spec.addActivity("a").task("@dummy").linkAdd("j");
-            spec.addActivity("b").task("@dummy").linkAdd("j");
-            spec.addInclusive("j").task("@dummy").linkAdd("e");
+            fork.linkTo("inner");
+            fork.linkTo("b");
+            spec.addActivity("a").task("@dummy").linkTo("j");
+            spec.addActivity("b").task("@dummy").linkTo("j");
+            spec.addInclusive("j").task("@dummy").linkTo("e");
             spec.addEnd("e");
         }).create();
     }
@@ -238,17 +238,17 @@ class JoinMarkerAtomicityTest {
     private static Graph twoIndependentLoops() {
         return GraphSpec.create("twoloops", spec -> {
             spec.entry("s");
-            spec.addStart("s").linkAdd("fork");
+            spec.addStart("s").linkTo("fork");
             var fork = spec.addParallel("fork").task("@noop");
-            fork.linkAdd("l1");
-            fork.linkAdd("l2");
-            spec.addLoop("l1").metaPut("$for", "i").metaPut("$in", List.of(1, 2))
-                .task("@dummy").linkAdd("a");
-            spec.addLoop("l2").metaPut("$for", "j").metaPut("$in", List.of(3, 4))
-                .task("@dummy").linkAdd("b");
-            spec.addActivity("a").task("@dummy").linkAdd("j");
-            spec.addActivity("b").task("@dummy").linkAdd("j");
-            spec.addInclusive("j").task("@dummy").linkAdd("e");
+            fork.linkTo("l1");
+            fork.linkTo("l2");
+            spec.addLoop("l1").putMetadata("$for", "i").putMetadata("$in", List.of(1, 2))
+                .task("@dummy").linkTo("a");
+            spec.addLoop("l2").putMetadata("$for", "j").putMetadata("$in", List.of(3, 4))
+                .task("@dummy").linkTo("b");
+            spec.addActivity("a").task("@dummy").linkTo("j");
+            spec.addActivity("b").task("@dummy").linkTo("j");
+            spec.addInclusive("j").task("@dummy").linkTo("e");
             spec.addEnd("e");
         }).create();
     }
@@ -281,22 +281,22 @@ class JoinMarkerAtomicityTest {
     private static Graph sharedDownstreamLoopBodies(String first, String second) {
         return GraphSpec.create("sharedbody", spec -> {
             spec.entry("s");
-            spec.addStart("s").linkAdd("fork");
+            spec.addStart("s").linkTo("fork");
             var fork = spec.addParallel("fork").task("@noop");
-            fork.linkAdd("l1");
-            fork.linkAdd("l2");
+            fork.linkTo("l1");
+            fork.linkTo("l2");
             for (String loop : List.of(first, second)) {
                 if ("l1".equals(loop)) {
-                    spec.addLoop("l1").metaPut("$for", "i").metaPut("$in", List.of(1, 2))
-                        .task("@dummy").linkAdd("a");
+                    spec.addLoop("l1").putMetadata("$for", "i").putMetadata("$in", List.of(1, 2))
+                        .task("@dummy").linkTo("a");
                 } else {
-                    spec.addLoop("l2").metaPut("$for", "j").metaPut("$in", List.of(3, 4))
-                        .task("@dummy").linkAdd("a").linkAdd("b");
+                    spec.addLoop("l2").putMetadata("$for", "j").putMetadata("$in", List.of(3, 4))
+                        .task("@dummy").linkTo("a").linkTo("b");
                 }
             }
-            spec.addActivity("a").task("@dummy").linkAdd("j");
-            spec.addActivity("b").task("@dummy").linkAdd("j");
-            spec.addInclusive("j").task("@dummy").linkAdd("e");
+            spec.addActivity("a").task("@dummy").linkTo("j");
+            spec.addActivity("b").task("@dummy").linkTo("j");
+            spec.addInclusive("j").task("@dummy").linkTo("e");
             spec.addEnd("e");
         }).create();
     }
@@ -312,7 +312,7 @@ class JoinMarkerAtomicityTest {
                 }
             });
             engine.load(joinInsideLoopBody());
-            engine.eval("loopjoinok", FlowContext.of());
+            engine.run("loopjoinok", FlowContext.of());
 
             // The count matters as much as the absence of a load-time throw:
             // "accepted" alone would still pass if the join never activated.
@@ -327,16 +327,16 @@ class JoinMarkerAtomicityTest {
     private static Graph loopWithExternalIncomingJoin() {
         return GraphSpec.create("loopjoin", spec -> {
             spec.entry("s");
-            spec.addStart("s").linkAdd("p");
+            spec.addStart("s").linkTo("p");
             // Two paths out of the entry: the loop body, and a branch outside it.
             var fork = spec.addParallel("p").task("@noop");
-            fork.linkAdd("l");
-            fork.linkAdd("q");
-            spec.addLoop("l").metaPut("$for", "item").metaPut("$in", List.of(1, 2))
-                .task("@dummy").linkAdd("a");
-            spec.addActivity("a").task("@dummy").linkAdd("j");
-            spec.addActivity("q").task("@dummy").linkAdd("j");
-            spec.addInclusive("j").task("@dummy").linkAdd("end");
+            fork.linkTo("l");
+            fork.linkTo("q");
+            spec.addLoop("l").putMetadata("$for", "item").putMetadata("$in", List.of(1, 2))
+                .task("@dummy").linkTo("a");
+            spec.addActivity("a").task("@dummy").linkTo("j");
+            spec.addActivity("q").task("@dummy").linkTo("j");
+            spec.addInclusive("j").task("@dummy").linkTo("end");
             spec.addEnd("end");
         }).create();
     }
@@ -344,17 +344,17 @@ class JoinMarkerAtomicityTest {
     private static Graph joinInsideLoopBody() {
         return GraphSpec.create("loopjoinok", spec -> {
             spec.entry("s");
-            spec.addStart("s").linkAdd("l");
+            spec.addStart("s").linkTo("l");
             // Both of the join's branches live in the body, so each iteration
             // delivers exactly the two arrivals it waits for.
-            spec.addLoop("l").metaPut("$for", "item").metaPut("$in", List.of(1, 2))
-                .task("@dummy").linkAdd("f");
+            spec.addLoop("l").putMetadata("$for", "item").putMetadata("$in", List.of(1, 2))
+                .task("@dummy").linkTo("f");
             var fork = spec.addParallel("f").task("@noop");
-            fork.linkAdd("a");
-            fork.linkAdd("q");
-            spec.addActivity("a").task("@dummy").linkAdd("j");
-            spec.addActivity("q").task("@dummy").linkAdd("j");
-            spec.addInclusive("j").task("@dummy").linkAdd("end");
+            fork.linkTo("a");
+            fork.linkTo("q");
+            spec.addActivity("a").task("@dummy").linkTo("j");
+            spec.addActivity("q").task("@dummy").linkTo("j");
+            spec.addInclusive("j").task("@dummy").linkTo("end");
             spec.addEnd("end");
         }).create();
     }
@@ -366,15 +366,15 @@ class JoinMarkerAtomicityTest {
         }
         return GraphSpec.create("parinc", spec -> {
             spec.entry("s");
-            spec.addStart("s").linkAdd("p");
+            spec.addStart("s").linkTo("p");
             var fork = spec.addParallel("p").task("@noop");
             for (String id : branchIds) {
-                fork.linkAdd(id);
+                fork.linkTo(id);
             }
             for (String id : branchIds) {
-                spec.addActivity(id).task("@dummy").linkAdd("gw");
+                spec.addActivity(id).task("@dummy").linkTo("gw");
             }
-            spec.addInclusive("gw").task("@dummy").linkAdd("end");
+            spec.addInclusive("gw").task("@dummy").linkTo("end");
             spec.addEnd("end");
         }).create();
     }
@@ -388,13 +388,13 @@ class JoinMarkerAtomicityTest {
 
             @Override
             public boolean handleCondition(
-                    FlowEvaluation evaluation, ConditionDesc condition) throws Throwable {
+                    FlowExecution evaluation, ConditionDesc condition) throws Throwable {
                 return ExprEvaluator.evalCondition(
                     condition.description(), evaluation.context().data());
             }
 
             @Override
-            public void handleTask(FlowEvaluation evaluation, TaskDesc task) throws Throwable {
+            public void handleTask(FlowExecution evaluation, TaskDesc task) throws Throwable {
                 if (!task.isEmpty()) {
                     body.accept(task.node());
                 }

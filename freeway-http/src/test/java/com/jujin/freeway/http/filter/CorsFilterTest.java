@@ -4,7 +4,7 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
-import com.jujin.freeway.http.StubHttpContext;
+import com.jujin.freeway.http.TestExchange;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -12,11 +12,11 @@ class CorsFilterTest {
     @Test
     void addsHeadersForPreflight() throws Exception {
         CorsFilter filter = CorsFilter.defaults();
-        StubHttpContext ctx = new StubHttpContext("OPTIONS", "/any")
+        TestExchange ctx = new TestExchange("OPTIONS", "/any")
             .requestHeader("Origin", "https://example.com")
             .requestHeader("Access-Control-Request-Method", "POST");
 
-        filter.doFilter(ctx, e -> e.send(200, "ok"));
+        filter.doFilter(ctx, e -> e.sendText(200, "ok"));
 
         assertEquals(204, ctx.status());
         assertEquals("*", ctx.responseHeader("Access-Control-Allow-Origin"));
@@ -30,9 +30,9 @@ class CorsFilterTest {
         CorsFilter filter = CorsFilter.defaults()
             .withAllowedOrigins(List.of("https://example.com"))
             .withAllowCredentials(true);
-        StubHttpContext ctx = new StubHttpContext("GET", "/api");
+        TestExchange ctx = new TestExchange("GET", "/api");
 
-        filter.doFilter(ctx, e -> e.send(200, "ok"));
+        filter.doFilter(ctx, e -> e.sendText(200, "ok"));
 
         assertEquals(200, ctx.status());
         assertEquals(null, ctx.responseHeader("Access-Control-Allow-Origin"));
@@ -44,10 +44,10 @@ class CorsFilterTest {
     void mergesOriginIntoExistingVaryHeader() throws Exception {
         CorsFilter filter = new CorsFilter(true, List.of("https://example.com"),
             List.of("GET"), List.of(), List.of(), null, false);
-        StubHttpContext ctx = new StubHttpContext("GET", "/api")
+        TestExchange ctx = new TestExchange("GET", "/api")
             .requestHeader("Origin", "https://example.com");
         ctx.setHeader("Vary", "Accept");
-        filter.doFilter(ctx, e -> e.send(200, "ok"));
+        filter.doFilter(ctx, e -> e.sendText(200, "ok"));
         assertEquals("Accept, Origin", ctx.responseHeader("Vary"));
     }
 }

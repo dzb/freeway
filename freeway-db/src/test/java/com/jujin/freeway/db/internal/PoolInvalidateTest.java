@@ -1,7 +1,7 @@
 package com.jujin.freeway.db.internal;
 
 import com.jujin.freeway.db.Database;
-import com.jujin.freeway.db.DatabaseStats;
+import com.jujin.freeway.db.PoolStats;
 import com.jujin.freeway.db.Pool;
 import com.jujin.freeway.db.PoolConfig;
 import com.jujin.freeway.db.PooledConnection;
@@ -352,7 +352,7 @@ class PoolInvalidateTest {
 
                 failRestore.set(true);
                 db.batch("insert into t values (?)")
-                    .rows(new Object[] { 1 }, new Object[] { 2 })
+                    .rowsRaw(new Object[] { 1 }, new Object[] { 2 })
                     .execute();
 
                 assertEquals(
@@ -561,7 +561,7 @@ class PoolInvalidateTest {
         }
 
         @Override
-        public DatabaseStats stats() {
+        public PoolStats stats() {
             return delegate.stats();
         }
 

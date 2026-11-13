@@ -17,7 +17,7 @@ import org.junit.jupiter.api.Test;
 class LoadBalancerDefaultTest {
 
     private static ServiceInstance instance(String id, Map<String, String> meta) {
-        return ServiceInstance.of("svc", id, Endpoint.of("http", "127.0.0.1", 8080), meta);
+        return ServiceInstance.of("svc", id, ServiceEndpoint.of("http", "127.0.0.1", 8080), meta);
     }
 
     @Test

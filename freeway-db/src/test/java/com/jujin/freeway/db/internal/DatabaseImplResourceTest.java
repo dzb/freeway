@@ -60,7 +60,7 @@ class DatabaseImplResourceTest {
 
     private static DatabaseImpl createDb(Duration queryTimeout) {
         String dbName = "freeway_timeout_" + UUID.randomUUID().toString().replace('-', '_');
-        return new DatabaseImpl(
+        return DatabaseImpl.assemble(
             new PoolConfig(
                 "jdbc:h2:mem:" + dbName + ";DB_CLOSE_DELAY=-1", "sa", "",
                 1, 0,
@@ -72,15 +72,19 @@ class DatabaseImplResourceTest {
                 Duration.ofSeconds(5),
                 queryTimeout
             ),
-            new RowMapperResolver(new CoercerDefault(), Map.of(), Map.of())
+            new RowMapperResolver(new CoercerDefault(), Map.of(), Map.of()),
+            null,
+            null
         );
     }
 
     private static DatabaseImpl createDb() {
         String dbName = "freeway_isolation_" + UUID.randomUUID().toString().replace('-', '_');
-        return new DatabaseImpl(
+        return DatabaseImpl.assemble(
             PoolConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""),
-            new RowMapperResolver(new CoercerDefault(), Map.of(), Map.of())
+            new RowMapperResolver(new CoercerDefault(), Map.of(), Map.of()),
+            null,
+            null
         );
     }
 }

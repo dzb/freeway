@@ -6,6 +6,7 @@ import com.jujin.freeway.db.NamedDatabase;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -57,8 +58,8 @@ public final class DatabaseRegistryImpl implements DatabaseRegistry {
     }
 
     @Override
-    public Database get(String name) {
-        return databases.get(name);
+    public Optional<Database> find(String name) {
+        return Optional.ofNullable(databases.get(name));
     }
 
     @Override
@@ -71,7 +72,7 @@ public final class DatabaseRegistryImpl implements DatabaseRegistry {
     }
 
     @Override
-    public Map<String, Database> all() {
+    public Map<String, Database> databases() {
         return databases;
     }
 }

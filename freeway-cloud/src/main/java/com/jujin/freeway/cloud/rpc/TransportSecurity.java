@@ -4,7 +4,7 @@ import javax.net.ssl.SSLContext;
 
 /**
  * Outbound transport security, honored by <b>every</b> outbound path: the RPC
- * client ({@link CloudHttpClientDefault}) and the event mesh's dialer
+ * client ({@link RpcHttpClientDefault}) and the event mesh's dialer
  * ({@code PeerConnector}) both take their SSL context from here, so a
  * {@code wss://} peer and an {@code https://} service see the same client
  * identity and the same trust anchors.

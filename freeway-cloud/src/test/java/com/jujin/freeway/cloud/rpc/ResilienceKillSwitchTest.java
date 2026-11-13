@@ -9,7 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
-import com.jujin.freeway.cloud.discovery.Endpoint;
+import com.jujin.freeway.cloud.discovery.ServiceEndpoint;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.cloud.discovery.ServiceRegistry;
 import com.jujin.freeway.http.HttpModule;
@@ -38,7 +38,7 @@ class ResilienceKillSwitchTest {
         System.clearProperty(ConfigKeys.RPC_RETRY_BACKOFF_BASE);
         System.clearProperty(ConfigKeys.RPC_RATE_LIMIT_ENABLED);
         System.clearProperty(ConfigKeys.RPC_RATE_LIMIT_PER_SECOND);
-        CloudHttpClientTest.CountingFailModule.reset();
+        RpcHttpClientTest.CountingFailModule.reset();
     }
 
     @Test
@@ -47,12 +47,12 @@ class ResilienceKillSwitchTest {
         // A generous retry budget that the kill switch must ignore.
         System.setProperty(ConfigKeys.RPC_RETRY_MAX_ATTEMPTS, "5");
         System.setProperty(ConfigKeys.RPC_RETRY_BACKOFF_BASE, "10");
-        try (AppRuntime app = FreewayApp.create(new CloudHttpClientTest.CountingFailModule(), new HttpModule()).add(CloudModule.class).start()) {
+        try (AppRuntime app = FreewayApp.create(new RpcHttpClientTest.CountingFailModule(), new HttpModule()).add(CloudModule.class).start()) {
             WebServerHolder.register(app, "failing");
 
-            CloudException ex = assertThrows(CloudException.class, () ->
-                app.get(CloudHttpClient.class).call("failing", CloudRequest.get("/api/fail")));
-            assertEquals(1, CloudHttpClientTest.CountingFailModule.gets.get(),
+            RpcException ex = assertThrows(RpcException.class, () ->
+                app.get(RpcHttpClient.class).call("failing", RpcRequest.get("/api/fail")));
+            assertEquals(1, RpcHttpClientTest.CountingFailModule.gets.get(),
                 "off must override rpc.retry.max-attempts — ambiguous outcomes are not replayed");
         }
     }
@@ -64,13 +64,13 @@ class ResilienceKillSwitchTest {
         // counting successes/failures) — under the kill switch neither fires.
         System.setProperty(ConfigKeys.RPC_RATE_LIMIT_ENABLED, "true");
         System.setProperty(ConfigKeys.RPC_RATE_LIMIT_PER_SECOND, "1");
-        try (AppRuntime app = FreewayApp.create(new CloudHttpClientTest.EchoModule(), new HttpModule()).add(CloudModule.class).start()) {
+        try (AppRuntime app = FreewayApp.create(new RpcHttpClientTest.EchoModule(), new HttpModule()).add(CloudModule.class).start()) {
             WebServerHolder.register(app, "echo");
-            CloudHttpClient client = app.get(CloudHttpClient.class);
+            RpcHttpClient client = app.get(RpcHttpClient.class);
 
             for (int i = 1; i <= 6; i++) {
                 assertEquals(200,
-                    client.call("echo", CloudRequest.get("/api/echo")).status(),
+                    client.call("echo", RpcRequest.get("/api/echo")).status(),
                     "call " + i + ": neither limiter nor breaker may reject under 'off'");
             }
         }
@@ -82,7 +82,7 @@ class ResilienceKillSwitchTest {
         // The startup hook validates the mode before anything can use it —
         // run() itself must fail, naming the key and the offending value.
         IllegalStateException failure = assertThrows(IllegalStateException.class, () ->
-            FreewayApp.create(new CloudHttpClientTest.EchoModule(), new HttpModule()).add(CloudModule.class).start());
+            FreewayApp.create(new RpcHttpClientTest.EchoModule(), new HttpModule()).add(CloudModule.class).start());
         assertTrue(rootMessage(failure).contains("rpc.resilience"),
             "the failure must name the key: " + rootMessage(failure));
         assertTrue(rootMessage(failure).contains("yolo"),
@@ -104,7 +104,7 @@ class ResilienceKillSwitchTest {
             var server = app.get(com.jujin.freeway.http.HttpServer.class);
             app.get(ServiceRegistry.class).register(
                 ServiceInstance.of(serviceId, "i1",
-                    Endpoint.of("http", server.host(), server.port()), java.util.Map.of()));
+                    ServiceEndpoint.of("http", server.host(), server.port()), java.util.Map.of()));
         }
     }
 }

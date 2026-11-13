@@ -7,7 +7,7 @@
  * exchanges, so one helper serves both. {@code WebSocketIndex} is the
  * compiled lookup {@code HttpPipeline} builds, {@code HttpModule} binds
  * and {@code HttpServer} consults; {@code WebSocketMatch} is what the
- * seam's {@code websocket()} handshake returns. Frame wiring lives behind
+ * seam's {@code matchWebSocket()} handshake returns. Frame wiring lives behind
  * the seam in {@code engine.ws}.
  */
 package com.jujin.freeway.http.websocket;

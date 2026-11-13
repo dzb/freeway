@@ -1,5 +1,6 @@
 package com.jujin.freeway.cloud.rpc;
 
+import com.jujin.freeway.commons.util.Proxies;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.time.Duration;
@@ -15,8 +16,8 @@ import java.util.Objects;
  * <pre>{@code
  * binder.bind(UserApi.class).to(container -> RemoteProxyFactory
  *     .of(container.get(RemoteCaller.class))
- *     .serviceId("user-service")   // discovery id of the serving instance
- *     .mapping("user")             // call topic prefix the provider exported
+ *     .withServiceId("user-service")   // discovery id of the serving instance
+ *     .withMapping("user")             // call topic prefix the provider exported
  *     .build(UserApi.class));
  * }</pre>
  *
@@ -29,7 +30,7 @@ import java.util.Objects;
  *
  * <p>Object methods ({@code toString}/{@code hashCode}/{@code equals}) are
  * answered locally and never dispatched. Remote failures surface unchanged:
- * {@link CloudException} for transport failures, with
+ * {@link RpcException} for transport failures, with
  * {@link RemoteInvocationException} as its cause when the remote handler threw
  * a business failure. {@link #timeout(Duration)} bounds a call end to end,
  * retries included; without it the transport's configured request timeout
@@ -57,13 +58,13 @@ public final class RemoteProxyFactory {
     }
 
     /** Discovery id of the serving service. */
-    public RemoteProxyFactory serviceId(String serviceId) {
+    public RemoteProxyFactory withServiceId(String serviceId) {
         this.serviceId = Objects.requireNonNull(serviceId, "serviceId");
         return this;
     }
 
     /** Call-topic prefix the provider exported (e.g. {@code "user"}). */
-    public RemoteProxyFactory mapping(String mapping) {
+    public RemoteProxyFactory withMapping(String mapping) {
         this.mapping = Objects.requireNonNull(mapping, "mapping");
         return this;
     }
@@ -74,7 +75,7 @@ public final class RemoteProxyFactory {
      * timeout — it can occupy a thread for request-timeout × attempts plus
      * backoff.
      */
-    public RemoteProxyFactory timeout(Duration timeout) {
+    public RemoteProxyFactory withTimeout(Duration timeout) {
         this.timeout = timeout;
         return this;
     }
@@ -99,7 +100,9 @@ public final class RemoteProxyFactory {
 
     private Object dispatch(Object proxy, Method method, Object[] args) throws Throwable {
         if (method.getDeclaringClass() == Object.class) {
-            return objectMethod(proxy, method, args);
+            return Proxies.objectMethod(proxy, method, args,
+                () -> getClass().getSimpleName()
+                    + "{serviceId=" + serviceId + ", mapping=" + mapping + "}");
         }
         return remoteDispatch(method, args);
     }
@@ -111,21 +114,10 @@ public final class RemoteProxyFactory {
         // no wire change.
         boolean idempotent = method.isAnnotationPresent(Idempotent.class)
             || method.getDeclaringClass().isAnnotationPresent(Idempotent.class);
-        // Failures keep their type: transport failures arrive as CloudException,
+        // Failures keep their type: transport failures arrive as RpcException,
         // business failures as RemoteInvocationException.
         return remote.invoke(serviceId, mapping, method.getName(), asList(args),
             method.getReturnType(), timeout, idempotent);
-    }
-
-    private Object objectMethod(Object proxy, Method method, Object[] args) {
-        return switch (method.getName()) {
-            case "toString" -> getClass().getSimpleName()
-                + "{serviceId=" + serviceId + ", mapping=" + mapping + "}";
-            case "hashCode" -> System.identityHashCode(proxy);
-            case "equals" -> args != null && args.length > 0 && proxy == args[0];
-            default -> throw new IllegalStateException(
-                "Unsupported Object method: " + method.getName());
-        };
     }
 
     private static List<Object> asList(Object[] args) {

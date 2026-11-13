@@ -18,6 +18,7 @@ import javax.net.ssl.SSLSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.jujin.freeway.http.HttpExchangeSupport;
 import com.jujin.freeway.http.engine.http2.Http2Connection;
 import com.jujin.freeway.http.engine.http2.Http2ResponseWriter;
 import com.jujin.freeway.http.engine.http2.Http2Stream;
@@ -183,15 +184,15 @@ final class Http2Session {
             if (authority != null) headers.put("Host", List.of(authority));
 
             String correlationId = HttpSession.headerValue(reqHeaders, "x-request-id");
-            var context = new HttpContextImpl(ctx.jsonCodec(), ctx.coercer(),
-                correlationId, ctx.config().maxBodySize());
-            context.setCompression(ctx.config().compression());
-            context.setSecure(sslSession != null);
-            context.setSslSession(sslSession);
-            context.setRemoteAddress(HttpSession.remoteAddress(socket));
-            context.reset(method, path, rawQuery, headers, in, -1, false,
-                out, correlationId, false);
-            context.setWriter(new Http2ResponseWriter(stream));
+            var transport = new HttpTransportImpl(method, path, rawQuery,
+                headers, in, -1, false, out, false,
+                sslSession != null, sslSession,
+                HttpSession.remoteAddress(socket));
+            transport.setWriter(new Http2ResponseWriter(stream));
+            transport.setCommitProbe(stream::isCommitted);
+            var context = new HttpExchangeSupport(transport, ctx.jsonCodec(),
+                ctx.coercer(), ctx.config().maxBodySize(),
+                ctx.config().compression(), correlationId);
             // Echo for tracing only — a hostile value (e.g. CR/LF inside an
             // HPACK-encoded header) must never poison the response head; the
             // stream-level catch below would otherwise reset it.

@@ -1,0 +1,8 @@
+/**
+ * Context propagation and inbound propagation-filter implementations for the cloud invocation context.
+ *
+ * <p><strong>No stability promise</strong> across releases; public only where
+ * the feature module in the parent package must assemble or substitute the
+ * implementation.</p>
+ */
+package com.jujin.freeway.cloud.context.internal;

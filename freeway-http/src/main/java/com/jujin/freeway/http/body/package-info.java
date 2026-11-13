@@ -5,7 +5,7 @@
  * parses multipart submissions, and the exceptions here
  * ({@code BodyTooLargeException}, {@code MultipartException},
  * {@code UnsupportedMediaTypeException}) are the failures an application's
- * {@code ErrorHandler} maps. The streams that read raw bytes live behind
+ * {@code ErrorMapper} maps. The streams that read raw bytes live behind
  * the seam in {@code engine}.
  */
 package com.jujin.freeway.http.body;

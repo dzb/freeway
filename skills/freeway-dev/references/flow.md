@@ -4,7 +4,7 @@
 
 - `Graph` — immutable runtime model
 - `GraphSpec` — canonical DAG authoring surface (explicit entry, separated nodes+links); `create()` is the boot-time validation gate
-- `FlowEngine` — `load()`, `unload()`, `graphs()`, `graph()`, `eval(graphId | graph [, context])`, `evalAndGet()`; create via `FlowEngine.create()` (standalone) or resolve from the container after `FlowModule`
+- `FlowEngine` — `load()`, `unload()`, `graphs()`, `find()`/`require()`, `run(graphId | graph [, context])`, `runAndGet()`; create via `FlowEngine.create()` (standalone) or resolve from the container after `FlowModule`
 - `FlowDriver` — contributed extension point; graph `"driver"` field selects by id (null/"" → `"default"`)
 - `FlowDriverDefault` — built-in driver assembled by `FlowModule`; resolves `@name` against the container
 - `FlowInterceptor` — contributed chain (`Extension<FlowInterceptor>`): `interceptFlow(context, graph, chain)` + `onNodeStart`/`onNodeEnd`; the chain is fixed at load, immutable while running
@@ -27,7 +27,7 @@ Markers (`!marker`) and meta tasks (`$metaKey`) were dropped with v3: contribute
 // Custom driver registration
 binder.contribute(FlowDriver.class)
     .add("custom", new MyCustomDriver())
-    .add(MyOtherDriver.class);   // container.create() auto-instantiation
+    .addDeferred(MyOtherDriver.class);   // container.create() auto-instantiation
 
 // Graph with custom driver
 // { "driver": "custom", ... }
@@ -39,10 +39,10 @@ binder.contribute(TaskHandler.class).add("orderHandler", (ctx, node) -> ...);
 
 GraphSpec bp = GraphSpec.create("flow", spec -> {
     spec.entry("start");
-    spec.addStart("start").linkAdd("task");
+    spec.addStart("start").linkTo("task");
     spec.addActivity("task").task("@orderHandler")
         .data(Map.of("channel", "email"))            // static values on the node
-        .linkAdd("end");
+        .linkTo("end");
     spec.addEnd("end");
 });
 Graph graph = bp.create(); // boot gate: links, cycles, entry, vocabulary, when-expressions, join, data keys
@@ -53,7 +53,7 @@ Graph graph = Graph.fromText(json);
 // Execution
 FlowEngine engine = container.get(FlowEngine.class);
 engine.load(graph);
-engine.eval("flow", FlowContext.of());
+engine.run("flow", FlowContext.of());
 ```
 
 ## Important Behavior

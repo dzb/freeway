@@ -31,7 +31,7 @@ class ContributionWiringTest {
             binder.contribute(CoerceRule.class).add(new CoerceRule<>(
                 String.class, Endpoint.class,
                 v -> { String[] p = v.split(":", 2); return new Endpoint(p[0], Integer.parseInt(p[1])); }));
-            binder.contribute(ContributorMarker.class).add(EndpointContributor.class);
+            binder.contribute(ContributorMarker.class).addDeferred(EndpointContributor.class);
         });
 
         var marker = container.extension(ContributorMarker.class).all().stream()
@@ -47,8 +47,8 @@ class ContributionWiringTest {
     void classContributionAutoIdsIncludePackageName() {
         Container container = Freeway.create(binder -> {
             // CoreBean auto-id = core_bean@<package>
-            binder.contribute(Labeled.class).add(CoreBean.class);
-            binder.contribute(Labeled.class).add(WebBean.class).after(
+            binder.contribute(Labeled.class).addDeferred(CoreBean.class);
+            binder.contribute(Labeled.class).addDeferred(WebBean.class).after(
                     "core_bean@" + CoreBean.class.getPackageName());
         });
         List<String> labels = container.extension(Labeled.class).all()
@@ -66,7 +66,7 @@ class ContributionWiringTest {
                 String.class, Endpoint.class,
                 v -> { String[] p = v.split(":", 2); return new Endpoint(p[0], Integer.parseInt(p[1])); })),
             // module B: contributes a class that depends on that coercion
-            binder -> binder.contribute(ContributorMarker.class).add(EndpointContributor.class)
+            binder -> binder.contribute(ContributorMarker.class).addDeferred(EndpointContributor.class)
         );
 
         var marker = container.extension(ContributorMarker.class).all().stream()
@@ -81,21 +81,21 @@ class ContributionWiringTest {
     @Test
     void sameModuleClassContributedSymbolProviderIsWired() {
         Container container = Freeway.create(binder -> {
-            binder.contribute(SymbolProvider.class).add(SpecialSymbolProvider.class);
-            binder.contribute(SpecialConsumer.class).add(SpecialConsumerImpl.class);
+            binder.contribute(SymbolProvider.class).addDeferred(SpecialSymbolProvider.class);
+            binder.contribute(SpecialConsumer.class).addDeferred(SpecialConsumerImpl.class);
         });
 
         Object consumer = container.extension(SpecialConsumer.class).all().get(0);
         assertEquals("special-value", ((SpecialConsumer) consumer).value(),
-            "add(Class) SymbolProvider in the same module must be wired before the consumer is created");
+            "addDeferred(Class) SymbolProvider in the same module must be wired before the consumer is created");
         container.close();
     }
 
     @Test
     void classContributedSymbolProviderFromEarlierModuleIsWired() {
         Container container = Freeway.create(
-            binder -> binder.contribute(SymbolProvider.class).add(SpecialSymbolProvider.class),
-            binder -> binder.contribute(SpecialConsumer.class).add(SpecialConsumerImpl.class)
+            binder -> binder.contribute(SymbolProvider.class).addDeferred(SpecialSymbolProvider.class),
+            binder -> binder.contribute(SpecialConsumer.class).addDeferred(SpecialConsumerImpl.class)
         );
 
         Object consumer = container.extension(SpecialConsumer.class).all().get(0);
@@ -109,8 +109,8 @@ class ContributionWiringTest {
         // SymbolProvider declared after its consumer in the same module failed
         // construction with "Unknown symbol". Providers must flush first.
         Container container = Freeway.create(binder -> {
-            binder.contribute(SpecialConsumer.class).add(SpecialConsumerImpl.class);
-            binder.contribute(SymbolProvider.class).add(SpecialSymbolProvider.class);
+            binder.contribute(SpecialConsumer.class).addDeferred(SpecialConsumerImpl.class);
+            binder.contribute(SymbolProvider.class).addDeferred(SpecialSymbolProvider.class);
         });
 
         Object consumer = container.extension(SpecialConsumer.class).all().get(0);
@@ -125,8 +125,8 @@ class ContributionWiringTest {
         // deferred consumers resolve against that one instance, no facade.
         SpecialSymbolProvider.instances.set(0);
         Container container = Freeway.create(binder -> {
-            binder.contribute(SymbolProvider.class).add(SpecialSymbolProvider.class);
-            binder.contribute(SpecialConsumer.class).add(SpecialConsumerImpl.class);
+            binder.contribute(SymbolProvider.class).addDeferred(SpecialSymbolProvider.class);
+            binder.contribute(SpecialConsumer.class).addDeferred(SpecialConsumerImpl.class);
         });
 
         Object consumer = container.extension(SpecialConsumer.class).all().get(0);
@@ -149,9 +149,9 @@ class ContributionWiringTest {
     void classContributionCreatesAndOrders() {
         Container container = Freeway.create(
             binder -> binder.contribute(Labeled.class)
-                .add(WebBean.class).after("core_bean@" + CoreBean.class.getPackageName()),
+                .addDeferred(WebBean.class).after("core_bean@" + CoreBean.class.getPackageName()),
             binder -> binder.contribute(Labeled.class)
-                .add(CoreBean.class)
+                .addDeferred(CoreBean.class)
         );
 
         List<String> labels = container.extension(Labeled.class).all()
@@ -164,30 +164,34 @@ class ContributionWiringTest {
         // Regression: before()/after() applied after the sorted cache was
         // built were silently dropped — the stale order was served forever.
         // The window for both the read and the constraint is composition:
-        // the deferred factory below warms the cache during the drain, then
-        // declares the constraint on the earlier entry — both after that
-        // entry landed. The re-read happens *inside* the factory: the
-        // factory's own add() right after return would invalidate the cache
-        // anyway and mask a constraint that failed to. (Post-composition
-        // the window is sealed; see
+        // the deferred factory below warms the Labeled cache during the
+        // construction phase, then declares the constraint on an entry that
+        // already landed. Labeled itself has no deferred entries (all three
+        // are values), so this read is complete and allowed; the factory's
+        // own entry is a Runnable and is not read here. The re-read happens
+        // *inside* the factory: the factory's own add() right after return
+        // would invalidate the cache anyway and mask a constraint that failed
+        // to. (Post-composition the window is sealed; see
         // ExtensionAggregationTest.containerSealsExtensionsAfterComposition.)
         postReadHandle.set(null);
         Container container = Freeway.create(
             binder -> binder.contribute(Labeled.class).add("first", new CoreBean()),
             binder -> postReadHandle.set(
                 binder.contribute(Labeled.class).add("second", new WebBean())),
-            binder -> binder.contribute(Labeled.class).add("warmer", c -> {
+            binder -> binder.contribute(Labeled.class)
+                .add("warmer", (Labeled) () -> "warmer"),
+            binder -> binder.contribute(Runnable.class).addDeferred("probe", c -> {
                 // Warm the sorted cache (insertion order, no constraints yet)…
                 c.extension(Labeled.class).all();
                 // …then constrain an entry that is already in the store…
                 postReadHandle.get().before("first");
-                // …and re-read before this factory's own entry lands: only
-                // before()'s invalidation can explain the new order here.
-                assertEquals(List.of("web", "core"),
+                // …and re-read: only before()'s invalidation can explain the
+                // new order here.
+                assertEquals(List.of("web", "core", "warmer"),
                     c.extension(Labeled.class).all().stream()
                         .map(Labeled::label).toList(),
                     "before() after the first all() must invalidate the cached order");
-                return (Labeled) () -> "warmer";
+                return () -> { };
             })
         );
 
@@ -208,10 +212,10 @@ class ContributionWiringTest {
         IllegalStateException ex = assertThrows(IllegalStateException.class,
             () -> Freeway.create(
                 binder -> postReadHandle.set(
-                    binder.contribute(Labeled.class).add("first", c -> {
+                    binder.contribute(Labeled.class).addDeferred("first", c -> {
                         return (Labeled) () -> "core";
                     })),
-                binder -> binder.contribute(Labeled.class).add("second", c -> {
+                binder -> binder.contribute(Labeled.class).addDeferred("second", c -> {
                     // Deferred runnables drain in declaration order, so
                     // "first" has already landed and applied its handle.
                     postReadHandle.get().before("first");
@@ -231,7 +235,7 @@ class ContributionWiringTest {
         // only after every module has bound, so declaration order must not
         // matter — the contributed class resolves across modules.
         Container container = Freeway.create(
-            binder -> binder.contribute(LaterDepConsumer.class).add(LaterDepConsumerImpl.class),
+            binder -> binder.contribute(LaterDepConsumer.class).addDeferred(LaterDepConsumerImpl.class),
             binder -> binder.bind(LaterDep.class).to(LaterDepImpl.class)
         );
         var consumers = container.extension(LaterDepConsumer.class).all();
@@ -250,7 +254,7 @@ class ContributionWiringTest {
         // declaration order.
         Container container = Freeway.create(
             outer -> outer.bind(NestedDep.class).to(NestedDepImpl.class),
-            inner -> inner.contribute(NestedDepConsumer.class).add(NestedDepConsumerImpl.class));
+            inner -> inner.contribute(NestedDepConsumer.class).addDeferred(NestedDepConsumerImpl.class));
         var consumers = container.extension(NestedDepConsumer.class).all();
         assertEquals(1, consumers.size());
         assertTrue(consumers.getFirst() instanceof NestedDepConsumerImpl);
@@ -260,13 +264,13 @@ class ContributionWiringTest {
 
     @Test
     void factoryContributionGetsTheContainerAndSeesLaterModuleBindings() {
-        // The factory form is the container-aware sibling of add(Class): it
+        // The factory form is the container-aware sibling of addDeferred(Class): it
         // must run in the same deferred phase — after every module has bound —
         // so a service declared by a later module resolves inside the factory,
         // and the container handed in is the container itself.
         Container[] seen = new Container[1];
         Container container = Freeway.create(
-            binder -> binder.contribute(Labeled.class).add("made", c -> {
+            binder -> binder.contribute(Labeled.class).addDeferred("made", c -> {
                 seen[0] = c;
                 return () -> c.get(LaterDep.class) == null ? "missing" : "resolved";
             }),
@@ -287,7 +291,7 @@ class ContributionWiringTest {
             binder.contribute(Labeled.class).add("first", new CoreBean());
             binder.contribute(Labeled.class).add("last", new WebBean());
             binder.contribute(Labeled.class)
-                .add("middle", c -> (Labeled) () -> "middle")
+                .addDeferred("middle", c -> (Labeled) () -> "middle")
                 .before("last");
         });
         assertEquals(List.of("core", "middle", "web"),
@@ -306,7 +310,7 @@ class ContributionWiringTest {
             () -> Freeway.create(binder -> {
                 binder.contribute(Labeled.class).add("taken", new CoreBean());
                 binder.contribute(Labeled.class)
-                    .add("taken", c -> (Labeled) () -> "other");
+                    .addDeferred("taken", c -> (Labeled) () -> "other");
             })
         );
         assertTrue(ex.getMessage().contains("taken"));

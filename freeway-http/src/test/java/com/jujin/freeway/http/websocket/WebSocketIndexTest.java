@@ -24,7 +24,7 @@ class WebSocketIndexTest {
         WebSocketEndpoint literal = session -> WebSocketListener.NOOP;
         var index = new WebSocketIndex(List.of(
             WebSocketRoute.of("/ws/{id}", parameter),
-            WebSocketRoute.of("/ws/admin", literal)), List.of());
+            WebSocketRoute.of("/ws/admin", literal)));
         assertSame(literal, index.match("GET", "/ws/admin").endpoint());
     }
 
@@ -32,10 +32,14 @@ class WebSocketIndexTest {
     void rejectsAGroupRouteCollidingWithAnExplicitRoute() {
         // WebSocket routes follow the HTTP rule: a repeated method+path fails
         // instead of one declaration silently overriding the other.
-        assertThrows(IllegalStateException.class, () -> new WebSocketIndex(
-            List.of(WebSocketRoute.of("/ws/chat", session -> WebSocketListener.NOOP)),
-            List.of(WebSocketGroup.of("/ws",
-                WebSocketRoute.of("/chat", session -> WebSocketListener.NOOP)))));
+        WebSocketRoute direct =
+            WebSocketRoute.of("/ws/chat", session -> WebSocketListener.NOOP);
+        List<WebSocketRoute> expanded = List.of(
+            direct,
+            WebSocketGroup.of("/ws",
+                WebSocketRoute.of("/chat", session -> WebSocketListener.NOOP))
+                .expand().getFirst());
+        assertThrows(IllegalStateException.class, () -> new WebSocketIndex(expanded));
     }
 
     // ──── endpoint class registration ────
@@ -66,8 +70,7 @@ class WebSocketIndexTest {
         // naming the route, the class and the way out — instead of deferring to
         // the first upgrade where it used to be swallowed at TRACE. The HTTP
         // side's RouteIndex asserts the same four things.
-        var ex = assertThrows(IllegalStateException.class, () -> new WebSocketIndex(
-            List.of(WebSocketRoute.of("/cls", GreetedEndpoint.class)), List.of()));
+        var ex = assertThrows(IllegalStateException.class, () -> new WebSocketIndex(List.of(WebSocketRoute.of("/cls", GreetedEndpoint.class))));
         String message = ex.getMessage();
         assertTrue(message.contains("/cls"),
             "must name the offending route: " + message);

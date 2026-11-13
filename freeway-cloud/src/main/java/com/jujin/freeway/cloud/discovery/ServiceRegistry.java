@@ -9,21 +9,21 @@ import java.time.Duration;
  */
 public interface ServiceRegistry {
 
-    /** Registers (or re-registers) an instance, resetting its {@link Health#lastSeen()}. */
+    /** Registers (or re-registers) an instance, resetting its {@link ServiceHealth#lastSeen()}. */
     void register(ServiceInstance instance);
 
     /**
      * Registers an instance with the probe state the caller already knows.
      *
      * <p>This exists so a slow-starting process is registered as
-     * {@link Health#starting()}: "in the registry, not in the discovery result"
+     * {@link ServiceHealth#starting()}: "in the registry, not in the discovery result"
      * has to be one write, not a register followed by a mark-not-ready that
      * leaves a window where discovery can see it. The default delegates to
      * {@link #register(ServiceInstance)} for adapters whose backend cannot
      * express readiness at registration time — the same posture
      * {@link #markReady} takes.</p>
      */
-    default void register(ServiceInstance instance, Health health) {
+    default void register(ServiceInstance instance, ServiceHealth health) {
         register(instance);
     }
 
@@ -52,7 +52,7 @@ public interface ServiceRegistry {
      * <p>The default is a no-op for adapters whose backend owns readiness
      * itself (Consul's TTL/health checks answer it), and for any adapter not
      * yet migrated. Backends without that concept — the in-process store and
-     * the registry fleet client (`RegistryFleetModule`) — implement it.</p>
+     * the registry fleet client (`FleetRegistryModule`) — implement it.</p>
      *
      * @param ready {@code false} marks the instance as starting/warming
      */

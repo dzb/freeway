@@ -48,12 +48,12 @@ class PeerConnectorReconnectTest {
         // Declared interest shapes the hello pull-prefixes (no-op handlers —
         // these tests assert connection state, never delivery).
         List<com.jujin.freeway.ioc.ModuleEx> mods =
-            new java.util.ArrayList<>(List.of(new HttpModule(), new CloudEventModule()));
+            new java.util.ArrayList<>(List.of(new HttpModule(), new EventMeshModule()));
         for (String prefix : subscriptions.split(",")) {
             if (!prefix.isBlank()) {
-                mods.add(binder -> binder.contribute(CloudEventSubscription.class)
+                mods.add(binder -> binder.contribute(MeshSubscription.class)
                     .add("test-" + prefix,
-                        CloudEventSubscription.of(prefix, String.class, p -> { })));
+                        MeshSubscription.of(prefix, String.class, p -> { })));
             }
         }
         return FreewayApp.run(mods.toArray(new com.jujin.freeway.ioc.ModuleEx[0]));
@@ -65,7 +65,7 @@ class PeerConnectorReconnectTest {
 
     /**
      * The broadcast plane's failed-send drop does {@code hub.unregister(peer)}
-     * then {@code peer.close()} (CloudEventBus.doPublish) — that exact
+     * then {@code peer.close()} (MeshEventBus.doPublish) — that exact
      * sequence on the outbound leg must end with the connector dialing again,
      * because after the drop nothing serves that origin anymore. (A real
      * outbound send failure surfaces through the sender's completion stage
@@ -85,7 +85,7 @@ class PeerConnectorReconnectTest {
         PeerConnection outbound = hubA.connections().get(0);
         assertTrue(outbound.isOutbound(), "A dialed B, so A's connection must be outbound");
 
-        // CloudEventBus's failed-send branch (unregister + close).
+        // MeshEventBus's failed-send branch (unregister + close).
         hubA.unregister(outbound);
         outbound.close();
 

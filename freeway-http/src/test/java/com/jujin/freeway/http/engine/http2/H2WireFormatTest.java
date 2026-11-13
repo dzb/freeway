@@ -134,7 +134,7 @@ class H2WireFormatTest {
 
         int maxPayload = 0;
         for (int i = 0; i < frames.size(); i++) {
-            BaseFrame frame = FrameSerializer.deserialize(
+            Http2Frame frame = FrameSerializer.deserialize(
                 new ByteArrayInputStream(frames.get(i)));
             boolean last = i == frames.size() - 1;
             if (i == 0) {

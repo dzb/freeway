@@ -97,7 +97,7 @@ public final class JsonArray {
 
     @Override
     public String toString() {
-        return JsonUtils.stringify(this);
+        return JsonUtils.toJson(this);
     }
 
     public List<Object> toList() {

@@ -1,11 +1,11 @@
 package com.jujin.freeway.http.filter;
 
-import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.junit.jupiter.api.Test;
 
-import com.jujin.freeway.http.StubHttpContext;
+import com.jujin.freeway.http.HealthResult;
+import com.jujin.freeway.http.TestExchange;
 import com.jujin.freeway.http.filter.HealthCheck;
 import com.jujin.freeway.http.filter.HealthFilter;
 import com.jujin.freeway.http.route.RouteHandler;
@@ -22,7 +22,7 @@ class HealthFilterTest {
         AtomicBoolean nextCalled = new AtomicBoolean(false);
         RouteHandler next = ctx -> nextCalled.set(true);
 
-        StubHttpContext ctx = new StubHttpContext("GET", "/healthz");
+        TestExchange ctx = new TestExchange("GET", "/healthz");
         filter.doFilter(ctx, next);
 
         assertEquals(200, ctx.status());
@@ -36,7 +36,7 @@ class HealthFilterTest {
         AtomicBoolean nextCalled = new AtomicBoolean(false);
         RouteHandler next = ctx -> nextCalled.set(true);
 
-        StubHttpContext ctx = new StubHttpContext("GET", "/api/users");
+        TestExchange ctx = new TestExchange("GET", "/api/users");
         filter.doFilter(ctx, next);
 
         assertTrue(nextCalled.get());
@@ -48,7 +48,7 @@ class HealthFilterTest {
         AtomicBoolean nextCalled = new AtomicBoolean(false);
         RouteHandler next = ctx -> nextCalled.set(true);
 
-        StubHttpContext ctx = new StubHttpContext("POST", "/healthz");
+        TestExchange ctx = new TestExchange("POST", "/healthz");
         filter.doFilter(ctx, next);
 
         assertTrue(nextCalled.get());
@@ -60,7 +60,7 @@ class HealthFilterTest {
         AtomicBoolean nextCalled = new AtomicBoolean(false);
         RouteHandler next = ctx -> nextCalled.set(true);
 
-        StubHttpContext ctx = new StubHttpContext("GET", "/healthz");
+        TestExchange ctx = new TestExchange("GET", "/healthz");
         filter.doFilter(ctx, next);
 
         assertTrue(nextCalled.get());
@@ -72,7 +72,7 @@ class HealthFilterTest {
         AtomicBoolean nextCalled = new AtomicBoolean(false);
         RouteHandler next = ctx -> nextCalled.set(true);
 
-        StubHttpContext ctx = new StubHttpContext("GET", "/ping");
+        TestExchange ctx = new TestExchange("GET", "/ping");
         filter.doFilter(ctx, next);
 
         assertEquals(200, ctx.status());
@@ -85,30 +85,27 @@ class HealthFilterTest {
         AtomicBoolean nextCalled = new AtomicBoolean(false);
         RouteHandler next = ctx -> nextCalled.set(true);
 
-        StubHttpContext ctx = new StubHttpContext("GET", "/healthz");
+        TestExchange ctx = new TestExchange("GET", "/healthz");
         filter.doFilter(ctx, next);
 
         assertEquals(200, ctx.status());
     }
 
     @Test
-    void usesCustomHealthCheck() throws Exception {
-        HealthCheck custom = () -> Map.of("alive", true, "db", "ok");
+    void customUnhealthyCheckAnswers503() throws Exception {
+        HealthCheck custom = () -> HealthResult.unhealthy("db down");
         HealthFilter filter = new HealthFilter(true, "/healthz", custom);
         RouteHandler next = ctx -> {};
 
-        StubHttpContext ctx = new StubHttpContext("GET", "/healthz");
+        TestExchange ctx = new TestExchange("GET", "/healthz");
         filter.doFilter(ctx, next);
 
-        assertEquals(200, ctx.status());
-        assertTrue(ctx.responseBody().contains("db"));
+        assertEquals(503, ctx.status());
+        assertTrue(ctx.responseBody().contains("db down"));
     }
 
     @Test
-    void defaultHealthCheckReturnsStatusOk() {
-        HealthCheck health = HealthCheck.ALWAYS_OK;
-        @SuppressWarnings("unchecked")
-        Map<String, Object> result = (Map<String, Object>) health.check();
-        assertEquals("ok", result.get("status"));
+    void defaultHealthCheckIsHealthy() {
+        assertTrue(HealthCheck.ALWAYS_OK.check().healthy());
     }
 }

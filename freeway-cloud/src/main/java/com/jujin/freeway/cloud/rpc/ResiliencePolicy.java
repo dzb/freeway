@@ -10,7 +10,7 @@ import java.time.Duration;
 
 /**
  * The retry/breaker/limiter/deadline state machine behind
- * {@link CloudHttpClientDefault} — extracted from the client so the loop is
+ * {@link RpcHttpClientDefault} — extracted from the client so the loop is
  * unit-testable with fakes: the policy only ever talks to the
  * resilience interfaces plus a {@link TransportAttempt} callback, so the
  * semantics below are pinned without a transport, discovery or real HTTP.
@@ -29,7 +29,7 @@ import java.time.Duration;
  * instead of wedging open.
  *
  * <p>Retryable failures pass two gates before the {@link Retryer} is
- * consulted. The <b>category gate</b> is {@code CloudException.retryable()}:
+ * consulted. The <b>category gate</b> is {@code RpcException.retryable()}:
  * transport failures and 5xx are candidates, 4xx, dispatch failures and
  * local rejections (no instance, circuit open, rate limited, thread
  * interrupted) fail immediately. The <b>idempotency gate</b> protects
@@ -38,14 +38,14 @@ import java.time.Duration;
  * retried only when the operation is idempotent. Connect failures never
  * reached the peer and retry regardless. Every failure mode — including
  * unmapped local exceptions from discovery or URL building — surfaces as a
- * {@link CloudException}.
+ * {@link RpcException}.
  *
  * <p>The idempotency gate shapes <b>retries only</b>: an ambiguous failure
  * from a non-idempotent operation still counts against the circuit breaker
  * — it is just as real a service failure.</p>
  *
  * <p>One span per logical call (retries included); metrics count the same
- * unit. Both are wired only when CloudObserveModule is installed.
+ * unit. Both are wired only when ObserveModule is installed.
  */
 final class ResiliencePolicy {
 
@@ -69,10 +69,10 @@ final class ResiliencePolicy {
      * @param breaker       the caller's per-service breaker shard
      * @param rateLimiter   the caller's per-service limiter shard
      * @param idempotent    whether ambiguous outcomes (timeout/mid-flight I/O/5xx)
-     *                      may be replayed — see {@link CloudRequest#idempotent()}
+     *                      may be replayed — see {@link RpcRequest#idempotent()}
      * @param attempt       one transport attempt (discovery, choose, send)
      */
-    CloudResponse run(
+    RpcResponse run(
         String serviceId,
         long deadlineNanos,
         CircuitBreaker breaker,
@@ -88,28 +88,28 @@ final class ResiliencePolicy {
             while (true) {
                 if (deadlineExceeded(callStart, deadlineNanos, 0)) {
                     recordFailure(startNanos);
-                    throw CloudException.timeout(serviceId);
+                    throw RpcException.timeout(serviceId);
                 }
                 // Rate limit first: a local rejection must not consume a half-open
                 // probe — only an actual probe outcome may settle the circuit.
                 if (!rateLimiter.tryAcquire()) {
                     recordFailure(startNanos);
-                    throw CloudException.rateLimited(serviceId);
+                    throw RpcException.rateLimited(serviceId);
                 }
                 if (!breaker.allowRequest()) {
                     recordFailure(startNanos);
-                    throw CloudException.circuitOpen(serviceId);
+                    throw RpcException.circuitOpen(serviceId);
                 }
                 boolean probe = breaker.state() == CircuitBreaker.State.HALF_OPEN;
                 try {
-                    CloudResponse response = attempt.attempt();
+                    RpcResponse response = attempt.attempt();
                     breaker.onSuccess();
                     if (span != null) {
                         span.addTag("http.status", String.valueOf(response.status()));
                     }
                     recordCall(startNanos);
                     return response;
-                } catch (CloudException failure) {
+                } catch (RpcException failure) {
                     if (span != null) {
                         span.addError(failure);
                     }
@@ -136,7 +136,7 @@ final class ResiliencePolicy {
                     // retrying keeps the connection pool and breaker busy.
                     if (deadlineExceeded(callStart, deadlineNanos, backoff)) {
                         recordFailure(startNanos);
-                        throw CloudException.timeout(serviceId);
+                        throw RpcException.timeout(serviceId);
                     }
                     sleepBackoff(backoff);
                     attemptNo++;
@@ -154,7 +154,7 @@ final class ResiliencePolicy {
      *  discovery or the JDK HttpClient directly. */
     @FunctionalInterface
     interface TransportAttempt {
-        CloudResponse attempt() throws CloudException;
+        RpcResponse attempt() throws RpcException;
     }
 
     private static boolean deadlineExceeded(long callStart, long deadlineNanos, long pendingMillis) {
@@ -187,7 +187,7 @@ final class ResiliencePolicy {
             Thread.sleep(millis);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw CloudException.interrupted("backoff", e);
+            throw RpcException.interrupted("backoff", e);
         }
     }
 }

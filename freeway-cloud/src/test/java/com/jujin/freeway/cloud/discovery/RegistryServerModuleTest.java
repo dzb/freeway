@@ -55,7 +55,7 @@ class RegistryServerModuleTest {
     @Test
     void register_then_query_discovers_the_same_store() throws Exception {
         try (AppRuntime app = FreewayApp.create(
-                new HttpModule(), new CloudDiscoveryModule(), new RegistryServerModule()).start()) {
+                new HttpModule(), new DiscoveryModule(), new RegistryServerModule()).start()) {
 
             // register via the wire
             HttpResponse<String> reg = http(app, HttpRequest.newBuilder(
@@ -92,7 +92,7 @@ class RegistryServerModuleTest {
     @Test
     void unknown_instance_is_a_clean_answer_not_a_refresh() throws Exception {
         try (AppRuntime app = FreewayApp.create(
-                new HttpModule(), new CloudDiscoveryModule(), new RegistryServerModule()).start()) {
+                new HttpModule(), new DiscoveryModule(), new RegistryServerModule()).start()) {
             HttpResponse<String> renew = http(app, HttpRequest.newBuilder(
                     uri(app, "/registry/services/svc/instances/ghost/renew"))
                 .POST(HttpRequest.BodyPublishers.ofString("")));
@@ -107,7 +107,7 @@ class RegistryServerModuleTest {
         // failed while warming could not remove its own entry and it lingered
         // until eviction.
         try (AppRuntime app = FreewayApp.create(
-                new HttpModule(), new CloudDiscoveryModule(), new RegistryServerModule()).start()) {
+                new HttpModule(), new DiscoveryModule(), new RegistryServerModule()).start()) {
             http(app, HttpRequest.newBuilder(uri(app, "/registry/services/svc/instances"))
                 .POST(HttpRequest.BodyPublishers.ofString(INSTANCE)));
 
@@ -130,7 +130,7 @@ class RegistryServerModuleTest {
         // as ready and being marked not-ready a moment later — a window in
         // which discovery could route traffic to it.
         try (AppRuntime app = FreewayApp.create(
-                new HttpModule(), new CloudDiscoveryModule(), new RegistryServerModule()).start()) {
+                new HttpModule(), new DiscoveryModule(), new RegistryServerModule()).start()) {
             http(app, HttpRequest.newBuilder(
                     uri(app, "/registry/services/svc/instances?ready=false"))
                 .POST(HttpRequest.BodyPublishers.ofString(INSTANCE)));
@@ -154,7 +154,7 @@ class RegistryServerModuleTest {
     void the_index_describes_the_protocol_before_any_credential() throws Exception {
         System.setProperty(CloudModule.ConfigKeys.REGISTRY_TOKEN, "s3cret");
         try (AppRuntime app = FreewayApp.create(
-                new HttpModule(), new CloudDiscoveryModule(), new RegistryServerModule()).start()) {
+                new HttpModule(), new DiscoveryModule(), new RegistryServerModule()).start()) {
             HttpResponse<String> index = http(app, HttpRequest.newBuilder(
                 uri(app, RegistryServerModule.INDEX)).GET());
             assertTrue(index.statusCode() == 200,
@@ -183,7 +183,7 @@ class RegistryServerModuleTest {
         // Equality made a proto-0 client a 426 — a version answer for a client
         // the node could have served.
         try (AppRuntime app = FreewayApp.create(
-                new HttpModule(), new CloudDiscoveryModule(), new RegistryServerModule()).start()) {
+                new HttpModule(), new DiscoveryModule(), new RegistryServerModule()).start()) {
             HttpResponse<String> older = http(app, HttpRequest.newBuilder(
                     uri(app, "/registry/services/svc/instances"))
                 .header(RegistryServerModule.PROTO_HEADER, "0")
@@ -197,7 +197,7 @@ class RegistryServerModuleTest {
     @Test
     void an_unsupported_protocol_is_refused_with_426_not_404() throws Exception {
         try (AppRuntime app = FreewayApp.create(
-                new HttpModule(), new CloudDiscoveryModule(), new RegistryServerModule()).start()) {
+                new HttpModule(), new DiscoveryModule(), new RegistryServerModule()).start()) {
             HttpResponse<String> newer = http(app, HttpRequest.newBuilder(
                     uri(app, "/registry/services/svc/instances"))
                 .header(RegistryServerModule.PROTO_HEADER, "99")
@@ -214,7 +214,7 @@ class RegistryServerModuleTest {
         System.setProperty(CloudModule.ConfigKeys.REGISTRY_TOKEN, "new-secret");
         System.setProperty(CloudModule.ConfigKeys.REGISTRY_TOKEN_PREVIOUS, "old-secret");
         try (AppRuntime app = FreewayApp.create(
-                new HttpModule(), new CloudDiscoveryModule(), new RegistryServerModule()).start()) {
+                new HttpModule(), new DiscoveryModule(), new RegistryServerModule()).start()) {
             HttpResponse<String> old = http(app, HttpRequest.newBuilder(
                     uri(app, "/registry/services/svc/instances"))
                 .header(RegistryServerModule.TOKEN_HEADER, "old-secret")
@@ -244,7 +244,7 @@ class RegistryServerModuleTest {
     void a_set_token_rejects_writers_without_the_header() throws Exception {
         System.setProperty(CloudModule.ConfigKeys.REGISTRY_TOKEN, "s3cret");
         try (AppRuntime app = FreewayApp.create(
-                new HttpModule(), new CloudDiscoveryModule(), new RegistryServerModule()).start()) {
+                new HttpModule(), new DiscoveryModule(), new RegistryServerModule()).start()) {
             HttpResponse<String> bare = http(app, HttpRequest.newBuilder(
                     uri(app, "/registry/services/svc/instances"))
                 .POST(HttpRequest.BodyPublishers.ofString(INSTANCE)));
@@ -264,7 +264,7 @@ class RegistryServerModuleTest {
     void the_matching_token_passes_and_a_wrong_one_does_not() throws Exception {
         System.setProperty(CloudModule.ConfigKeys.REGISTRY_TOKEN, "s3cret");
         try (AppRuntime app = FreewayApp.create(
-                new HttpModule(), new CloudDiscoveryModule(), new RegistryServerModule()).start()) {
+                new HttpModule(), new DiscoveryModule(), new RegistryServerModule()).start()) {
             HttpResponse<String> wrong = http(app, HttpRequest.newBuilder(
                     uri(app, "/registry/services/svc/instances"))
                 .header(RegistryServerModule.TOKEN_HEADER, "nope")

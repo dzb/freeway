@@ -25,15 +25,15 @@ class ScopedCacheTest {
     @Test
     void getOutsideScopeRunsImmediately() {
         AtomicInteger count = new AtomicInteger();
-        ScopedCache.get("k", count::incrementAndGet);
+        ScopedCache.computeIfAbsent("k", count::incrementAndGet);
         assertEquals(1, count.get());
     }
 
     @Test
     void getOutsideScopeNoCaching() {
         AtomicInteger count = new AtomicInteger();
-        ScopedCache.get("k", count::incrementAndGet);
-        ScopedCache.get("k", count::incrementAndGet);
+        ScopedCache.computeIfAbsent("k", count::incrementAndGet);
+        ScopedCache.computeIfAbsent("k", count::incrementAndGet);
         assertEquals(2, count.get());
     }
 
@@ -53,8 +53,8 @@ class ScopedCacheTest {
     void getInsideScopeCaches() {
         AtomicInteger count = new AtomicInteger();
         ScopedCache.within(() -> {
-            Object first = ScopedCache.get("k", count::incrementAndGet);
-            Object second = ScopedCache.get("k", count::incrementAndGet);
+            Object first = ScopedCache.computeIfAbsent("k", count::incrementAndGet);
+            Object second = ScopedCache.computeIfAbsent("k", count::incrementAndGet);
             assertSame(first, second);
             assertEquals(1, count.get());
             return null;
@@ -65,8 +65,8 @@ class ScopedCacheTest {
     void getInsideScopeDifferentKeys() {
         AtomicInteger count = new AtomicInteger();
         ScopedCache.within(() -> {
-            Object a = ScopedCache.get("a", count::incrementAndGet);
-            Object b = ScopedCache.get("b", count::incrementAndGet);
+            Object a = ScopedCache.computeIfAbsent("a", count::incrementAndGet);
+            Object b = ScopedCache.computeIfAbsent("b", count::incrementAndGet);
             assertNotSame(a, b);
             assertEquals(2, count.get());
             return null;
@@ -77,11 +77,11 @@ class ScopedCacheTest {
     void getInsideScopeCachesNullValues() {
         AtomicInteger count = new AtomicInteger();
         ScopedCache.within(() -> {
-            assertNull(ScopedCache.get("k", () -> {
+            assertNull(ScopedCache.computeIfAbsent("k", () -> {
                 count.incrementAndGet();
                 return null;
             }));
-            assertNull(ScopedCache.get("k", () -> {
+            assertNull(ScopedCache.computeIfAbsent("k", () -> {
                 count.incrementAndGet();
                 return null;
             }));
@@ -139,7 +139,7 @@ class ScopedCacheTest {
 
         assertThrows(RuntimeException.class, () ->
             ScopedCache.within(() -> {
-                ScopedCache.get("k", created::incrementAndGet);
+                ScopedCache.computeIfAbsent("k", created::incrementAndGet);
                 throw new RuntimeException("boom");
             })
         );
@@ -154,18 +154,18 @@ class ScopedCacheTest {
     void nestedScopesAreIndependent() {
         AtomicInteger count = new AtomicInteger();
         ScopedCache.within(() -> {
-            Object outer = ScopedCache.get("k", count::incrementAndGet);
+            Object outer = ScopedCache.computeIfAbsent("k", count::incrementAndGet);
             assertEquals(1, count.get());
 
             ScopedCache.within(() -> {
-                Object inner = ScopedCache.get("k", count::incrementAndGet);
+                Object inner = ScopedCache.computeIfAbsent("k", count::incrementAndGet);
                 assertNotSame(outer, inner);
                 assertEquals(2, count.get());
                 return null;
             });
 
             // Outer cache still intact
-            Object stillOuter = ScopedCache.get("k", () -> { throw new AssertionError(); });
+            Object stillOuter = ScopedCache.computeIfAbsent("k", () -> { throw new AssertionError(); });
             assertSame(outer, stillOuter);
             return null;
         });
@@ -177,11 +177,11 @@ class ScopedCacheTest {
         ScopedCache.onClose(v -> cleaned.incrementAndGet());
 
         ScopedCache.within(() -> {
-            ScopedCache.get("outer", () -> "outer");
+            ScopedCache.computeIfAbsent("outer", () -> "outer");
             assertEquals(0, cleaned.get());
 
             ScopedCache.within(() -> {
-                ScopedCache.get("inner", () -> "inner");
+                ScopedCache.computeIfAbsent("inner", () -> "inner");
                 assertEquals(0, cleaned.get());
                 return null;
             });
@@ -203,7 +203,7 @@ class ScopedCacheTest {
         ScopedCache.onClose(v -> cleaned.incrementAndGet());
 
         ScopedCache.within(scope -> {
-            ScopedCache.get("k", () -> "v");
+            ScopedCache.computeIfAbsent("k", () -> "v");
             scope.closeValues();
             scope.closeValues();
             assertEquals(1, cleaned.get());
@@ -216,7 +216,7 @@ class ScopedCacheTest {
         ScopedCache.within(scope -> {
             scope.closeValues();
             assertThrows(IllegalStateException.class, () ->
-                ScopedCache.get("k", () -> "v")
+                ScopedCache.computeIfAbsent("k", () -> "v")
             );
             return null;
         });
@@ -229,7 +229,7 @@ class ScopedCacheTest {
         ScopedCache.onClose(v -> secondFired.incrementAndGet());
 
         ScopedCache.within(() -> {
-            ScopedCache.get("k", () -> "v");
+            ScopedCache.computeIfAbsent("k", () -> "v");
             return null;
         });
 
@@ -243,7 +243,7 @@ class ScopedCacheTest {
         ScopedCache.onClose(v -> secondFired.incrementAndGet());
 
         ScopedCache.within(() -> {
-            ScopedCache.get("k", () -> "v");
+            ScopedCache.computeIfAbsent("k", () -> "v");
             return null;
         });
 
@@ -258,8 +258,8 @@ class ScopedCacheTest {
         // Same instance under two different keys
         Object shared = "shared";
         ScopedCache.within(() -> {
-            ScopedCache.get("a", () -> shared);
-            ScopedCache.get("b", () -> shared);
+            ScopedCache.computeIfAbsent("a", () -> shared);
+            ScopedCache.computeIfAbsent("b", () -> shared);
             return null;
         });
 
@@ -277,7 +277,7 @@ class ScopedCacheTest {
         ScopedCache.onClose(v -> second.incrementAndGet());
 
         ScopedCache.within(() -> {
-            ScopedCache.get("k", () -> "v");
+            ScopedCache.computeIfAbsent("k", () -> "v");
             return null;
         });
 
@@ -299,7 +299,7 @@ class ScopedCacheTest {
     void nullCacheValueDoesNotBreakOnClose() {
         ScopedCache.onClose(v -> {});
         ScopedCache.within(() -> {
-            ScopedCache.get("nullVal", () -> null);
+            ScopedCache.computeIfAbsent("nullVal", () -> null);
         });
         // should not throw NPE
     }
@@ -311,7 +311,7 @@ class ScopedCacheTest {
         AtomicInteger cleaned = new AtomicInteger();
         Object[] seen = new Object[1];
         ScopedCache.within(() -> {
-            String value = ScopedCache.get("k", () -> "v", v -> {
+            String value = ScopedCache.computeIfAbsent("k", () -> "v", v -> {
                 cleaned.incrementAndGet();
                 seen[0] = v;
             });
@@ -327,7 +327,7 @@ class ScopedCacheTest {
     @Test
     void entryCleanupSkippedOutsideScope() {
         AtomicInteger cleaned = new AtomicInteger();
-        Object value = ScopedCache.get("k", () -> "v", v -> cleaned.incrementAndGet());
+        Object value = ScopedCache.computeIfAbsent("k", () -> "v", v -> cleaned.incrementAndGet());
 
         assertEquals("v", value);
         assertEquals(0, cleaned.get(),
@@ -343,8 +343,8 @@ class ScopedCacheTest {
         AtomicInteger second = new AtomicInteger();
         Object shared = new Object();
         ScopedCache.within(() -> {
-            ScopedCache.get("a", () -> shared, v -> first.incrementAndGet());
-            ScopedCache.get("b", () -> shared, v -> second.incrementAndGet());
+            ScopedCache.computeIfAbsent("a", () -> shared, v -> first.incrementAndGet());
+            ScopedCache.computeIfAbsent("b", () -> shared, v -> second.incrementAndGet());
             return null;
         });
 
@@ -360,13 +360,13 @@ class ScopedCacheTest {
         AtomicInteger cleaned = new AtomicInteger();
         Defer.within(() -> {
             ScopedCache.within(() -> {
-                ScopedCache.get("k", () -> "v", v -> cleaned.incrementAndGet());
-                Defer.defer(() -> seen.set(ScopedCache.get("k", () -> "recreated")));
+                ScopedCache.computeIfAbsent("k", () -> "v", v -> cleaned.incrementAndGet());
+                Defer.defer(() -> seen.set(ScopedCache.computeIfAbsent("k", () -> "recreated")));
             });
             // Access ends with the block; the value still belongs to the action scope.
             assertFalse(ScopedCache.isActive(), "value access must end with the cache block");
             assertEquals("recreated",
-                ScopedCache.get("k", () -> "recreated"),
+                ScopedCache.computeIfAbsent("k", () -> "recreated"),
                 "outside the window get creates uncached instead of reading the action scope");
             assertEquals(0, cleaned.get(), "cleanup must wait for the action scope");
         });
@@ -380,9 +380,9 @@ class ScopedCacheTest {
     void actionScopeInsideCacheKeepsTheOuterValuesOpen() {
         AtomicReference<String> seen = new AtomicReference<>();
         ScopedCache.within(() -> {
-            ScopedCache.get("k", () -> "v");
+            ScopedCache.computeIfAbsent("k", () -> "v");
             Defer.within(() ->
-                Defer.defer(() -> seen.set(ScopedCache.get("k", () -> "recreated"))));
+                Defer.defer(() -> seen.set(ScopedCache.computeIfAbsent("k", () -> "recreated"))));
         });
         assertEquals("v", seen.get(),
             "an action scope may read values owned by an enclosing cache scope");

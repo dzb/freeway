@@ -61,9 +61,10 @@ public final class Orm {
     public <T> Optional<T> findById(Class<T> type, Object... idValues) {
         BeanPlan plan = BeanIntrospector.plan(type);
         String table = dialect.quoteName(SqlTypeMapping.tableName(type));
-        String columns = columnsClause(plan);
-        String where = idWhereClause(plan);
-        return db.query("SELECT " + columns + " FROM " + table + " WHERE " + where, idValues).one(type);
+        Sql query = Sql.select(columnsClause(plan))
+            .from(table)
+            .where(idWhereClause(plan), idValues);
+        return db.query(query).one(type);
     }
 
     public <T> List<T> findAll(Class<T> type) {
@@ -124,24 +125,19 @@ public final class Orm {
         int offset = options.offset();
         BeanPlan plan = BeanIntrospector.plan(type);
         String table = dialect.quoteName(SqlTypeMapping.tableName(type));
-        String columns = columnsClause(plan);
-        StringBuilder sql = new StringBuilder("SELECT ").append(columns).append(" FROM ").append(table);
+        Sql query = Sql.select(columnsClause(plan)).from(table);
         if (!orderBy.isEmpty()) {
-            sql.append(" ORDER BY ").append(orderBy);
+            query = query.orderBy(orderBy);
         }
         if (limit > 0) {
-            sql.append(" LIMIT ").append(limit);
+            query = query.limit(limit);
         }
         if (offset > 0) {
-            if (limit > 0) {
-                sql.append(" OFFSET ").append(offset);
-            } else {
-                // No LIMIT — MySQL/SQLite reject a bare OFFSET, so each
-                // dialect supplies its own "unlimited" form.
-                sql.append(" ").append(dialect.offsetOnlyClause(offset));
-            }
+            // The builder leaves dialect-specific offset-only spelling to the
+            // dialect when no limit is declared.
+            query = query.offset(offset);
         }
-        return db.query(sql.toString()).list(type);
+        return db.query(query).list(type);
     }
 
     // ==================== insert ====================
@@ -153,9 +149,11 @@ public final class Orm {
         requireInsertable(columns, plan.type());
         Object[] values = extractValues(plan, entity, columns.properties);
 
-        ExecuteResult result = db.execute(
-            "INSERT INTO " + table + " (" + String.join(", ", columns.names) + ") VALUES (" + placeholders(columns.names.size()) + ")",
-            values);
+        Sql statement = Sql.insert(table);
+        for (int i = 0; i < columns.names.size(); i++) {
+            statement = statement.value(columns.names.get(i), values[i]);
+        }
+        ExecuteResult result = db.execute(statement);
 
         writeBackGeneratedKey(result, columns, entity, plan);
         return result;
@@ -199,12 +197,23 @@ public final class Orm {
         requireInsertable(columns, plan.type());
         Object[] insertValues = extractValues(plan, entity, columns.properties);
 
+        if (dialect.supportsMergeUpsert()) {
+            String merge = dialect.mergeUpsertStatement(
+                SqlTypeMapping.tableName(plan.type()),
+                columns.rawNames,
+                idCols,
+                placeholders(columns.names.size()));
+            ExecuteResult result = db.execute(merge, insertValues);
+            writeBackGeneratedKey(result, columns, entity, plan);
+            return result;
+        }
+
         // One upsert builder for the whole layer: the conflict clause is declared as
         // the id columns plus the columns to refresh, and the dialect renders the
         // grammar (ON CONFLICT / ON DUPLICATE KEY) when the statement is executed.
         Sql upsert = Sql.insert(table);
         for (int i = 0; i < columns.names.size(); i++) {
-            upsert = upsert.setColumn(columns.names.get(i), insertValues[i]);
+            upsert = upsert.value(columns.names.get(i), insertValues[i]);
         }
         upsert = upsert.onConflict(idCols.toArray(String[]::new))
             .doUpdateSet(columns.rawNames.toArray(String[]::new));
@@ -235,21 +244,12 @@ public final class Orm {
             );
         }
 
-        List<Object> values = new ArrayList<>(setClauses.values());
         Object[] ids = requireIdValues(idProps, entity, plan.type());
-        for (Object id : ids) {
-            values.add(id);
+        Sql statement = Sql.update(table);
+        for (Map.Entry<String, Object> clause : setClauses.entrySet()) {
+            statement = statement.setExpression(clause.getKey() + " = ?", clause.getValue());
         }
-
-        List<String> assignments = new ArrayList<>();
-        for (String col : setClauses.keySet()) {
-            assignments.add(col + " = ?");
-        }
-
-        return db.execute(
-            "UPDATE " + table + " SET " + String.join(", ", assignments)
-                + " WHERE " + idWhereClause(plan),
-            values.toArray());
+        return db.execute(statement.where(idWhereClause(plan), ids));
     }
 
     // ==================== delete ====================
@@ -260,13 +260,13 @@ public final class Orm {
         List<BeanProperty> idProps = idProperties(plan);
 
         Object[] ids = requireIdValues(idProps, entity, plan.type());
-        return db.execute("DELETE FROM " + table + " WHERE " + idWhereClause(plan), ids);
+        return db.execute(Sql.delete(table).where(idWhereClause(plan), ids));
     }
 
     public <T> ExecuteResult deleteById(Class<T> type, Object... idValues) {
         BeanPlan plan = BeanIntrospector.plan(type);
         String table = dialect.quoteName(SqlTypeMapping.tableName(type));
-        return db.execute("DELETE FROM " + table + " WHERE " + idWhereClause(plan), idValues);
+        return db.execute(Sql.delete(table).where(idWhereClause(plan), idValues));
     }
 
     // ==================== helpers ====================

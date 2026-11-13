@@ -21,18 +21,18 @@ FreewayApp.run(
 
 FreewayApp.run(
     new OrderModule(),
-    new CloudRpcModule());                             // 只要远程调用
+    new RpcModule());                             // 只要远程调用
 ```
 
-`CloudEventModule` 刻意**不在** bundle 里：它会打开自己的网络监听并主动拨号，所以由应用
-显式放置、显式进入（`@Inject CloudEventBus`、订阅贡献）。
+`EventMeshModule` 刻意**不在** bundle 里：它会打开自己的网络监听并主动拨号，所以由应用
+显式放置、显式进入（`@Inject MeshEventBus`、订阅贡献）。
 
 应用接触这些模块的方式只有三层：
 
 | 层 | 应用写什么 | 覆盖什么 |
 |------|-----------------------------|--------------|
 | **环境层** | 什么都不写，装模块即得 | 实例自动注册（心跳续约、停机注销）、`GET /health/live`、`/health/ready`、`/metrics`，每个出站调用自带指标/追踪/弹性/上下文传播 |
-| **声明层** | 数据贡献：`binder.bind(Handlers.class)` + `contribute(RpcExport.class)`、`contribute(CloudEventSubscription.class)`（网格）、`contribute(CloudHealthContributor.class)` | 本服务对外提供什么 |
+| **声明层** | 数据贡献：`binder.bind(Handlers.class)` + `contribute(RpcExport.class)`、`contribute(MeshSubscription.class)`（网格）、`contribute(CloudHealthContributor.class)` | 本服务对外提供什么 |
 | **消费层** | `@Inject ServiceDiscovery` / `ObjectStorage` / `SecretStore` / `Metrics` / `Tracer`，及 `binder.bind(Api.class).to(...)` | 本服务从别人那里用什么 |
 
 ## 服务注册与发现
@@ -42,8 +42,8 @@ FreewayApp.run(
 
 | 后端 | 放置 | 基础设施 |
 |---|---|---|
-| 进程内（默认） | `CloudModule`（或 `CloudDiscoveryModule`） | 无——单实例 / 固定拓扑 |
-| **freeway 注册节点** | `CloudModule` + `RegistryFleetModule` | 自部署的注册节点（1~N 个 freeway 应用） |
+| 进程内（默认） | `CloudModule`（或 `DiscoveryModule`） | 无——单实例 / 固定拓扑 |
+| **freeway 注册节点** | `CloudModule` + `FleetRegistryModule` | 自部署的注册节点（1~N 个 freeway 应用） |
 | Consul | `CloudModule` + ext `ConsulModule` | Consul 集群 |
 
 ### 部署注册节点（freeway 原生）
@@ -54,7 +54,7 @@ FreewayApp.run(
 public static void main(String[] args) {
     FreewayApp.run(Launch.of(args),
         new HttpModule(),              // HTTP 面：注册/心跳/发现四条路由
-        new CloudDiscoveryModule(),    // 实例表（RegistryStore）
+        new DiscoveryModule(),    // 实例表（RegistryStore）
         new RegistryServerModule());   // 把实例表发布成 HTTP 面
 }
 ```
@@ -70,7 +70,7 @@ freeway.cloud.registry.token=s3cret      # 出了本机必设：读写都要这�
 FreewayApp.run(Launch.of(args),
     new HttpModule(),
     new CloudModule(),
-    new RegistryFleetModule());    // 把节点舰队绑定为本进程的注册与发现
+    new FleetRegistryModule());    // 把节点舰队绑定为本进程的注册与发现
 ```
 
 ```properties
@@ -108,7 +108,7 @@ freeway.cloud.registry.service-id=order-service
 写入方，最后清空旧值键——密钥按请求解析，配置热重载即生效。
 
 **就绪门（readiness）**：注册发生在应用能服务之前，所以带 `CloudHealthContributor` 的进程会先以
-"未就绪"注册（`Health.starting()`：在注册表里、不在发现结果里），等**所有**贡献者通过后才翻成
+"未就绪"注册（`ServiceHealth.starting()`：在注册表里、不在发现结果里），等**所有**贡献者通过后才翻成
 就绪——慢启动的连接池/迁移不再吃它处理不了的流量。没有贡献者的应用**注册即就绪**（保持旧行为：
 不给不存在信号的应用加等待）。翻转是即时的（`POST …/instances/{id}/ready`），同时也随下一次心跳
 携带，所以老节点只是延迟一拍，不会分叉。
@@ -126,7 +126,7 @@ ext 的 `freeway-cloud-consul`：同一 seam，`renew` 自愈、`drainWindow()`�
 ## 远程调用
 
 跨进程方法调用：提供方声明哪些 mapping 可被外部调用，消费方把类型化客户端绑到该 mapping。
-分发走 `CloudHttpClient`，因此发现、负载均衡、重试、熔断、上下文传播全部生效。
+分发走 `RpcHttpClient`，因此发现、负载均衡、重试、熔断、上下文传播全部生效。
 
 **同一个接口服务两种形态**——业务代码永远 `@Inject UserApi`，实现是本地还是 HTTP 之后，
 只是组合根的决定：
@@ -138,8 +138,8 @@ binder.bind(UserApi.class).to(UserApiImpl.class);
 // 拆分：类型化远程客户端
 binder.bind(UserApi.class).to(container -> RemoteProxyFactory
     .of(container.get(RemoteCaller.class))
-    .serviceId("user-service")      // 提供方的发现 id
-    .mapping("user")                // 提供方导出的 call-topic 前缀
+    .withServiceId("user-service")      // 提供方的发现 id
+    .withMapping("user")                // 提供方导出的 call-topic 前缀
     .build(UserApi.class));
 ```
 
@@ -166,8 +166,8 @@ Greeting g = caller.invoke("user-service", "user", "greet", List.of("bob"), Gree
 
 // 2. 类型化客户端（组合根绑定一次）；这里也能给单次调用设预算
 UserApi api = RemoteProxyFactory.of(caller)
-    .serviceId("user-service").mapping("user")
-    .timeout(Duration.ofSeconds(5))          // 端到端，含重试
+    .withServiceId("user-service").withMapping("user")
+    .withTimeout(Duration.ofSeconds(5))          // 端到端，含重试
     .build(UserApi.class);
 ```
 
@@ -175,12 +175,12 @@ UserApi api = RemoteProxyFactory.of(caller)
 
 | 失败 | 抛出 | 可重放？ |
 |---------|-----------|---------|
-| 连接拒绝 / 连接超时 | `CloudException`，`retryable()==true`、`outcomeUnknown()==false` | 是——请求没离开本进程 |
-| 超时、中途 I/O、5xx | `CloudException`，`retryable()==true`、`outcomeUnknown()==true` | **仅幂等操作**——对端可能已生效 |
-| 远端 handler 抛异常 | `CloudException`（4xx），cause 为 `RemoteInvocationException` | **否**——确定性失败 |
+| 连接拒绝 / 连接超时 | `RpcException`，`retryable()==true`、`outcomeUnknown()==false` | 是——请求没离开本进程 |
+| 超时、中途 I/O、5xx | `RpcException`，`retryable()==true`、`outcomeUnknown()==true` | **仅幂等操作**——对端可能已生效 |
+| 远端 handler 抛异常 | `RpcException`（4xx），cause 为 `RemoteInvocationException` | **否**——确定性失败 |
 
-重试前要过两道门：失败类别 + 幂等性。`CloudHttpClient` 按动词推导幂等（GET/PUT/DELETE 等
-重放，POST/PATCH 不），可用 `CloudRequest.idempotentWith(true)` 覆盖；远程调用走 POST，所以
+重试前要过两道门：失败类别 + 幂等性。`RpcHttpClient` 按动词推导幂等（GET/PUT/DELETE 等
+重放，POST/PATCH 不），可用 `RpcRequest.withIdempotent(true)` 覆盖；远程调用走 POST，所以
 在消费接口的方法或整个接口上标 `@Idempotent` 声明可安全重放。远端异常只按类名 + 消息重建，
 不反射还原原始类型。跨进程调用**不在任何本地事务内**——提交后的副作用放 EventBus（Defer
 缓冲），不放 RPC。
@@ -215,7 +215,7 @@ freeway.cloud.event.token=mesh-secret         # 空 = 无对等认证（有告�
 **发布跨边界——按名字**：路由键是调用点选择的 topic 字符串，Java 类名不上线：
 
 ```java
-@Inject CloudEventBus mesh;
+@Inject MeshEventBus mesh;
 
 mesh.publish("order.created", new OrderCreated("order-42"));
 mesh.publish("metrics.tick", report, "tenant-7");   // 可选 subject（顺序提示）
@@ -226,16 +226,16 @@ mesh.publish("metrics.tick", report, "tenant-7");   // 可选 subject（顺序�
 **接收声明类型——声明即白名单**：
 
 ```java
-binder.contribute(CloudEventSubscription.class)
+binder.contribute(MeshSubscription.class)
       .add("orders",
-          CloudEventSubscription.of("order.", OrderCreated.class, this::handle));
+          MeshSubscription.of("order.", OrderCreated.class, this::handle));
 ```
 
 topic 匹配不上任何订阅的帧**不反序列化即弃**——未声明的类不会被实例化。刻意没有运行时
 subscribe：对端在握手时看不见的兴趣，是无法被兑现的兴趣。
 
 **本地与远程刻意镜像**：两个平面互不喂——远程事实不会自动变成本地事实。需要时在 handler
-里镜像：`CloudEventSubscription.of("order.", OrderCreated.class, event -> bus.publish(event))`。
+里镜像：`MeshSubscription.of("order.", OrderCreated.class, event -> bus.publish(event))`。
 
 **谁收到什么**：只看节点自己声明的订阅前缀，没有第二个过滤器。每节点部署清单：模块放置 +
 （peers 或 `enabled=true`）+ 订阅声明 + `token`——缺任何一项都是静默分区而非错误；
@@ -249,7 +249,7 @@ subscribe：对端在握手时看不见的兴趣，是无法被兑现的兴趣�
 
 **投递语义**：at-most-once、实时。发布时离线的 peer 错过该事件（无重放队列）——需要持久、
 按键有序的投递用 Kafka 平面（`freeway-mq-kafka`）。入站帧可挂拦截器
-（`contribute(CloudEventInterceptor.class)`）；抛异常的 handler 被隔离并计数；网格从设计上
+（`contribute(MeshInterceptor.class)`）；抛异常的 handler 被隔离并计数；网格从设计上
 无重投，历史 class 通道帧解析后按原因丢弃并计入 `stats().droppedLegacy()`。
 
 ## 健康与就绪

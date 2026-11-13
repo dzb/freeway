@@ -1,0 +1,50 @@
+package com.jujin.freeway.http;
+
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+
+import org.junit.jupiter.api.Test;
+
+import com.jujin.freeway.http.filter.ErrorMapper;
+import com.jujin.freeway.http.route.Route;
+import com.jujin.freeway.ioc.Container;
+import com.jujin.freeway.ioc.Freeway;
+import com.jujin.freeway.ioc.ModuleEx;
+
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+/**
+ * The built-in exception-to-response mapper is consulted LAST, whatever order the
+ * contributions arrived in: an application's own mapper must be able to take a
+ * case the built-in one already maps (an oversized body, a failed validation),
+ * and module placement must not decide the winner.
+ */
+class HttpModuleErrorMapperOrderTest {
+
+    @Test
+    void applicationMapperWinsOverTheBuiltInDefaultItIsContributedAfter() throws Exception {
+        ModuleEx claimEverything = binder -> binder.contribute(ErrorMapper.class)
+            .add(ex -> java.util.Optional.of(
+                ErrorResponse.of(418, "teapot", "application mapper")));
+        try (Container c = Freeway.create(new HttpModule(),
+                TestHttp.config(TestServerConfig.loopback()),
+                TestHttp.routes(Route.post("/boom", ctx -> {
+                    ctx.setMaxBodySize(1);
+                    ctx.body();
+                    ctx.sendText(200, "unexpected");
+                })),
+                claimEverything)) {
+            HttpServer server = c.get(HttpServer.class);
+            server.start();
+            var response = HttpClient.newHttpClient().send(
+                HttpRequest.newBuilder().uri(URI.create("http://127.0.0.1:" + server.port() + "/boom"))
+                    .POST(HttpRequest.BodyPublishers.ofString("too large")).build(),
+                HttpResponse.BodyHandlers.ofString());
+            assertTrue(response.body().contains("application mapper"),
+                "the application mapper must be consulted before the built-in default,"
+                    + " which the module contributes first");
+        }
+    }
+}

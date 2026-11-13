@@ -61,12 +61,12 @@ class TypedRequestApiTest {
     void typedRequestAccessorsParseThroughTheContainerCoercer() throws Exception {
         int port = freePort();
         var server = server(port,
-            Route.get("/items/{id}", ctx -> ctx.send(200,
+            Route.get("/items/{id}", ctx -> ctx.sendText(200,
                 // pathVar, queryParam and header, each parsed to a target type
                 ctx.pathVar("id", Long.class).orElse(-1L)
                     + ":" + ctx.queryParam("limit", Integer.class).orElse(-1)
                     + ":" + ctx.header("X-Retry", Boolean.class).orElse(false))),
-            Route.get("/plain", ctx -> ctx.send(200,
+            Route.get("/plain", ctx -> ctx.sendText(200,
                 "missing=" + ctx.queryParam("nope", Integer.class).isEmpty())));
         server.start();
         try {
@@ -92,7 +92,7 @@ class TypedRequestApiTest {
         int port = freePort();
         var server = server(port,
             Route.get("/n", ctx ->
-                ctx.send(200, String.valueOf(ctx.queryParam("n", Integer.class).orElse(0)))));
+                ctx.sendText(200, String.valueOf(ctx.queryParam("n", Integer.class).orElse(0)))));
         server.start();
         try {
             var response = send(port, HttpRequest.newBuilder(
@@ -109,11 +109,11 @@ class TypedRequestApiTest {
         int port = freePort();
         var server = server(port,
             Route.post("/users", NewUser.class,
-                (ctx, user) -> ctx.send(201, "post:" + user.name())),
+                (ctx, user) -> ctx.sendText(201, "post:" + user.name())),
             Route.put("/users", NewUser.class,
-                (ctx, user) -> ctx.send(200, "put:" + user.name())),
+                (ctx, user) -> ctx.sendText(200, "put:" + user.name())),
             Route.patch("/users", NewUser.class,
-                (ctx, user) -> ctx.send(200, "patch:" + user.name())));
+                (ctx, user) -> ctx.sendText(200, "patch:" + user.name())));
         server.start();
         try {
             String body = "{\"name\":\"ada\",\"password\":\"secret1\"}";
@@ -146,8 +146,8 @@ class TypedRequestApiTest {
     void headAndOptionsFactoriesAnswerTheirVerbs() throws Exception {
         int port = freePort();
         var server = server(port,
-            Route.head("/thing", ctx -> ctx.send(200, "ignored")),
-            Route.options("/thing", ctx -> ctx.setHeader("Allow", "GET, OPTIONS").send(204, "")));
+            Route.head("/thing", ctx -> ctx.sendText(200, "ignored")),
+            Route.options("/thing", ctx -> ctx.setHeader("Allow", "GET, OPTIONS").sendText(204, "")));
         server.start();
         try {
             var head = send(port, HttpRequest.newBuilder(

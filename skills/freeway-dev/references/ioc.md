@@ -4,7 +4,7 @@ Examples below are minimal snippets. They omit imports and app-specific domain t
 
 ## Stable API
 
-- `Container` - `get(Class)`, `get(Class, String)`, `get(Class, Annotation...)`, `isActiveBinding(Class, Annotation...)`, `extension(Class)`, `create(Class)`, `close()`
+- `Container` - `get(Class)`, `get(Class, String)`, `get(Class, Annotation...)`, `isActiveBindingMarked(Class, Annotation...)`, `extension(Class)`, `create(Class)`, `close()`
 - `Binder` - `bind(Class)`, `contribute(Class)`
 - Module composition - the ordered modules handed to `Freeway.create(...)` / `FreewayApp.run(...)`; a module class with `@SubModule` is a bundle and placing it places its submodules; `Freeway.create(appName, ...)` names the root line the startup log shows
 - `Binding<T>` - `to(Class)`, `to(c -> ...)` (provider), `id(String)`, `primary()`, `marker(Annotation...)`, `scope(Scope)`, `advise(...)`; there is no `to(instance)`
@@ -12,7 +12,7 @@ Examples below are minimal snippets. They omit imports and app-specific domain t
 - `Scope` - `SINGLETON`, `THREAD`, `PROTOTYPE`
 - `ScopeBoundary` - `within(...)`
 - `Extension<V>` - framework-internal aggregation handle. Access via `container.extension(Class)`. Application code injects `List<V>` or `Map<String, V>`, not `Extension<V>` directly.
-- `Contribution<T>` - contribution DSL from `Binder.contribute(Class)`: `add(T)`, `add(id, T)`, `add(Class)`, `add(id, factory)`; composition-time only — the stores seal when the container is built
+- `Contribution<T>` - contribution DSL from `Binder.contribute(Class)`: `add(T)`, `add(id, T)`, `addDeferred(Class)`, `addDeferred(id, factory)`; composition-time only — the stores seal when the container is built
 - `Ordering` - handle returned by a named `add`: `before(String...)`, `after(String...)` (bind-time only, same seal)
 - `EventBus` - `publish`, `publishAsync`, `subscribe`, `unsubscribe`
 - `RuntimeHook` - `start(Container)`, `stop(Container)`
@@ -80,7 +80,7 @@ provider runs once per container, and the produced object still receives field i
 
 ```java
 binder.contribute(Route.class)
-    .add(Route.get("/", ctx -> ctx.send(200, "Hello")));
+    .add(Route.get("/", ctx -> ctx.sendText(200, "Hello")));
 
 binder.contribute(RuntimeHook.class)
     .add("cache.warmup", new RuntimeHook() {
@@ -111,7 +111,7 @@ Freeway uses two annotations with distinct semantics:
 - `List<Foo>` and `Map<String, Foo>` are injectable for contribution consumption. `Extension<Foo>` is not injectable — use `List` or `Map` instead.
 - `Extension.asMap()` returns an immutable point-in-time snapshot; later contributions are visible only through a fresh call.
 - `Container` is not injectable — access it via `RuntimeHook.start(Container)` or `Freeway.create()`.
-- Singleton services should not directly inject thread-scoped concrete classes.
+- Singleton services should not directly inject boundary-scoped concrete classes.
 - AOP only applies to interface-to-class bindings.
 - Blank ids are rejected.
 - `Binding.primary()` is the DSL for primary resolution.
@@ -121,6 +121,6 @@ Freeway uses two annotations with distinct semantics:
 - Contributions are accepted only while modules bind — the container seals every extension store at the end of composition; later `add`/`before`/`after` fail with a "sealed" error. Late subscribers use `EventBus.subscribe`, not the store.
 - `add(value)` — unnamed, insertion order.
 - `add(id, value)` — named, supports `before()` / `after()` topological ordering.
-- `add(id, factory)` / `add(Class)` — built in the deferred phase after every module has bound (config-layer entry types drain first); `add(Class)` generates a canonical id as `snake_name@package`. Both return `Ordering` for `before`/`after` chaining.
+- `addDeferred(id, factory)` / `addDeferred(Class)` — built in the deferred phase after every module has bound (config-layer entry types drain first); `addDeferred(Class)` generates a canonical id as `snake_name@package`. Both return `Ordering` for `before`/`after` chaining.
 - Unknown ids in `before`/`after` are WARNed and ignored by generic ordering (a missing sibling is harmless — the module may not be installed). Strict extension points (runtime hooks) call `Extension.validateOrdering()`, which fails startup on any unknown reference instead.
 - Cycles fail resolution.

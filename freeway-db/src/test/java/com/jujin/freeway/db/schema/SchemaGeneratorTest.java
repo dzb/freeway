@@ -412,8 +412,8 @@ class SchemaGeneratorTest {
     }
 
     @Test
-    void h2SupportsReturning() {
-        assertTrue(new H2Dialect().supportsReturning());
+    void h2DoesNotSupportReturning() {
+        assertFalse(new H2Dialect().supportsReturning());
     }
 
     @Test

@@ -74,7 +74,7 @@ ModuleEx（bind 方法）
 + Binder（bind / contribute DSL）
 + Route（Route.get / Route.post）
 + RuntimeHook（start / stop）
-+ Scope（SINGLETON / PROTOTYPE / THREAD）
++ Scope（SINGLETON / PROTOTYPE / BOUNDARY）
 + @Inject / @Symbol（2 个注解）
 + Database / Orm（直接使用）
 + HttpFilter（一个接口，doFilter + order）

@@ -43,8 +43,8 @@ class EventTraceTest {
     /** A wired hub + plane whose "greet." handler captures the ambient context. */
     private static PeerHub planeWith(AtomicReference<Optional<InvocationContext>> seen) {
         PeerHub hub = new PeerHub();
-        CloudEventBus mesh = new CloudEventBus(hub, new JsonCodecDefault(), List.of(
-            CloudEventSubscription.of("greet.", String.class,
+        MeshEventBus mesh = new MeshEventBus(hub, new JsonCodecDefault(), List.of(
+            MeshSubscription.of("greet.", String.class,
                 p -> seen.set(InvocationContext.current()))));
         hub.wire(new PeerHub.Wiring(mesh, new JsonCodecDefault(), "svc", "inst-1", "", 0));
         return hub;
@@ -54,20 +54,20 @@ class EventTraceTest {
     void ambientTraceIsStampedOnOutboundFrames() {
         var codec = new JsonCodecDefault();
 
-        String bare = CloudEventEnvelope.translate(
+        String bare = MeshEnvelope.translate(
             "greet.hello", "hi", null, "peer-a", "svc", codec, "id-1");
         assertFalse(bare.contains("traceparent"),
             "a traceless publish stays byte-identical to before: " + bare);
 
         var stamped = new AtomicReference<String>();
-        withAmbientTrace(() -> stamped.set(CloudEventEnvelope.translate(
+        withAmbientTrace(() -> stamped.set(MeshEnvelope.translate(
             "greet.hello", "hi", null, "peer-a", "svc", codec, "id-1")));
         assertTrue(stamped.get().contains("\"traceparent\":\"" + TRACEPARENT + "\""),
             "the ambient span must ride the frame: " + stamped.get());
         assertTrue(stamped.get().contains("\"tracestate\":\"rojo=00f067aa0ba902b7\""),
             "vendor state must survive the hop: " + stamped.get());
 
-        CloudEventEnvelope.Parsed parsed = CloudEventEnvelope.parse(stamped.get());
+        MeshEnvelope.Parsed parsed = MeshEnvelope.parse(stamped.get());
         assertEquals(TRACEPARENT, parsed.traceparent());
         assertEquals("rojo=00f067aa0ba902b7", parsed.tracestate());
     }
@@ -79,9 +79,9 @@ class EventTraceTest {
 
         // Built through the real envelope path, under ambient trace — then the
         // ambient is cleared, so whatever the handler sees came off the wire.
-        var wire = new AtomicReference<CloudEventEnvelope.Parsed>();
-        withAmbientTrace(() -> wire.set(CloudEventEnvelope.parse(
-            CloudEventEnvelope.translate("greet.hello", "hi", null,
+        var wire = new AtomicReference<MeshEnvelope.Parsed>();
+        withAmbientTrace(() -> wire.set(MeshEnvelope.parse(
+            MeshEnvelope.translate("greet.hello", "hi", null,
                 "peer-a", "svc", new JsonCodecDefault(), "id-9"))));
 
         hub.receive(wire.get());
@@ -104,9 +104,9 @@ class EventTraceTest {
                 "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbb", null), null, null);
         InvocationContext previous = InvocationContext.replaceAmbient(ambient);
         try {
-            hub.receive(new CloudEventEnvelope.Parsed(
+            hub.receive(new MeshEnvelope.Parsed(
                 "id-1", "freeway://svc", "greet.hello", null, "peer-a",
-                CloudEventEnvelope.Channel.TOPIC, "\"hi\"", null, null));
+                MeshEnvelope.Channel.TOPIC, "\"hi\"", null, null));
         } finally {
             InvocationContext.replaceAmbient(previous);
         }
@@ -128,9 +128,9 @@ class EventTraceTest {
                 "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbb", null), null, null);
         InvocationContext previous = InvocationContext.replaceAmbient(ambient);
         try {
-            hub.receive(new CloudEventEnvelope.Parsed(
+            hub.receive(new MeshEnvelope.Parsed(
                 "id-1", "freeway://svc", "greet.hello", null, "peer-a",
-                CloudEventEnvelope.Channel.TOPIC, "\"hi\"", "not-a-traceparent", null));
+                MeshEnvelope.Channel.TOPIC, "\"hi\"", "not-a-traceparent", null));
         } finally {
             InvocationContext.replaceAmbient(previous);
         }

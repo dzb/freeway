@@ -38,17 +38,17 @@ class EnumParameterTest {
                     .one(Status.class).orElseThrow());
 
             db.query("insert into t_status (id, status) values (:id, :s)")
-                .param("id", 2L)
-                .param("s", Status.ARCHIVED)
+                .bind("id", 2L)
+                .bind("s", Status.ARCHIVED)
                 .execute();
             assertEquals(Status.ARCHIVED,
                 db.query("select status from t_status where id = :id")
-                    .param("id", 2L)
+                    .bind("id", 2L)
                     .one(Status.class).orElseThrow());
 
             assertEquals(2,
                 db.query("select status from t_status where status in (:s)")
-                    .param("s", List.of(Status.ACTIVE, Status.ARCHIVED))
+                    .bind("s", List.of(Status.ACTIVE, Status.ARCHIVED))
                     .list(Status.class).size());
 
             assertEquals(1, db.execute(
@@ -62,7 +62,7 @@ class EnumParameterTest {
         try (Database db = db()) {
             db.execute("create table t_status (id bigint primary key, status varchar(32))");
             db.batch("insert into t_status (id, status) values (?, ?)")
-                .rows(new Object[] { 1L, Status.ACTIVE },
+                .rowsRaw(new Object[] { 1L, Status.ACTIVE },
                        new Object[] { 2L, Status.ARCHIVED })
                 .execute();
             assertEquals(2, db.query("select id from t_status").list(Long.class).size());
@@ -71,7 +71,7 @@ class EnumParameterTest {
                     .one(Status.class).orElseThrow());
 
             db.batch("update t_status set status = :s where id = :id")
-                .named(List.of(Map.of("id", 1L, "s", Status.ACTIVE)))
+                .rowsNamed(List.of(Map.of("id", 1L, "s", Status.ACTIVE)))
                 .execute();
             assertEquals(Status.ACTIVE,
                 db.query("select status from t_status where id = 1")

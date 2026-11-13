@@ -25,12 +25,12 @@ class FlowEventSinkTest {
     private static FlowDriver publishingDriver(String topic, Object payload, List<String> local) {
         return new FlowDriver() {
             @Override
-            public boolean handleCondition(FlowEvaluation evaluation, ConditionDesc condition) {
+            public boolean handleCondition(FlowExecution evaluation, ConditionDesc condition) {
                 return true;
             }
 
             @Override
-            public void handleTask(FlowEvaluation evaluation, TaskDesc task) {
+            public void handleTask(FlowExecution evaluation, TaskDesc task) {
                 if (task.isEmpty()) {
                     return;
                 }
@@ -46,8 +46,8 @@ class FlowEventSinkTest {
     private static Graph oneTaskGraph() {
         return GraphSpec.create("sink", s -> {
             s.entry("start");
-            s.addStart("start").linkAdd("emit");
-            s.addActivity("emit").task("@emit").linkAdd("end");
+            s.addStart("start").linkTo("emit");
+            s.addActivity("emit").task("@emit").linkTo("end");
             s.addEnd("end");
         }).create();
     }
@@ -61,7 +61,7 @@ class FlowEventSinkTest {
             List.of(),
             (topic, payload) -> forwarded.add(topic + ":" + payload));
 
-        engine.eval(oneTaskGraph(), FlowContext.of());
+        engine.run(oneTaskGraph(), FlowContext.of());
 
         assertEquals(List.of("audit:hello"), forwarded,
             "the sink is the module exit: every publish leaves the execution");
@@ -75,7 +75,7 @@ class FlowEventSinkTest {
         FlowEngine engine = FlowEngine.create(
             Map.of("default", publishingDriver("audit", "hello", local)));
 
-        engine.eval(oneTaskGraph(), FlowContext.of());
+        engine.run(oneTaskGraph(), FlowContext.of());
 
         assertEquals(List.of("hello"), local,
             "standalone create() has no application bus; local delivery is all there is");
@@ -93,6 +93,6 @@ class FlowEventSinkTest {
         // The bridge's failure must not become the graph's: the same isolation
         // a local subscriber gets, because a bridge is just another subscriber
         // from the run's point of view.
-        engine.eval(oneTaskGraph(), FlowContext.of());
+        engine.run(oneTaskGraph(), FlowContext.of());
     }
 }

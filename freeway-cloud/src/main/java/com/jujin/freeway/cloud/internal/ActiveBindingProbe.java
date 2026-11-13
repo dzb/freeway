@@ -7,7 +7,7 @@ import java.util.Objects;
 
 /**
  * Container-aware probe for the currently selected bindings. Bound by
- * {@code CloudDiscoveryModule} so container-created contributions can ask
+ * {@code DiscoveryModule} so container-created contributions can ask
  * whether the {@code @Local} default is still in use without being handed the
  * container itself (which is not an injectable boundary type).
  */
@@ -21,6 +21,6 @@ public final class ActiveBindingProbe {
 
     /** True when {@code type}'s selected binding is still the {@code @Local} default. */
     public <T> boolean isLocal(Class<T> type) {
-        return container.isActiveBinding(type, Local.class);
+        return container.isActiveBindingMarked(type, Local.class);
     }
 }

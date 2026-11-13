@@ -22,7 +22,7 @@ import com.jujin.freeway.commons.security.TlsStores;
 
 
 /**
- * Builds TLS material from {@link SslSettings}: keystore/truststore loading, SNI
+ * Builds TLS material from {@link SslConfig}: keystore/truststore loading, SNI
  * key managers, and protocol/cipher restriction. Shared by the built-in HTTPS
  * engine and any adapter that terminates TLS itself — the Undertow adapter in
  * {@code freeway-ext} builds its {@code SSLContext} from here — so keystore
@@ -43,7 +43,7 @@ public final class SslContexts {
 
     private SslContexts() {}
 
-    public static SSLContext build(SslSettings s) {
+    public static SSLContext build(SslConfig s) {
         if (s.keyStorePath() == null || s.keyStorePath().isBlank()) {
             throw new IllegalStateException(ConfigKeys.SSL_KEY_STORE
                 + " is required when the HTTPS engine is enabled"
@@ -70,7 +70,7 @@ public final class SslContexts {
     }
 
     /** Protocol/cipher restriction and client-auth requirement, or null when none applies. */
-    public static SSLParameters parameters(SslSettings s) {
+    public static SSLParameters parameters(SslConfig s) {
         boolean clientAuth = s.clientAuth();
         List<String> protocols = s.protocols();
         List<String> ciphers = s.ciphers();
@@ -104,7 +104,7 @@ public final class SslContexts {
         return kmf.getKeyManagers();
     }
 
-    private static KeyManager[] buildSniKeyManagers(SslSettings s,
+    private static KeyManager[] buildSniKeyManagers(SslConfig s,
                                                     KeyStore defaultStore)
             throws Exception {
         Path dir = Path.of(s.sniDirectory());
@@ -137,7 +137,7 @@ public final class SslContexts {
             byHost, effectiveDefault, TlsStores.passwordChars(s.keyStorePassword()))};
     }
 
-    private static TrustManager[] buildTrustManagers(SslSettings s)
+    private static TrustManager[] buildTrustManagers(SslConfig s)
             throws Exception {
         if (s.trustStorePath() == null) {
             return null;

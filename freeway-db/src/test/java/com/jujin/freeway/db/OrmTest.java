@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -76,13 +77,69 @@ class OrmTest {
     }
 
     /** Records calls to offsetOnlyClause to verify Orm delegates no-LIMIT OFFSET. */
-    static class RecordingDialect extends PostgresDialect {
+    static class RecordingDialect implements Dialect {
+        private final PostgresDialect base = new PostgresDialect();
         int offsetOnlyCalls = 0;
+
+        @Override
+        public String dialectId() {
+            return base.dialectId();
+        }
+
+        @Override
+        public String truncateTable(String tableName) {
+            return base.truncateTable(tableName);
+        }
+
+        @Override
+        public boolean dropTableCascade() {
+            return base.dropTableCascade();
+        }
+
+        @Override
+        public String generatedClause() {
+            return base.generatedClause();
+        }
+
+        @Override
+        public String defaultUUIDType() {
+            return base.defaultUUIDType();
+        }
+
+        @Override
+        public boolean dollarQuoting() {
+            return base.dollarQuoting();
+        }
+
+        @Override
+        public boolean escapeStringPrefix() {
+            return base.escapeStringPrefix();
+        }
+
+        @Override
+        public Set<String> existingTables(Database db) {
+            return base.existingTables(db);
+        }
+
+        @Override
+        public Set<String> existingColumns(Database db, String tableName) {
+            return base.existingColumns(db, tableName);
+        }
+
+        @Override
+        public Set<String> existingIndexes(Database db, String tableName) {
+            return base.existingIndexes(db, tableName);
+        }
+
+        @Override
+        public Set<String> reservedWords() {
+            return base.reservedWords();
+        }
 
         @Override
         public String offsetOnlyClause(long offset) {
             offsetOnlyCalls++;
-            return super.offsetOnlyClause(offset);
+            return base.offsetOnlyClause(offset);
         }
     }
 
@@ -153,8 +210,8 @@ class OrmTest {
         }
 
         @Override
-        public DatabaseStats stats() {
-            return new DatabaseStats(0, 0, 0, 0, 0, 0, 0, 0);
+        public PoolStats stats() {
+            return new PoolStats(0, 0, 0, 0, 0, 0, 0, 0);
         }
 
         @Override

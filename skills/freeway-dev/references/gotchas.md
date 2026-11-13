@@ -9,7 +9,7 @@
 - A `THREAD` scoped concrete class should not be injected directly into a singleton.
 - `Binding.primary()` and the `@Primary` marker are equivalent — the DSL call maps to the marker internally, so both forms resolve through the same marker index.
 - `Schema.ensure(db, ...)` / `Schema.drop(db, ...)` use the database's dialect automatically — no `Dialect` argument.
-- `HttpContext.pathVar()` returns `Optional<String>`, not a bare `String`.
+- `HttpExchange.pathVar()` returns `Optional<String>`, not a bare `String`.
 - Tests that start a `HttpServer` should use `port=0` to avoid conflicts with running services.
 - `HttpServer` is `com.jujin.freeway.http.HttpServer`; JDK's `com.sun.net.httpserver.HttpServer` has the same simple name. Import Freeway's by name and keep the JDK one fully qualified in the few files that drive both — a bare `HttpServer.class` can silently resolve to the JDK type (single-type import beats a wildcard) and then fail as a missing container binding at runtime.
 - `Container` and `Extension<V>` are not injectable. Use `@Inject List<V>` or `@Inject Map<String, V>` to consume contributions. Access `Container` only via `RuntimeHook`, `Freeway.create()`, or provider lambdas.

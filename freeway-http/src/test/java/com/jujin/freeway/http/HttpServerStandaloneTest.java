@@ -2,6 +2,7 @@ package com.jujin.freeway.http;
 
 import java.net.URI;
 import java.net.http.HttpClient;
+import java.nio.file.Path;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
@@ -61,13 +62,13 @@ class HttpServerStandaloneTest {
     void assemblesAndServesWithoutAContainer() throws Exception {
         var server = HttpServer.create(engine(), loopback(),
             HttpPipeline.of(
-                Route.get("/ping", ctx -> ctx.send(200, "pong")),
+                Route.get("/ping", ctx -> ctx.sendText(200, "pong")),
                 Route.post("/boom", ctx -> {
                     ctx.setMaxBodySize(4);
                     ctx.body();
-                    ctx.send(200, "unexpected");
+                    ctx.sendText(200, "unexpected");
                 })));
-        assertFalse(server.secure(), "an engine with no SSLContext serves plain HTTP");
+        assertFalse(server.isSecure(), "an engine with no SSLContext serves plain HTTP");
         server.start();
         try {
             assertTrue(server.isRunning());
@@ -86,20 +87,33 @@ class HttpServerStandaloneTest {
     }
 
     @Test
+    void missingFileBecomes500InsteadOfAnEmptyResponse() throws Exception {
+        var server = HttpServer.create(engine(), loopback(),
+            HttpPipeline.of(Route.get("/missing-file",
+                ctx -> ctx.file(Path.of(
+                    "/definitely/missing/freeway-standalone"), 0, 10))));
+        server.start();
+        try {
+            assertEquals(500, get(server.port(), "/missing-file").statusCode(),
+                "a file-open failure before commit must still become a 500");
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
     void applicationMapperOutranksTheBuiltInOneOnBothPaths() throws Exception {
         var server = HttpServer.create(engine(), loopback(),
             HttpPipeline.of(Route.post("/boom", ctx -> {
                     ctx.setMaxBodySize(4);
                     ctx.body();
-                    ctx.send(200, "unexpected");
+                    ctx.sendText(200, "unexpected");
                 }))
-                .withErrorHandlers((ctx, ex) -> {
-                    ctx.send(418, "application mapper");
-                    return true;
-                }));
+                .withErrorMappers(ex -> java.util.Optional.of(
+                    ErrorResponse.of(418, "teapot", "application mapper"))));
         server.start();
         try {
-            assertEquals("application mapper", post(server.port(), "/boom", "too large").body(),
+            assertTrue(post(server.port(), "/boom", "too large").body().contains("application mapper"),
                 "an added mapper is consulted before the framework's wherever the server came"
                     + " from — the rule sits in the one derivation, not in how parts were read");
         } finally {
@@ -115,7 +129,7 @@ class HttpServerStandaloneTest {
             next.handle(ctx);
         };
         var server = HttpServer.create(engine(), loopback(),
-            HttpPipeline.of(Route.get("/ping", ctx -> ctx.send(200, "pong")))
+            HttpPipeline.of(Route.get("/ping", ctx -> ctx.sendText(200, "pong")))
                 .withCors(CorsFilter.defaults().withEnabled(false))
                 .withHealth(HealthFilter.defaults().withPath("/alive"))
                 .withFilter(counting));

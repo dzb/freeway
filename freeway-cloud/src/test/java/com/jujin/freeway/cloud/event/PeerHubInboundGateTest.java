@@ -20,27 +20,27 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class PeerHubInboundGateTest {
 
-    private static CloudEventEnvelope.Parsed frame(
-        CloudEventEnvelope.Channel channel, String type) {
-        return new CloudEventEnvelope.Parsed(
+    private static MeshEnvelope.Parsed frame(
+        MeshEnvelope.Channel channel, String type) {
+        return new MeshEnvelope.Parsed(
             "id-1", "freeway://svc", type, null, "peer-a", channel, "\"payload\"", null, null);
     }
 
-    private record Rig(PeerHub hub, CloudEventBus mesh, List<Object> inbound) {}
+    private record Rig(PeerHub hub, MeshEventBus mesh, List<Object> inbound) {}
 
     /** Declares "prefix"-subscriptions over a recording String handler. */
     private static Rig rig(String... prefixes) {
-        List<CloudEventSubscription> subs = new ArrayList<>();
+        List<MeshSubscription> subs = new ArrayList<>();
         List<Object> inbound = new ArrayList<>();
         for (String p : prefixes) {
-            subs.add(CloudEventSubscription.of(p, String.class, inbound::add));
+            subs.add(MeshSubscription.of(p, String.class, inbound::add));
         }
         return rigSubs(subs, inbound);
     }
 
-    private static Rig rigSubs(List<CloudEventSubscription> subs, List<Object> inbound) {
+    private static Rig rigSubs(List<MeshSubscription> subs, List<Object> inbound) {
         PeerHub hub = new PeerHub();
-        CloudEventBus mesh = new CloudEventBus(hub, new JsonCodecDefault(), subs);
+        MeshEventBus mesh = new MeshEventBus(hub, new JsonCodecDefault(), subs);
         hub.wire(new PeerHub.Wiring(mesh, new JsonCodecDefault(), "svc", "inst-1", "", 0));
         return new Rig(hub, mesh, inbound);
     }
@@ -55,12 +55,12 @@ class PeerHubInboundGateTest {
     void topicFramesAreDeliveredOnlyToDeclaredSubscriptions() {
         Rig rig = rig("greet.");
 
-        rig.hub().receive(frame(CloudEventEnvelope.Channel.TOPIC, "other.topic"));
+        rig.hub().receive(frame(MeshEnvelope.Channel.TOPIC, "other.topic"));
         assertTrue(rig.inbound().isEmpty(),
             "a topic with no declared subscription must not be delivered");
         assertEquals(1, rig.mesh().stats().droppedNoSubscriber());
 
-        rig.hub().receive(frame(CloudEventEnvelope.Channel.TOPIC, "greet.hello"));
+        rig.hub().receive(frame(MeshEnvelope.Channel.TOPIC, "greet.hello"));
         assertEquals(List.of("payload"), rig.inbound(),
             "the declared prefix receives the deserialized payload");
     }
@@ -70,14 +70,14 @@ class PeerHubInboundGateTest {
         // The stronger half of the gate: dropping must not even deserialize —
         // Probed has a matching JSON body waiting, but its prefix is not
         // declared, so its constructor must never run.
-        List<CloudEventSubscription> subs =
-            List.of(CloudEventSubscription.of("greet.", Probed.class, p -> {}));
+        List<MeshSubscription> subs =
+            List.of(MeshSubscription.of("greet.", Probed.class, p -> {}));
         PeerHub hub = new PeerHub();
-        CloudEventBus mesh = new CloudEventBus(hub, new JsonCodecDefault(), subs);
+        MeshEventBus mesh = new MeshEventBus(hub, new JsonCodecDefault(), subs);
         hub.wire(new PeerHub.Wiring(mesh, new JsonCodecDefault(), "svc", "inst-1", "", 0));
 
-        hub.receive(new CloudEventEnvelope.Parsed("id-1", "freeway://svc", "other.topic",
-            null, "peer-a", CloudEventEnvelope.Channel.TOPIC, "{}", null, null));
+        hub.receive(new MeshEnvelope.Parsed("id-1", "freeway://svc", "other.topic",
+            null, "peer-a", MeshEnvelope.Channel.TOPIC, "{}", null, null));
 
         assertEquals(0, Probed.CTOR.get(),
             "no reflective materialization for an undeclared topic");
@@ -91,7 +91,7 @@ class PeerHubInboundGateTest {
         // any subscription match and without resolving anything.
         Rig rig = rig("greet.");
 
-        rig.hub().receive(frame(CloudEventEnvelope.Channel.CLASS, "com.evil.Gadget"));
+        rig.hub().receive(frame(MeshEnvelope.Channel.CLASS, "com.evil.Gadget"));
 
         assertTrue(rig.inbound().isEmpty(),
             "class-channel frames must never be delivered or resolved");
@@ -102,9 +102,9 @@ class PeerHubInboundGateTest {
     @Test
     void ownOriginIsNeverDispatched() {
         Rig rig = rig("greet.");
-        CloudEventEnvelope.Parsed looped = new CloudEventEnvelope.Parsed(
+        MeshEnvelope.Parsed looped = new MeshEnvelope.Parsed(
             "id-1", "freeway://svc", "greet.hello", null, "inst-1",
-            CloudEventEnvelope.Channel.TOPIC, "\"payload\"", null, null);
+            MeshEnvelope.Channel.TOPIC, "\"payload\"", null, null);
 
         rig.hub().receive(looped);
 
@@ -115,7 +115,7 @@ class PeerHubInboundGateTest {
     void duplicateSimultaneousDialsKeepSingleConnectionByOriginOrder() {
         PeerHub smallerHub = new PeerHub();
         smallerHub.wire(new PeerHub.Wiring(
-            new CloudEventBus(smallerHub, new JsonCodecDefault(), List.of()),
+            new MeshEventBus(smallerHub, new JsonCodecDefault(), List.of()),
             new JsonCodecDefault(), "svc", "a-node", "", 0));
 
         java.util.concurrent.atomic.AtomicBoolean outboundClosed = new java.util.concurrent.atomic.AtomicBoolean();
@@ -136,7 +136,7 @@ class PeerHubInboundGateTest {
         // Larger origin applies the mirror rule: keep the inbound connection.
         PeerHub largerHub = new PeerHub();
         largerHub.wire(new PeerHub.Wiring(
-            new CloudEventBus(largerHub, new JsonCodecDefault(), List.of()),
+            new MeshEventBus(largerHub, new JsonCodecDefault(), List.of()),
             new JsonCodecDefault(), "svc", "z-node", "", 0));
         java.util.concurrent.atomic.AtomicBoolean largerOutboundClosed = new java.util.concurrent.atomic.AtomicBoolean();
         java.util.concurrent.atomic.AtomicBoolean largerInboundClosed = new java.util.concurrent.atomic.AtomicBoolean();

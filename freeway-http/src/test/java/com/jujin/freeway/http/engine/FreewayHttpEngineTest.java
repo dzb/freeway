@@ -56,7 +56,7 @@ import com.jujin.freeway.boot.FreewayApp;
 import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.commons.json.JsonCodecDefault;
 import com.jujin.freeway.commons.json.JsonUtils;
-import com.jujin.freeway.http.HttpContext;
+import com.jujin.freeway.http.HttpExchange;
 import com.jujin.freeway.http.HttpServer;
 import com.jujin.freeway.http.HttpPipeline;
 import com.jujin.freeway.http.TestHttp;
@@ -116,7 +116,7 @@ class FreewayHttpEngineTest {
             binder.contribute(Route.class).add(
                 Route.post("/upload", ctx -> {
                     ctx.body();
-                    ctx.send(200, "ok");
+                    ctx.sendText(200, "ok");
                 })
             ));
         assertTrue(app.get(HttpServer.class).isRunning());
@@ -137,7 +137,7 @@ class FreewayHttpEngineTest {
     void bodyOnGetWithoutContentLengthReturnsEmptyAndKeepsConnectionUsable() throws Exception {
         int port = freePort();
         var server = HttpServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(port), HttpPipeline.of(Route.get("/read", ctx -> ctx.send(200, "len=" + ctx.body().length)), Route.get("/ping", ctx -> ctx.send(200, "pong"))));
+            TestServerConfig.loopback(port), HttpPipeline.of(Route.get("/read", ctx -> ctx.sendText(200, "len=" + ctx.body().length)), Route.get("/ping", ctx -> ctx.sendText(200, "pong"))));
         server.start();
         try (var sock = new Socket("127.0.0.1", port)) {
             sock.setSoTimeout(3000);
@@ -162,7 +162,7 @@ class FreewayHttpEngineTest {
     void unreadPostBodyDoesNotBreakKeepAlive() throws Exception {
         int port = freePort();
         var server = HttpServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(port), HttpPipeline.of(Route.post("/ignore", ctx -> ctx.send(200, "ok")), Route.get("/ping", ctx -> ctx.send(200, "pong"))));
+            TestServerConfig.loopback(port), HttpPipeline.of(Route.post("/ignore", ctx -> ctx.sendText(200, "ok")), Route.get("/ping", ctx -> ctx.sendText(200, "pong"))));
         server.start();
         try (var sock = new Socket("127.0.0.1", port)) {
             sock.setSoTimeout(3000);
@@ -197,13 +197,12 @@ class FreewayHttpEngineTest {
     /**
      * A filter's body-size adjustment governs its own request and no other.
      *
-     * <p>On HTTP/1.1 the {@code HttpContext} is one per connection and reused,
-     * while the limit is per-request state a filter may change — so the two used
-     * to be the same field with no restore, and the adjustment outlived the
-     * request. {@link HttpContext#setMaxBodySize} promises "this request only",
-     * and the direction that matters is raising: a filter that widened the limit
-     * for an upload route left every later request of that connection bounded by
-     * the widened value instead of the server's.
+     * <p>The exchange is created per request now, so the adjustment is scoped
+     * by the object's lifetime; this test still pins the contract because a
+     * future pooling change would silently reintroduce the old leak. The
+     * direction that matters is raising: a filter that widened the limit for an
+     * upload route must not leave every later request of that connection bounded
+     * by the widened value instead of the server's.
      *
      * <p>The handlers read the body, because that is when the limit is enforced
      * — a handler that answers without reading cannot observe it either way.
@@ -241,8 +240,8 @@ class FreewayHttpEngineTest {
         }
     }
 
-    private static void readBody(HttpContext ctx) throws Exception {
-        ctx.send(200, String.valueOf(ctx.body().length));
+    private static void readBody(HttpExchange ctx) throws Exception {
+        ctx.sendText(200, String.valueOf(ctx.body().length));
     }
 
     /** 500 bytes is under the configured 1024 and over the filter's 32. */
@@ -289,8 +288,8 @@ class FreewayHttpEngineTest {
     void chunkedBodyWithPipelinedNextRequestKeepsBoth() throws Exception {
         int port = freePort();
         var server = HttpServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(port), HttpPipeline.of(Route.post("/echo", ctx -> ctx.send(200, new String(
-                ctx.body(), StandardCharsets.UTF_8))), Route.get("/ping", ctx -> ctx.send(200, "pong"))));
+            TestServerConfig.loopback(port), HttpPipeline.of(Route.post("/echo", ctx -> ctx.sendText(200, new String(
+                ctx.body(), StandardCharsets.UTF_8))), Route.get("/ping", ctx -> ctx.sendText(200, "pong"))));
         server.start();
         try (var sock = new Socket("127.0.0.1", port)) {
             sock.setSoTimeout(3000);
@@ -325,7 +324,7 @@ class FreewayHttpEngineTest {
         var server = HttpServer.create(TestHttp.engine(),
             TestServerConfig.loopback(port), HttpPipeline.of(Route.get("/close", ctx -> {
                 ctx.setHeader("Connection", "close");
-                ctx.send(200, "first");
+                ctx.sendText(200, "first");
             })));
         server.start();
         try (var sock = new Socket("127.0.0.1", port)) {
@@ -420,7 +419,7 @@ class FreewayHttpEngineTest {
     }
 
     @Test
-    void websocketEchoesMessages() throws Exception {
+    void webSocketEchoesMessages() throws Exception {
         int port = freePort();
         System.setProperty(ConfigKeys.SERVER_HOST, "127.0.0.1");
         System.setProperty(ConfigKeys.SERVER_PORT, String.valueOf(port));
@@ -460,7 +459,7 @@ class FreewayHttpEngineTest {
     }
 
     @Test
-    void websocketRejectsInvalidKey() throws Exception {
+    void webSocketRejectsInvalidKey() throws Exception {
         int port = freePort();
         System.setProperty(ConfigKeys.SERVER_HOST, "127.0.0.1");
         System.setProperty(ConfigKeys.SERVER_PORT, String.valueOf(port));
@@ -526,7 +525,7 @@ class FreewayHttpEngineTest {
     }
 
     @Test
-    void websocketLifecycleInvokesOpenAndErrorCallbacks() throws Exception {
+    void webSocketLifecycleInvokesOpenAndErrorCallbacks() throws Exception {
         int port = freePort();
         System.setProperty(ConfigKeys.SERVER_HOST, "127.0.0.1");
         System.setProperty(ConfigKeys.SERVER_PORT, String.valueOf(port));
@@ -584,7 +583,7 @@ class FreewayHttpEngineTest {
         app = FreewayApp.run(binder ->
             binder.contribute(Route.class).add(Route.post("/echo", ctx -> {
                 ctx.setMaxBodySize(3);
-                ctx.send(200, ctx.bodyText());
+                ctx.sendText(200, ctx.bodyText());
             }))
         );
         assertTrue(app.get(HttpServer.class).isRunning());
@@ -614,7 +613,7 @@ class FreewayHttpEngineTest {
                 StaticResourceMount.directory("/", tempDir).withFallthrough(true)
             );
             binder.contribute(Route.class).add(
-                Route.get("/missing.txt", ctx -> ctx.send(200, "route handled"))
+                Route.get("/missing.txt", ctx -> ctx.sendText(200, "route handled"))
             );
         });
         assertTrue(app.get(HttpServer.class).isRunning());
@@ -769,7 +768,7 @@ class FreewayHttpEngineTest {
     static final class PingModule implements ModuleEx {
         @Override
         public void bind(Binder binder) {
-            binder.contribute(Route.class).add(Route.get("/ping", ctx -> ctx.send(200, "pong")));
+            binder.contribute(Route.class).add(Route.get("/ping", ctx -> ctx.sendText(200, "pong")));
             binder.contribute(WebSocketGroup.class).add(WebSocketGroup.of("/api",
                 WebSocketRoute.of("/ws/{room}", session -> new WebSocketListener() {
                     @Override
@@ -789,7 +788,7 @@ class FreewayHttpEngineTest {
     void isMultipartDoesNotReadBodyForNonMultipartRequest() throws Exception {
         var server = HttpServer.create(TestHttp.engine(),
             TestServerConfig.loopback().withMaxBodySize(1024), HttpPipeline.of(Route.post("/check", ctx ->
-                ctx.send(200, "is-multipart=" + ctx.isMultipart()))));
+                ctx.sendText(200, "is-multipart=" + ctx.isMultipart()))));
         server.start();
         try {
             var client = HttpClient.newHttpClient();
@@ -919,7 +918,7 @@ class FreewayHttpEngineTest {
     @Test
     void leadingEmptyLineIsIgnoredOnKeepAlive() throws Exception {
         var server = HttpServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(), HttpPipeline.of(Route.get("/", ctx -> ctx.send(200, "ok"))));
+            TestServerConfig.loopback(), HttpPipeline.of(Route.get("/", ctx -> ctx.sendText(200, "ok"))));
         server.start();
         try {
             try (var socket = new Socket("127.0.0.1", server.port())) {
@@ -943,7 +942,7 @@ class FreewayHttpEngineTest {
     @Test
     void negativeContentLengthIsRejected() throws Exception {
         var server = HttpServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(), HttpPipeline.of(Route.get("/", ctx -> ctx.send(200, "ok"))));
+            TestServerConfig.loopback(), HttpPipeline.of(Route.get("/", ctx -> ctx.sendText(200, "ok"))));
         server.start();
         try {
             try (var socket = new Socket("127.0.0.1", server.port())) {
@@ -974,7 +973,7 @@ class FreewayHttpEngineTest {
     @Test
     void healthzMatchesTrailingSlash() throws Exception {
         var server = HttpServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(), HttpPipeline.of(Route.get("/", ctx -> ctx.send(200, "root"))));
+            TestServerConfig.loopback(), HttpPipeline.of(Route.get("/", ctx -> ctx.sendText(200, "root"))));
         server.start();
         try {
             var client = HttpClient.newHttpClient();
@@ -1001,7 +1000,7 @@ class FreewayHttpEngineTest {
     @Test
     void plainHttpRequestIsNotSecure() throws Exception {
         var server = HttpServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(), HttpPipeline.of(Route.get("/secure", ctx -> ctx.send(200, String.valueOf(ctx.isSecure())))));
+            TestServerConfig.loopback(), HttpPipeline.of(Route.get("/secure", ctx -> ctx.sendText(200, String.valueOf(ctx.isSecure())))));
         server.start();
         try {
             var client = HttpClient.newHttpClient();
@@ -1022,7 +1021,7 @@ class FreewayHttpEngineTest {
     void plainHttpRequestHasNoSslSession() throws Exception {
         var server = HttpServer.create(TestHttp.engine(),
             TestServerConfig.loopback(), HttpPipeline.of(Route.get("/session", ctx ->
-                ctx.send(200, String.valueOf(ctx.sslSession() != null)))));
+                ctx.sendText(200, String.valueOf(ctx.sslSession() != null)))));
         server.start();
         try {
             var client = HttpClient.newHttpClient();
@@ -1048,7 +1047,7 @@ class FreewayHttpEngineTest {
     @Test
     void rejectsOversizedRequestLine() throws Exception {
         var server = HttpServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(), HttpPipeline.of(Route.get("/", ctx -> ctx.send(200, "ok"))));
+            TestServerConfig.loopback(), HttpPipeline.of(Route.get("/", ctx -> ctx.sendText(200, "ok"))));
         server.start();
         try {
             try (var socket = new Socket("127.0.0.1", server.port())) {
@@ -1098,7 +1097,7 @@ class FreewayHttpEngineTest {
             };
             var handle = engine.start(
                 TestServerConfig.loopback(),
-                ctx -> ctx.send(200, "ok"));
+                ctx -> ctx.sendText(200, "ok"));
             try {
                 var client = HttpClient.newHttpClient();
                 var resp = client.send(
@@ -1129,7 +1128,7 @@ class FreewayHttpEngineTest {
             TestServerConfig.loopback(), HttpPipeline.of(Route.get("/slow", ctx -> {
                 handlerStarted.countDown();
                 releaseHandler.await();
-                ctx.send(200, "slow-done");
+                ctx.sendText(200, "slow-done");
             })));
         server.start();
         try {
@@ -1400,7 +1399,7 @@ class FreewayHttpEngineTest {
     void headResponseReportsCorrectContentLength() throws Exception {
         var server = HttpServer.create(TestHttp.engine(),
             TestServerConfig.loopback(), HttpPipeline.of(Route.get("/data", ctx ->
-                ctx.send(200, "Hello World"))));
+                ctx.sendText(200, "Hello World"))));
         server.start();
         try {
             // Pin HTTP/1.1: this regression is about RFC 7231 §4.3.2 HEAD
@@ -1434,7 +1433,7 @@ class FreewayHttpEngineTest {
         // 32 lowercase hex chars, no hyphens.
         var server = HttpServer.create(TestHttp.engine(),
             TestServerConfig.loopback(), HttpPipeline.of(Route.get("/whoami", ctx ->
-                ctx.send(200, ctx.correlationId()))));
+                ctx.sendText(200, ctx.correlationId()))));
         server.start();
         try {
             var client = HttpClient.newHttpClient();
@@ -1458,7 +1457,7 @@ class FreewayHttpEngineTest {
     void propagatesClientXRequestId() throws Exception {
         var server = HttpServer.create(TestHttp.engine(),
             TestServerConfig.loopback(), HttpPipeline.of(Route.get("/whoami", ctx ->
-                ctx.send(200, ctx.correlationId()))));
+                ctx.sendText(200, ctx.correlationId()))));
         server.start();
         try {
             var client = HttpClient.newHttpClient();
@@ -1479,7 +1478,7 @@ class FreewayHttpEngineTest {
     void propagatesLowercaseXRequestId() throws Exception {
         var server = HttpServer.create(TestHttp.engine(),
             TestServerConfig.loopback(), HttpPipeline.of(Route.get("/whoami", ctx ->
-                ctx.send(200, ctx.correlationId()))));
+                ctx.sendText(200, ctx.correlationId()))));
         server.start();
         try {
             var client = HttpClient.newHttpClient();
@@ -1511,9 +1510,9 @@ class FreewayHttpEngineTest {
         }
 
         @Override
-        public void handle(HttpContext ctx) throws Exception {
+        public void handle(HttpExchange ctx) throws Exception {
             String name = ctx.pathVar("name").orElse(null);
-            ctx.send(200, service.greet(name));
+            ctx.sendText(200, service.greet(name));
         }
     }
 

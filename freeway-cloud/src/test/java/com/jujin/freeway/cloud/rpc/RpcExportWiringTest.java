@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
 import com.jujin.freeway.cloud.CloudHooks;
-import com.jujin.freeway.cloud.discovery.Endpoint;
+import com.jujin.freeway.cloud.discovery.ServiceEndpoint;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.cloud.discovery.ServiceRegistry;
 import com.jujin.freeway.commons.json.JsonCodecDefault;
@@ -128,7 +128,7 @@ class RpcExportWiringTest {
     private static void pointDiscoveryAt(AppRuntime app, String serviceId) {
         HttpServer web = app.get(HttpServer.class);
         app.get(ServiceRegistry.class).register(ServiceInstance.of(
-            serviceId, "i1", Endpoint.of("http", web.host(), web.port()), Map.of()));
+            serviceId, "i1", ServiceEndpoint.of("http", web.host(), web.port()), Map.of()));
     }
 
     /** The module an application writes: bind the handler, declare the export. */
@@ -169,7 +169,7 @@ class RpcExportWiringTest {
         // "order" was never declared, even though a handler type for it exists
         // in this test — export is explicit, so it stays unreachable.
         var caller = app.get(RemoteCaller.class);
-        var ex = assertThrows(CloudException.class, () ->
+        var ex = assertThrows(RpcException.class, () ->
             caller.invoke("target", "order", "charge", List.of("9"), String.class));
         assertEquals(404, ex.status(),
             "an undeclared mapping must not become reachable by accident");

@@ -5,12 +5,11 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Set;
 
-import com.jujin.freeway.http.engine.HttpContextImpl;
+import com.jujin.freeway.http.ResponseHead;
 import com.jujin.freeway.http.engine.HttpResponseWriter;
-import com.jujin.freeway.http.engine.ResponseFraming;
+import com.jujin.freeway.http.internal.ResponseFraming;
 import com.jujin.freeway.http.sse.SseEmitter;
 
 /**
@@ -31,67 +30,56 @@ public final class Http2ResponseWriter implements HttpResponseWriter {
     }
 
     @Override
-    public void writeHead(HttpContextImpl ctx) {
+    public void writeHead(ResponseHead head) {
         stream.responseHeaders.clear();
-        stream.responseHeaders.put(":status", List.of(String.valueOf(ctx.status())));
-        Set<String> connectionTokens = connectionHeaderTokens(ctx.responseHeaderEntries());
-        for (var entry : ctx.responseHeaderEntries()) {
-            String lower = entry.getKey().toLowerCase(Locale.ROOT);
+        stream.responseHeaders.put(":status", List.of(String.valueOf(head.status())));
+        Set<String> connectionTokens = connectionHeaderTokens(head.headers());
+        for (ResponseHead.Header header : head.headers()) {
+            String lower = header.name().toLowerCase(Locale.ROOT);
             if (FORBIDDEN_RESPONSE_HEADERS.contains(lower)
                     || connectionTokens.contains(lower)
                     // Same rule as HTTP/1.1 (ResponseFraming): a bodyless
                     // response must not carry Content-Length (RFC 9110 §8.6).
-                    || ResponseFraming.suppressesHeader(lower, ctx.allowsResponseBody())) {
+                    || ResponseFraming.suppressesHeader(lower, head.allowsBody())) {
                 continue;
             }
             stream.responseHeaders
                 .computeIfAbsent(lower, k -> new ArrayList<>())
-                .add(entry.getValue());
+                .add(header.value());
         }
     }
 
     @Override
-    public void writeBody(HttpContextImpl ctx, byte[] data) throws IOException {
-        boolean suppressBody = ResponseFraming.suppressBodyBytes(
-            ctx.allowsResponseBody(), ctx.method());
-        if (!suppressBody && data.length > 0) {
-            stream.outputStream.write(data);
-        }
-    }
-
-    @Override
-    public void writeBody(HttpContextImpl ctx, byte[] data, int offset, int length)
+    public void writeBody(ResponseHead head, byte[] data, int offset, int length)
             throws IOException {
-        boolean suppressBody = ResponseFraming.suppressBodyBytes(
-            ctx.allowsResponseBody(), ctx.method());
-        if (!suppressBody && length > 0) {
+        if (head.sendsBodyBytes() && length > 0) {
             stream.outputStream.write(data, offset, length);
         }
     }
 
     @Override
-    public void end(HttpContextImpl ctx) throws IOException {
+    public void end(ResponseHead head) throws IOException {
         stream.outputStream.close();
     }
 
     @Override
-    public SseEmitter openSse(HttpContextImpl ctx) throws IOException {
-        writeHead(ctx);
+    public SseEmitter openSse(ResponseHead head) throws IOException {
+        writeHead(head);
         stream.writeResponseHeaders(false);
         return new SseEmitter(stream.outputStream);
     }
 
     @Override
-    public void onLengthMismatch(HttpContextImpl ctx) throws IOException {
+    public void onLengthMismatch(ResponseHead head) throws IOException {
         stream.abortResponse();
     }
 
     private static Set<String> connectionHeaderTokens(
-            List<Map.Entry<String, String>> responseHeaders) {
+            List<ResponseHead.Header> responseHeaders) {
         String connection = null;
-        for (var entry : responseHeaders) {
-            if (entry.getKey().equalsIgnoreCase("connection")) {
-                connection = entry.getValue();
+        for (ResponseHead.Header header : responseHeaders) {
+            if (header.name().equalsIgnoreCase("connection")) {
+                connection = header.value();
                 break;
             }
         }

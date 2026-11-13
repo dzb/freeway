@@ -11,17 +11,15 @@ import com.jujin.freeway.db.internal.RowMapperResolver;
 import com.jujin.freeway.db.migration.MigrationRunner;
 import com.jujin.freeway.db.dialect.Dialect;
 import com.jujin.freeway.db.dialect.H2Dialect;
-import com.jujin.freeway.db.dialect.MySqlDialect;
-import com.jujin.freeway.db.dialect.PostgresDialect;
 import com.jujin.freeway.db.schema.Schema;
 import com.jujin.freeway.db.schema.SchemaEntity;
 import com.jujin.freeway.db.schema.SchemaMode;
-import com.jujin.freeway.db.dialect.SqliteDialect;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.RuntimeHook;
 import com.jujin.freeway.ioc.annotation.Builtin;
+import com.jujin.freeway.ioc.MissingBindingException;
 import com.jujin.freeway.ioc.annotation.Marker;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 import org.slf4j.Logger;
@@ -29,8 +27,6 @@ import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.List;
-
 import java.util.List;
 import java.util.Set;
 import java.util.function.Function;
@@ -53,6 +49,8 @@ import java.util.function.Function;
 public final class DbModule implements ModuleEx {
 
     private static final Logger LOG = LoggerFactory.getLogger(DbModule.class);
+    /** Internal id of the default dialect service; not a user-facing dialect id. */
+    private static final String SELECTED_DIALECT_ID = "selected";
 
     @Override
     public void bind(Binder binder) {
@@ -70,15 +68,12 @@ public final class DbModule implements ModuleEx {
             })
             .id("builtin");
 
-        // dialect — config-driven, url-detected, default Postgres
-        binder
-            .bind(Dialect.class)
-            .to(PostgresDialect.class)
-            .id("postgresql")
-            .primary();
-        binder.bind(Dialect.class).to(MySqlDialect.class).id("mysql");
-        binder.bind(Dialect.class).to(SqliteDialect.class).id("sqlite");
-        binder.bind(Dialect.class).to(H2Dialect.class).id("h2");
+        // The selected dialect is one service. Its provider is the single
+        // config → named binding → URL detection path; a user .primary()
+        // binding substitutes the whole service.
+        binder.bind(Dialect.class)
+            .to(container -> resolveDialect(container))
+            .id(SELECTED_DIALECT_ID);
 
         // database
         binder.bind(RowMapperResolver.class).to(container ->
@@ -200,8 +195,12 @@ public final class DbModule implements ModuleEx {
         PoolConfig config = container.get(PoolConfig.class);
         RowMapperResolver resolver = container.get(RowMapperResolver.class);
         Pool pool = container.get(Pool.class);
-        Dialect dialect = resolveDialect(container);
-        return new DatabaseImpl(config, resolver, pool, dialect);
+        // Selection is by id (explicit config, then URL-detected id, then the
+        // built-in catalog), never by whichever binding happened to win a
+        // type lookup. That keeps a custom dialect adding an id from becoming
+        // ambiguous with the default selected-dialect service.
+        return DatabaseImpl.assemble(
+            config, resolver, pool, resolveDialect(container));
     }
 
     private static MigrationRunner buildMigrationRunner(Container container) {
@@ -346,27 +345,43 @@ public final class DbModule implements ModuleEx {
     static Dialect resolveDialect(Container container) {
         SymbolSource s = container.get(SymbolSource.class);
         String configured = s.resolve(ConfigKeys.DIALECT, "");
-        boolean explicit = !configured.isBlank();
-        String dialectId = explicit ? configured : detectDialect(s);
-        if (!dialectId.isBlank()) {
+        if (!configured.isBlank()) {
+            Dialect bound = namedDialect(container, configured);
+            if (bound != null) {
+                return bound;
+            }
             try {
-                return container.get(Dialect.class, dialectId);
-            } catch (RuntimeException ex) {
-                if (explicit) {
-                    throw new IllegalStateException(
-                        "Unknown dialect '" + dialectId + "'", ex);
-                }
-                LOG.warn("Dialect '{}' not found, falling back to default", dialectId);
+                return Dialect.ofId(configured);
+            } catch (IllegalArgumentException ex) {
+                throw new IllegalStateException(
+                    "Unknown dialect '" + configured + "'", ex);
             }
         }
-        return container.get(Dialect.class);
-    }
 
-    static String detectDialect(SymbolSource s) {
         String url = s.resolve(ConfigKeys.URL, "");
-        return Dialect.of(url).dialectId();
+        Dialect detected = Dialect.of(url);
+        if (detected instanceof H2Dialect) {
+            // The H2 mode is part of the detected instance; resolving only by
+            // dialectId would drop it and silently fall back to native H2.
+            return detected;
+        }
+        Dialect bound = namedDialect(container, detected.dialectId());
+        return bound != null ? bound : detected;
     }
 
+    private static Dialect namedDialect(Container container, String id) {
+        // The selected service lives under this id itself. Resolving it from
+        // inside its own provider would be a dependency cycle; a user who
+        // configures the internal id has not named a separate dialect.
+        if (SELECTED_DIALECT_ID.equals(id)) {
+            return null;
+        }
+        try {
+            return container.get(Dialect.class, id);
+        } catch (MissingBindingException absent) {
+            return null;
+        }
+    }
 
     /**
      * Configuration keys for the DB module.

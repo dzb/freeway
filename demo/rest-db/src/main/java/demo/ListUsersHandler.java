@@ -1,6 +1,6 @@
 package demo;
 
-import com.jujin.freeway.http.HttpContext;
+import com.jujin.freeway.http.HttpExchange;
 import com.jujin.freeway.http.route.RouteHandler;
 import com.jujin.freeway.ioc.annotation.Inject;
 
@@ -15,7 +15,7 @@ public final class ListUsersHandler implements RouteHandler {
     }
 
     @Override
-    public void handle(HttpContext ctx) throws Exception {
+    public void handle(HttpExchange ctx) throws Exception {
         ctx.sendJson(200, users.list());
     }
 }

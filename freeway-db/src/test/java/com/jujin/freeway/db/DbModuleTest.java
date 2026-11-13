@@ -2,6 +2,8 @@ package com.jujin.freeway.db;
 import java.net.URL;
 import java.sql.Timestamp;
 
+import com.jujin.freeway.db.dialect.Dialect;
+import com.jujin.freeway.db.dialect.MySqlDialect;
 import com.jujin.freeway.db.schema.Id;
 import com.jujin.freeway.db.schema.Generated;
 import com.jujin.freeway.db.schema.Schema;
@@ -132,7 +134,7 @@ class DbModuleTest {
             );
 
             db.batch("insert into ledger (id, name, amount_cents, created_at) values (?, ?, ?, ?)")
-                .rows(
+                .rowsRaw(
                     new Object[] { 1L, "alpha", 1250L, Timestamp.from(Instant.parse("2025-01-01T00:00:00Z")) },
                     new Object[] { 2L, "beta", 2250L, Timestamp.from(Instant.parse("2025-01-02T00:00:00Z")) }
                 )
@@ -149,7 +151,7 @@ class DbModuleTest {
             assertEquals(List.of(new Money(1250L), new Money(2250L)), moneyByCollection);
 
             Money first = db.query("select amount_cents from ledger where id = $id")
-                .param("id", 1L)
+                .bind("id", 1L)
                 .one(Money.class)
                 .orElseThrow();
             assertEquals(new Money(1250L), first);
@@ -342,6 +344,36 @@ class DbModuleTest {
     }
 
     @Test
+    void builtInDialectIdIsResolvedFromTheCatalogWithoutANamedBinding() {
+        String dbName = "freeway_dialect_builtin_" + UUID.randomUUID().toString().replace('-', '_');
+        System.setProperty(URL_KEY, "jdbc:h2:mem:" + dbName + ";DB_CLOSE_DELAY=-1");
+        System.setProperty(USER_KEY, "sa");
+        System.setProperty(PASS_KEY, "");
+        System.setProperty(DIALECT_KEY, "mysql");
+
+        try (Container container = Freeway.create(new DbModule())) {
+            assertEquals("mysql", DbModule.resolveDialect(container).dialectId());
+        }
+    }
+
+    @Test
+    void customDialectIsSelectedByIdWithoutPrimaryTypeBinding() {
+        String dbName = "freeway_dialect_custom_" + UUID.randomUUID().toString().replace('-', '_');
+        System.setProperty(URL_KEY, "jdbc:h2:mem:" + dbName + ";DB_CLOSE_DELAY=-1");
+        System.setProperty(USER_KEY, "sa");
+        System.setProperty(PASS_KEY, "");
+        System.setProperty(DIALECT_KEY, "company");
+
+        try (Container container = Freeway.create(
+                new DbModule(),
+                binder -> binder.bind(Dialect.class)
+                    .to(c -> new MySqlDialect())
+                    .id("company"))) {
+            assertEquals("mysql", container.get(Database.class).dialect().dialectId());
+        }
+    }
+
+    @Test
     void unknownUrlSchemeFailsFastWithGuidance() {
         // Without an explicit freeway.db.dialect, an unrecognized JDBC URL
         // scheme (Oracle here) must fail with guidance instead of silently
@@ -374,10 +406,10 @@ class DbModuleTest {
             );
 
             DatabaseRegistry registry = container.get(DatabaseRegistry.class);
-            assertEquals(primary, registry.get("primary"));
-            assertEquals(audit, registry.get("audit"));
+            assertEquals(primary, registry.find("primary").orElseThrow());
+            assertEquals(audit, registry.find("audit").orElseThrow());
             assertSame(primary, registry.primary());
-            assertEquals(Map.of("primary", primary, "audit", audit), registry.all());
+            assertEquals(Map.of("primary", primary, "audit", audit), registry.databases());
         } finally {
             primary.close();
             audit.close();
@@ -393,13 +425,13 @@ class DbModuleTest {
 
         try (Container container = Freeway.create(new DbModule())) {
             DatabaseRegistry registry = container.get(DatabaseRegistry.class);
-            assertTrue(registry.all().containsKey("primary"),
+            assertTrue(registry.databases().containsKey("primary"),
                 "default install must auto-register a 'primary' database");
             Database primary = registry.primary();
             assertSame(container.get(Database.class), primary,
                 "auto-registered primary must be the container's configured Database");
-            assertEquals("postgresql", primary.dialect().dialectId(),
-                "primary dialect must match the configured JDBC URL");
+            assertEquals("h2", primary.dialect().dialectId(),
+                "H2 URL must remain the H2 dialect in PostgreSQL mode");
             assertTrue(primary.ping(), "primary must be a working database");
         }
     }
@@ -419,7 +451,7 @@ class DbModuleTest {
             DatabaseRegistry registry = container.get(DatabaseRegistry.class);
             assertSame(custom, registry.primary(),
                 "a user-contributed 'primary' must win over auto-registration");
-            assertEquals(1, registry.all().size(),
+            assertEquals(1, registry.databases().size(),
                 "auto-registration must not add a second 'primary' when the user already provided one");
         } finally {
             custom.close();
@@ -504,6 +536,9 @@ class DbModuleTest {
         System.setProperty(PASS_KEY, "");
         System.setProperty(MIG_PATH_KEY, migPath);
         System.setProperty(MIG_TABLE_KEY, "_gap_migrations");
+        // H2 DDL auto-commits; use PostgreSQL mode's Postgres dialect for this
+        // migration/schema integration test, which is not testing H2 itself.
+        System.setProperty(DIALECT_KEY, "postgresql");
 
         ClassLoader previous = Thread.currentThread().getContextClassLoader();
         try (URLClassLoader loader = new URLClassLoader(

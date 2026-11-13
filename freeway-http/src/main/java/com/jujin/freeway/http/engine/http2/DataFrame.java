@@ -5,23 +5,28 @@ import java.io.OutputStream;
 import java.util.Arrays;
 
 
-final class DataFrame extends BaseFrame {
+final class DataFrame implements Http2Frame {
+    private final FrameHeader header;
+
+    @Override
+    public FrameHeader header() { return header; }
+
     public final byte[] body;
     private final int padLength;
 
     public DataFrame(FrameHeader header, byte[] body) {
-        super(header);
+        this.header = header;
         this.body = body;
         this.padLength = 0;
     }
 
     private DataFrame(FrameHeader header, byte[] body, int padLength) {
-        super(header);
+        this.header = header;
         this.body = body;
         this.padLength = padLength;
     }
 
-    public static BaseFrame parse(byte[] body, FrameHeader header) throws IOException {
+    public static DataFrame parse(byte[] body, FrameHeader header) throws IOException {
         int index = 0;
         int padLen = 0;
         if (header.flags().contains(FrameFlag.PADDED)) {

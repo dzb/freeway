@@ -80,12 +80,12 @@ public final class Schema {
      * <p><b>Not transactional.</b> {@code ensure()} executes each DDL
      * statement on its own connection/statement and never opens a
      * transaction, so a failure mid-way leaves a partially applied schema.
-     * On databases without transactional DDL (MySQL/MariaDB — see
+     * On databases without transactional DDL (H2 and MySQL/MariaDB — see
      * {@link Dialect#supportsTransactionalDdl()}) every DDL statement
      * implicitly commits, so calling {@code ensure()} inside a user
      * transaction would silently commit that transaction's pending work;
      * {@code ensure()} refuses to run in that situation with a
-     * {@link SqlException}. On transactional-DDL databases (PostgreSQL, H2,
+     * {@link SqlException}. On transactional-DDL databases (PostgreSQL,
      * SQLite) wrapping {@code ensure()} in a transaction is safe and rolls
      * the whole schema back on failure.
      *
@@ -401,7 +401,7 @@ public final class Schema {
      * transaction: on dialects without transactional DDL (MySQL/MariaDB) every
      * DDL statement implicitly commits, so running {@code ensure()}/{@code drop()}
      * inside a transaction would commit its pending work mid-way. Databases
-     * with transactional DDL (PostgreSQL, H2, SQLite) are safe and allowed.
+     * with transactional DDL (PostgreSQL, SQLite) are safe and allowed.
      */
     private static void requireTransactionalDdlSafe(
         Database db,
@@ -414,7 +414,7 @@ public final class Schema {
                     + "dialect '" + dialect.dialectId() + "' — DDL statements "
                     + "implicitly commit the surrounding transaction there; run "
                     + "schema DDL before opening the transaction, or use a "
-                    + "transactional-DDL database (PostgreSQL, H2, SQLite)"
+                    + "transactional-DDL database (PostgreSQL, SQLite)"
             );
         }
     }

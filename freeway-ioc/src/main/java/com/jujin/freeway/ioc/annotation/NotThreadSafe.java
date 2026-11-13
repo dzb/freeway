@@ -16,8 +16,8 @@ import java.lang.annotation.Target;
  * implementation into a singleton holder, behind the concrete class or
  * behind its interface (a singleton proxy caches exactly one target, so
  * proxying does not launder the marker). Holders that are safe: prototype
- * and thread-scoped (each resolution gets its own instance), and a
- * THREAD-scoped interface binding (its proxy resolves per scope). Resolve
+ * and boundary-scoped (each resolution gets its own instance), and a
+ * boundary-scoped interface binding (its proxy resolves per scope). Resolve
  * by marker via {@code container.get(X.class, NotThreadSafe.class)}.
  *
  * <p>This is a declaration, not a proof. Unannotated services carry no

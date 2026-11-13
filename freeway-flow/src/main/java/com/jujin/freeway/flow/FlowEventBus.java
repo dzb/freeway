@@ -30,7 +30,7 @@ import java.util.function.Consumer;
  * local subscribers still run first: they are the evaluation's own audience,
  * the sink is the application's.</p>
  */
-public class FlowEventBus {
+public final class FlowEventBus {
 
     private static final Logger LOG = LoggerFactory.getLogger(FlowEventBus.class);
 

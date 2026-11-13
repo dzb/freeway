@@ -68,7 +68,7 @@ class HttpsSniReloadTest {
 
         app = FreewayApp.run(binder ->
             binder.contribute(Route.class).add(
-                Route.get("/", ctx -> ctx.send(200, "ok"))));
+                Route.get("/", ctx -> ctx.sendText(200, "ok"))));
 
         assertEquals("CN=alt.example", cn(connect(port, "alt.example")),
             "SNI alt.example must select the alt.example certificate");
@@ -96,7 +96,7 @@ class HttpsSniReloadTest {
 
         app = FreewayApp.run(binder ->
             binder.contribute(Route.class).add(
-                Route.get("/", ctx -> ctx.send(200, "ok"))));
+                Route.get("/", ctx -> ctx.sendText(200, "ok"))));
 
         assertEquals("CN=old.example", cn(connect(port, null)),
             "initial connections must present the original certificate");

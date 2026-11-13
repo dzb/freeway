@@ -68,15 +68,15 @@ class JsonUtilsTest {
     void serializesRecordsAndBeansAsTrees() {
         assertEquals(
             "{\"endpoint\":{\"value\":\"alpha\"},\"mode\":\"fast\"}",
-            JsonUtils.stringify(new Payload(new Endpoint("alpha"), "fast"))
+            JsonUtils.toJson(new Payload(new Endpoint("alpha"), "fast"))
         );
         assertEquals(
             "{\"name\":\"demo\",\"count\":3}",
-            JsonUtils.stringify(new View("demo", 3))
+            JsonUtils.toJson(new View("demo", 3))
         );
-        assertEquals("null", JsonUtils.stringify(null));
+        assertEquals("null", JsonUtils.toJson(null));
 
-        String pretty = JsonUtils.stringifyPretty(new View("demo", 3));
+        String pretty = JsonUtils.toPrettyJson(new View("demo", 3));
         assertTrue(pretty.contains("\n"));
         assertTrue(pretty.contains("\"count\": 3"));
     }

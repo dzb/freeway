@@ -97,7 +97,7 @@ public final class ScopedCache {
      * the caller owns the value and its lifecycle.
      */
     @SuppressWarnings("unchecked")
-    public static <V> V get(Object key, Supplier<V> factory) {
+    public static <V> V computeIfAbsent(Object key, Supplier<V> factory) {
         Objects.requireNonNull(key, "key");
         Objects.requireNonNull(factory, "factory");
         ScopeSession session = cacheSession();
@@ -116,7 +116,7 @@ public final class ScopedCache {
      * alike): first creation wins.
      */
     @SuppressWarnings("unchecked")
-    public static <V> V get(Object key, Supplier<V> factory, Consumer<V> onExit) {
+    public static <V> V computeIfAbsent(Object key, Supplier<V> factory, Consumer<V> onExit) {
         Objects.requireNonNull(key, "key");
         Objects.requireNonNull(factory, "factory");
         ScopeSession session = cacheSession();

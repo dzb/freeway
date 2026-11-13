@@ -1,13 +1,13 @@
 package com.jujin.freeway.cloud;
 
 import com.jujin.freeway.cloud.context.CloudContextModule;
-import com.jujin.freeway.cloud.discovery.CloudDiscoveryModule;
-import com.jujin.freeway.cloud.health.CloudHealthModule;
-import com.jujin.freeway.cloud.observe.CloudObserveModule;
-import com.jujin.freeway.cloud.resilience.CloudResilienceModule;
-import com.jujin.freeway.cloud.rpc.CloudRpcModule;
-import com.jujin.freeway.cloud.secret.CloudSecretModule;
-import com.jujin.freeway.cloud.storage.CloudStorageModule;
+import com.jujin.freeway.cloud.discovery.DiscoveryModule;
+import com.jujin.freeway.cloud.health.HealthModule;
+import com.jujin.freeway.cloud.observe.ObserveModule;
+import com.jujin.freeway.cloud.resilience.ResilienceModule;
+import com.jujin.freeway.cloud.rpc.RpcModule;
+import com.jujin.freeway.cloud.secret.SecretModule;
+import com.jujin.freeway.cloud.storage.StorageModule;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.symbol.KnownKeys;
@@ -27,32 +27,32 @@ import java.time.Duration;
  * directly instead of the bundle — no exclusion list exists. A subset still
  * has to include what the subset reads: the RPC client resolves through
  * {@code ServiceDiscovery} and {@code LoadBalancer}, which
- * {@code CloudDiscoveryModule} binds, so "just the client" is two modules —
+ * {@code DiscoveryModule} binds, so "just the client" is two modules —
  * otherwise the container builds and the first call fails with a missing
  * binding:
  *
  * <pre>{@code
  * FreewayApp.run(new OrderModule(),
- *     CloudRpcModule.class, CloudDiscoveryModule.class);   // just the client
+ *     RpcModule.class, DiscoveryModule.class);   // just the client
  * }</pre>
  *
  * <p>{@code bind(Binder)} is the shared cloud surface: cross-cutting bindings
  * or contributions that belong to the bundle as a whole (the modules
  * themselves are declared by {@link SubModule}, not installed by this method).
  *
- * <p>{@link com.jujin.freeway.cloud.event.CloudEventModule} is intentionally
+ * <p>{@link com.jujin.freeway.cloud.event.EventMeshModule} is intentionally
  * absent: it opens listeners and dials peers, so a mesh is something an
  * application asks for explicitly.
  */
 @SubModule({
     CloudContextModule.class,
-    CloudSecretModule.class,
-    CloudDiscoveryModule.class,
-    CloudRpcModule.class,
-    CloudObserveModule.class,
-    CloudResilienceModule.class,
-    CloudHealthModule.class,
-    CloudStorageModule.class
+    SecretModule.class,
+    DiscoveryModule.class,
+    RpcModule.class,
+    ObserveModule.class,
+    ResilienceModule.class,
+    HealthModule.class,
+    StorageModule.class
 })
 /**
  * The standard cloud bundle: declares the context, secret, discovery, RPC,
@@ -139,7 +139,7 @@ public final class CloudModule implements ModuleEx {
          *  value wins ({@code true} on, {@code false} = kill switch suppressing
          *  even a configured peer list); unset falls to the presence rule —
          *  configured peers imply a mesh. Unset with no peers leaves the mesh
-         *  unwired: installing CloudEventModule alone stays inert. */
+         *  unwired: installing EventMeshModule alone stays inert. */
         public static final String EVENT_ENABLED        = "freeway.cloud.event.enabled";
         public static final String RPC_TRACE_ENABLED       = "freeway.cloud.rpc.trace.enabled";
         /** Off by default: inbound {@code x-principal} extraction trusts client
@@ -149,7 +149,7 @@ public final class CloudModule implements ModuleEx {
 
         // ── Default-optimal: derived placement ────────────────────────────────
         // The registry entries default to what the HTTP server bound. Mesh
-        // interest is not a key at all: it is the CloudEventSubscription
+        // interest is not a key at all: it is the MeshSubscription
         // contributions, which simultaneously drive the hello pull-prefixes,
         // the inbound gate and delivery.
         public static final String STORAGE_BASE_PATH  = "freeway.cloud.storage.base-path";
@@ -261,7 +261,7 @@ public final class CloudModule implements ModuleEx {
          *  limiter; the fine-grained keys are ignored). {@code off} is the
          *  escape hatch for mesh takeover (the platform already retries) and
          *  failure diagnosis; it must be explicit. Honored when
-         *  CloudResilienceModule is installed — the CloudModule bundle default. */
+         *  ResilienceModule is installed — the CloudModule bundle default. */
         public static final String RPC_RESILIENCE        = "freeway.cloud.rpc.resilience";
         public static final String RPC_RESILIENCE_AUTO   = "auto";
         public static final String RPC_RESILIENCE_OFF    = "off";
@@ -276,12 +276,12 @@ public final class CloudModule implements ModuleEx {
         public static final String RPC_RATE_LIMIT_ENABLED  = "freeway.cloud.rpc.rate-limit.enabled";
         public static final String RPC_RATE_LIMIT_PER_SECOND = "freeway.cloud.rpc.rate-limit.per-second";
 
-        // Canonical RPC timeout defaults (ms) — shared by CloudRpcModule (config
-        // fallbacks) and CloudHttpClientDefault.Wiring (library fallback when the
+        // Canonical RPC timeout defaults (ms) — shared by RpcModule (config
+        // fallbacks) and RpcHttpClientDefault.Wiring (library fallback when the
         // module is not installed), so the two layers cannot drift apart.
         public static final long RPC_REQUEST_TIMEOUT_DEFAULT = 10_000;
         /**
-         * How long {@code CloudHttpClient.close()} waits for calls already in
+         * How long {@code RpcHttpClient.close()} waits for calls already in
          * flight before failing them. Cutting a call the server may already have
          * applied is worse than a slower stop, so the default waits a few seconds —
          * an idle process still closes immediately (nothing in flight, nothing to
@@ -292,12 +292,12 @@ public final class CloudModule implements ModuleEx {
         public static final Duration RPC_SHUTDOWN_GRACE_DEFAULT = Duration.ofSeconds(5);
         public static final long RPC_CONNECT_TIMEOUT_DEFAULT = 3_000;
 
-        // Canonical retry/breaker defaults — shared by CloudResilienceModule
-        // (config fallbacks) and CloudHttpClientDefault (library fallback when
+        // Canonical retry/breaker defaults — shared by ResilienceModule
+        // (config fallbacks) and RpcHttpClientDefault (library fallback when
         // the resilience module is not installed), so the two layers cannot
         // drift apart. Rate limiting itself defaults to disabled and uses
         // RateLimiter.UNLIMITED on both paths; the per-second default below only
-        // feeds CloudResilienceModule when rate limiting is enabled.
+        // feeds ResilienceModule when rate limiting is enabled.
         public static final int RPC_RETRY_MAX_ATTEMPTS_DEFAULT    = 3;
         public static final long RPC_RETRY_BACKOFF_BASE_DEFAULT   = 100;
         public static final long RPC_RETRY_BACKOFF_MAX_DEFAULT    = 5000;
@@ -317,7 +317,7 @@ public final class CloudModule implements ModuleEx {
         public static final String RPC_TLS_RELOAD_INTERVAL = "freeway.cloud.rpc.tls.reload-interval";
         public static final Duration RPC_TLS_RELOAD_INTERVAL_DEFAULT = Duration.ZERO;
         // Blank-string defaults: unset TLS keys mean plaintext development
-        // (CloudRpcModule resolves TransportSecurity.NONE when the key store is blank).
+        // (RpcModule resolves TransportSecurity.NONE when the key store is blank).
         public static final String RPC_TLS_KEY_STORE_DEFAULT = "";
         public static final String RPC_TLS_KEY_STORE_PASSWORD_DEFAULT = "";
         public static final String RPC_TLS_TRUST_STORE_DEFAULT = "";
@@ -325,7 +325,7 @@ public final class CloudModule implements ModuleEx {
 
         // ── Advanced: mesh transport, reachable only once the mesh exists ─────
 
-        // Shared by the CloudEventLifecycleHook specs and PeerConnector's
+        // Shared by the MeshEventLifecycleHook specs and PeerConnector's
         // library fallback — one value per timeout.
         /** Socket connect timeout for outbound mesh peer dials. */
         public static final String EVENT_CONNECT_TIMEOUT_MS   = "freeway.cloud.event.connect-timeout-ms";

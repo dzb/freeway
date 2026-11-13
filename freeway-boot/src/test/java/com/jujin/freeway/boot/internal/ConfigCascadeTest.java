@@ -470,8 +470,9 @@ class ConfigCascadeTest {
         System.setProperty("freeway.config.file",
             " extra.properties , second.properties ");
         try {
-            List<AppConfigDefault.OverrideFile> overrides =
-                ConfigCascade.overrideFiles(List.of("dev", "prod")).files();
+            List<ConfigFilePlan.File> overrides = ConfigFilePlan
+                .full(Path.of("").toAbsolutePath(), List.of("dev", "prod"))
+                .files();
             List<String> names = overrides.stream()
                 .map(file -> file.path().getFileName().toString())
                 .toList();
@@ -485,11 +486,11 @@ class ConfigCascadeTest {
             // freeway.profile, and only the declared extras are worth a warning
             // when the path does not exist.
             assertEquals(List.of(
-                AppConfigDefault.Role.BASE, AppConfigDefault.Role.BASE,
-                AppConfigDefault.Role.PROFILE_VARIANT, AppConfigDefault.Role.PROFILE_VARIANT,
-                AppConfigDefault.Role.PROFILE_VARIANT, AppConfigDefault.Role.PROFILE_VARIANT,
-                AppConfigDefault.Role.DECLARED, AppConfigDefault.Role.DECLARED),
-                overrides.stream().map(AppConfigDefault.OverrideFile::role).toList());
+                ConfigFilePlan.Role.BASE, ConfigFilePlan.Role.BASE,
+                ConfigFilePlan.Role.PROFILE_VARIANT, ConfigFilePlan.Role.PROFILE_VARIANT,
+                ConfigFilePlan.Role.PROFILE_VARIANT, ConfigFilePlan.Role.PROFILE_VARIANT,
+                ConfigFilePlan.Role.DECLARED, ConfigFilePlan.Role.DECLARED),
+                overrides.stream().map(ConfigFilePlan.File::role).toList());
         } finally {
             System.clearProperty("freeway.config.file");
         }

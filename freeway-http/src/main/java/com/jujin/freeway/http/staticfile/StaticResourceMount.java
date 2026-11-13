@@ -13,6 +13,7 @@ import java.nio.file.OpenOption;
 import java.nio.file.Path;
 import java.nio.file.SecureDirectoryStream;
 import java.nio.file.StandardOpenOption;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
@@ -39,7 +40,9 @@ import com.jujin.freeway.http.route.PathPattern;
  * A directory or classpath tree served under a URL prefix, with cache headers,
  * single-range requests and the sendfile fast path for large files. Mounts are
  * contributed as declarations; the HTTP module hands them to the pipeline in
- * contribution order.
+ * contribution order. An optional terminal SPA fallback serves the mount root's
+ * {@code index.html} when an extensionless navigation path misses both the
+ * mount and the route chain; see {@link #withSpaFallback(boolean)}.
  */
 public final class StaticResourceMount {
     private static final Logger LOG = LoggerFactory.getLogger(StaticResourceMount.class);
@@ -54,19 +57,22 @@ public final class StaticResourceMount {
     private final long cacheMaxAgeSeconds;
     private final boolean immutable;
     private final boolean fallthrough;
-    private final boolean spaIndex;
+    private final boolean spaFallback;
 
     private StaticResourceMount(
         String mountPath, ResourceSource source,
         long cacheMaxAgeSeconds, boolean immutable,
-        boolean fallthrough, boolean spaIndex
+        boolean fallthrough, boolean spaFallback
     ) {
         this.mountPath = normalizeMount(mountPath);
         this.source = Objects.requireNonNull(source, "source");
         this.cacheMaxAgeSeconds = Math.max(0L, cacheMaxAgeSeconds);
         this.immutable = immutable;
-        this.fallthrough = fallthrough;
-        this.spaIndex = spaIndex;
+        // SPA fallback is a second hop after the route chain, so it can never
+        // exist without fallthrough. Canonicalizing here keeps the impossible
+        // pair out of every wither.
+        this.spaFallback = spaFallback;
+        this.fallthrough = fallthrough || spaFallback;
     }
 
     public static StaticResourceMount directory(String mountPath, Path root) {
@@ -77,37 +83,69 @@ public final class StaticResourceMount {
         return new StaticResourceMount(mountPath, new ClasspathResourceSource(resourceRoot), DEFAULT_CACHE_MAX_AGE_SECONDS, false, false, false);
     }
 
-    public StaticResourceMount withCacheMaxAgeSeconds(long cacheMaxAgeSeconds) {
-        return new StaticResourceMount(mountPath, source, cacheMaxAgeSeconds, immutable, fallthrough, spaIndex);
+    public StaticResourceMount withCacheMaxAge(Duration maxAge) {
+        Objects.requireNonNull(maxAge, "maxAge");
+        return new StaticResourceMount(
+            mountPath, source, maxAge.toSeconds(), immutable, fallthrough, spaFallback);
     }
 
     public StaticResourceMount withImmutable(boolean immutable) {
-        return new StaticResourceMount(mountPath, source, cacheMaxAgeSeconds, immutable, fallthrough, spaIndex);
+        return new StaticResourceMount(mountPath, source, cacheMaxAgeSeconds, immutable, fallthrough, spaFallback);
     }
 
     /**
-     * When true, passes the request back to the route chain instead of
-     * returning 404 when the file is not found. Similar to nginx's
-     * {@code try_files} directive — useful for SPA front-end routing.
+     * When true, a miss is handed to the route chain instead of returning a
+     * terminal 404. This is the first half of nginx's {@code try_files}; it
+     * does <b>not</b> serve {@code index.html} by itself. For history-mode SPA
+     * routing add {@link #withSpaFallback(boolean)}, which is the terminal
+     * {@code /index.html} hop after the route chain has also missed.
      */
     public StaticResourceMount withFallthrough(boolean fallthrough) {
-        return new StaticResourceMount(mountPath, source, cacheMaxAgeSeconds, immutable, fallthrough, spaIndex);
+        return new StaticResourceMount(mountPath, source, cacheMaxAgeSeconds, immutable,
+            fallthrough, fallthrough && spaFallback);
     }
 
     /**
-     * SPA index fallback — the missing half of the {@code try_files} analogy:
-     * when {@link #withFallthrough fallthrough} defers a miss to the route
-     * chain and no route handles it either, {@link #serve} serves the mount's
-     * {@code index.html} for GET requests without an extension (nginx's
-     * {@code try_files ... /index.html}). Required for history-mode SPA
-     * routing (deep links like {@code /chat}) in fat-jar deployments.
+     * When true, a {@code GET}/{@code HEAD} request for an extensionless path
+     * that neither this mount nor the route chain serves falls back to the
+     * mount root's {@code index.html}. This is the terminal hop of nginx's
+     * {@code try_files $uri $uri/ /index.html}, and the one history-mode SPA
+     * routing needs; {@link #withFallthrough(boolean)} supplies the route-chain
+     * hop before it.
+     *
+     * <p>Fallback is considered only after route dispatch misses and only for
+     * a path no route recognizes under any method; a {@code 405} is not
+     * rewritten into the SPA shell. Requests whose last path segment contains
+     * a dot are treated as assets and never fall back. The selected mount is
+     * the most specific matching one (longest mount path, ties by contribution
+     * order), so a dedicated {@code /assets} mount still owns a missing
+     * {@code .js} even when a root SPA mount exists.</p>
+     *
+     * <p>Enabling this implies {@link #fallthrough() fallthrough}. Disabling
+     * fallthrough clears it as well.</p>
+     *
+     * <p>The fallback reuses the mount's cache policy, including
+     * {@link #withImmutable(boolean) immutable}; a shell that references hashed
+     * assets should normally be served from a non-immutable mount separate from
+     * those assets.</p>
      */
-    public StaticResourceMount withSpaIndex(boolean spaIndex) {
-        return new StaticResourceMount(mountPath, source, cacheMaxAgeSeconds, immutable, fallthrough, spaIndex);
+    public StaticResourceMount withSpaFallback(boolean spaFallback) {
+        return new StaticResourceMount(mountPath, source, cacheMaxAgeSeconds, immutable,
+            fallthrough || spaFallback, spaFallback);
     }
 
     public boolean fallthrough() {
         return fallthrough;
+    }
+
+    public boolean spaFallback() {
+        return spaFallback;
+    }
+
+    /** The normalized mount prefix, used by dispatch to pick the most specific
+     *  mount for the terminal SPA fallback. */
+    public String mountPath() {
+        return mountPath;
     }
 
     public boolean matches(String method, String path) {
@@ -145,25 +183,77 @@ public final class StaticResourceMount {
         if (relative == null) {
             return notFound(response);
         }
+        if (!serveResolved(request, response, relative)) {
+            return notFound(response);
+        }
+        return true;
+    }
+
+    /**
+     * Serves the mount root's {@code index.html} when an extensionless path
+     * missed both this mount and the route chain. The response goes through the
+     * same cache/ETag/Range/HEAD/bytes pipeline as every other asset.
+     *
+     * @return true when the fallback was served; false when this mount does not
+     *         opt in, the path is not a navigation path, or {@code index.html}
+     *         is missing
+     */
+    public boolean serveSpaFallback(HttpRequest request, HttpResponse response)
+            throws IOException {
+        if (!spaFallback || !spaFallbackEligible(request.path())) {
+            return false;
+        }
+        return serveResolved(request, response, "index.html");
+    }
+
+    /**
+     * True when {@code path} is eligible for this mount's terminal SPA hop:
+     * the mount opts in and the last decoded segment has no extension. A
+     * dotted last segment names an asset, so a missing {@code .js} is a 404,
+     * never the HTML shell.
+     */
+    public boolean spaFallbackEligible(String path) {
+        if (!spaFallback) {
+            return false;
+        }
+        String relative = relativePath(path);
+        if (relative == null) {
+            return false;
+        }
+        if (relative.endsWith("/")) {
+            relative = relative.substring(0, relative.length() - 1);
+        }
+        if (relative.isBlank()) {
+            return false;
+        }
+        int slash = relative.lastIndexOf('/');
+        String leaf = slash < 0 ? relative : relative.substring(slash + 1);
+        return !leaf.contains(".");
+    }
+
+    /** Startup probe for the terminal hop: true when this mount opts in and
+     *  its {@code index.html} exists. */
+    public boolean hasSpaIndex() throws IOException {
+        return spaFallback && source.meta("index.html") != null;
+    }
+
+    /**
+     * Serves one already-resolved asset. Split from {@link #serve} so the SPA
+     * terminal hop reuses the exact cache/ETag/Range/HEAD/bytes pipeline
+     * instead of growing a second send path.
+     *
+     * @return true when the response was handled; false when the asset is
+     *         missing or vanished before its bytes could be opened
+     */
+    private boolean serveResolved(HttpRequest request, HttpResponse response,
+                                  String relative) throws IOException {
         AssetMeta meta = source.meta(relative);
         if (meta == null) {
-            // SPA index fallback（try_files 最后一跳）：spaIndex 时对无扩展名的缺失路径
-            // 回退 index.html——history-mode SPA 深链（/chat）在 fat-jar 部署下必需。
-            // 有扩展名的缺失（/assets/xxx.js 拼错）不回退——避免给 JS 期待方回 HTML。
-            if (spaIndex && !hasFileExtension(relative)) {
-                AssetMeta spa = source.meta("index.html");
-                if (spa != null) {
-                    relative = "index.html";
-                    meta = spa;
-                }
-            }
-        }
-        if (meta == null) {
-            return notFound(response);
+            return false;
         }
         applyCacheHeaders(response, meta);
         if (isNotModified(request, meta)) {
-            response.setStatus(HttpStatus.NOT_MODIFIED).output(new byte[0]);
+            response.setStatus(HttpStatus.NOT_MODIFIED).body(new byte[0]);
             return true;
         }
 
@@ -174,7 +264,7 @@ public final class StaticResourceMount {
         if (range != null && !range.satisfiable()) {
             response.setStatus(HttpStatus.RANGE_NOT_SATISFIABLE);
             response.setHeader("Content-Range", "bytes */" + meta.size());
-            response.output(new byte[0]);
+            response.body(new byte[0]);
             return true;
         }
 
@@ -183,16 +273,10 @@ public final class StaticResourceMount {
             response.setStatus(HttpStatus.PARTIAL_CONTENT);
             response.setHeader("Content-Range",
                 "bytes " + range.start() + "-" + range.end() + "/" + meta.size());
-            if (!serveBytes(request, response, meta, relative, range.start(), length)) {
-                return notFound(response);
-            }
-            return true;
+            return serveBytes(request, response, meta, relative, range.start(), length);
         }
 
-        if (!serveBytes(request, response, meta, relative, 0, meta.size())) {
-            return notFound(response);
-        }
-        return true;
+        return serveBytes(request, response, meta, relative, 0, meta.size());
     }
 
     /**
@@ -214,12 +298,14 @@ public final class StaticResourceMount {
         response.setHeader("Content-Type", MediaTypes.contentType(meta.name()));
         response.setHeader("X-Content-Type-Options", "nosniff");
         if ("HEAD".equalsIgnoreCase(request.method())) {
-            // No body needed — report the headers (and real size) without
-            // reading the file contents.
-            if (length >= 0) {
-                response.setHeader("Content-Length", Long.toString(length));
-            }
-            response.output(new byte[0]);
+            // HEAD reports the headers and the real size without reading the
+            // file: the declared length goes through the stream API so
+            // Content-Length stays framework-authoritative (a handler-set
+            // header would be overwritten by the bytes actually committed),
+            // and transports must not read the source when the head sends no
+            // body bytes. A negative length means unknown — no
+            // Content-Length, exactly like the GET it mirrors.
+            response.body(java.io.InputStream.nullInputStream(), length);
             return true;
         }
         // sendfile fast path: real files on plain HTTP get transferred
@@ -229,7 +315,7 @@ public final class StaticResourceMount {
         }
         Path file = source.file(relative);
         if (file != null) {
-            response.outputFile(file, start, Math.max(0, length));
+            response.file(file, start, Math.max(0, length));
             return true;
         }
         // Stream when the source can open a body stream directly (disk
@@ -240,9 +326,9 @@ public final class StaticResourceMount {
             try {
                 if (length >= 0) {
                     body.skipNBytes(start);
-                    response.output(new BoundedInputStream(body, length), length);
+                    response.body(new BoundedInputStream(body, length), length);
                 } else {
-                    response.output(body, -1);
+                    response.body(body, -1);
                 }
                 return true;
             } finally {
@@ -254,10 +340,10 @@ public final class StaticResourceMount {
             return false;
         }
         if (length >= 0) {
-            response.output(Arrays.copyOfRange(asset.bytes(), (int) start,
+            response.body(Arrays.copyOfRange(asset.bytes(), (int) start,
                 (int) (start + length)));
         } else {
-            response.output(asset.bytes());
+            response.body(asset.bytes());
         }
         return true;
     }
@@ -266,7 +352,7 @@ public final class StaticResourceMount {
      * Opens the asset through the secure channel path and hands the channel
      * to the context. Ownership: the context closes the channel exactly
      * once, including failure paths (see
-     * {@link HttpResponse#outputFile(FileChannel, long, long)});
+     * {@link HttpResponse#file(FileChannel, long, long)});
      * when the context cannot consume channels
      * ({@link UnsupportedOperationException}) the caller closes it before
      * falling back to the file/stream paths.
@@ -279,7 +365,7 @@ public final class StaticResourceMount {
             return false;
         }
         try {
-            response.outputFile(channel, offset, length);
+            response.file(channel, offset, length);
             return true;
         } catch (UnsupportedOperationException e) {
             channel.close();
@@ -291,7 +377,7 @@ public final class StaticResourceMount {
         if (fallthrough) {
             return false;
         }
-        ErrorResponses.notFound(response);
+        ErrorResponses.notFound().write(response);
         return true;
     }
 
@@ -317,13 +403,6 @@ public final class StaticResourceMount {
      * serves that directory's {@code index.html}. Returns null when the path
      * is outside the mount, malformed, or contains traversal segments.
      */
-    /** 路径最后段含 '.' 即视为带扩展名（/assets/app.js → true；/chat → false）。 */
-    private static boolean hasFileExtension(String relative) {
-        int slash = relative.lastIndexOf('/');
-        String last = slash >= 0 ? relative.substring(slash + 1) : relative;
-        return last.contains(".");
-    }
-
     private String resolveAssetPath(String requestPath) throws IOException {
         String relative = relativePath(requestPath);
         if (relative == null) {

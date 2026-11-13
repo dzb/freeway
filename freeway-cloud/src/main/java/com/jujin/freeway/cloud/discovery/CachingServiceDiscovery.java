@@ -34,7 +34,7 @@ import org.slf4j.LoggerFactory;
  *
  * <ul>
  *   <li>an implementation that talks to the network wraps itself —
- *       {@code RegistryFleetModule} does it for the fleet, and an adapter such
+ *       {@code FleetRegistryModule} does it for the fleet, and an adapter such
  *       as Consul does the same in its own module;</li>
  *   <li>the in-process store ({@link ServiceDiscoveryDefault}) does not wrap:
  *       its answer is a map read, and cache bookkeeping would make it

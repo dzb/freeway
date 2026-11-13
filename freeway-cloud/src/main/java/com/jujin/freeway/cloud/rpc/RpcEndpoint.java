@@ -5,7 +5,7 @@ import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.commons.json.JsonArray;
 import com.jujin.freeway.commons.json.JsonObject;
 import com.jujin.freeway.commons.json.JsonUtils;
-import com.jujin.freeway.http.HttpContext;
+import com.jujin.freeway.http.HttpExchange;
 import com.jujin.freeway.http.route.Route;
 import com.jujin.freeway.http.HttpStatus;
 import java.io.IOException;
@@ -69,7 +69,7 @@ public final class RpcEndpoint {
      * The protocol body, shared by both entries: version check, handler gate,
      * positional-argument decode, dispatch, exception boundary.
      */
-    static void serve(HttpContext ctx, String mapping, RpcTarget target, JsonCodec codec)
+    static void serve(HttpExchange ctx, String mapping, RpcTarget target, JsonCodec codec)
             throws IOException {
         String rpcVersion = ctx.header(RemoteCaller.VERSION_HEADER).orElse(null);
         if (!RemoteCaller.VERSION.equals(rpcVersion)) {
@@ -98,7 +98,7 @@ public final class RpcEndpoint {
         try {
             Object result = ReflectiveHandles.invokeOn(entry.handle(), target.handler(), args);
             if (result == null) {
-                ctx.send(HttpStatus.OK, "");
+                ctx.sendText(HttpStatus.OK, "");
             } else {
                 ctx.sendJson(HttpStatus.OK, result);
             }
@@ -156,11 +156,11 @@ public final class RpcEndpoint {
                 ? o.toMap()
                 : element instanceof JsonArray a ? a.toList() : element;
         }
-        return codec.convert(element, declared);
+        return codec.coerce(element, declared);
     }
 
     private static void encodeBusinessFailure(
-            HttpContext ctx, String mapping, boolean propagateMessage, Throwable ex)
+            HttpExchange ctx, String mapping, boolean propagateMessage, Throwable ex)
             throws IOException {
         // The detail is always available to operators on THIS side; what
         // crosses the boundary is the class (the contract) and, only on
@@ -179,7 +179,7 @@ public final class RpcEndpoint {
         ctx.sendJson(HttpStatus.BAD_REQUEST, Map.of("error", className));
     }
 
-    static void reject(HttpContext ctx, int status, String message) throws IOException {
+    static void reject(HttpExchange ctx, int status, String message) throws IOException {
         ctx.setHeader("X-RPC-Reject-Reason", headerText(message));
         ctx.sendJson(status, Map.of("error", message));
     }

@@ -20,14 +20,14 @@
  *       pipeline[, eventSink])} is the one derivation; during assembly the
  *       seam below is compiled away.</li>
  *   <li><strong>The seam's data half</strong> — {@link ExchangeHandler} (the
- *       behaviour) with {@link HttpContext}/{@link AbstractHttpContext} and
+ *       behaviour) with {@link HttpExchange}/{@link HttpExchangeSupport} and
  *       the exchange faces {@link HttpRequest}, {@link HttpResponse},
  *       {@link RequestView} (the read-only projection shared with a
  *       WebSocket session), {@link ExchangeMeta} and its
  *       {@link ExchangeMetaImpl} (per-exchange state, constructed
  *       directly rather than looked up). During handle this half is the only
  *       crossing between a pipeline and a transport.</li>
- *   <li><strong>The TLS contract</strong> — {@link SslSettings} (key material
+ *   <li><strong>The TLS contract</strong> — {@link SslConfig} (key material
  *       resolution the engines share) and {@link SslContexts} (context
  *       building); the package-private {@code SniKeyManager} is SslContexts'
  *       collaborator. Hot reload of a running engine is engine-self-driven

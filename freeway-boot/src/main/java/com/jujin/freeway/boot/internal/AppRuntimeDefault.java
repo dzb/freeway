@@ -2,6 +2,7 @@ package com.jujin.freeway.boot.internal;
 
 import com.jujin.freeway.boot.AppConfig;
 import com.jujin.freeway.boot.AppRuntime;
+import com.jujin.freeway.boot.AppRuntimeDescription;
 import com.jujin.freeway.boot.AppState;
 import com.jujin.freeway.boot.event.AppLifecycleEvent;
 
@@ -49,6 +50,16 @@ public final class AppRuntimeDefault implements AppRuntime {
     @Override
     public <T> T get(Class<T> type, String id) {
         return container.get(type, id);
+    }
+
+    @Override
+    public AppRuntimeDescription describe() {
+        return new AppRuntimeDescription(
+            state,
+            config.profiles(),
+            config.keys(),
+            container.describe()
+        );
     }
 
     @Override

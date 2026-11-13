@@ -1,6 +1,6 @@
 package demo;
 
-import com.jujin.freeway.http.HttpContext;
+import com.jujin.freeway.http.HttpExchange;
 import com.jujin.freeway.http.route.RouteHandler;
 import com.jujin.freeway.ioc.annotation.Inject;
 
@@ -15,12 +15,12 @@ public final class GetUserHandler implements RouteHandler {
     }
 
     @Override
-    public void handle(HttpContext ctx) throws Exception {
+    public void handle(HttpExchange ctx) throws Exception {
         // Coerced to long: a non-numeric id fails the request, not find().
         long id = ctx.pathVar("id", Long.class).orElseThrow();
         var user = users.find(id);
         if (user.isEmpty()) {
-            ctx.send(404, "Not Found");
+            ctx.sendText(404, "Not Found");
             return;
         }
         ctx.sendJson(200, user.orElseThrow());

@@ -90,16 +90,20 @@ public interface Container extends AutoCloseable {
      *         failure {@code get(Class)} would when several bindings exist
      *         without a primary
      */
-    <T> boolean isActiveBinding(
+    <T> boolean isActiveBindingMarked(
         Class<T> type,
         Class<? extends Annotation>... markers
     );
 
     /**
      * Returns the extension point for the given entry type, providing access
-     * to all contributed values of that type across all modules. Read at any
-     * time; contributions themselves are accepted only during composition —
-     * the store is sealed once the container is built.
+     * to all contributed values of that type across all modules. Read it once
+     * the store is complete (the final-build phase or later): a
+     * container-created store refuses {@code all()}/{@code asMap()} while any
+     * declared contribution of that type is still unpublished, so a
+     * composition-time reader cannot freeze a partial view. Contributions
+     * themselves are accepted only during composition — the store is sealed
+     * once the container is built.
      *
      * @param entryType the extension point type (e.g. {@code Route.class})
      * @param <T>       the entry type
@@ -134,6 +138,16 @@ public interface Container extends AutoCloseable {
      */
     <T> T create(Class<T> type);
 
+
+    /**
+     * Returns a metadata snapshot of the composition: module tree, registered
+     * bindings and contribution ids/order. It never exposes service instances
+     * or configuration values and never realizes a lazy service.
+     *
+     * <p>The snapshot is for diagnostics and tooling (including coding agents);
+     * it is not a second lookup API. Call it while the container is open.</p>
+     */
+    RuntimeDescription describe();
 
     /**
      * Closes the container: runs {@code @PreDestroy} and {@code AutoCloseable}

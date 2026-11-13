@@ -118,7 +118,7 @@ class StreamQueryTest {
 
             var collected = new ArrayList<String>();
             try (var stream = db.query("select val from t where id = $id")
-                .param("id", 1)
+                .bind("id", 1)
                 .stream(String.class)) {
                 stream.forEach(collected::add);
             }

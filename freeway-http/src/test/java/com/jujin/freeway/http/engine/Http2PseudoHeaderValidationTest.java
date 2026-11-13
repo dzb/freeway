@@ -149,7 +149,7 @@ class Http2PseudoHeaderValidationTest {
 
     private static HttpServer server() {
         return HttpServer.create(TestHttp.engine(),
-            TestServerConfig.loopback(), HttpPipeline.of(Route.get("/", ctx -> ctx.send(200, "ok"))));
+            TestServerConfig.loopback(), HttpPipeline.of(Route.get("/", ctx -> ctx.sendText(200, "ok"))));
     }
 
     private static void assertGoawayProtocolError(byte[] block, String what)

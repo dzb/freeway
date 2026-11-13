@@ -2,8 +2,8 @@ package demo;
 
 import com.jujin.freeway.boot.Launch;
 import com.jujin.freeway.boot.FreewayApp;
-import com.jujin.freeway.cloud.event.CloudEventModule;
-import com.jujin.freeway.cloud.event.CloudEventSubscription;
+import com.jujin.freeway.cloud.event.EventMeshModule;
+import com.jujin.freeway.cloud.event.MeshSubscription;
 import com.jujin.freeway.http.HttpModule;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.ModuleEx;
@@ -17,7 +17,7 @@ import com.jujin.freeway.cloud.CloudModule;
 /**
  * Subscriber node of the cross-JVM event-mesh demo.
  *
- * <p>Interest is declared at composition with a {@link CloudEventSubscription}
+ * <p>Interest is declared at composition with a {@link MeshSubscription}
  * contribution — the same declaration tells peers what to pull (hello), gates
  * inbound frames, and routes delivery. The handler then performs the demo's
  * one deliberate act: an explicit MIRROR line publishing the remote fact onto
@@ -33,19 +33,19 @@ public final class NodeB {
     public static void main(String[] args) throws Exception {
         // HTTP port for the /cloud/event WS endpoint (fixed for peer config).
         System.setProperty(HttpModule.ConfigKeys.SERVER_PORT, "18080");
-        // CloudEventBus: no dial peers — this node waits for inbound connections.
+        // MeshEventBus: no dial peers — this node waits for inbound connections.
         System.setProperty(ConfigKeys.EVENT_ENABLED, "true");
 
-        var app = FreewayApp.run(Launch.of(args), new HttpModule(), new CloudEventModule(), new ModuleEx() {
+        var app = FreewayApp.run(Launch.of(args), new HttpModule(), new EventMeshModule(), new ModuleEx() {
             @Override
             public void bind(Binder binder) {
                 // Declared interest: prefix "greet.hello" (= the topic A publishes).
                 // The handler captures the container and resolves the bus lazily
                 // at first event — by then the bus is built, so no construction
                 // cycle. This is the mirror: remote fact → local plane, by choice.
-                binder.contribute(CloudEventSubscription.class)
-                    .add("greet-mirror", container ->
-                        CloudEventSubscription.of(Events.GREET_TOPIC, Events.Greeting.class, g -> {
+                binder.contribute(MeshSubscription.class)
+                    .addDeferred("greet-mirror", container ->
+                        MeshSubscription.of(Events.GREET_TOPIC, Events.Greeting.class, g -> {
                             int n = deliveries.incrementAndGet();
                             System.out.println("[B] mesh received #" + n + ": " + g + " — mirroring to the local bus");
                             container.get(EventBus.class).publish(g);

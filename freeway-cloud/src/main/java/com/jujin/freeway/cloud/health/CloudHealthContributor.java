@@ -1,5 +1,7 @@
 package com.jujin.freeway.cloud.health;
 
+import com.jujin.freeway.http.HealthResult;
+
 /**
  * Extension point: each adapter/dependency contributes its own readiness
  * check; {@code /health/ready} aggregates all contributions.

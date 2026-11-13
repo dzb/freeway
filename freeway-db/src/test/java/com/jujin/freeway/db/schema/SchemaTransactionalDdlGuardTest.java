@@ -2,7 +2,7 @@ package com.jujin.freeway.db.schema;
 
 import com.jujin.freeway.db.BatchQuery;
 import com.jujin.freeway.db.Database;
-import com.jujin.freeway.db.DatabaseStats;
+import com.jujin.freeway.db.PoolStats;
 import com.jujin.freeway.db.ExecuteResult;
 import com.jujin.freeway.db.IsolationLevel;
 import com.jujin.freeway.db.PoolConfig;
@@ -74,23 +74,21 @@ class SchemaTransactionalDdlGuardTest {
     }
 
     @Test
-    void ensureInsideTransactionWorksOnH2PostgresMode() {
-        // H2 in PostgreSQL mode has transactional DDL — wrapping ensure() in a
-        // user transaction is safe and commits atomically.
+    void ensureInsideTransactionIsRejectedOnH2BecauseDdlAutoCommits() {
+        // H2 reports transactional DDL as unsupported in every mode: CREATE
+        // TABLE commits even when the surrounding transaction is rolled back.
+        // Schema.ensure must refuse before the DDL runs.
         String dbName = "fw_schema_tx_" + UUID.randomUUID().toString().replace('-', '_');
         Database db = Database.create(PoolConfig.defaults(
                 "jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""));
         try (db) {
-            db.transaction(() -> {
-                int applied = Schema.ensure(db, User.class);
-                assertEquals(1, applied);
-            });
+            assertThrows(SqlException.class, () -> db.transaction(() -> Schema.ensure(db, User.class)));
 
             List<String> tables = db.query(
                 "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'PUBLIC'"
             ).list(String.class);
-            assertTrue(tables.stream().anyMatch(t -> t.equalsIgnoreCase("users")),
-                "table must exist after the committed transaction: " + tables);
+            assertEquals(0L, tables.stream().filter(t -> t.equalsIgnoreCase("users")).count(),
+                "the guard must reject before creating the table: " + tables);
         }
     }
 
@@ -138,7 +136,8 @@ class SchemaTransactionalDdlGuardTest {
         }
     }
 
-    private static final class TransactionalTestDialect extends NonTransactionalTestDialect {
+    private static final class TransactionalTestDialect implements Dialect {
+        private final NonTransactionalTestDialect base = new NonTransactionalTestDialect();
 
         @Override
         public String dialectId() {
@@ -146,8 +145,33 @@ class SchemaTransactionalDdlGuardTest {
         }
 
         @Override
+        public String quoteName(String name) {
+            return base.quoteName(name);
+        }
+
+        @Override
         public boolean supportsTransactionalDdl() {
             return true;
+        }
+
+        @Override
+        public Set<String> existingTables(Database db) {
+            return base.existingTables(db);
+        }
+
+        @Override
+        public Set<String> existingColumns(Database db, String tableName) {
+            return base.existingColumns(db, tableName);
+        }
+
+        @Override
+        public String generatedClause() {
+            return base.generatedClause();
+        }
+
+        @Override
+        public String defaultUUIDType() {
+            return base.defaultUUIDType();
         }
     }
 
@@ -204,7 +228,7 @@ class SchemaTransactionalDdlGuardTest {
         }
 
         @Override
-        public DatabaseStats stats() {
+        public PoolStats stats() {
             return null;
         }
 

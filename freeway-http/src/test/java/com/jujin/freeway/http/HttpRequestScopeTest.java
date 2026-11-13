@@ -20,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * The opt-in request boundary: with {@code request-scope.enabled}, a route can
- * resolve a {@code Scope.THREAD} service through the running application, the
+ * resolve a {@code Scope.BOUNDARY} service through the running application, the
  * same instance is reused for the request, and it is destroyed when the request
  * completes.
  */
@@ -51,11 +51,11 @@ class HttpRequestScopeTest {
         ModuleEx module = new ModuleEx() {
             @Override
             public void bind(Binder binder) {
-                binder.bind(ScopedValue.class).to(ScopedValue.class).scope(Scope.THREAD);
+                binder.bind(ScopedValue.class).to(ScopedValue.class).scope(Scope.BOUNDARY);
                 binder.contribute(Route.class).add(Route.get("/scope", ctx -> {
                     ScopedValue first = runtime.get().get(ScopedValue.class);
                     ScopedValue second = runtime.get().get(ScopedValue.class);
-                    ctx.send(200, first == second ? "same" : "different");
+                    ctx.sendText(200, first == second ? "same" : "different");
                 }));
             }
         };
@@ -70,7 +70,7 @@ class HttpRequestScopeTest {
 
             assertEquals(200, response.statusCode());
             assertEquals("same", response.body(),
-                "one THREAD-scoped instance per request boundary");
+                "one boundary-scoped instance per request boundary");
             assertEquals(1, destroyed.get(),
                 "the request boundary destroys the scoped instance before the response returns");
         }

@@ -24,19 +24,20 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p><b>This is now a regression guard for a past shape, not a comparison of
  * two live implementations.</b> It was written when the built-in engine bounded
- * bodies through {@code RequestBody} and the adapter seam exposed
- * {@link AbstractHttpContext#readBody} — a second implementation that
- * {@code HttpEngine}'s javadoc and AGENTS.md both named as <em>the</em> shared
- * one while nothing in the framework called it. Two independent loops, one
+ * bodies through {@code RequestBody} and the adapter seam exposed a second
+ * read helper — a second implementation that {@code HttpEngine}'s javadoc and
+ * AGENTS.md both named as <em>the</em> shared one while nothing in the
+ * framework called it. Two independent loops, one
  * documented guarantee, and the two happened to agree on every case here, so the
  * duplication was a latent divergence rather than a live bug.
  *
- * <p>{@code readBody} is now a one-line delegate to {@code LimitedInputStream},
- * the limiter the engine itself runs, so {@link #viaEngine} and
- * {@link #viaAdapterHelper} drive the same object and the case-by-case
- * comparison below has become an assertion about the delegation rather than
- * about two implementations. It is kept in that shape on purpose: should the
- * delegate ever be re-inlined, these cases are what would notice.
+ * <p>There is now exactly one limiter: {@code http.internal.LimitedInputStream},
+ * which {@code HttpExchangeSupport} wraps around {@code transport.framedBodyStream()}
+ * for every engine. {@link #viaEngine} drives that limiter directly and
+ * {@link #viaAdapterHelper} drives it through a real support object, so the
+ * case-by-case comparison below asserts that the support object's wrapper is
+ * the same behaviour — and would notice if the wrapper ever grew a second
+ * loop of its own. It is kept in that shape on purpose.
  */
 class BodyLimitParityTest {
 
@@ -44,17 +45,18 @@ class BodyLimitParityTest {
         return s.getBytes(StandardCharsets.ISO_8859_1);
     }
 
-    /** The built-in engine's limiter — the same one {@code RequestBody} uses. */
+    /** The built-in engine's limiter — the one the support object runs. */
     private static byte[] viaEngine(long limit, String body) throws IOException {
         return new LimitedInputStream(
             new ByteArrayInputStream(latin(body)), () -> limit).readAllBytes();
     }
 
-    /** The adapter seam: the shared helper an engine adapter is told to call. */
+    /** The support object every engine composes: same limiter, real wrapper. */
     private static byte[] viaAdapterHelper(long limit, String body) throws IOException {
-        StubHttpContext ctx = new StubHttpContext();
+        TestExchange ctx = new TestExchange("POST", "/");
         ctx.setMaxBodySize(limit);
-        return ctx.readBody(new ByteArrayInputStream(latin(body)));
+        ctx.requestBody(new ByteArrayInputStream(latin(body)));
+        return ctx.body();
     }
 
     /**
@@ -75,9 +77,10 @@ class BodyLimitParityTest {
     }
 
     private static byte[] viaAdapterHelperChunked(long limit, String body, int chunk) throws IOException {
-        StubHttpContext ctx = new StubHttpContext();
+        TestExchange ctx = new TestExchange("POST", "/");
         ctx.setMaxBodySize(limit);
-        return ctx.readBody(new DripFeed(latin(body), chunk));
+        ctx.requestBody(new DripFeed(latin(body), chunk));
+        return ctx.body();
     }
 
     /**

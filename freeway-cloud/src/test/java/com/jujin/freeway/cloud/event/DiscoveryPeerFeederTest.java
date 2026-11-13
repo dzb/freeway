@@ -9,7 +9,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
-import com.jujin.freeway.cloud.discovery.Endpoint;
+import com.jujin.freeway.cloud.discovery.ServiceEndpoint;
 import com.jujin.freeway.cloud.discovery.ServiceDiscovery;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 
@@ -22,7 +22,7 @@ import com.jujin.freeway.cloud.discovery.ServiceInstance;
 class DiscoveryPeerFeederTest {
 
     private static ServiceInstance instance(String id, String host, int port) {
-        return ServiceInstance.of("svc", id, Endpoint.of("http", host, port));
+        return ServiceInstance.of("svc", id, ServiceEndpoint.of("http", host, port));
     }
 
     @Test

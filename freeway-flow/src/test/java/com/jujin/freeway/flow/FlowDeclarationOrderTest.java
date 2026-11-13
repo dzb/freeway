@@ -169,7 +169,7 @@ class FlowDeclarationOrderTest {
                     specs.put(id, node);
                 }
                 for (String[] link : plan.links()) {
-                    specs.get(link[0]).linkAdd(link[1]);
+                    specs.get(link[0]).linkTo(link[1]);
                 }
             }).create();
             return new Outcome(graph, null);

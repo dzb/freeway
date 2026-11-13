@@ -3,7 +3,7 @@ import java.util.logging.Handler;
 import java.util.logging.LogRecord;
 
 import com.jujin.freeway.ioc.annotation.*;
-import com.jujin.freeway.ioc.extension.Extension;
+import com.jujin.freeway.ioc.extension.ExtensionStore;
 import com.jujin.freeway.ioc.extension.Ordering;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -51,7 +51,7 @@ class ExtensionAggregationTest {
         // The contribution window closes with composition: add() and
         // before()/after() are bind-time only, which is what lets the read
         // side run lock-free.
-        Extension<AppFeature> ext = new Extension<>(AppFeature.class);
+        ExtensionStore<AppFeature> ext = new ExtensionStore<>(AppFeature.class);
         Ordering first = ext.add("core", new AppFeature("core"));
         ext.seal();
 
@@ -75,10 +75,8 @@ class ExtensionAggregationTest {
         IllegalStateException handleEx = assertThrows(IllegalStateException.class,
             () -> held[0].after("web"));
         assertTrue(handleEx.getMessage().contains("sealed"), handleEx.getMessage());
-        IllegalStateException storeEx = assertThrows(IllegalStateException.class,
-            () -> container.extension(AppFeature.class)
-                .add("late", new AppFeature("late")));
-        assertTrue(storeEx.getMessage().contains("sealed"), storeEx.getMessage());
+        // container.extension(...) is read-only by type; late mutation is not
+        // expressible here. The store-level seal is covered above.
         container.close();
     }
 
@@ -86,7 +84,7 @@ class ExtensionAggregationTest {
     void sealedExtensionSupportsConcurrentReads() throws Exception {
         // Post-seal the data is immutable — every thread must see the same
         // snapshot, with the cache built safely on first use and no locks.
-        Extension<AppFeature> ext = new Extension<>(AppFeature.class);
+        ExtensionStore<AppFeature> ext = new ExtensionStore<>(AppFeature.class);
         ext.add("core", new AppFeature("core"));
         ext.add("web", new AppFeature("web")).after("core");
         ext.seal();
@@ -137,7 +135,7 @@ class ExtensionAggregationTest {
     }
 
     /**
-     * {@code Contribution.add(Class)} promises to invoke {@code @PostConstruct}
+     * {@code Contribution.addDeferred(Class)} promises to invoke {@code @PostConstruct}
      * (see its javadoc), and that promise is now carried explicitly rather than
      * inherited from {@code Container.create} — which is {@code new} plus
      * injection and deliberately stops short of lifecycle, because a
@@ -150,7 +148,7 @@ class ExtensionAggregationTest {
 
         Container container = Freeway.create(
             binder -> binder.contribute(InitializedFeature.class)
-                .add(InitializedFeature.class));
+                .addDeferred(InitializedFeature.class));
 
         List<InitializedFeature> features = container.extension(InitializedFeature.class).all();
         assertEquals(1, features.size());
@@ -220,7 +218,7 @@ class ExtensionAggregationTest {
     void extensionOrderingWarnsOnMissingIds() {
         var records = new ArrayList<LogRecord>();
         java.util.logging.Logger jul = java.util.logging.Logger.getLogger(
-            "com.jujin.freeway.ioc.extension.Extension");
+            "com.jujin.freeway.ioc.extension.ExtensionStore");
         Handler handler = new Handler() {
             @Override
             public void publish(LogRecord record) {
@@ -258,7 +256,7 @@ class ExtensionAggregationTest {
     void conditionalOrderingIsVacuousWhenAbsent() {
         // An absent optional companion is a configuration, not an error:
         // neither the strict check nor the lenient path may complain.
-        Extension<AppFeature> ext = new Extension<>(AppFeature.class);
+        ExtensionStore<AppFeature> ext = new ExtensionStore<>(AppFeature.class);
         ext.add("first", new AppFeature("first")).afterIfPresent("missing");
         ext.validateOrdering();
         assertEquals(List.of("first"), ext.all().stream().map(AppFeature::name).toList());
@@ -285,7 +283,7 @@ class ExtensionAggregationTest {
         // constraints must survive into the real entry created at drain.
         Container container = Freeway.create(
             binder -> binder.contribute(AppFeature.class)
-                .add("web", c -> new AppFeature("web"))
+                .addDeferred("web", c -> new AppFeature("web"))
                 .afterIfPresent("db"),
             binder -> binder.contribute(AppFeature.class)
                 .add("db", new AppFeature("db"))
@@ -298,7 +296,7 @@ class ExtensionAggregationTest {
 
     @Test
     void requiredOrderingStillFailsValidationWhenAbsent() {
-        Extension<AppFeature> ext = new Extension<>(AppFeature.class);
+        ExtensionStore<AppFeature> ext = new ExtensionStore<>(AppFeature.class);
         ext.add("first", new AppFeature("first")).after("missing");
 
         IllegalStateException ex = assertThrows(IllegalStateException.class,

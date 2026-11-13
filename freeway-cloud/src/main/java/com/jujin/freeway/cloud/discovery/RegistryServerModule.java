@@ -16,13 +16,13 @@ import com.jujin.freeway.ioc.ModuleEx;
  * <p>Designed for a standalone registry: the same process that serves these
  * routes uses {@link RegistryStore} elsewhere too, but the useful path is
  * other processes writing into it through this surface. This module honors the
- * client side already bound by {@link com.jujin.freeway.cloud.discovery.CloudDiscoveryModule}:
+ * client side already bound by {@link com.jujin.freeway.cloud.discovery.DiscoveryModule}:
  * its own {@link ServiceRegistry}/{@link ServiceDiscovery} defaults see
  * exactly what these routes write or dig up.
  *
  * <p>No auth, no TLS, best-effort semantics — it is a development helper and
  * deliberately honors the same at-most-once contract as the in-process store.
- * Production should move to {@code CloudDiscoveryModule}'s registry adapters
+ * Production should move to {@code DiscoveryModule}'s registry adapters
  * (Nacos/Kubernetes/etc.), which answer their own eviction windows.
  */
 public final class RegistryServerModule implements ModuleEx {
@@ -41,7 +41,7 @@ public final class RegistryServerModule implements ModuleEx {
     public static final String READY =
         "/registry/services/{serviceId}/instances/{instanceId}/ready";
     /** Header a writer must present when {@code freeway.cloud.registry.token}
-     *  is set; the fleet client ({@code RegistryFleetModule}) sends the same header. */
+     *  is set; the fleet client ({@code FleetRegistryModule}) sends the same header. */
     public static final String TOKEN_HEADER = "X-Registry-Token";
     /** Wire protocol of this surface. A server must keep accepting older
      *  protocols; a client refuses an unannounced one instead of guessing. */

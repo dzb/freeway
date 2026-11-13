@@ -13,7 +13,7 @@ import java.util.function.Function;
 /**
  * Graph (immutable runtime model)
  */
-public class Graph {
+public final class Graph {
     private final String id;
     private final String title;
     private final String driver;
@@ -77,9 +77,9 @@ public class Graph {
         // here means no entry point (load, eval(Graph), eval(GraphSpec)) can
         // hand the executor a graph the accounting has no answer for.
         JoinDomains.rejectMixed(this);
-        this.metas = blueprint.meta().isEmpty()
+        this.metas = blueprint.metadata().isEmpty()
                 ? Map.of()
-                : Collections.unmodifiableMap(new LinkedHashMap<>(blueprint.meta()));
+                : Collections.unmodifiableMap(new LinkedHashMap<>(blueprint.metadata()));
 
         if (start == null) {
             for (Node node : nodes.values()) {
@@ -106,16 +106,16 @@ public class Graph {
     public String id() { return id; }
     public String title() { return title; }
     public String driver() { return driver; }
-    public Map<String, Object> metas() { return metas; }
-    public Object meta(String key) { return metas.get(key); }
+    public Map<String, Object> metadata() { return metas; }
+    public Object metadata(String key) { return metas.get(key); }
 
     /** Returns the meta value cast to the requested type. */
     @SuppressWarnings("unchecked")
-    public <T> T metaAs(String key) { return (T) metas.get(key); }
+    public <T> T metadataAs(String key) { return (T) metas.get(key); }
 
     /** Returns the meta value cast to the requested type, or {@code def}. */
     @SuppressWarnings("unchecked")
-    public <T> T metaOrDefault(String key, T def) { return (T) metas.getOrDefault(key, def); }
+    public <T> T metadataOrDefault(String key, T def) { return (T) metas.getOrDefault(key, def); }
 
     public Node start() { return start; }
     public Map<String, Node> nodes() { return nodes; }
@@ -125,7 +125,7 @@ public class Graph {
     // --- serialization ---
 
     public String toJson() {
-        return JsonUtils.stringify(toMap());
+        return JsonUtils.toJson(toMap());
     }
 
     public Map<String, Object> toMap() {

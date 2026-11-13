@@ -27,7 +27,7 @@
 
   // 3. 命名参数
   User u = db.query("SELECT * FROM users WHERE id = $id")
-      .param("id", 42L)
+      .bind("id", 42L)
       .one(User.class).orElseThrow();
 
   // 4. 流式处理
@@ -42,7 +42,7 @@
 
   // 6. 批处理
   db.batch("INSERT INTO users (name) VALUES (?)")
-      .rows(new Object[]{"A"}, new Object[]{"B"})
+      .rowsRaw(new Object[]{"A"}, new Object[]{"B"})
       .execute();
 
   // 7. 事务 + 事件总线感知
@@ -98,7 +98,7 @@
   ORM 存取      →  Orm.insert / findById / findAll / save (upsert)
   原始 SQL      →  db.execute() / db.query()
   SQL 构建器    →  Sql.select().from().where().orderBy()
-  Row 列访问    →  row.string("name") / row.integer("age")
+  Row 列访问    →  row.asString("name") / row.asInt("age")
   事务处理      →  db.transaction(() -> ...) + EventBus 事务感知
   ```
 
@@ -219,14 +219,14 @@ Container container = Freeway.create(
 );
 
 DatabaseRegistry registry = container.get(DatabaseRegistry.class);
-Database p = registry.get("primary");
-Database a = registry.get("audit");
+Database p = registry.find("primary").orElseThrow();
+Database a = registry.find("audit").orElseThrow();
 Database def = registry.primary();
 ```
 
 ### 3.4 方言检测与选择
 
-- **URL 自动检测**（`Dialect.of`）：`jdbc:mysql` / `jdbc:mariadb` → MySQL；`jdbc:sqlite` → SQLite；`jdbc:h2` → H2（`MODE=PostgreSQL` → PostgreSQL，`MODE=MySQL` / `MODE=MariaDB` → MySQL）；`jdbc:postgresql` → PostgreSQL。
+- **URL 自动检测**（`Dialect.of`）：`jdbc:mysql` / `jdbc:mariadb` → MySQL；`jdbc:sqlite` → SQLite；`jdbc:h2` → H2（保留 URL 的 `MODE`，不映射成 PostgreSQL/MySQL）；`jdbc:postgresql` → PostgreSQL。
 - URL 为 `null` 或空白 → 默认 PostgreSQL。
 - **未知 JDBC URL 启动失败（fail-fast）**：识别不了的 scheme（如 `jdbc:oracle:...`）**不再静默回退 PostgreSQL**，直接抛 `IllegalStateException`（消息带 `freeway.db.dialect` 指引）——独立构建用 `Database.create` 的 `withDialect(new XxxDialect())` 显式指定，IoC 方式配置 `freeway.db.dialect=xxx`。静默回退会让错误方言在运行时把 PG 语法（`ON CONFLICT`、`pg_indexes`）发给目标库才暴露，所以改为启动即失败。
 - IoC 下 `freeway.db.dialect` 显式配置优先于 URL 检测。
@@ -337,7 +337,7 @@ Long count = db.query("SELECT count(*) FROM t_user")
 
 ```java
 User user = db.query("SELECT * FROM t_user WHERE id = $id")
-    .param("id", 1L)
+    .bind("id", 1L)
     .one(User.class).orElseThrow();
 ```
 
@@ -352,7 +352,7 @@ List<User> users = db.query("SELECT * FROM t_user WHERE id IN (?)", List.of(1L, 
 
 ```java
 db.batch("INSERT INTO t_user (name, age) VALUES (?, ?)")
-    .rows(
+    .rowsRaw(
         new Object[]{"闪电", 3},
         new Object[]{"煤球", 5}
     )
@@ -370,10 +370,10 @@ List<Row> rows = db.query("SELECT * FROM t_user WHERE id = ?", 1L)
     .list(Row.class);
 
 Row row = rows.get(0);
-String name  = row.string("name");        // 字符串
-Integer age  = row.integer("age");        // 整数
-Long    id   = row.longValue("id");       // 长整型
-BigDecimal score = row.decimal("score");  // 浮点数（BigDecimal）
+String name  = row.asString("name");        // 字符串
+Integer age  = row.asInt("age");        // 整数
+Long    id   = row.asLong("id");       // 长整型
+BigDecimal score = row.asBigDecimal("score");  // 浮点数（BigDecimal）
 List<String> cols = row.columns();        // 获取所有列名
 ```
 
@@ -397,8 +397,8 @@ INSERT 构建器：
 ```java
 ExecuteResult r = db.execute(
     Sql.insert("t_user")
-        .setColumn("name", "闪电")
-        .setColumn("age", 3)
+        .value("name", "闪电")
+        .value("age", 3)
 );
 ```
 
@@ -457,11 +457,11 @@ MySQL/MariaDB 的 DDL 隐式提交（无事务性 DDL）：事务内调用 `Sche
 ExecuteResult r = db.execute("INSERT INTO t_user (name, age) VALUES (?, ?)", "闪电", 3);
 
 r.rows();        // 影响行数（int）
-r.hasKey();      // 是否包含自增 ID（boolean）
+r.hasGeneratedKey();      // 是否包含自增 ID（boolean）
 r.longKey();     // 自增 ID 值（long）
 
 // 典型断言
-assertTrue(r.hasKey());
+assertTrue(r.hasGeneratedKey());
 assertTrue(r.longKey() > 0);
 assertEquals(1, r.rows());
 ```
@@ -470,7 +470,7 @@ assertEquals(1, r.rows());
 
 ## 十、自增 ID 核心行为
 
-| 操作 | `hasKey()` | `longKey()` | 说明 |
+| 操作 | `hasGeneratedKey()` | `longKey()` | 说明 |
 |------|-----------|-------------|------|
 | **INSERT** (普通) | `true` | 生成的 ID | 自增值从 1 开始递增 |
 | **INSERT** (显式指定 id) | `true` | 指定的值 | 如 `set("id", 100L)` |
@@ -538,7 +538,7 @@ db.close();  // Database 实现了 AutoCloseable
 | 抽象方法（必须实现） | 5 | 编译器强制，不实现无法编译 |
 | 默认方法（必须覆写） | ~6 | 默认值是 PG 偏好，不覆写会出 bug |
 | 默认方法（按需覆写） | 4-6 | 视数据库特性而定（含 `backslashEscapesStrings`/`supportsTransactionalDdl`） |
-| 注册点 | 2 | `DbModule.bind()` + `Dialect.of()`（`detectDialect` 委托） |
+| 注册点 | 2 | `Dialect.ofId()` catalog + `Dialect.of()` URL 检测 |
 
 新增一个方言预计工作量约 **100-150 行代码 + 测试**。
 
@@ -860,30 +860,33 @@ public boolean supportsTransactionalDdl() {
 
 ---
 
-## 步骤 5：注册到 DbModule
+## 步骤 5：注册内建 dialect 到 catalog
 
-修改 `DbModule.java` 两个位置：
+内建方言由 `Dialect.ofId(String)` 的 catalog 解析，`DbModule` 不再逐个绑定。修改两个位置：
 
-### 5.1 注册绑定
+### 5.1 注册 id → 实现
 
 ```java
-// DbModule.bind() 中
-binder.bind(Dialect.class).to(OracleDialect.class).id("oracle");
+// Dialect.ofId() 的 switch 中
+case "oracle" -> new OracleDialect();
 ```
 
-`id()` 的参数**必须与 `dialectId()` 返回值一致**。
+`id` 必须与 `dialectId()` 返回值一致。
 
 ### 5.2 添加 URL 检测
 
 ```java
-// Dialect.of() 中（DbModule.detectDialect 委托给它）
-if (url.contains("jdbc:oracle")) return new OracleDialect();
+// Dialect.of(url) 中：先把 scheme 映射到 id，再交给 ofId()
+if (url.contains("jdbc:oracle")) return Dialect.ofId("oracle");
 ```
 
 URL 检测的唯一实现在 `Dialect.of(String)`（大小写不敏感）——
-独立使用（`Database.create`）和 IoC 使用（`DbModule`）共用同一处，新增方言只需改这一个方法。
+独立使用（`Database.create`）和 IoC 使用（`DbModule`）共用同一处。`DbModule` 只绑定一个
+最终选中的 `Dialect` service。第三方方言不必进入内建 catalog：按 id 绑定
+（`binder.bind(Dialect.class).to(OracleDialect.class).id("oracle")`）并配置
+`freeway.db.dialect=oracle` 即可。
 
-**未知 scheme 会 fail-fast**：`Dialect.of` 对无法识别的 JDBC URL（如 `jdbc:oracle:...`）抛 `IllegalStateException`，消息带 `freeway.db.dialect` 指引——**不再静默回退 PostgreSQL**（静默回退会在运行时把 PG 语法发给目标库才暴露错误）。仅当 URL 为 `null` 或空白时才默认返回 `PostgresDialect`。注意 H2 的 MODE 分支：`MODE=PostgreSQL` → PG、`MODE=MySQL`/`MODE=MariaDB` → MySQL。新增方言时在此方法里加上对应的 URL 前缀匹配。
+**未知 scheme 会 fail-fast**：`Dialect.of` 对无法识别的 JDBC URL（如 `jdbc:oracle:...`）抛 `IllegalStateException`，消息带 `freeway.db.dialect` 指引——**不再静默回退 PostgreSQL**（静默回退会在运行时把 PG 语法发给目标库才暴露错误）。仅当 URL 为 `null` 或空白时才默认返回 `PostgresDialect`。H2 的 `MODE` 留在 `H2Dialect` 内：`MODE` 改变 H2 的语法面，不改变 H2 的 introspection、类型和 DDL 事务语义；`DbModule` 自动检测直接保留带 mode 的 H2 实例。新增方言时在此方法里加上对应的 URL 前缀匹配。
 
 ---
 
@@ -1055,7 +1058,7 @@ public final class XxxDialect implements Dialect {
 - [ ] `backslashEscapesStrings()` 按需覆写（MySQL：普通字符串字面量中 `\` 转义）
 - [ ] `supportsTransactionalDdl()` 按需覆写（MySQL：DDL 不参与事务 → `false`）
 - [ ] `effectiveSchema()` 按需覆写
-- [ ] `DbModule.bind()` 注册（`id` 与 `dialectId()` 一致）
+- [ ] `Dialect.ofId()` 注册（`id` 与 `dialectId()` 一致）
 - [ ] `Dialect.of()` URL 检测（大小写不敏感；未知 scheme 会 fail-fast）
 - [ ] `dialectId()` 单测
 - [ ] `upsertClause()` 单测

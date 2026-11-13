@@ -1,6 +1,8 @@
 package com.jujin.freeway.ioc.internal;
 
+import com.jujin.freeway.ioc.ModuleDeclaration;
 import com.jujin.freeway.ioc.ModuleEx;
+import com.jujin.freeway.ioc.RuntimeDescription;
 import com.jujin.freeway.ioc.annotation.SubModule;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -84,10 +86,8 @@ final class ModuleNode {
      */
     static final String DEFAULT_APP_NAME = "application";
 
-    /** The instance declaration, or {@code null} for a class declaration/root. */
-    private final ModuleEx module;
-    /** The class declaration, or {@code null} for an instance declaration/root. */
-    private final Class<? extends ModuleEx> moduleType;
+    /** The placed module, or {@code null} for the application root. */
+    private final ModuleDeclaration declaration;
     /** The application root's name; {@code null} for a module node. */
     private final String rootName;
     private final List<ModuleNode> children;
@@ -95,13 +95,11 @@ final class ModuleNode {
     private final List<ModuleNode> bindOrder;
 
     private ModuleNode(
-        ModuleEx module,
-        Class<? extends ModuleEx> moduleType,
+        ModuleDeclaration declaration,
         String rootName,
         List<ModuleNode> children
     ) {
-        this.module = module;
-        this.moduleType = moduleType;
+        this.declaration = declaration;
         this.rootName = rootName;
         this.children = List.copyOf(children);
 
@@ -127,7 +125,7 @@ final class ModuleNode {
      * ({@code ContainerImpl}), which keeps this type to structure and invariants.
      */
     static ModuleNode app(String name, ModuleNode... children) {
-        return normalize(new ModuleNode(null, null, rootName(name), List.of(children)));
+        return normalize(new ModuleNode(null, rootName(name), List.of(children)));
     }
 
     /**
@@ -138,8 +136,7 @@ final class ModuleNode {
      * subset is composing the modules you want.
      */
     static ModuleNode of(ModuleEx module) {
-        Objects.requireNonNull(module, "module");
-        return expand(module, null, new LinkedHashSet<>());
+        return of(ModuleDeclaration.of(module));
     }
 
     /**
@@ -152,8 +149,16 @@ final class ModuleNode {
      * placed with the module.
      */
     static ModuleNode of(Class<? extends ModuleEx> type) {
-        Objects.requireNonNull(type, "module type");
-        return expand(null, type, new LinkedHashSet<>());
+        return of(ModuleDeclaration.of(type));
+    }
+
+    /**
+     * The module node for one explicit declaration — the form composition
+     * entries carry when class and instance placements mix.
+     */
+    static ModuleNode of(ModuleDeclaration declaration) {
+        Objects.requireNonNull(declaration, "declaration");
+        return expand(declaration, new LinkedHashSet<>());
     }
 
     // ── shape and declaration ───────────────────────────────────
@@ -163,10 +168,7 @@ final class ModuleNode {
      * the class's simple name or {@link ModuleEx#name()} for a module node.
      */
     String name() {
-        if (rootName != null) {
-            return rootName;
-        }
-        return module != null ? module.name() : moduleType.getSimpleName();
+        return rootName != null ? rootName : declaration.name();
     }
 
     /**
@@ -174,10 +176,7 @@ final class ModuleNode {
      * class. {@code null} for the application root.
      */
     Class<? extends ModuleEx> type() {
-        if (module != null) {
-            return module.getClass();
-        }
-        return moduleType;
+        return declaration == null ? null : declaration.type();
     }
 
     /**
@@ -188,27 +187,11 @@ final class ModuleNode {
      * @throws IllegalStateException on the application root, which binds nothing
      */
     ModuleEx resolve() {
-        if (module != null) {
-            return module;
-        }
-        if (moduleType == null) {
+        if (declaration == null) {
             throw new IllegalStateException(
                 "The application root '" + rootName + "' declares no module to resolve");
         }
-        try {
-            var constructor = moduleType.getDeclaredConstructor();
-            constructor.trySetAccessible();
-            return constructor.newInstance();
-        } catch (NoSuchMethodException e) {
-            throw new IllegalArgumentException(
-                "Module " + moduleType.getName() + " has no no-arg constructor. A module whose"
-                    + " constructor takes arguments is declared as an instance: new "
-                    + moduleType.getSimpleName() + "(…)", e);
-        } catch (ReflectiveOperationException e) {
-            Throwable cause = e.getCause() == null ? e : e.getCause();
-            throw new IllegalStateException(
-                "Cannot instantiate module " + moduleType.getName() + ": " + cause, cause);
-        }
+        return declaration.resolve();
     }
 
     /**
@@ -218,6 +201,23 @@ final class ModuleNode {
      */
     List<ModuleNode> children() {
         return children;
+    }
+
+    /**
+     * The module tree below the application root as metadata, for
+     * {@link RuntimeDescription}. No declaration is resolved: class nodes
+     * report their declared type.
+     */
+    List<RuntimeDescription.ModuleDescription> describeModules() {
+        return children.stream().map(ModuleNode::describeModule).toList();
+    }
+
+    private RuntimeDescription.ModuleDescription describeModule() {
+        return new RuntimeDescription.ModuleDescription(
+            name(),
+            type().getName(),
+            children.stream().map(ModuleNode::describeModule).toList()
+        );
     }
 
     /**
@@ -278,22 +278,21 @@ final class ModuleNode {
      * {@code @SubModule}) is a construction mistake and fails here.
      */
     private static ModuleNode expand(
-        ModuleEx module, Class<? extends ModuleEx> type, Set<Class<?>> visiting
+        ModuleDeclaration declaration, Set<Class<?>> visiting
     ) {
-        Class<? extends ModuleEx> declared = module != null ? module.getClass() : type;
-        List<ModuleNode> children = declaredSubModules(declared, visiting);
-        ModuleNode candidate = new ModuleNode(
-            module, module == null ? type : null, null, children);
+        List<ModuleNode> children = declaredSubModules(declaration, visiting);
+        ModuleNode candidate = new ModuleNode(declaration, null, children);
         return children.isEmpty() ? candidate : normalize(candidate);
     }
 
     private static List<ModuleNode> declaredSubModules(
-        Class<? extends ModuleEx> type, Set<Class<?>> visiting
+        ModuleDeclaration declaration, Set<Class<?>> visiting
     ) {
-        SubModule sub = type.getAnnotation(SubModule.class);
-        if (sub == null || sub.value().length == 0) {
+        List<Class<? extends ModuleEx>> submodules = declaration.submodules();
+        if (submodules.isEmpty()) {
             return List.of();
         }
+        Class<? extends ModuleEx> type = declaration.type();
         if (!visiting.add(type)) {
             throw new IllegalStateException(
                 "Cycle in @SubModule: " + visiting.stream()
@@ -301,9 +300,9 @@ final class ModuleNode {
                     + " → " + type.getSimpleName());
         }
         try {
-            List<ModuleNode> children = new ArrayList<>(sub.value().length);
-            for (Class<? extends ModuleEx> child : sub.value()) {
-                children.add(expand(null, child, visiting));
+            List<ModuleNode> children = new ArrayList<>(submodules.size());
+            for (Class<? extends ModuleEx> child : submodules) {
+                children.add(expand(ModuleDeclaration.of(child), visiting));
             }
             return children;
         } finally {
@@ -334,14 +333,16 @@ final class ModuleNode {
             // An instance declaration is identified by its instance (two nodes
             // wrapping one instance are one placement), a class declaration and
             // the root by the node itself (each factory call is a new value).
-            Object identity = node.module != null ? node.module : node;
+            Object identity = node.declaration != null && node.declaration.isInstance()
+                ? node.declaration.resolve()
+                : node;
             if (!seen.add(identity)) {
                 continue; // reached twice: keep the first placement
             }
             List<String> path = new ArrayList<>(current.path());
             path.add(node.name());
             String here = String.join(" → ", path);
-            if (node.type() != null && !isNameless(node.type())) {
+            if (node.declaration != null && node.declaration.hasStableType()) {
                 String sameClass = byClass.putIfAbsent(node.type(), here);
                 if (sameClass != null) {
                     throw new IllegalStateException(
@@ -376,14 +377,9 @@ final class ModuleNode {
             for (int child : kept) {
                 children.add(built[child]);
             }
-            built[i] = new ModuleNode(
-                source.module, source.moduleType, source.rootName, children);
+            built[i] = new ModuleNode(source.declaration, source.rootName, children);
         }
         return built[0];
-    }
-
-    private static boolean isNameless(Class<?> type) {
-        return type.isAnonymousClass() || type.isSynthetic();
     }
 
     /** One node, its parent's index in the survivor list, and the path that reached it. */

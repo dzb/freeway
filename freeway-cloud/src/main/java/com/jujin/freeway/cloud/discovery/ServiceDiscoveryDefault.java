@@ -1,6 +1,6 @@
 package com.jujin.freeway.cloud.discovery;
 
-import com.jujin.freeway.cloud.internal.RegistryStore;
+import com.jujin.freeway.cloud.discovery.internal.RegistryStore;
 
 import java.util.List;
 import java.util.Objects;

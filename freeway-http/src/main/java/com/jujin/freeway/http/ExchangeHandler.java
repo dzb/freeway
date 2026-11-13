@@ -8,7 +8,7 @@ import com.jujin.freeway.http.websocket.WebSocketMatch;
  *
  * <p>This is the seam's <em>behaviour half</em>: the engine asks it how to
  * answer; the exchange it answers with is the seam's data half,
- * {@link HttpContext}. {@link HttpServer#create} compiles an
+ * {@link HttpExchange}. {@link HttpServer#create} compiles an
  * {@link HttpPipeline} into one of these before {@code engine.start}, so an
  * engine implements transport and never sees routes, filters or config keys.
  */
@@ -21,7 +21,7 @@ public interface ExchangeHandler {
      * @throws Exception any exception is caught and mapped to a response
      *                   by the registered exception mappers
      */
-    void handle(HttpContext ctx) throws Exception;
+    void handle(HttpExchange ctx) throws Exception;
 
     /**
      * Optional WebSocket upgrade negotiation. Returns a match if the
@@ -35,7 +35,7 @@ public interface ExchangeHandler {
      * (upgrades neither match the declared routes nor honor the origin
      * policy), and a null answer must abort the upgrade.
      */
-    default WebSocketMatch websocket(String method, String path, String origin) {
+    default WebSocketMatch matchWebSocket(String method, String path, String origin) {
         return null;
     }
 }

@@ -84,7 +84,7 @@ FreewayApp.run(args, new HttpModule(), binder -> {
 | `http/` | public API | HttpServer, HttpContext, HttpEngine, RouteIndex, filter interfaces |
 | `http/engine/` | implementation | `FreewayHttpEngine` (public), `HttpConnection`, `Http1xSession`, `Http1xParser`, HTTP/1.x framing and shared I/O |
 | `http/engine/http2/` | package | Http2Connection, 29 HTTP/2 frame/HPACK/stream files |
-| `http/engine/ws/` | package | WebSocketFrame, WebSocketSessionImpl, WsUtil, opcode/close enums |
+| `http/engine/ws/` | package | WebSocketFrame, WebSocketConnection, WebSocketReadLoop, opcode/close enums |
 
 ## Performance
 

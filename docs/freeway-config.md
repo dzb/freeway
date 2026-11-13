@@ -268,7 +268,7 @@ CLI 参数（`--freeway.config.file=...`）同样无效——启动时会打 WAR
 
 | 键 | 档 | 类型 | 默认值 | 必填 | 说明 |
 |----|------|------|--------|------|------|
-| `freeway.http.request-scope.enabled` | 姿态 | Boolean | `false` | 否 | 每个 HTTP 请求打开一个容器 value scope（`ScopeFilter`，order -40，位于 CORS/health 之后、应用 filter 之前），使 `Scope.THREAD` 服务与 scoped cache 值按请求存活、请求结束清理；不向子线程传播，异步工作需 `ContextExecutor` |
+| `freeway.http.request-scope.enabled` | 姿态 | Boolean | `false` | 否 | 每个 HTTP 请求打开一个容器 value scope（`ScopeFilter`，order -40，位于 CORS/health 之后、应用 filter 之前），使 `Scope.BOUNDARY` 服务与 scoped cache 值按请求存活、请求结束清理；不向子线程传播，异步工作需 `ContextExecutor` |
 
 #### CORS
 
@@ -289,7 +289,7 @@ CLI 参数（`--freeway.config.file=...`）同样无效——启动时会打 WAR
 | `freeway.http.health.enabled` | 姿态 | Boolean | `true` | 否 | 启用健康端点 |
 | `freeway.http.health.path` | 调优 | String | `/healthz` | 否 | 健康检查路径 |
 
-> cloud 探针不在上表：安装 `CloudHealthModule` 时以固定路径贡献
+> cloud 探针不在上表：安装 `HealthModule` 时以固定路径贡献
 > `GET /health/live`（进程存活）与 `GET /health/ready`（依赖就绪聚合，
 > 全健康 200、否则 503），路径**不可配**；与 `/healthz`
 > （`freeway.http.health.path`）是两套端点，勿配成同一路径。详见
@@ -525,7 +525,7 @@ CLI 参数（`--freeway.config.file=...`）同样无效——启动时会打 WAR
 | `freeway.cloud.registry.service-port` | 调优·哨兵 | Integer | *(空)* | 否 | 注册端口。空 = HTTP server 实际监听端口 |
 | `freeway.cloud.registry.service-instance-id` | 调优·哨兵 | String | *(空)* | 否 | 实例级稳定标识。空 = 派生键 `service-id@host:port` |
 
-**注册节点舰队（客户端侧，`RegistryFleetModule`）**——模块放置即选择此后端；两个键在客户端进程上配，
+**注册节点舰队（客户端侧，`FleetRegistryModule`）**——模块放置即选择此后端；两个键在客户端进程上配，
 共享密钥就是上面的 `freeway.cloud.registry.token`（同一个键，两侧同值）：
 
 | 键 | 档 | 类型 | 默认值 | 必填 | 说明 |
@@ -539,7 +539,7 @@ CLI 参数（`--freeway.config.file=...`）同样无效——启动时会打 WAR
 |----|------|------|--------|------|------|
 | `freeway.cloud.rpc.connect-timeout` | 调优 | Long | `3000` | 否 | 连接超时（毫秒） |
 | `freeway.cloud.rpc.request-timeout` | 调优 | Long | `10000` | 否 | 请求超时（毫秒） |
-| `freeway.cloud.rpc.shutdown-grace` | 调优 | Duration | `5s` | 否 | **出站调用收尾窗口**：停机时先拒绝新调用，再等已在飞的调用完成，超时仍未有结果的才被以 `CloudHttpClient is closed` 失败。空转进程立即关闭（没有在飞调用就没有等待），所以默认值只在真有调用时付出时间；请压到部署的 terminationGracePeriod 以内 |
+| `freeway.cloud.rpc.shutdown-grace` | 调优 | Duration | `5s` | 否 | **出站调用收尾窗口**：停机时先拒绝新调用，再等已在飞的调用完成，超时仍未有结果的才被以 `RpcHttpClient is closed` 失败。空转进程立即关闭（没有在飞调用就没有等待），所以默认值只在真有调用时付出时间；请压到部署的 terminationGracePeriod 以内 |
 | `freeway.cloud.rpc.trace.enabled` | 姿态 | Boolean | `true` | 否 | 启用 RPC 调用链路追踪 |
 | `freeway.cloud.rpc.resilience` | 调优·聚合闸 | String | `auto` | 否 | **聚合开关**：`auto` = 下方细项键各自生效；`off` = 总闸（不重试、熔断 NOOP、限流无限），忽略全部细项键。用于 mesh 接管（平台已做重试/熔断，应用层需退位）与故障诊断隔离变量。非法值启动即失败 |
 
@@ -554,7 +554,7 @@ CLI 参数（`--freeway.config.file=...`）同样无效——启动时会打 WAR
 重试经过两道门：失败类别（连接失败/超时/中途 I/O/5xx 可重试，4xx 与本地拒绝不重试）与
 **幂等门**——timeout/中途 I/O/5xx 属"结果未知"（对端可能已执行请求），仅对幂等操作重放。
 幂等性由请求携带：按 HTTP 动词派生（`GET/HEAD/PUT/DELETE/OPTIONS/TRACE` 幂等，`POST/PATCH` 否），
-`CloudRequest.idempotentWith(true)` 显式覆盖；远程调用经 consumer 接口的 `@Idempotent`
+`RpcRequest.withIdempotent(true)` 显式覆盖；远程调用经 consumer 接口的 `@Idempotent`
 注解（方法级/接口级）声明。连接类失败请求未送达，任何操作都可重试。
 
 #### 弹性 — 熔断器
@@ -573,9 +573,9 @@ CLI 参数（`--freeway.config.file=...`）同样无效——启动时会打 WAR
 | `freeway.cloud.rpc.rate-limit.enabled` | 姿态 | Boolean | `false` | 否 | 启用限流。按需开启（`resilience=off` 时忽略） |
 | `freeway.cloud.rpc.rate-limit.per-second` | 调优 | Double | `100` | 否 | 每秒最大请求数 |
 
-#### CloudEventBus — 跨节点事件网格
+#### MeshEventBus — 跨节点事件网格
 
-入站兴趣**不是配置键**：由组合期的 `CloudEventSubscription` 贡献声明——同一份声明
+入站兴趣**不是配置键**：由组合期的 `MeshSubscription` 贡献声明——同一份声明
 同时生成 hello 拉取前缀、入站闸门（未声明的 topic 到达即弃、不反序列化）与投递路由。
 
 | 键 | 档 | 类型 | 默认值 | 必填 | 说明 |
@@ -687,7 +687,7 @@ CLI 参数（`--freeway.config.file=...`）同样无效——启动时会打 WAR
 Flow 模块不提供外部化配置键。所有配置通过编程式 API 完成：
 
 - **GraphSpec** 构建器：`GraphSpec.create("id", spec -> { ... })`
-- **NodeSpec** 构建器：`.metaPut(key, value)`, `.when(...)`, `.task(...)`, `.linkAdd(to, config)`
+- **NodeSpec** 构建器：`.putMetadata(key, value)`, `.when(...)`, `.task(...)`, `.linkTo(to, config)`
 - **节点类型**：START / END / ACTIVITY / EXCLUSIVE / INCLUSIVE / PARALLEL / LOOP
 - **图版本**：v2 DAG 格式（`GraphSpec.VERSION = 2`）
 - **执行约束**：最大递归深度 `1000`，最大 LOOP 迭代 `100_000`
@@ -700,7 +700,7 @@ Flow 模块不提供外部化配置键。所有配置通过编程式 API 完成�
 IoC 容器不提供外部化配置键。所有配置通过编程式 API 完成：
 
 - **绑定**：`binder.bind(X.class).to(Y.class)` / `.to(c -> ...)`
-- **作用域**：`bind().scope(SINGLETON | PROTOTYPE | THREAD)`
+- **作用域**：`bind().scope(SINGLETON | PROTOTYPE | BOUNDARY)`
 - **`.primary()`**：引擎/池/方言选择 — 默认实现绑定无 `.primary()`，扩展模块绑定替代实现时带 `.primary()`，容器自动解析
 - **注入**：`@Inject`、`@Symbol`（严格查找或表达式展开）
 - **扩展**：`Contribution<RuntimeHook>`、`Extension` 机制

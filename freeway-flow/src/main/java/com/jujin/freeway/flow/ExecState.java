@@ -10,7 +10,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 
 /**
- * Per-evaluation working state of a {@link FlowEvaluation}: join counters,
+ * Per-evaluation working state of a {@link FlowExecution}: join counters,
  * loop iterators and dead-end marks. A fresh instance belongs to one
  * top-level evaluation; sub-graph calls share it so a stuck sub-graph
  * propagates to its caller.

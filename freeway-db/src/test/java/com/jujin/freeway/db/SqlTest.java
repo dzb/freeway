@@ -1,4 +1,6 @@
 package com.jujin.freeway.db;
+import com.jujin.freeway.db.dialect.SqliteDialect;
+import com.jujin.freeway.db.dialect.H2Dialect;
 import com.jujin.freeway.db.dialect.MySqlDialect;
 import com.jujin.freeway.db.dialect.PostgresDialect;
 import java.time.LocalDate;
@@ -23,28 +25,28 @@ class SqlTest {
     @Test
     void simpleSelect() {
         Sql q = Sql.select("id, name").from("users");
-        assertEquals("SELECT id, name FROM users", q.sql());
+        assertEquals("SELECT id, name FROM users", q.toSql());
         assertArrayEquals(new Object[0], q.args());
     }
 
     @Test
     void selectWithPositionalParam() {
         Sql q = Sql.select("*").from("users").where("id = ?", 1);
-        assertEquals("SELECT * FROM users WHERE id = ?", q.sql());
+        assertEquals("SELECT * FROM users WHERE id = ?", q.toSql());
         assertArrayEquals(new Object[]{1}, q.args());
     }
 
     @Test
     void selectWithNamedParam() {
         Sql q = Sql.select("*").from("users").where("name = :name", "john");
-        assertEquals("SELECT * FROM users WHERE name = ?", q.sql());
+        assertEquals("SELECT * FROM users WHERE name = ?", q.toSql());
         assertArrayEquals(new Object[]{"john"}, q.args());
     }
 
     @Test
     void selectWithDollarParam() {
         Sql q = Sql.select("*").from("users").where("status = $status", "active");
-        assertEquals("SELECT * FROM users WHERE status = ?", q.sql());
+        assertEquals("SELECT * FROM users WHERE status = ?", q.toSql());
         assertArrayEquals(new Object[]{"active"}, q.args());
     }
 
@@ -54,21 +56,21 @@ class SqlTest {
             .where("id = ? /* comment ? */ and name = ?", 1, "john");
         assertEquals(
             "SELECT * FROM users WHERE id = ? /* comment ? */ and name = ?",
-            q.sql());
+            q.toSql());
         assertArrayEquals(new Object[]{1, "john"}, q.args());
 
         Sql lineComment = Sql.select("*").from("users")
             .where("id = ? -- trailing ?\nand active = ?", 1, true);
         assertEquals(
             "SELECT * FROM users WHERE id = ? -- trailing ?\nand active = ?",
-            lineComment.sql());
+            lineComment.toSql());
         assertArrayEquals(new Object[]{1, true}, lineComment.args());
 
         Sql quoted = Sql.select("*").from("users")
             .where("name = ? and \"col?umn\" = ?", 1, 2);
         assertEquals(
             "SELECT * FROM users WHERE name = ? and \"col?umn\" = ?",
-            quoted.sql());
+            quoted.toSql());
         assertArrayEquals(new Object[]{1, 2}, quoted.args());
     }
 
@@ -76,7 +78,7 @@ class SqlTest {
     void repeatedNamedParamInFragmentReusesItsValue() {
         Sql q = Sql.select("*").from("users")
             .where("a = :x and b = :x", 1);
-        assertEquals("SELECT * FROM users WHERE a = ? and b = ?", q.sql());
+        assertEquals("SELECT * FROM users WHERE a = ? and b = ?", q.toSql());
         assertArrayEquals(new Object[]{1, 1}, q.args());
     }
 
@@ -84,7 +86,7 @@ class SqlTest {
     void selectWithMixedParams() {
         Sql q = Sql.select("*").from("users")
             .where("id = :id and name = ?", 1, "john");
-        assertEquals("SELECT * FROM users WHERE id = ? and name = ?", q.sql());
+        assertEquals("SELECT * FROM users WHERE id = ? and name = ?", q.toSql());
         assertArrayEquals(new Object[]{1, "john"}, q.args());
     }
 
@@ -93,7 +95,7 @@ class SqlTest {
         Sql q = Sql.select("*").from("users")
             .where("id = ?", 1)
             .where("name = ?", "john");
-        assertEquals("SELECT * FROM users WHERE id = ? AND name = ?", q.sql());
+        assertEquals("SELECT * FROM users WHERE id = ? AND name = ?", q.toSql());
         assertArrayEquals(new Object[]{1, "john"}, q.args());
     }
 
@@ -102,7 +104,7 @@ class SqlTest {
         Sql q = Sql.select("*").from("users")
             .where("status = ?", 1)
             .orWhere("role = ?", "admin");
-        assertEquals("SELECT * FROM users WHERE status = ? OR role = ?", q.sql());
+        assertEquals("SELECT * FROM users WHERE status = ? OR role = ?", q.toSql());
         assertArrayEquals(new Object[]{1, "admin"}, q.args());
     }
 
@@ -113,7 +115,7 @@ class SqlTest {
         // only the driver rejected. The connector now follows andConnector's
         // rule: nothing to connect means no connector.
         Sql q = Sql.select("*").from("users").orWhere("role = ?", "admin");
-        assertEquals("SELECT * FROM users WHERE role = ?", q.sql());
+        assertEquals("SELECT * FROM users WHERE role = ?", q.toSql());
         assertArrayEquals(new Object[]{"admin"}, q.args());
     }
 
@@ -121,7 +123,7 @@ class SqlTest {
     void orWhereGroupAsFirstConditionDropsTheConnector() {
         Sql q = Sql.select("*").from("users")
             .orWhereGroup(g -> g.where("role = ?", "admin"));
-        assertEquals("SELECT * FROM users WHERE (role = ?)", q.sql());
+        assertEquals("SELECT * FROM users WHERE (role = ?)", q.toSql());
         assertArrayEquals(new Object[]{"admin"}, q.args());
     }
 
@@ -130,7 +132,7 @@ class SqlTest {
         Sql q = Sql.select("*").from("users")
             .where("status = ?", 1)
             .whereNot("deleted = ?", 1);
-        assertEquals("SELECT * FROM users WHERE status = ? AND NOT deleted = ?", q.sql());
+        assertEquals("SELECT * FROM users WHERE status = ? AND NOT deleted = ?", q.toSql());
         assertArrayEquals(new Object[]{1, 1}, q.args());
     }
 
@@ -139,7 +141,7 @@ class SqlTest {
         Sql q = Sql.select("*").from("users")
             .whereGroup(g -> g.where("status = ?", "ACTIVE")
                 .orWhere("role = ?", "admin"));
-        assertEquals("SELECT * FROM users WHERE (status = ? OR role = ?)", q.sql());
+        assertEquals("SELECT * FROM users WHERE (status = ? OR role = ?)", q.toSql());
         assertArrayEquals(new Object[]{"ACTIVE", "admin"}, q.args());
     }
 
@@ -149,7 +151,7 @@ class SqlTest {
             .whereGroup(g -> g.where("tenant_id = ?", 7)
                 .whereGroup(h -> h.where("status = ?", "ACTIVE")
                     .orWhere("role = ?", "admin")));
-        assertEquals("SELECT * FROM users WHERE (tenant_id = ? AND (status = ? OR role = ?))", q.sql());
+        assertEquals("SELECT * FROM users WHERE (tenant_id = ? AND (status = ? OR role = ?))", q.toSql());
         assertArrayEquals(new Object[]{7, "ACTIVE", "admin"}, q.args());
     }
 
@@ -158,7 +160,7 @@ class SqlTest {
         Sql q = Sql.select("*").from("users")
             .whereNotGroup(g -> g.where("deleted = ?", true)
                 .where("archived = ?", true));
-        assertEquals("SELECT * FROM users WHERE NOT (deleted = ? AND archived = ?)", q.sql());
+        assertEquals("SELECT * FROM users WHERE NOT (deleted = ? AND archived = ?)", q.toSql());
         assertArrayEquals(new Object[]{true, true}, q.args());
     }
 
@@ -177,27 +179,27 @@ class SqlTest {
             .orWhere("b = ?", 2)
             .whereNot("c = ?", 3)
             .where("d = ?", 4);
-        assertEquals("SELECT * FROM users WHERE a = ? OR b = ? AND NOT c = ? AND d = ?", q.sql());
+        assertEquals("SELECT * FROM users WHERE a = ? OR b = ? AND NOT c = ? AND d = ?", q.toSql());
         assertArrayEquals(new Object[]{1, 2, 3, 4}, q.args());
     }
 
     @Test
     void selectWithOrderBy() {
         Sql q = Sql.select("*").from("users").where("id = ?", 1).orderBy("name DESC");
-        assertEquals("SELECT * FROM users WHERE id = ? ORDER BY name DESC", q.sql());
+        assertEquals("SELECT * FROM users WHERE id = ? ORDER BY name DESC", q.toSql());
         assertArrayEquals(new Object[]{1}, q.args());
     }
 
     @Test
     void selectWithLimit() {
         Sql q = Sql.select("*").from("users").limit(10);
-        assertEquals("SELECT * FROM users LIMIT 10", q.sql());
+        assertEquals("SELECT * FROM users LIMIT 10", q.toSql());
     }
 
     @Test
     void selectWithLimitOffset() {
         Sql q = Sql.select("*").from("users").limit(10).offset(20);
-        assertEquals("SELECT * FROM users LIMIT 10 OFFSET 20", q.sql());
+        assertEquals("SELECT * FROM users LIMIT 10 OFFSET 20", q.toSql());
     }
 
     @Test
@@ -207,7 +209,7 @@ class SqlTest {
             .where("orders.total > ?", 100);
         assertEquals(
             "SELECT * FROM users JOIN orders ON users.id = orders.user_id WHERE orders.total > ?",
-            q.sql());
+            q.toSql());
         assertArrayEquals(new Object[]{100}, q.args());
     }
 
@@ -217,7 +219,7 @@ class SqlTest {
             .leftJoin("orders").on("users.id = orders.user_id");
         assertEquals(
             "SELECT * FROM users LEFT JOIN orders ON users.id = orders.user_id",
-            q.sql());
+            q.toSql());
     }
 
     @Test
@@ -234,7 +236,7 @@ class SqlTest {
         assertEquals(
             "SELECT * FROM users u LEFT JOIN orders o"
                 + " ON o.user_id = ? AND o.status = ? WHERE u.tenant = ?",
-            q.sql());
+            q.toSql());
         assertArrayEquals(new Object[]{7L, "open", "acme"}, q.args(),
             "args() is ordered by ? position: ON binds first");
     }
@@ -248,7 +250,7 @@ class SqlTest {
         assertEquals(
             "SELECT * FROM users u LEFT JOIN orders o ON o.user_id = ?"
                 + " WHERE u.tenant = ?",
-            q.sql());
+            q.toSql());
         assertArrayEquals(new Object[]{7L, "acme"}, q.args(),
             "call order does not change positional order: the ON text is earlier");
     }
@@ -259,7 +261,7 @@ class SqlTest {
             .innerJoin("orders").on("users.id = orders.user_id");
         assertEquals(
             "SELECT * FROM users INNER JOIN orders ON users.id = orders.user_id",
-            q.sql());
+            q.toSql());
     }
 
     @Test
@@ -269,7 +271,7 @@ class SqlTest {
             .having("cnt > ?", 5);
         assertEquals(
             "SELECT dept, count(*) as cnt FROM users GROUP BY dept HAVING cnt > ?",
-            q.sql());
+            q.toSql());
         assertArrayEquals(new Object[]{5}, q.args());
     }
 
@@ -281,7 +283,7 @@ class SqlTest {
                 .whereNot("dept = ?", "tmp"));
         assertEquals(
             "SELECT dept, count(*) as cnt FROM users GROUP BY dept HAVING (cnt > ? AND NOT dept = ?)",
-            q.sql());
+            q.toSql());
         assertArrayEquals(new Object[]{5, "tmp"}, q.args());
     }
 
@@ -294,7 +296,7 @@ class SqlTest {
 
         assertEquals(
             "(SELECT id FROM active_users WHERE status = ?) UNION ALL (SELECT id FROM archived_users WHERE status = ?) ORDER BY id DESC",
-            q.sql());
+            q.toSql());
         assertArrayEquals(new Object[]{"A", "B"}, q.args());
     }
 
@@ -309,12 +311,12 @@ class SqlTest {
         // call for a query that reads the same either way.
         assertEquals(
             "(SELECT id FROM a WHERE k = ?) UNION (SELECT id FROM b WHERE k = ?) UNION (SELECT id FROM c WHERE k = ?)",
-            a.union(b).union(c).sql());
+            a.union(b).union(c).toSql());
         // The right side is the other case: `A ∪ (B ∪ C)` is not `A ∪ B ∪ C`, so
         // the grouping the caller wrote has to survive.
         assertEquals(
             "(SELECT id FROM a WHERE k = ?) UNION ((SELECT id FROM b WHERE k = ?) UNION (SELECT id FROM c WHERE k = ?))",
-            a.union(b.union(c)).sql());
+            a.union(b.union(c)).toSql());
         // Bind order follows the branch order in both shapes.
         assertArrayEquals(new Object[]{1, 2, 3}, a.union(b).union(c).args());
         assertArrayEquals(new Object[]{1, 2, 3}, a.union(b.union(c)).args());
@@ -341,7 +343,7 @@ class SqlTest {
 
         assertEquals(
             "WITH active_users AS (SELECT id FROM users WHERE status = ?) SELECT id FROM active_users WHERE id > ?",
-            q.sql());
+            q.toSql());
         assertArrayEquals(new Object[]{"ACTIVE", 10}, q.args());
     }
 
@@ -349,7 +351,7 @@ class SqlTest {
     void selectWithSubqueryArgument() {
         Sql sub = Sql.select("user_id").from("orders").where("total > ?", 100);
         Sql q = Sql.select("*").from("users").where("id in (?)", sub);
-        assertEquals("SELECT * FROM users WHERE id in (SELECT user_id FROM orders WHERE total > ?)", q.sql());
+        assertEquals("SELECT * FROM users WHERE id in (SELECT user_id FROM orders WHERE total > ?)", q.toSql());
         assertArrayEquals(new Object[]{100}, q.args());
     }
 
@@ -371,10 +373,10 @@ class SqlTest {
         assertSpliceRefused(() -> Sql.select("a").from("t").groupBy("a").having("cnt > ?", sub));
         assertEquals(
             "SELECT * FROM users WHERE a = ? and id in (SELECT user_id FROM orders WHERE total > ?)",
-            Sql.select("*").from("users").where("a = ? and id in (?)", 1, sub).sql());
+            Sql.select("*").from("users").where("a = ? and id in (?)", 1, sub).toSql());
         assertEquals("SELECT * FROM users WHERE exists (select 1 from x where y = ?)",
             Sql.select("*").from("users")
-                .where("exists (select 1 from x where y = ?)", 1).sql());
+                .where("exists (select 1 from x where y = ?)", 1).toSql());
     }
 
     /**
@@ -385,7 +387,7 @@ class SqlTest {
     private static void assertSpliceRefused(org.junit.jupiter.api.function.Executable call) {
         SqlException ex = assertThrows(SqlException.class, call);
         assertTrue(ex.getMessage().contains("\"(?)\""), ex.getMessage());
-        assertTrue(ex.getMessage().contains("setColumn"), ex.getMessage());
+        assertTrue(ex.getMessage().contains("value"), ex.getMessage());
     }
 
     @Test
@@ -417,7 +419,7 @@ class SqlTest {
     @Test
     void simpleUpdate() {
         Sql q = Sql.update("users").setExpression("name = ?", "john").where("id = ?", 1);
-        assertEquals("UPDATE users SET name = ? WHERE id = ?", q.sql());
+        assertEquals("UPDATE users SET name = ? WHERE id = ?", q.toSql());
         assertArrayEquals(new Object[]{"john", 1}, q.args());
     }
 
@@ -427,7 +429,7 @@ class SqlTest {
             .setExpression("name = ?", "john")
             .setExpression("status = ?", 1)
             .where("id = ?", 42);
-        assertEquals("UPDATE users SET name = ?, status = ? WHERE id = ?", q.sql());
+        assertEquals("UPDATE users SET name = ?, status = ? WHERE id = ?", q.toSql());
         assertArrayEquals(new Object[]{"john", 1, 42}, q.args());
     }
 
@@ -440,7 +442,7 @@ class SqlTest {
         Sql setFirst = Sql.update("users").setExpression("name = ?", "john").where("id = ?", 7L);
         Sql whereFirst = Sql.update("users").where("id = ?", 7L).setExpression("name = ?", "john");
 
-        assertEquals(setFirst.sql(), whereFirst.sql());
+        assertEquals(setFirst.toSql(), whereFirst.toSql());
         assertArrayEquals(new Object[]{"john", 7L}, setFirst.args());
         assertArrayEquals(setFirst.args(), whereFirst.args());
     }
@@ -450,7 +452,7 @@ class SqlTest {
         Sql q = Sql.update("users")
             .setExpression("name = :name", "john")
             .where("id = :id", 1);
-        assertEquals("UPDATE users SET name = ? WHERE id = ?", q.sql());
+        assertEquals("UPDATE users SET name = ? WHERE id = ?", q.toSql());
         assertArrayEquals(new Object[]{"john", 1}, q.args());
     }
 
@@ -460,7 +462,7 @@ class SqlTest {
             .setExpression("name = ?", "john")
             .where("id = ?", 1)
             .returning("id");
-        assertEquals("UPDATE users SET name = ? WHERE id = ? RETURNING id", q.sql());
+        assertEquals("UPDATE users SET name = ? WHERE id = ? RETURNING id", q.toSql());
         assertArrayEquals(new Object[]{"john", 1}, q.args());
     }
 
@@ -469,39 +471,39 @@ class SqlTest {
     /**
      * A {@code Sql} value is SQL, not data. Splicing it in — parenthesized, so
      * it is a scalar subquery — is what makes a nested query expressible
-     * through the INSERT-only {@code setColumn}: before this, the {@code Sql}
+     * through the INSERT-only {@code value}: before this, the {@code Sql}
      * object was bound as a JDBC parameter and the statement silently meant
      * something else, and an unparenthesized splice would only parse on H2.
      */
     @Test
-    void setColumnInlinesANestedQuery() {
+    void valueInlinesANestedQuery() {
         Sql sub = Sql.select("id").from("tenants").where("active = ?", true);
         Sql q = Sql.insert("users")
-            .setColumn("tenant_id", sub)
-            .setColumn("name", "john");
+            .value("tenant_id", sub)
+            .value("name", "john");
 
         assertEquals(
             "INSERT INTO users (tenant_id, name) VALUES ((SELECT id FROM tenants WHERE active = ?), ?)",
-            q.sql());
+            q.toSql());
         assertArrayEquals(new Object[]{true, "john"}, q.args(),
             "the subquery's own placeholder comes first — binding order follows "
                 + "SQL text order (VALUES before WHERE)");
     }
 
     @Test
-    void setColumnInlinesTwoNestedQueries() {
+    void valueInlinesTwoNestedQueries() {
         Sql tenant = Sql.select("id").from("tenants").where("active = ?", true);
         Sql owner = Sql.select("id").from("users").where("name = ?", "root");
         Sql q = Sql.insert("memberships")
-            .setColumn("tenant_id", tenant)
-            .setColumn("owner_id", owner)
-            .setColumn("role", "admin");
+            .value("tenant_id", tenant)
+            .value("owner_id", owner)
+            .value("role", "admin");
 
         assertEquals(
             "INSERT INTO memberships (tenant_id, owner_id, role) VALUES ("
                 + "(SELECT id FROM tenants WHERE active = ?), "
                 + "(SELECT id FROM users WHERE name = ?), ?)",
-            q.sql());
+            q.toSql());
         assertArrayEquals(new Object[]{true, "root", "admin"}, q.args(),
             "each inlined query contributes its own parameters at its own "
                 + "position, and plain values keep theirs");
@@ -510,10 +512,10 @@ class SqlTest {
     @Test
     void inlinedSubQueryWithNoParametersBindsNothing() {
         Sql sub = Sql.select("id").from("tenants");
-        Sql q = Sql.insert("users").setColumn("tenant_id", sub);
+        Sql q = Sql.insert("users").value("tenant_id", sub);
 
         assertEquals(
-            "INSERT INTO users (tenant_id) VALUES ((SELECT id FROM tenants))", q.sql());
+            "INSERT INTO users (tenant_id) VALUES ((SELECT id FROM tenants))", q.toSql());
         assertArrayEquals(new Object[0], q.args(),
             "the inline wrapper is not itself a bind value");
     }
@@ -529,7 +531,7 @@ class SqlTest {
 
         assertEquals(
             "UPDATE users SET name = (SELECT name FROM admins WHERE id = ?) WHERE id = ?",
-            q.sql());
+            q.toSql());
         assertArrayEquals(new Object[]{7, 3}, q.args());
     }
 
@@ -542,21 +544,21 @@ class SqlTest {
      * it — the same defect with two answers.
      */
     @Test
-    void setColumnRejectsAFragmentAsTheColumnName() {
+    void valueRejectsAFragmentAsTheColumnName() {
         // The javadoc promised a name is validated as a name; only a null check
         // existed, so a request-derived name became SQL: "a = 1, evil" rendered
         // as a second column.
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
-            () -> Sql.insert("t").setColumn("a = 1, evil", "v"));
+            () -> Sql.insert("t").value("a = 1, evil", "v"));
         assertTrue(ex.getMessage().contains("is not a column name"), ex.getMessage());
         assertTrue(ex.getMessage().contains("setExpression"), ex.getMessage());
     }
 
     @Test
-    void setColumnAcceptsBareAndQuotedNames() {
+    void valueAcceptsBareAndQuotedNames() {
         for (String name : new String[]{"tenant_id", "_x", "col$1", "`my col`", "\"my col\"", "[my col]"}) {
             assertEquals("INSERT INTO users (" + name + ") VALUES (?)",
-                Sql.insert("users").setColumn(name, "v").sql(),
+                Sql.insert("users").value(name, "v").toSql(),
                 "must be accepted: " + name);
         }
     }
@@ -573,7 +575,7 @@ class SqlTest {
             "users.name", "public.\"My Col\"", "`db`.`table`.col",
             "\"sch\".tbl.\"c\"", "[db].[my table].[c]"}) {
             assertEquals("INSERT INTO users (" + name + ") VALUES (?)",
-                Sql.insert("users").setColumn(name, "v").sql(),
+                Sql.insert("users").value(name, "v").toSql(),
                 "must be accepted: " + name);
         }
     }
@@ -585,7 +587,7 @@ class SqlTest {
     @Test
     void aDotInsideQuotesIsPartOfTheName() {
         assertEquals("INSERT INTO users (\"a.b\") VALUES (?)",
-            Sql.insert("users").setColumn("\"a.b\"", "v").sql());
+            Sql.insert("users").value("\"a.b\"", "v").toSql());
     }
 
     /**
@@ -598,7 +600,7 @@ class SqlTest {
     void quotedPartsAllowEscapesAndForeignQuotes() {
         for (String name : new String[]{"\"a\"\"b\"", "`a\"b`", "`arr[0]`", "[a[b]"}) {
             assertEquals("INSERT INTO users (" + name + ") VALUES (?)",
-                Sql.insert("users").setColumn(name, "v").sql(),
+                Sql.insert("users").value(name, "v").toSql(),
                 "must be accepted: " + name);
         }
     }
@@ -608,18 +610,18 @@ class SqlTest {
     void aNameThatClosesItsOwnQuotingIsRejected() {
         for (String name : new String[]{"\"a\"b\"", "`a`b`", "[a]b]", "a`b", "\"a\" = 1"}) {
             assertThrows(IllegalArgumentException.class,
-                () -> Sql.insert("t").setColumn(name, "v"),
+                () -> Sql.insert("t").value(name, "v"),
                 "must be rejected: " + name);
         }
     }
 
     @Test
-    void setColumnRejectsAValueThatIsNotAQuery() {
+    void valueRejectsAValueThatIsNotAQuery() {
         // The slot renders as a scalar subquery; a UNION or an INSERT parenthesized
         // as an expression is nonsense that renders without complaint and fails at
         // the database instead.
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
-            () -> Sql.insert("t").setColumn("x",
+            () -> Sql.insert("t").value("x",
                 Sql.select("id").from("a").union(Sql.select("id").from("b"))));
         assertTrue(ex.getMessage().contains("scalar subquery"), ex.getMessage());
         assertTrue(ex.getMessage().contains("compound query"), ex.getMessage());
@@ -627,18 +629,18 @@ class SqlTest {
 
     /** Each rejected kind is named, so the reader knows which call site to fix. */
     @Test
-    void setColumnNamesTheKindOfStatementItRefuses() {
+    void valueNamesTheKindOfStatementItRefuses() {
         assertTrue(assertThrows(IllegalArgumentException.class,
-            () -> Sql.insert("t").setColumn("x", Sql.insert("u").setColumn("a", 1)))
+            () -> Sql.insert("t").value("x", Sql.insert("u").value("a", 1)))
             .getMessage().contains("an INSERT"));
         assertTrue(assertThrows(IllegalArgumentException.class,
-            () -> Sql.insert("t").setColumn("x", Sql.update("u").setExpression("a = ?", 1)))
+            () -> Sql.insert("t").value("x", Sql.update("u").setExpression("a = ?", 1)))
             .getMessage().contains("an UPDATE"));
         assertTrue(assertThrows(IllegalArgumentException.class,
-            () -> Sql.insert("t").setColumn("x", Sql.delete("u")))
+            () -> Sql.insert("t").value("x", Sql.delete("u")))
             .getMessage().contains("a DELETE"));
         assertTrue(assertThrows(IllegalArgumentException.class,
-            () -> Sql.insert("t").setColumn("x",
+            () -> Sql.insert("t").value("x",
                 Sql.select("1").unionAll(Sql.select("2"))))
             .getMessage().contains("UNION ALL"),
             "unionAll must not be reported as a plain UNION");
@@ -649,7 +651,7 @@ class SqlTest {
     void theRefusalDoesNotEchoTheStatementText() {
         String secret = "s3cret-tenant";
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
-            () -> Sql.insert("t").setColumn("x",
+            () -> Sql.insert("t").value("x",
                 Sql.select("id").from("tenants").where("name = ?", secret)
                     .union(Sql.select("id").from("other"))));
         assertFalse(ex.getMessage().contains(secret),
@@ -663,62 +665,62 @@ class SqlTest {
     void aCommonTableExpressionIsAcceptedAsAColumnValue() {
         Sql cte = Sql.select("id").from("t").with("recent", Sql.select("id").from("u"));
         assertEquals("INSERT INTO t (x) VALUES ((WITH recent AS (SELECT id FROM u) SELECT id FROM t))",
-            Sql.insert("t").setColumn("x", cte).sql());
+            Sql.insert("t").value("x", cte).toSql());
     }
 
     @Test
     void plainValuesAreUnaffected() {
-        Sql q = Sql.insert("users").setColumn("name", "john").setColumn("status", 1);
-        assertEquals("INSERT INTO users (name, status) VALUES (?, ?)", q.sql());
+        Sql q = Sql.insert("users").value("name", "john").value("status", 1);
+        assertEquals("INSERT INTO users (name, status) VALUES (?, ?)", q.toSql());
         assertArrayEquals(new Object[]{"john", 1}, q.args());
     }
 
     @Test
     void simpleInsert() {
-        Sql q = Sql.insert("users").setColumn("name", "john").setColumn("status", 1);
-        assertEquals("INSERT INTO users (name, status) VALUES (?, ?)", q.sql());
+        Sql q = Sql.insert("users").value("name", "john").value("status", 1);
+        assertEquals("INSERT INTO users (name, status) VALUES (?, ?)", q.toSql());
         assertArrayEquals(new Object[]{"john", 1}, q.args());
     }
 
     @Test
-    void setColumnTakesAnyColumnName() {
+    void valueTakesAnyColumnName() {
         // The old set() guessed INSERT-vs-UPDATE by scanning for '?', '=', ' '
         // and '(' in the fragment, so a legitimately quoted name with a space
         // was rejected as "an expression". The mode is in the method name now.
-        Sql q = Sql.insert("users").setColumn("`my col`", "john");
-        assertEquals("INSERT INTO users (`my col`) VALUES (?)", q.sql());
+        Sql q = Sql.insert("users").value("`my col`", "john");
+        assertEquals("INSERT INTO users (`my col`) VALUES (?)", q.toSql());
         assertArrayEquals(new Object[]{"john"}, q.args());
     }
 
     @Test
-    void setColumnOnUpdateIsRejected() {
+    void valueOnUpdateIsRejected() {
         IllegalStateException ex = assertThrows(IllegalStateException.class,
-            () -> Sql.update("users").setColumn("name", "john"));
+            () -> Sql.update("users").value("name", "john"));
         assertTrue(ex.getMessage().contains("setExpression"), ex.getMessage());
     }
 
     @Test
     void insertWithReturning() {
-        Sql q = Sql.insert("users").setColumn("name", "john").returning("id");
-        assertEquals("INSERT INTO users (name) VALUES (?) RETURNING id", q.sql());
+        Sql q = Sql.insert("users").value("name", "john").returning("id");
+        assertEquals("INSERT INTO users (name) VALUES (?) RETURNING id", q.toSql());
         assertArrayEquals(new Object[]{"john"}, q.args());
     }
 
     @Test
     void returningValidatedAgainstDialect() {
-        Sql q = Sql.insert("users").setColumn("name", "john").returning("id");
+        Sql q = Sql.insert("users").value("name", "john").returning("id");
         assertEquals("INSERT INTO users (name) VALUES (?) RETURNING id",
-            q.sql(new PostgresDialect()));
+            q.toSql(new PostgresDialect()));
         assertThrows(SqlException.class, () ->
-            q.sql(new MySqlDialect()));
+            q.toSql(new MySqlDialect()));
     }
 
     @Test
     void onConflictValidatedAgainstDialect() {
-        Sql q = Sql.insert("users").setColumn("id", 1).onConflict("id").doNothing();
-        q.sql(new PostgresDialect());
+        Sql q = Sql.insert("users").value("id", 1).onConflict("id").doNothing();
+        q.toSql(new PostgresDialect());
         assertThrows(SqlException.class, () ->
-            q.sql(new MySqlDialect()));
+            q.toSql(new MySqlDialect()));
     }
 
     @Test
@@ -727,39 +729,39 @@ class SqlTest {
         // syntactically invalid, and the database rejected it far from the
         // builder call that produced it. The conflict clause must exist first.
         IllegalStateException noTarget = assertThrows(IllegalStateException.class,
-            () -> Sql.insert("users").setColumn("id", 1).doNothing());
+            () -> Sql.insert("users").value("id", 1).doNothing());
         assertTrue(noTarget.getMessage().contains("onConflict"),
             "the message names the fix: " + noTarget.getMessage());
 
         assertThrows(IllegalStateException.class,
-            () -> Sql.insert("users").setColumn("id", 1)
+            () -> Sql.insert("users").value("id", 1)
                 .doUpdateSet("name"));
     }
 
     @Test
     void aSecondConflictClauseIsRejected() {
-        Sql once = Sql.insert("users").setColumn("id", 1).onConflict("id");
+        Sql once = Sql.insert("users").value("id", 1).onConflict("id");
         assertThrows(IllegalStateException.class, () -> once.onConflict("id"));
     }
 
     @Test
     void insertWithOnConflictDoNothing() {
-        Sql q = Sql.insert("users").setColumn("id", 1).setColumn("name", "john")
+        Sql q = Sql.insert("users").value("id", 1).value("name", "john")
             .onConflict("id")
             .doNothing();
-        assertEquals("INSERT INTO users (id, name) VALUES (?, ?) ON CONFLICT (id) DO NOTHING", q.sql());
+        assertEquals("INSERT INTO users (id, name) VALUES (?, ?) ON CONFLICT (id) DO NOTHING", q.toSql());
         assertArrayEquals(new Object[]{1, "john"}, q.args());
     }
 
     @Test
     void insertWithOnConflictDoUpdateSet() {
-        Sql q = Sql.insert("users").setColumn("id", 1).setColumn("name", "john")
+        Sql q = Sql.insert("users").value("id", 1).value("name", "john")
             .onConflict("id")
             .doUpdateSet("name")
             .returning("id");
         assertEquals(
             "INSERT INTO users (id, name) VALUES (?, ?) ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name RETURNING id",
-            q.sql());
+            q.toSql());
         assertArrayEquals(new Object[]{1, "john"}, q.args());
     }
 
@@ -768,21 +770,21 @@ class SqlTest {
         // One clause, two grammars: the conflict action is declared as columns, so
         // MySQL gets ON DUPLICATE KEY UPDATE … VALUES(col) from the same Sql value
         // that renders ON CONFLICT … EXCLUDED.col for PostgreSQL.
-        Sql q = Sql.insert("users").setColumn("id", 1).setColumn("name", "john")
+        Sql q = Sql.insert("users").value("id", 1).value("name", "john")
             .onConflict("id")
             .doUpdateSet("name");
         assertEquals(
             "INSERT INTO users (id, name) VALUES (?, ?) ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name",
-            q.sql());
+            q.toSql());
         assertEquals(
             "INSERT INTO users (id, name) VALUES (?, ?) ON DUPLICATE KEY UPDATE name = VALUES(name)",
-            q.sql(new MySqlDialect()));
+            q.toSql(new MySqlDialect()));
     }
 
     @Test
     void insertSingleColumn() {
-        Sql q = Sql.insert("logs").setColumn("message", "hello");
-        assertEquals("INSERT INTO logs (message) VALUES (?)", q.sql());
+        Sql q = Sql.insert("logs").value("message", "hello");
+        assertEquals("INSERT INTO logs (message) VALUES (?)", q.toSql());
         assertArrayEquals(new Object[]{"hello"}, q.args());
     }
 
@@ -791,7 +793,7 @@ class SqlTest {
     @Test
     void simpleDelete() {
         Sql q = Sql.delete("users").where("id = ?", 1);
-        assertEquals("DELETE FROM users WHERE id = ?", q.sql());
+        assertEquals("DELETE FROM users WHERE id = ?", q.toSql());
         assertArrayEquals(new Object[]{1}, q.args());
     }
 
@@ -800,7 +802,7 @@ class SqlTest {
         Sql q = Sql.delete("users")
             .where("status = ?", 0)
             .where("expired = ?", true);
-        assertEquals("DELETE FROM users WHERE status = ? AND expired = ?", q.sql());
+        assertEquals("DELETE FROM users WHERE status = ? AND expired = ?", q.toSql());
         assertArrayEquals(new Object[]{0, true}, q.args());
     }
 
@@ -811,22 +813,22 @@ class SqlTest {
         Sql q1 = Sql.select("*").from("users").where("id = ?", 1);
         Sql q2 = q1.where("name = ?", "john");
 
-        assertEquals("SELECT * FROM users WHERE id = ?", q1.sql());
+        assertEquals("SELECT * FROM users WHERE id = ?", q1.toSql());
         assertArrayEquals(new Object[]{1}, q1.args());
 
-        assertEquals("SELECT * FROM users WHERE id = ? AND name = ?", q2.sql());
+        assertEquals("SELECT * FROM users WHERE id = ? AND name = ?", q2.toSql());
         assertArrayEquals(new Object[]{1, "john"}, q2.args());
     }
 
     @Test
     void immutabilityInsert() {
-        Sql q1 = Sql.insert("users").setColumn("name", "john");
-        Sql q2 = q1.setColumn("status", 1);
+        Sql q1 = Sql.insert("users").value("name", "john");
+        Sql q2 = q1.value("status", 1);
 
-        assertEquals("INSERT INTO users (name) VALUES (?)", q1.sql());
+        assertEquals("INSERT INTO users (name) VALUES (?)", q1.toSql());
         assertArrayEquals(new Object[]{"john"}, q1.args());
 
-        assertEquals("INSERT INTO users (name, status) VALUES (?, ?)", q2.sql());
+        assertEquals("INSERT INTO users (name, status) VALUES (?, ?)", q2.toSql());
         assertArrayEquals(new Object[]{"john", 1}, q2.args());
     }
 
@@ -835,14 +837,14 @@ class SqlTest {
     @Test
     void whereNoConditions() {
         Sql q = Sql.select("*").from("users");
-        assertEquals("SELECT * FROM users", q.sql());
+        assertEquals("SELECT * FROM users", q.toSql());
         assertEquals(0, q.args().length);
     }
 
     @Test
     void stringLiteralContainingDollar() {
         Sql q = Sql.select("*").from("users").where("label = ?", "a$b");
-        assertEquals("SELECT * FROM users WHERE label = ?", q.sql());
+        assertEquals("SELECT * FROM users WHERE label = ?", q.toSql());
         assertArrayEquals(new Object[]{"a$b"}, q.args());
     }
 
@@ -851,7 +853,7 @@ class SqlTest {
         // PostgreSQL :: type cast must not be confused with :name
         Sql q = Sql.select("*").from("event")
             .where("created_at::date = :d", LocalDate.of(2024, 1, 15));
-        assertEquals("SELECT * FROM event WHERE created_at::date = ?", q.sql());
+        assertEquals("SELECT * FROM event WHERE created_at::date = ?", q.toSql());
         assertEquals(1, q.args().length);
     }
 
@@ -862,7 +864,7 @@ class SqlTest {
                 LocalDateTime.of(2024, 6, 1, 0, 0), 1L);
         assertEquals(
             "SELECT * FROM event WHERE created_at::timestamp > ? AND id = ?",
-            q.sql());
+            q.toSql());
         assertEquals(2, q.args().length);
     }
 
@@ -874,14 +876,14 @@ class SqlTest {
                 LocalDate.of(2024, 1, 1), "active");
         assertEquals(
             "SELECT * FROM event WHERE created_at::date > ? AND status = ?",
-            q.sql());
+            q.toSql());
         assertEquals(2, q.args().length);
     }
 
     @Test
     void paramInStringLiteralNotParsed() {
         Sql q = Sql.select("*").from("users").where("name = '$literal'");
-        assertEquals("SELECT * FROM users WHERE name = '$literal'", q.sql());
+        assertEquals("SELECT * FROM users WHERE name = '$literal'", q.toSql());
         assertEquals(0, q.args().length);
     }
 
@@ -889,20 +891,20 @@ class SqlTest {
     void multipleParamsInOneFragment() {
         Sql q = Sql.select("*").from("users")
             .where("a = ? AND b = :b AND c = ?", 1, 2, 3);
-        assertEquals("SELECT * FROM users WHERE a = ? AND b = ? AND c = ?", q.sql());
+        assertEquals("SELECT * FROM users WHERE a = ? AND b = ? AND c = ?", q.toSql());
         assertArrayEquals(new Object[]{1, 2, 3}, q.args());
     }
 
     @Test
     void emptyWhereAfterFrom() {
         Sql q = Sql.select("*").from("users").orderBy("id");
-        assertEquals("SELECT * FROM users ORDER BY id", q.sql());
+        assertEquals("SELECT * FROM users ORDER BY id", q.toSql());
     }
 
     @Test
     void toStringReturnsSql() {
         Sql q = Sql.select("*").from("users").where("id = ?", 1);
-        assertEquals(q.sql(), q.toString());
+        assertEquals(q.toSql(), q.toString());
     }
 
     @Test
@@ -923,7 +925,7 @@ class SqlTest {
             db.execute("insert into t_user values (1, 'alpha', 1), (2, 'beta', 0)");
 
             Sql q = Sql.select("*").from("t_user").where("status = ?", 1);
-            var users = db.query(q.sql(), q.args()).list(IdName.class);
+            var users = db.query(q.toSql(), q.args()).list(IdName.class);
             assertEquals(1, users.size());
             assertEquals("alpha", users.get(0).name());
         }
@@ -937,7 +939,7 @@ class SqlTest {
             db.execute("insert into t_user values (1, 'alpha')");
 
             Sql q = Sql.select("*").from("t_user").where("id = :id", 1L);
-            var user = db.query(q.sql(), q.args()).one(IdName.class);
+            var user = db.query(q.toSql(), q.args()).one(IdName.class);
             assertTrue(user.isPresent());
             assertEquals("alpha", user.get().name());
         }
@@ -958,7 +960,7 @@ class SqlTest {
             if (!nameFilter.isEmpty()) q = q.where("name = ?", nameFilter);
             if (ageFilter > 0) q = q.where("age >= ?", ageFilter);
 
-            var users = db.query(q.sql(), q.args()).list(IdName.class);
+            var users = db.query(q.toSql(), q.args()).list(IdName.class);
             assertEquals(1, users.size());
             assertEquals("alpha", users.get(0).name());
         }
@@ -970,8 +972,8 @@ class SqlTest {
         try (db) {
             db.execute("create table t_user (id bigint primary key, name varchar(16))");
 
-            Sql q = Sql.insert("t_user").setColumn("id", 1L).setColumn("name", "newguy");
-            db.execute(q.sql(), q.args());
+            Sql q = Sql.insert("t_user").value("id", 1L).value("name", "newguy");
+            db.execute(q.toSql(), q.args());
 
             var user = db.query("select id, name from t_user where id = ?", 1L).one(IdName.class);
             assertTrue(user.isPresent());
@@ -987,7 +989,7 @@ class SqlTest {
             db.execute("insert into t_user values (1, 'oldname')");
 
             Sql q = Sql.update("t_user").setExpression("name = ?", "newname").where("id = ?", 1L);
-            db.execute(q.sql(), q.args());
+            db.execute(q.toSql(), q.args());
 
             var user = db.query("select id, name from t_user where id = ?", 1L).one(IdName.class);
             assertTrue(user.isPresent());
@@ -1003,7 +1005,7 @@ class SqlTest {
             db.execute("insert into t_user values (1, 'goner'), (2, 'keeper')");
 
             Sql q = Sql.delete("t_user").where("id = ?", 1L);
-            db.execute(q.sql(), q.args());
+            db.execute(q.toSql(), q.args());
 
             var users = db.query("select id, name from t_user order by id").list(IdName.class);
             assertEquals(1, users.size());
@@ -1021,7 +1023,7 @@ class SqlTest {
 
             // 用文本块写 Sql，Sql 类只负责构建
             Sql q = Sql.select("id, name").from("t_user").where("id = ?", 1L);
-            var user = db.query(q.sql(), q.args()).one(IdName.class);
+            var user = db.query(q.toSql(), q.args()).one(IdName.class);
             assertTrue(user.isPresent());
         }
     }
@@ -1034,7 +1036,7 @@ class SqlTest {
         try (db) {
             db.execute("create table t_user (id bigint primary key, name varchar(16))");
 
-            ExecuteResult r = db.execute(Sql.insert("t_user").setColumn("id", 1L).setColumn("name", "alpha"));
+            ExecuteResult r = db.execute(Sql.insert("t_user").value("id", 1L).value("name", "alpha"));
             assertEquals(1, r.rows());
 
             String name = db.query(Sql.select("name").from("t_user").where("id = ?", 1L))
@@ -1049,7 +1051,7 @@ class SqlTest {
         // or :p would be swallowed and the fragment would fail at build time.
         Sql q = Sql.select("*").from("t")
             .where("label = 'it\\'s' AND x = :p", 5);
-        assertEquals("SELECT * FROM t WHERE label = 'it\\'s' AND x = ?", q.sql());
+        assertEquals("SELECT * FROM t WHERE label = 'it\\'s' AND x = ?", q.toSql());
         assertArrayEquals(new Object[]{5}, q.args());
     }
 
@@ -1070,21 +1072,21 @@ class SqlTest {
             .where("note = $tag$body :x $tag$");
         assertEquals(
             "SELECT * FROM t WHERE note = $tag$body :x $tag$",
-            q.sql()
+            q.toSql()
         );
         assertArrayEquals(new Object[0], q.args());
     }
 
     @Test
     void insertWithoutSetThrows() {
-        SqlException ex = assertThrows(SqlException.class, () -> Sql.insert("t").sql());
+        SqlException ex = assertThrows(SqlException.class, () -> Sql.insert("t").toSql());
         assertTrue(ex.getMessage().contains("at least one column"));
     }
 
     @Test
     void updateWithoutSetThrows() {
         SqlException ex = assertThrows(SqlException.class,
-            () -> Sql.update("t").where("id = ?", 1).sql());
+            () -> Sql.update("t").where("id = ?", 1).toSql());
         assertTrue(ex.getMessage().contains("at least one SET"));
     }
 
@@ -1094,7 +1096,7 @@ class SqlTest {
         // ORDER BY … LIMIT … — the only order SQL accepts. The old builder
         // appended text in call order and had to reject this sequence.
         Sql q = Sql.select("*").from("t").limit(5).orderBy("id").offset(2);
-        assertEquals("SELECT * FROM t ORDER BY id LIMIT 5 OFFSET 2", q.sql());
+        assertEquals("SELECT * FROM t ORDER BY id LIMIT 5 OFFSET 2", q.toSql());
     }
 
     @Test
@@ -1109,7 +1111,7 @@ class SqlTest {
 
         assertEquals(
             "SELECT dept, count(*) FROM users WHERE active = ? HAVING count(*) > ?",
-            q.sql());
+            q.toSql());
         assertArrayEquals(new Object[]{true, 10}, q.args());
     }
 
@@ -1122,16 +1124,20 @@ class SqlTest {
         assertThrows(IllegalStateException.class,
             () -> Sql.select("*").from("t").limit(1).limit(2));
         assertThrows(IllegalStateException.class,
-            () -> Sql.insert("t").setColumn("id", 1).returning("id").returning("id"));
+            () -> Sql.insert("t").value("id", 1).returning("id").returning("id"));
         assertThrows(IllegalStateException.class,
             () -> Sql.select("count(*)").from("t").groupBy("d").having("c > 1")
                 .having("c > 2"));
     }
 
     @Test
-    void offsetWithoutLimitIsRejected() {
-        assertThrows(IllegalStateException.class,
-            () -> Sql.select("*").from("t").offset(5));
+    void offsetWithoutLimitUsesTheDialectSpelling() {
+        Sql query = Sql.select("*").from("t").offset(5);
+
+        assertEquals("SELECT * FROM t LIMIT -1 OFFSET 5",
+            query.toSql(new SqliteDialect()));
+        assertEquals("SELECT * FROM t OFFSET 5 ROWS",
+            query.toSql(new H2Dialect()));
     }
 
     @Test
@@ -1140,7 +1146,7 @@ class SqlTest {
         // error (like every other require* guard), not a character heuristic.
         IllegalStateException ex = assertThrows(IllegalStateException.class,
             () -> Sql.insert("t").setExpression("name = ?", "x"));
-        assertTrue(ex.getMessage().contains("setColumn"), ex.getMessage());
+        assertTrue(ex.getMessage().contains("value"), ex.getMessage());
     }
 
     @Test

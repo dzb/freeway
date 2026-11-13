@@ -1,6 +1,6 @@
 package com.jujin.freeway.cloud.discovery;
 
-import com.jujin.freeway.http.HttpContext;
+import com.jujin.freeway.http.HttpExchange;
 import com.jujin.freeway.http.route.RouteHandler;
 import com.jujin.freeway.http.HttpStatus;
 import java.io.IOException;
@@ -23,7 +23,7 @@ import java.util.Map;
 final class RegistryIndexHandler implements RouteHandler {
 
     @Override
-    public void handle(HttpContext ctx) throws IOException {
+    public void handle(HttpExchange ctx) throws IOException {
         Map<String, Object> routes = new LinkedHashMap<>();
         // Derived from the served table, so a new route cannot be missing from
         // its own self-description.

@@ -13,22 +13,13 @@ import java.util.Optional;
  * whole-map accessors return lists or immutable snapshots. Header names are
  * case-insensitive.</p>
  */
-public interface RequestView {
-
-    /** Returns the HTTP method (GET, POST, etc.). */
-    String method();
-
-    /** Returns the request path. */
-    String path();
+public interface RequestView extends RequestHead {
 
     /** Returns the first query parameter value for the given name. */
     Optional<String> queryParam(String name);
 
     /** Returns all query parameter values for the given name. */
     List<String> queryParams(String name);
-
-    /** Returns an unmodifiable map of all query parameters. */
-    Map<String, List<String>> queryParams();
 
     /** Returns the first request header value for the given name. */
     Optional<String> header(String name);
@@ -42,8 +33,6 @@ public interface RequestView {
      *  traceparent}, {@code content-type}) works on every engine. The
      *  single-name accessors ({@link #header(String)}, {@link #headers(String)})
      *  are case-insensitive and need no canonical form. */
-    Map<String, List<String>> headers();
-
     /** Returns a path parameter value by name. */
     Optional<String> pathVar(String name);
 
