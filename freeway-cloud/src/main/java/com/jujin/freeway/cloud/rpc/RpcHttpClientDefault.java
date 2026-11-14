@@ -602,19 +602,21 @@ public final class RpcHttpClientDefault implements RpcHttpClient {
         // call while the reply is still on the wire. Bounded by the deployment
         // grace, and free when nothing is in flight.
         waitForInFlight();
+        // Settle what the grace did not drain *before* stopping the executor.
+        // shutdownNow() interrupts workers, and an interrupted worker would
+        // otherwise complete its future with "request interrupted" first,
+        // hiding the shutdown cause from the caller. Once these futures are
+        // settled, the worker's later completion is a no-op; the interrupt
+        // still stops the retry loop, so nothing keeps running behind a
+        // returned close().
+        for (java.util.concurrent.CompletableFuture<RpcResponse> future : inFlight) {
+            future.completeExceptionally(
+                new IllegalStateException("RpcHttpClient is closed"));
+        }
+        inFlight.clear();
         try {
             asyncExecutor.shutdownNow();
         } finally {
-            // Whatever the grace did not drain never completes on its own —
-            // settle it so no caller blocks forever on a dead client. In a
-            // finally because that is the whole point of this loop: a caller
-            // waiting on one of these futures must be released even if the
-            // executor refuses to shut down.
-            for (java.util.concurrent.CompletableFuture<RpcResponse> future : inFlight) {
-                future.completeExceptionally(
-                    new IllegalStateException("RpcHttpClient is closed"));
-            }
-            inFlight.clear();
             http.close();
         }
     }

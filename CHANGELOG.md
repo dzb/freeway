@@ -147,6 +147,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **RPC shutdown settles before it interrupts** (`freeway-cloud`): `close()`
+  now fails the calls the grace could not drain with the documented
+  "RpcHttpClient is closed" failure *before* stopping the executor. Interrupting
+  first let an interrupted worker complete the future with "request interrupted"
+  and mask the shutdown cause; the worker's later completion is now a no-op.
 - **Metric API names use one dot grammar** (`freeway-commons` / `freeway-ioc` /
   `freeway-cloud`): names such as `cloud.event.frames_queued` became
   `cloud.event.frames.queued`, and the `eventbus.*` names follow the same rule.
