@@ -627,6 +627,24 @@ This means `List<V>` always gives you every contribution in order.
 aggregation point. Writes go through `Contribution` only while modules bind;
 application code consumes `List<V>` or `Map<String, V>`.
 
+**Common built-in entry types** (contribute these; consumers inject the
+corresponding `List`/`Map`):
+
+| Entry type | Contributed by | Consumed by |
+|---|---|---|
+| `Route`, `RouteGroup`, `WebSocketRoute` | application routes | `HttpServer` (route index) |
+| `HttpFilter` | filters | HTTP pipeline, ordered by `order()` |
+| `StaticResourceMount` | static mounts | HTTP server |
+| `HealthCheck` | health checks | `HealthFilter` |
+| `ErrorMapper` | exception mappers | HTTP error mapping (first match; built-in last) |
+| `RuntimeHook` | startup/shutdown work | `AppRuntime`, ordered by id |
+| `EventSubscriber` | module-level subscribers | `EventBus`, ordered |
+| `FlowDriver`, `FlowInterceptor` | flow drivers/interceptors | `FlowEngine` |
+| `SchemaEntity`, `RowMapping`, `NamedDatabase` | schema groups, row mappings, named databases | DB module |
+| `Propagator` | context propagators | cloud invocation and event mesh |
+| `RpcExport`, `MeshSubscription`, `CloudHealthContributor` | RPC exports, mesh subscriptions, readiness | cloud modules |
+| `SymbolProvider`, `CoerceRule`, `KnownKeys` | config tiers, coercion rules, key vocabulary | config chain |
+
 The entry type itself (e.g., `Route.class`) is the extension point identifier. Contributions are ordered via `add(id, value)` with `before/after`.
 
 Missing ids in `before/after` are ignored with a WARN (the reference may be a typo, or the contributing module may not be installed). Cycles between resolved references still fail fast.
@@ -755,6 +773,62 @@ loaded. Cross-JVM broadcast is the cloud plane (see
 [MeshEventBus](modules/cloud.md)); durable, per-key ordered
 streams are the Kafka plane (see [Kafka](#kafka-freeway-mq-kafka)). A fact
 that must live on two planes is published on both, deliberately.
+
+### AOP (Advisors)
+
+Advice attaches to a binding and wraps interface method calls:
+
+```java
+binder.bind(UserService.class).to(UserServiceImpl.class)
+    .advise(advisor -> advisor.wrap(
+        inv -> inv.method().getName().startsWith("get"),
+        inv -> {
+            long start = System.nanoTime();
+            try {
+                return inv.proceed();
+            } finally {
+                log.info("{} took {}ns", inv.method(), System.nanoTime() - start);
+            }
+        }));
+```
+
+| Type | Role |
+|------|------|
+| `Advisor` | `wrap(Predicate<MethodInvocation>, MethodAdvice)`, chained on the binding |
+| `MethodInvocation` | `proceed()` continues the chain (or calls the target), plus `target()`, `method()`, `arguments()` |
+| `MethodAdvice` | the advice body; return `proceed()`'s value or a replacement |
+
+Each `advise(...)` call adds one advice; earlier entries are outermost. A
+selector decides per method, and an advice may short-circuit by returning
+without calling `proceed()` — later advice and the target never run:
+
+```java
+binder.bind(Greeter.class).to(GreeterImpl.class)
+    .advise(a -> a.wrap(inv -> inv.method().getName().equals("greet"), inv -> {
+        log.info("before");
+        try { return inv.proceed(); } finally { log.info("after"); }
+    }))
+    .advise(a -> a.wrap(inv -> inv.method().getName().equals("greet"),
+        inv -> "short-circuited"));
+```
+
+Rules and limits:
+
+- **Interface bindings only.** Advice is applied through a JDK dynamic proxy;
+  `bind(Concrete.class).advise(...)` fails at bind time naming the interface
+  requirement. Static and private methods are not interface methods and are
+  never intercepted; a `final` implementation class is fine, because the proxy
+  implements the interface rather than subclassing the target.
+- **One target per proxy.** A singleton proxy keeps its one target; a prototype
+  proxy creates one target on its first call and keeps it across calls on that
+  proxy (a failed construction is retried on the next call).
+- **Boundary injection.** A singleton may inject a `Scope.BOUNDARY`-scoped
+  interface: the injected object is a proxy that enters the caller's boundary on
+  each call, and advice wraps that call. This is the supported way to give a
+  singleton a boundary-scoped collaborator.
+- **Not a lifecycle or argument hook.** Advice cannot substitute constructor
+  arguments, and it cannot intercept `@PostConstruct` / `@PreDestroy` — there is
+  no method call to wrap at those points.
 
 ### Type Coercion
 
@@ -1053,6 +1127,12 @@ binder.contribute(RouteGroup.class)
     ));
 ```
 
+A group is a declaration convenience, not a nested router: its prefix is
+normalized and joined onto each route, and `expand()` hands the resulting flat
+routes to the same index as directly declared ones. Adding a direct route and a
+group route with the same method and path shape therefore fails startup as a
+duplicate — a group does not create a second routing layer.
+
 ### Routes with Dependencies
 
 When a handler needs injected services, use a **handler class** instead of a
@@ -1180,6 +1260,20 @@ ctx.sendJson(200, object);
 ctx.body("text".getBytes());
 ctx.text("text");  // UTF-8 convenience
 ```
+
+| Call | Result |
+|------|--------|
+| `setStatus(int)` / `status()` | status code |
+| `setHeader(name, value)` | replace every existing value for the header |
+| `addHeader(name, value)` | append a value, preserving repeated fields such as `Set-Cookie` |
+| `addVary(token)` | merge a token into `Vary` without duplicating it |
+| `body(byte[])` | binary body |
+| `body(InputStream, long)` | stream body; `contentLength` is `-1` when unknown |
+| `text(String)` / `json(Object)` | semantic body with the default `Content-Type` |
+| `file(Path, offset, length)` / `file(FileChannel, offset, length)` | file range; the channel overload takes ownership and closes it |
+| `sendText(int, String)` / `sendJson(int, Object)` | status + body shorthand |
+| `sse()` | open an `SseEmitter` (set headers first) |
+| `isCommitted()` / `allowsBody()` | whether the response is committed / may carry a body |
 
 Response header values must be **ISO-8859-1 encodable** (the charset the
 HTTP/1.1 writers serialize header values with) and must not contain CR/LF:
