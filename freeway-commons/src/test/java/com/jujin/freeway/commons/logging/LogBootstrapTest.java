@@ -161,8 +161,8 @@ class LogBootstrapTest {
                     "文件应含 info 消息: " + fileContent);
             assertTrue(fileContent.contains("警告 详情"),
                     "文件应含 warn 消息 ({}) 替换: " + fileContent);
-            assertTrue(fileContent.contains("SEVERE"),
-                    "文件应含 SEVERE 级别: " + fileContent);
+            assertTrue(fileContent.contains("ERROR"),
+                    "文件应含 SLF4J 级别名 ERROR: " + fileContent);
             assertTrue(fileContent.contains("demo error"),
                     "文件应含异常消息: " + fileContent);
             assertTrue(fileContent.contains("RuntimeException"),

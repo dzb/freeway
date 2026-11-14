@@ -69,6 +69,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`freeway.log.system`** (freeway-commons): class-load-time backend selection for SLF4J —
+  `freeway` (default), `auto`, `logback`/`log4j2`/`simple`, or a provider class name. The default
+  now pins Freeway's JUL provider even when a transitive Logback/Log4j is on the classpath; the
+  startup report names the active backend, the provider class, the selecting source, and any
+  unselected provider with the exact switch. `-Dslf4j.provider` remains the SLF4J-native escape
+  hatch and wins. Log output displays SLF4J level names (`WARN`/`ERROR`/`DEBUG`/`TRACE`) even for
+  JUL-originated records; configuration keeps accepting JUL names (`WARNING`, `SEVERE`, `FINE`).
+
 - **`ScopeSession.propagate(Executor, ScopedValue...)`** (freeway-commons): wraps an executor so each
   task runs with the submitting thread's `Defer`/`ScopedCache` scope, plus caller-supplied context
   keys. This is the mechanism `ScopeFilter`'s async guidance referred to but could not name, because
@@ -128,6 +136,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fails when `HttpServer` is constructed.
 
 ### Changed
+
+- **Logging backend selection defaults to Freeway's JUL provider** (freeway-commons): previously an
+  external SLF4J provider on the classpath (Logback, Log4j 2, slf4j-simple) was pinned automatically
+  and won over the bundled JUL backend. Now `freeway.log.system` decides, defaulting to `freeway`;
+  `auto` preserves the old external-first behaviour. The change is loud: startup reports the chosen
+  backend and offers the switch when another provider is present.
 
 - **INCLUSIVE joins wait for active flows, not the static in-degree** (freeway-flow): a conditional
   fork that does not take a branch now propagates a dead path to the inclusive joins that branch

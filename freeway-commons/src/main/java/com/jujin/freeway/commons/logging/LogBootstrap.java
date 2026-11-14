@@ -1,46 +1,59 @@
 package com.jujin.freeway.commons.logging;
 
+import com.jujin.freeway.commons.util.EnvKeys;
+import java.util.Locale;
+
 import org.slf4j.LoggerFactory;
 
 /**
  * Bootstraps SLF4J provider selection and Freeway's JUL logging enhancements
  * early in the application lifecycle.
  *
- * <p>{@link JULLoggerServiceProvider} is registered <em>unconditionally</em>
- * via {@code META-INF/services/org.slf4j.spi.SLF4JServiceProvider}, so SLF4J's
- * {@code ServiceLoader} always sees it. SLF4J 2.x does not prefer any
- * particular provider: with several on the classpath it only warns and keeps
- * the first one in {@code ServiceLoader} (classpath) order. That is why
- * {@link #ensureProvider()} must run before SLF4J initializes: it probes the
- * classpath for external SLF4J 2.x providers (Logback, Log4j 2, slf4j-simple)
- * and, when one is present, pins the {@code slf4j.provider} system property
- * to that provider (fixed priority: logback &gt; log4j &gt; simple), so the
- * external provider deterministically wins over the JUL fallback. A
- * user-supplied {@code -Dslf4j.provider} is always respected and never
- * overridden. When no external provider is present (or the user pinned the
- * JUL provider explicitly), the JUL provider takes effect and
- * {@link JULEnhancer} configures console/file logging.
+ * <p>{@link JULLoggerServiceProvider} is registered unconditionally via
+ * {@code META-INF/services/org.slf4j.spi.SLF4JServiceProvider}. SLF4J 2.x does
+ * not prefer any particular provider among several on the classpath, so Freeway
+ * makes the choice explicit: {@code freeway.log.system} selects the backend and
+ * {@link #ensureProvider()} pins {@code slf4j.provider} to it before SLF4J
+ * initializes. The default is {@code freeway} — Freeway's own JUL-backed
+ * provider — so a transitive Logback/Log4j dependency does not silently replace
+ * the framework's logging. Third-party backends stay fully usable: select one
+ * explicitly ({@code logback}, {@code log4j2}, {@code simple}, or a
+ * fully-qualified provider class), or use {@code auto} to keep the
+ * "external provider wins, JUL as fallback" behaviour. An explicit
+ * {@code -Dslf4j.provider} is always honoured and wins over the Freeway key.
  *
- * <p>After pinning, {@code ensureProvider()} binds SLF4J immediately and
- * verifies the outcome: if an external provider is on the classpath but a
- * static logger was created so early that SLF4J bound the JUL fallback
- * before bootstrap ran, a warning says exactly that instead of letting the
- * misbinding go unnoticed.
+ * <p>Selection happens once per JVM, before SLF4J's first {@code getLogger}
+ * call: {@code freeway.log.system} is read from {@code -D} or the
+ * {@code FREEWAY_LOG_SYSTEM} environment variable, never from a config file
+ * (files are parsed later). Both {@code FreewayApp} and {@code Freeway} call
+ * {@link #ensureProvider()} from their static initializers.
  *
- * <p>Call {@link #ensureProvider()} early — before any
- * {@code LoggerFactory.getLogger()} call triggers SLF4J initialization.
- * Both {@code FreewayApp} and {@code Freeway} call it from their static
- * initializers.
+ * <p>After selection a one-line report names the active backend, the provider
+ * class and what selected it; a provider seen on the classpath but not selected
+ * is reported with the exact switch. JUL enhancement (formatters, file
+ * logging) is configured only when the JUL provider is the one selected.
  */
 public final class LogBootstrap {
 
     /** SLF4J's system property for explicitly selecting the provider. */
     static final String SLF4J_PROVIDER_PROPERTY = "slf4j.provider";
 
+    /** The Freeway key selecting the backend; class-load time, -D/env only. */
+    static final String SYSTEM_KEY = LogKeys.SYSTEM;
+
+    /** The default: Freeway's JUL-backed provider wins over classpath order. */
+    static final String SYSTEM_FREEWAY = "freeway";
+
+    /** The opt-in to "external provider wins, JUL as fallback" (pre-2.0 default). */
+    static final String SYSTEM_AUTO = "auto";
+
+    /** The JUL provider this module registers. */
+    static final String JUL_PROVIDER = JULLoggerServiceProvider.class.getName();
+
     /**
-     * Known external SLF4J 2.x providers, in fixed selection priority
-     * (logback &gt; log4j &gt; simple). Presence is probed by class name, so
-     * no external dependency is needed here.
+     * Known external SLF4J 2.x providers, in the priority {@code auto} uses
+     * (logback &gt; log4j &gt; simple). Presence is probed by class name, so no
+     * external dependency is needed here.
      */
     private static final String[] EXTERNAL_PROVIDER_NAMES = {
         "ch.qos.logback.classic.spi.LogbackServiceProvider", // logback-classic
@@ -48,16 +61,24 @@ public final class LogBootstrap {
         "org.slf4j.simple.SimpleServiceProvider",            // slf4j-simple
     };
 
-    /** Guard so the classpath probe runs at most once per JVM. */
+    /** Guard so provider selection runs at most once per JVM. */
     private static volatile boolean providerChecked;
 
     private LogBootstrap() {}
 
     /**
-     * Detects external SLF4J providers and, when one is present, pins
-     * {@code slf4j.provider} so provider selection is deterministic; JUL
-     * enhancement is configured only when the JUL provider will actually be
-     * active. Idempotent and safe for concurrent first calls.
+     * One provider decision: what to pin, what selected it, what else was on
+     * the classpath, and whether a higher-precedence setting disagrees.
+     */
+    record Selection(String provider, String source, String detectedExternal, String conflict) {}
+
+    /**
+     * Detects external SLF4J providers, resolves {@code freeway.log.system},
+     * pins {@code slf4j.provider} so the choice is deterministic, configures
+     * JUL enhancement only for the JUL backend, and reports the outcome.
+     *
+     * @throws IllegalStateException when an explicitly named backend is not on
+     *         the classpath — an explicit choice must not degrade silently
      */
     public static void ensureProvider() {
         if (providerChecked) {
@@ -67,68 +88,134 @@ public final class LogBootstrap {
             if (providerChecked) {
                 return;
             }
-            providerChecked = true;
-
-            String userProvider = System.getProperty(SLF4J_PROVIDER_PROPERTY);
-            String external = null;
-            if (userProvider == null || userProvider.isBlank()) {
-                external = applyProviderSelection(
-                    Thread.currentThread().getContextClassLoader()
-                );
-                if (external == null) {
-                    external = applyProviderSelection(
-                        LogBootstrap.class.getClassLoader()
-                    );
-                }
-                reportSelection(external);
+            String nativeProvider = System.getProperty(SLF4J_PROVIDER_PROPERTY);
+            String systemValue = EnvKeys.bootstrap(SYSTEM_KEY);
+            Selection selection;
+            try {
+                selection = select(systemValue, nativeProvider, contextLoader());
+            } catch (IllegalStateException e) {
+                // Nothing is logged yet: the fix must reach the operator.
+                System.err.println("[Freeway] " + e.getMessage());
+                throw e;
             }
-
-            boolean julIntended = (external == null)
-                && (userProvider == null || isJulProvider(userProvider));
-            if (julIntended) {
-                // No external provider (or the user pinned JUL explicitly) —
-                // configure JUL's console/file enhancements. When an external
-                // provider owns logging they would never be read, so this is
-                // skipped above.
+            if (nativeProvider == null || nativeProvider.isBlank()) {
+                System.setProperty(SLF4J_PROVIDER_PROPERTY, selection.provider());
+            }
+            providerChecked = true;
+            System.err.println(startupReport(selection));
+            if (selection.conflict() != null) {
+                System.err.println("[Freeway] WARNING: " + selection.conflict());
+            }
+            if (JUL_PROVIDER.equals(selection.provider())) {
                 JULEnhancer.configure();
             }
-
-            verifyBinding(external);
+            verifyBinding(selection);
         }
     }
 
     /**
-     * Binds SLF4J now (with the pinned property, so the intended provider
-     * wins) and compares intent against the actual binding. When an external
-     * provider was detected yet the JUL fallback is what got bound — meaning
-     * some static logger initialized SLF4J before this method ran — emit an
-     * actionable warning instead of leaving the misbinding silent.
+     * Resolves the provider to pin without touching global state — pure so the
+     * selection matrix is testable without initializing SLF4J. Package-visible
+     * for tests.
      */
-    private static void verifyBinding(String external) {
-        // getILoggerFactory() completes SLF4J initialization with the pinned
-        // property; the factory's concrete type reveals which provider won.
-        boolean julBound =
-            LoggerFactory.getILoggerFactory() instanceof JULLoggerFactory;
-        String warning = misbindingWarning(external, julBound);
+    static Selection select(String systemValue, String nativeProvider, ClassLoader loader) {
+        String detected = detectExternal(loader);
+        if (nativeProvider != null && !nativeProvider.isBlank()) {
+            String provider = nativeProvider.strip();
+            String conflict = null;
+            if (systemValue != null && !systemValue.isBlank()) {
+                String requested = resolveBackendLenient(systemValue.strip(), loader);
+                if (requested != null && !requested.equals(provider)) {
+                    conflict = "'" + SLF4J_PROVIDER_PROPERTY + "'=" + provider
+                        + " takes precedence over 'freeway.log.system="
+                        + systemValue.strip() + "' (which selects " + requested + ")";
+                }
+            }
+            return new Selection(provider, SLF4J_PROVIDER_PROPERTY, detected, conflict);
+        }
+        if (systemValue == null || systemValue.isBlank()) {
+            return new Selection(JUL_PROVIDER, "default", detected, null);
+        }
+        String system = systemValue.strip();
+        return new Selection(
+            resolveBackend(system, loader, true),
+            "freeway.log.system=" + system,
+            detected,
+            null);
+    }
+
+    /**
+     * One-line startup report naming the active backend; when another provider
+     * is on the classpath but not selected, the next line names it and the
+     * switch. Package-visible for tests.
+     */
+    static String startupReport(Selection selection) {
+        StringBuilder report = new StringBuilder()
+            .append("[Freeway] logging: ").append(providerLabel(selection.provider()))
+            .append(" | provider=").append(selection.provider())
+            .append(" | selected by ").append(selection.source());
+        if (selection.detectedExternal() != null
+                && !selection.detectedExternal().equals(selection.provider())) {
+            report.append('\n')
+                .append("[Freeway] ").append(providerLabel(selection.detectedExternal()))
+                .append(" is on the classpath but not selected; set")
+                .append(" -Dfreeway.log.system=auto (or logback/log4j2/simple) to use it");
+        }
+        return report.toString();
+    }
+
+    private static String providerLabel(String provider) {
+        if (JUL_PROVIDER.equals(provider)) {
+            return "freeway-logging (JUL)";
+        }
+        if (EXTERNAL_PROVIDER_NAMES[0].equals(provider)) {
+            return "logback";
+        }
+        if (EXTERNAL_PROVIDER_NAMES[1].equals(provider)) {
+            return "log4j2";
+        }
+        if (EXTERNAL_PROVIDER_NAMES[2].equals(provider)) {
+            return "slf4j-simple";
+        }
+        return provider;
+    }
+
+    /**
+     * Binds SLF4J now (with the pinned property) and compares intent against
+     * the actual binding. A binding that does not match means a static logger
+     * initialized SLF4J before bootstrap ran — the one situation the property
+     * cannot repair — so the mismatch is reported with its fix instead of
+     * leaving it silent.
+     */
+    private static void verifyBinding(Selection selection) {
+        boolean julBound = LoggerFactory.getILoggerFactory() instanceof JULLoggerFactory;
+        String warning = misbindingWarning(selection.provider(), julBound);
+        if (warning == null && JUL_PROVIDER.equals(selection.provider()) && !julBound) {
+            warning = "[Freeway] WARNING: freeway-logging was selected, but SLF4J already"
+                + " bound " + LoggerFactory.getILoggerFactory().getClass().getName()
+                + " before bootstrap ran (some static logger was created too early)."
+                + " Fix: launch with -D" + SLF4J_PROVIDER_PROPERTY + "=" + JUL_PROVIDER
+                + ", or create your first logger after FreewayApp/Freeway initialization.";
+        }
         if (warning != null) {
             System.err.println(warning);
         }
     }
 
     /**
-     * Returns the diagnostic for "external provider present but the JUL
-     * fallback got bound", or {@code null} when the binding matches intent.
+     * Returns the diagnostic for "a non-JUL provider was selected but the JUL
+     * provider got bound", or {@code null} when the binding matches intent.
      * Package-visible for tests.
      */
-    static String misbindingWarning(String external, boolean julBound) {
-        if (external == null || !julBound) {
+    static String misbindingWarning(String intendedProvider, boolean julBound) {
+        if (intendedProvider == null || JUL_PROVIDER.equals(intendedProvider) || !julBound) {
             return null;
         }
-        return "[Freeway] WARNING: " + external + " is on the classpath, but SLF4J"
-            + " already bound the Freeway JUL fallback before bootstrap ran"
+        return "[Freeway] WARNING: " + intendedProvider + " was selected, but SLF4J"
+            + " already bound the Freeway JUL provider before bootstrap ran"
             + " (some static logger was created too early). Logging goes through"
-            + " java.util.logging, not " + simpleName(external) + ". Fix: launch"
-            + " with -D" + SLF4J_PROVIDER_PROPERTY + "=" + external + ", or create"
+            + " java.util.logging, not " + simpleName(intendedProvider) + ". Fix: launch"
+            + " with -D" + SLF4J_PROVIDER_PROPERTY + "=" + intendedProvider + ", or create"
             + " your first logger after FreewayApp/Freeway initialization.";
     }
 
@@ -152,23 +239,52 @@ public final class LogBootstrap {
         return null;
     }
 
+    /** Detection over the given loader with the framework's own as fallback. */
+    private static String detectExternal(ClassLoader loader) {
+        String detected = detectExternalProvider(loader);
+        if (detected == null && loader != LogBootstrap.class.getClassLoader()) {
+            detected = detectExternalProvider(LogBootstrap.class.getClassLoader());
+        }
+        return detected;
+    }
+
     /**
-     * Pins {@code slf4j.provider} to the detected external provider for
-     * {@code loader}, unless the user has already set the property
-     * explicitly — an explicit value is never overridden. Returns the pinned
-     * class name, or {@code null} when nothing was pinned. Package-visible
-     * for tests.
+     * Maps a {@code freeway.log.system} value to a provider class. Named
+     * values cover the bundled extras; anything else is a provider class name.
      */
-    static String applyProviderSelection(ClassLoader loader) {
-        String userProvider = System.getProperty(SLF4J_PROVIDER_PROPERTY);
-        if (userProvider != null && !userProvider.isBlank()) {
+    private static String resolveBackend(String value, ClassLoader loader, boolean strict) {
+        String provider = switch (value.toLowerCase(Locale.ROOT)) {
+            case SYSTEM_FREEWAY -> JUL_PROVIDER;
+            case SYSTEM_AUTO -> {
+                String detected = detectExternal(loader);
+                yield detected != null ? detected : JUL_PROVIDER;
+            }
+            case "logback" -> EXTERNAL_PROVIDER_NAMES[0];
+            case "log4j", "log4j2" -> EXTERNAL_PROVIDER_NAMES[1];
+            case "simple" -> EXTERNAL_PROVIDER_NAMES[2];
+            default -> value;
+        };
+        if (strict && !isLoadableOnEither(provider, loader)) {
+            throw new IllegalStateException(
+                "freeway.log.system='" + value + "' selects " + provider
+                    + ", but that SLF4J provider is not on the classpath — add its"
+                    + " dependency, or use freeway/auto");
+        }
+        return provider;
+    }
+
+    /** Best-effort mapping for the conflict message; unknown classes return null. */
+    private static String resolveBackendLenient(String value, ClassLoader loader) {
+        try {
+            return resolveBackend(value, loader, false);
+        } catch (IllegalStateException e) {
             return null;
         }
-        String external = detectExternalProvider(loader);
-        if (external != null) {
-            System.setProperty(SLF4J_PROVIDER_PROPERTY, external);
-        }
-        return external;
+    }
+
+    private static boolean isLoadableOnEither(String className, ClassLoader loader) {
+        return isLoadable(className, loader)
+            || isLoadable(className, LogBootstrap.class.getClassLoader());
     }
 
     /** Probes for a class without initializing or linking side effects. */
@@ -181,20 +297,9 @@ public final class LogBootstrap {
         }
     }
 
-    private static boolean isJulProvider(String provider) {
-        return JULLoggerServiceProvider.class.getName().equals(provider);
-    }
-
-    /** Emits a pre-SLF4J diagnostic to stderr (SLF4J is not usable yet). */
-    private static void reportSelection(String external) {
-        if (external != null) {
-            System.err.println(
-                "[Freeway] Detected external SLF4J provider " + external
-                    + " — pinning '" + SLF4J_PROVIDER_PROPERTY + "' so it wins over "
-                    + "the JUL fallback (fixed priority: logback > log4j > simple; "
-                    + "set -Dslf4j.provider to override)."
-            );
-        }
+    private static ClassLoader contextLoader() {
+        ClassLoader loader = Thread.currentThread().getContextClassLoader();
+        return loader != null ? loader : LogBootstrap.class.getClassLoader();
     }
 
     /**

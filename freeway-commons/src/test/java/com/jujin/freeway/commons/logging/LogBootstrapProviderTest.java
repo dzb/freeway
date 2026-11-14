@@ -10,6 +10,9 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
 /**
@@ -74,63 +77,122 @@ class LogBootstrapProviderTest {
             "freeway-commons tests have no external SLF4J provider");
     }
 
-    // ── slf4j.provider pinning ────────────────────────────────
+    // ── freeway.log.system selection ──────────────────────────
 
     @Test
-    void pinsDetectedProviderWhenUserHasNotSetProperty() {
-        String saved = System.getProperty(LogBootstrap.SLF4J_PROVIDER_PROPERTY);
-        try {
-            System.clearProperty(LogBootstrap.SLF4J_PROVIDER_PROPERTY);
-            ClassLoader loader = new FakeProviderLoader(
-                getClass().getClassLoader(), LOGBACK);
-            String pinned = LogBootstrap.applyProviderSelection(loader);
-            assertEquals(LOGBACK, pinned);
-            assertEquals(LOGBACK,
-                System.getProperty(LogBootstrap.SLF4J_PROVIDER_PROPERTY),
-                "slf4j.provider should be pinned to the detected provider");
-        } finally {
-            restoreProperty(saved);
-        }
+    void defaultSelectsFreewayLoggingEvenWhenLogbackIsPresent() {
+        ClassLoader loader = new FakeProviderLoader(
+            getClass().getClassLoader(), LOGBACK);
+        LogBootstrap.Selection selection = LogBootstrap.select(null, null, loader);
+
+        assertEquals(LogBootstrap.JUL_PROVIDER, selection.provider(),
+            "the default backend is freeway-logging, not the classpath's external provider");
+        assertEquals("default", selection.source());
+        assertEquals(LOGBACK, selection.detectedExternal(),
+            "the external provider is still detected, for the notice");
+
+        String report = LogBootstrap.startupReport(selection);
+        assertTrue(report.contains("freeway-logging (JUL)"), report);
+        assertTrue(report.contains("logback is on the classpath but not selected"), report);
+        assertTrue(report.contains("freeway.log.system=auto"), report);
     }
 
     @Test
-    void doesNotSetPropertyWithoutExternalProvider() {
-        String saved = System.getProperty(LogBootstrap.SLF4J_PROVIDER_PROPERTY);
-        try {
-            System.clearProperty(LogBootstrap.SLF4J_PROVIDER_PROPERTY);
-            ClassLoader loader = new FakeProviderLoader(
-                getClass().getClassLoader());
-            assertNull(LogBootstrap.applyProviderSelection(loader));
-            assertNull(System.getProperty(LogBootstrap.SLF4J_PROVIDER_PROPERTY),
-                "no external provider means slf4j.provider stays unset");
-        } finally {
-            restoreProperty(saved);
-        }
+    void explicitFreewayKeyAlsoIgnoresExternalProviders() {
+        ClassLoader loader = new FakeProviderLoader(
+            getClass().getClassLoader(), LOGBACK);
+        LogBootstrap.Selection selection =
+            LogBootstrap.select("freeway", null, loader);
+
+        assertEquals(LogBootstrap.JUL_PROVIDER, selection.provider());
+        assertEquals("freeway.log.system=freeway", selection.source());
     }
 
     @Test
-    void respectsExplicitUserProviderAndNeverOverridesIt() {
-        String saved = System.getProperty(LogBootstrap.SLF4J_PROVIDER_PROPERTY);
-        try {
-            System.setProperty(LogBootstrap.SLF4J_PROVIDER_PROPERTY,
-                "com.example.MyCustomProvider");
-            ClassLoader loader = new FakeProviderLoader(
-                getClass().getClassLoader(), LOGBACK);
-            assertNull(LogBootstrap.applyProviderSelection(loader),
-                "an explicit user property must never be overridden");
-            assertEquals("com.example.MyCustomProvider",
-                System.getProperty(LogBootstrap.SLF4J_PROVIDER_PROPERTY));
-        } finally {
-            restoreProperty(saved);
-        }
+    void autoKeepsExternalPriorityWithJulAsFallback() {
+        ClassLoader logback = new FakeProviderLoader(
+            getClass().getClassLoader(), LOG4J, SIMPLE, LOGBACK);
+        assertEquals(LOGBACK, LogBootstrap.select("auto", null, logback).provider(),
+            "auto keeps logback > log4j > simple");
+
+        ClassLoader none = new FakeProviderLoader(getClass().getClassLoader());
+        assertEquals(LogBootstrap.JUL_PROVIDER,
+            LogBootstrap.select("auto", null, none).provider(),
+            "auto falls back to freeway-logging when no external provider is present");
     }
 
-    private static void restoreProperty(String saved) {
-        if (saved != null) {
-            System.setProperty(LogBootstrap.SLF4J_PROVIDER_PROPERTY, saved);
-        } else {
-            System.clearProperty(LogBootstrap.SLF4J_PROVIDER_PROPERTY);
-        }
+    @Test
+    void namedValuesMapToKnownProvidersAndIgnoreCase() {
+        ClassLoader loader = new FakeProviderLoader(
+            getClass().getClassLoader(), LOGBACK, LOG4J, SIMPLE);
+
+        assertEquals(LOGBACK, LogBootstrap.select("logback", null, loader).provider());
+        assertEquals(LOGBACK, LogBootstrap.select("Logback", null, loader).provider());
+        assertEquals(LOG4J, LogBootstrap.select("log4j2", null, loader).provider());
+        assertEquals(LOG4J, LogBootstrap.select("log4j", null, loader).provider());
+        assertEquals(SIMPLE, LogBootstrap.select("simple", null, loader).provider());
+    }
+
+    @Test
+    void fullyQualifiedProviderClassIsAccepted() {
+        String custom = "com.example.MyCustomProvider";
+        ClassLoader loader = new FakeProviderLoader(
+            getClass().getClassLoader(), custom);
+
+        assertEquals(custom, LogBootstrap.select(custom, null, loader).provider(),
+            "an arbitrary SLF4JServiceProvider class name is a valid selection");
+    }
+
+    @Test
+    void explicitMissingProviderFailsLoudly() {
+        ClassLoader loader = new FakeProviderLoader(getClass().getClassLoader());
+
+        IllegalStateException failure = assertThrows(IllegalStateException.class,
+            () -> LogBootstrap.select("logback", null, loader));
+        assertTrue(failure.getMessage().contains("not on the classpath"),
+            failure.getMessage());
+        assertTrue(failure.getMessage().contains(LOGBACK),
+            "the message names the provider that is missing: " + failure.getMessage());
+        assertTrue(failure.getMessage().contains("freeway/auto"),
+            "and the way out: " + failure.getMessage());
+    }
+
+    @Test
+    void slf4jProviderWinsOverTheFreewayKeyAndSaysSo() {
+        ClassLoader loader = new FakeProviderLoader(
+            getClass().getClassLoader(), LOGBACK);
+        LogBootstrap.Selection selection =
+            LogBootstrap.select("logback", "com.example.Native", loader);
+
+        assertEquals("com.example.Native", selection.provider(),
+            "the JVM-level slf4j.provider is the escape hatch and wins");
+        assertEquals(LogBootstrap.SLF4J_PROVIDER_PROPERTY, selection.source());
+        assertNotNull(selection.conflict(), "a disagreeing freeway key must be reported");
+        assertTrue(selection.conflict().contains("takes precedence"), selection.conflict());
+        assertTrue(selection.conflict().contains("logback"), selection.conflict());
+    }
+
+    @Test
+    void agreeingSelectionsProduceNoConflict() {
+        ClassLoader loader = new FakeProviderLoader(
+            getClass().getClassLoader(), LOGBACK);
+        LogBootstrap.Selection selection =
+            LogBootstrap.select("logback", LOGBACK, loader);
+
+        assertNull(selection.conflict());
+        assertEquals(LOGBACK, selection.provider());
+    }
+
+    @Test
+    void startupReportNamesCustomProviderAndSource() {
+        String custom = "com.example.MyProvider";
+        ClassLoader loader = new FakeProviderLoader(
+            getClass().getClassLoader(), custom);
+
+        String report = LogBootstrap.startupReport(
+            LogBootstrap.select(custom, null, loader));
+        assertTrue(report.contains("provider=" + custom), report);
+        assertTrue(report.contains("selected by freeway.log.system=" + custom), report);
     }
 
     // ── fake provider classloader ─────────────────────────────

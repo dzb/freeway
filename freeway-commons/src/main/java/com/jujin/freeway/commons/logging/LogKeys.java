@@ -35,6 +35,11 @@ final class LogKeys {
     /** Root level for every logger ({@code INFO} when unset). */
     static final String LEVEL = "freeway.log.level";
 
+    /** Backend selection for SLF4J: {@code freeway} (default), {@code auto},
+     *  {@code logback}/{@code log4j2}/{@code simple}, or a provider class name.
+     *  Read at class-load time, so only {@code -D}/env can set it. */
+    static final String SYSTEM = "freeway.log.system";
+
     /** Formatter mode: {@code auto} (Freeway formatters) or {@code simple}. */
     static final String FORMAT = "freeway.log.format";
 
@@ -84,7 +89,7 @@ final class LogKeys {
      * applied.
      */
     static Set<String> classLoadKeys() {
-        return Set.of(COLOR, MDC, MDC_PRIORITY, CALLER_INFO);
+        return Set.of(SYSTEM, COLOR, MDC, MDC_PRIORITY, CALLER_INFO);
     }
 
     /** The default file's rotation/compression keys, spelled out in full rather

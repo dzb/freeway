@@ -133,7 +133,7 @@ final class JULLogFormatterSupport {
         out.append(' ');
         out.append(
             colorLevel(
-                padRight(record.getLevel().getName(), cfg.levelWidth()),
+                padRight(levelLabel(record.getLevel()), cfg.levelWidth()),
                 record.getLevel(),
                 color
             )
@@ -175,6 +175,32 @@ final class JULLogFormatterSupport {
 
         out.append('\n');
         return out.toString();
+    }
+
+    /**
+     * The displayed severity in SLF4J vocabulary, whatever produced the record:
+     * JUL's own names ({@code WARNING}, {@code SEVERE}, {@code FINE}) would
+     * otherwise appear next to SLF4J calls that used {@code warn}/{@code error}.
+     * JUL's {@code CONFIG} has no SLF4J counterpart and keeps its name.
+     */
+    static String levelLabel(Level level) {
+        if (level == Level.CONFIG) {
+            return "CONFIG";
+        }
+        int severity = level.intValue();
+        if (severity >= Level.SEVERE.intValue()) {
+            return "ERROR";
+        }
+        if (severity >= Level.WARNING.intValue()) {
+            return "WARN";
+        }
+        if (severity >= Level.INFO.intValue()) {
+            return "INFO";
+        }
+        if (severity >= Level.FINE.intValue()) {
+            return "DEBUG";
+        }
+        return "TRACE";
     }
 
     private static String colorLevel(

@@ -15,10 +15,10 @@
 #   -D 参数 > 环境变量 FREEWAY_* > freeway-logging.properties
 #     > application.*（freeway.log.* 键）> preset 预设 > 代码默认值
 #
-# 例外：下面四项只有 -D/env，写进任何文件都无效（它们在类加载期读取，
+# 例外：下面五项只有 -D/env，写进任何文件都无效（它们在类加载期读取，
 # 早于文件解析）——本文件里保留它们只作为"存在这些键"的说明：
-#   freeway.log.color / freeway.log.mdc / freeway.log.mdc.priority /
-#   freeway.log.caller-info
+#   freeway.log.system / freeway.log.color / freeway.log.mdc /
+#   freeway.log.mdc.priority / freeway.log.caller-info
 #
 # 每组属性也支持通过环境变量 FREEWAY_<KEY> 传入：
 #   freeway.log.files       → FREEWAY_LOG_FILES
@@ -26,6 +26,20 @@
 # 注意：带连字符的 key（如 max-size）不支持环境变量，需用 -D。
 # 注意：per-logger 级别（<logger>.level）只支持本文件——
 # 在 application.* 里它与普通点号键无法区分。
+
+
+# ── 后端选择（仅 -D/env） ───────────────────────────────────────
+#
+# freeway.log.system=freeway   默认：Freeway 的 JUL 后端胜出；classpath 上的
+#                              Logback/Log4j 不会自动接管（启动会提示如何切换）
+# freeway.log.system=auto      外部 provider 优先（logback > log4j2 > simple），
+#                              都没有时回到 Freeway 的 JUL 后端
+# freeway.log.system=logback   显式选择（同理 log4j2 / simple / provider 类名）；
+#                              不在 classpath 时启动失败并点名缺的依赖
+# -Dslf4j.provider=<类名>      优先级高于本键（SLF4J 原生逃生舱）
+#
+# 选中的后端才会配置 Freeway 的 JUL 增强（formatter/文件/轮转）；
+# 外部后端时 freeway.log.* 的 JUL 旋钮不生效，日志格式由该后端自己的配置决定。
 
 
 # ── 全局日志级别 ────────────────────────────────────────────────

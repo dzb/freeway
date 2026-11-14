@@ -1085,7 +1085,7 @@ if (result.hasErrors()) { ... }
 
 ### 日志
 
-Freeway 内置 SLF4J 2 + JUL 日志后端，零依赖可用。添加 Logback 自动切换。
+Freeway 内置 SLF4J 2 + JUL 日志后端，零依赖可用。默认使用 Freeway 的 JUL 后端；classpath 上的 Logback/Log4j 不会自动接管，用启动期键 `freeway.log.system` 显式选择（`auto` 恢复"外部优先"，也接受 `logback`/`log4j2`/`simple` 或 provider 类名；`-Dslf4j.provider` 优先级更高）。
 
 **配置：** `freeway-logging.properties`（classpath 根），框架不打包此文件。优先级：
 

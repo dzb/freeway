@@ -135,9 +135,11 @@ CLI 参数（`--freeway.config.file=...`）同样无效——启动时会打 WAR
 1. **专用文件** `freeway-logging.properties`（classpath 根）——日志专属声明，**优先生效**。旧名 `freeway-log.properties` **不再被读取**：若它仍留在 classpath 根，启动会打一行 stderr 提示改名（配置不会被采纳，但也不会静默失效）
 2. **应用主配置** `application.properties` / `application.json`（类路径根与激活 profile 的变体；**工作目录中的同名文件与热重载不参与日志侧**，只有类路径基线参与）——只取 `freeway.log.*` 键
 
+**后端选择**由 `freeway.log.system` 在**类加载期**决定：默认 `freeway` 让 Freeway 的 JUL provider 胜出，classpath 上传递进来的 Logback/Log4j 不会静默接管（启动会打一行提示，并给出切换键）；`auto` 恢复"外部 provider 优先"；也可以显式写 `logback`/`log4j2`/`simple` 或 provider 全限定类名。显式选择的后端不在 classpath 时启动失败并点名缺的依赖；`-Dslf4j.provider` 是 SLF4J 原生逃生舱，优先级更高。启动报告形如 `[Freeway] logging: freeway-logging (JUL) | provider=... | selected by ...`。
+
 注意三条边界：
 
-- **四个键住不进文件**：`freeway.log.color`、`freeway.log.mdc`、`freeway.log.mdc.priority`、`freeway.log.caller-info` 在**类加载期**读取（早于文件解析），只认 `-D` 与环境变量；写进任何配置**文件**都不生效——启动会对这类声明打一行 WARN 点名（键、值、来源，以及可用的通道）。
+- **五个键住不进文件**：`freeway.log.system`、`freeway.log.color`、`freeway.log.mdc`、`freeway.log.mdc.priority`、`freeway.log.caller-info` 在**类加载期**读取（早于文件解析），只认 `-D` 与环境变量；写进任何配置**文件**都不生效——启动会对这类声明打一行 WARN 点名（键、值、来源，以及可用的通道）。
 - **per-logger 级别**（`<logger>.level`）只支持专用文件——在应用主配置里它与普通点号键无法区分（会把任意应用键误认成 logger）。
 - 应用文件侧走主级联的 **classpath 基线**（含 `-D`/env/类路径文件声明的 profile 选择）；工作目录文件声明与热重载不参与日志侧。
 - 因此 **CLI 参数**（`--freeway.log.level=DEBUG`）与**工作目录覆盖文件**里的 `freeway.log.*` 不会作用于 logger。它们仍会进入符号链，看起来像生效了——启动会为每个这样的键打一行 WARN，点名键、值、来源和三条可用通道（`-D`、环境变量、类路径配置文件）。
@@ -147,14 +149,15 @@ CLI 参数（`--freeway.config.file=...`）同样无效——启动时会打 WAR
 | 键 | 档 | 类型 | 默认值 | 说明 |
 |----|------|------|--------|------|
 | `app.name`（JVM `-D`） | 机制 | String | `freeway` | 默认日志文件名 `logs/{app.name}.log`。与 `freeway.app.name`（cloud 服务名回退）是两回事 |
-| `slf4j.provider`（JVM `-D`） | 机制 | String | 探测后写入 | SLF4J provider 选择（logback > log4j > simple）；已显式设置则不覆盖 |
+| `slf4j.provider`（JVM `-D`） | 机制 | String | 由 `freeway.log.system` 决定 | SLF4J provider 的 JVM 级逃生舱；显式设置后**优先于** `freeway.log.system`，两者冲突时启动会说明以本属性为准 |
 | `NO_COLOR`（环境变量） | 机制 | 存在性 | 未设 | 存在即关闭 ANSI 颜色（遵循 no-color.org） |
 
 #### 全局日志
 
 | 键 | 档 | 类型 | 默认值 | 必填 | 说明 |
 |----|------|------|--------|------|------|
-| `freeway.log.level` | 决策 | String | `INFO` | 否 | 全局日志级别。SLF4J 名（TRACE/DEBUG/INFO/WARN/OFF）或 JUL 名（FINEST/FINE/INFO/WARNING/SEVERE） |
+| `freeway.log.system` | 机制·-D | String | `freeway` | 否 | SLF4J 后端选择：`freeway`（默认，Freeway 的 JUL 后端）、`auto`（外部 provider 优先）、`logback`/`log4j2`/`simple`，或 provider 全限定类名。类加载期读取，写进文件无效。显式选择的后端不在 classpath 时启动失败并点名缺的依赖 |
+| `freeway.log.level` | 决策 | String | `INFO` | 否 | 全局日志级别。SLF4J 名（TRACE/DEBUG/INFO/WARN/OFF）或 JUL 名（FINEST/FINE/INFO/WARNING/SEVERE）；输出统一显示 SLF4J 名（JUL 记录亦然） |
 | `freeway.log.format` | 调优·auto | String | `auto` | 否 | 格式化模式：`auto`（Freeway formatter + ANSI）或 `simple`（JUL SimpleFormatter） |
 | `freeway.log.color` | 调优·auto·-D | String | `auto` | 否 | 颜色模式：`auto`（跟随 format）、`always`（强制 ANSI）、`never`（强制无色）。遵循 `NO_COLOR` 规范 |
 | `freeway.log.caller-info` | 调优·-D | Boolean | `true` | 否 | 每条日志解析 source class/method。日志量大时可设为 `false` 提升吞吐 |

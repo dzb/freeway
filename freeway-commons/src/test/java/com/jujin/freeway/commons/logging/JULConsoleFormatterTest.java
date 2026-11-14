@@ -59,13 +59,26 @@ class JULConsoleFormatterTest {
     }
 
     @Test
+    void displaysLevelsInSlf4jVocabularyWhateverTheOrigin() {
+        // JDK-originated records carry JUL names; the display is SLF4J's.
+        assertEquals("TRACE", JULLogFormatterSupport.levelLabel(Level.FINEST));
+        assertEquals("TRACE", JULLogFormatterSupport.levelLabel(Level.FINER));
+        assertEquals("DEBUG", JULLogFormatterSupport.levelLabel(Level.FINE));
+        assertEquals("INFO", JULLogFormatterSupport.levelLabel(Level.INFO));
+        assertEquals("WARN", JULLogFormatterSupport.levelLabel(Level.WARNING));
+        assertEquals("ERROR", JULLogFormatterSupport.levelLabel(Level.SEVERE));
+        assertEquals("CONFIG", JULLogFormatterSupport.levelLabel(Level.CONFIG),
+            "CONFIG has no SLF4J counterpart and keeps its name");
+    }
+
+    @Test
     void formatLevelNames() {
         JULConsoleFormatter formatter = new JULConsoleFormatter(false);
         LogRecord record = new LogRecord(Level.WARNING, "msg");
         record.setLoggerName("test.Level");
 
         String output = formatter.format(record);
-        assertTrue(output.contains("WARNING"), "should contain level name: " + output);
+        assertTrue(output.contains("WARN"), "should contain the SLF4J level name: " + output);
     }
 
     // ── color ────────────────────────────────────────────────────────

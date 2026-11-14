@@ -50,12 +50,12 @@ class JULFileFormatterTest {
         assertTrue(out.contains("INFO    "),
                 "INFO should be padded to 8 chars: " + out);
 
-        // WARNING is exactly 7 chars, padded to 8
+        // WARN is displayed in SLF4J vocabulary, padded to 8
         LogRecord warnRecord = new LogRecord(Level.WARNING, "msg");
         warnRecord.setMillis(System.currentTimeMillis());
         String warnOut = formatter.format(warnRecord);
-        assertTrue(warnOut.contains("WARNING "),
-                "WARNING should be padded to 8 chars: " + warnOut);
+        assertTrue(warnOut.contains("WARN    "),
+                "WARN should be padded to 8 chars: " + warnOut);
     }
 
     @Test
@@ -154,8 +154,8 @@ class JULFileFormatterTest {
         record.setLoggerName("test");
 
         String out = formatter.format(record);
-        assertTrue(out.contains("FINE"),
-                "Should contain FINE level: " + out);
+        assertTrue(out.contains("DEBUG"),
+                "Should contain the SLF4J level name DEBUG: " + out);
     }
 
     @Test
@@ -165,8 +165,8 @@ class JULFileFormatterTest {
         record.setLoggerName("test");
 
         String out = formatter.format(record);
-        assertTrue(out.contains("SEVERE"),
-                "Should contain SEVERE level: " + out);
+        assertTrue(out.contains("ERROR"),
+                "Should contain the SLF4J level name ERROR: " + out);
     }
 
     @Test

@@ -97,13 +97,19 @@ freeway-commons         zero deps
   that id, then the built-in `Dialect.ofId(...)` catalog, and otherwise the
   JDBC URL selects the id. A custom dialect therefore binds under its own id;
   making several dialect bindings primary would not select one deterministically.
-- **Logging** — commons registers a JUL-backed SLF4J provider; at startup
-  `LogBootstrap.ensureProvider()` probes the classpath for an external provider
-  (Logback, Log4j, slf4j-simple) and pins `slf4j.provider` so that one wins,
-  leaving JUL as the fallback. That provider reads the user-provided
-  `freeway-logging.properties` from the classpath root (not bundled in the JAR);
-  `-D` values override file values, and all defaults are built into code.
-  Framework code uses `LoggerFactory.getLogger()`.
+- **Logging** — commons registers a JUL-backed SLF4J provider. At startup
+  `LogBootstrap.ensureProvider()` resolves `freeway.log.system` (class-load time,
+  `-D`/env only; default `freeway`) and pins `slf4j.provider` before SLF4J
+  initializes: `freeway` selects Freeway's JUL backend even when Logback/Log4j is
+  on the classpath, `auto` keeps "external wins, JUL as fallback", and a named
+  backend or provider class selects it explicitly (a missing one fails startup).
+  A startup report names the active backend and any unselected provider seen on
+  the classpath; `-Dslf4j.provider` is the SLF4J-native escape hatch and wins.
+  The JUL backend reads the user-provided `freeway-logging.properties` from the
+  classpath root (not bundled in the JAR); `-D` values override file values, and
+  all defaults are built into code. Framework code uses
+  `LoggerFactory.getLogger()`; displayed levels use SLF4J names (`WARN`,
+  `ERROR`, `DEBUG`, `TRACE`) even for JUL-originated records.
 - **HTTP** — `FreewayHttpEngine` (virtual threads, synchronous socket I/O,
   HTTP/1.x + HTTP/2 h2c/h2 + WebSocket + HTTPS) is the only engine type that
   forms public API; everything else in `engine/` and its `http2/`, `ws/`

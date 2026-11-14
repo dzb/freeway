@@ -30,6 +30,7 @@ class LogConfigTest {
         // Read off LogKeys, so a key added there is in the vocabulary with no second list to edit.
         assertEquals(Set.of(
             "freeway.log.level",
+            "freeway.log.system",
             "freeway.log.format",
             "freeway.log.color",
             "freeway.log.mdc",

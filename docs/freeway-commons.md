@@ -85,6 +85,19 @@ freeway.log.file.flush-interval=250         # 批量刷盘间隔（毫秒）；0
 # （以上四项为 auto 默认值——不写即用这些值，覆盖即调整）
 ```
 
+### Backend Selection
+
+Freeway ships a JUL-backed SLF4J provider and selects it by default. Use `freeway.log.system` (a class-load-time key: `-D` or `FREEWAY_LOG_SYSTEM` only) to choose another backend:
+
+| Value | Meaning |
+|---|---|
+| `freeway` (default) | Freeway's JUL backend wins even when Logback/Log4j is on the classpath (startup names the unselected provider and the switch) |
+| `auto` | External provider wins (Logback > Log4j 2 > slf4j-simple), JUL as fallback |
+| `logback` / `log4j2` / `simple` | That backend explicitly; startup fails naming the missing dependency if absent |
+| `<provider class>` | Any `SLF4JServiceProvider` implementation |
+
+`-Dslf4j.provider=<class>` is SLF4J's own escape hatch and takes precedence. The startup report (`[Freeway] logging: ... | provider=... | selected by ...`) names what actually bound.
+
 ### Multi-File Logging
 
 Declare named files with independent rotation and logger binding:
@@ -100,7 +113,7 @@ Each file creates a `JULFileHandler` (time+size dual rotation, GZIP) attached to
 
 ### Per-Logger Levels
 
-Any key ending with `.level` sets the corresponding JUL logger. Accepts SLF4J names (TRACE/DEBUG/INFO/WARN/ERROR) and JUL names (FINEST/FINE/INFO/WARNING/SEVERE), case-insensitive.
+Any key ending with `.level` sets the corresponding JUL logger. Accepts SLF4J names (TRACE/DEBUG/INFO/WARN/ERROR) and JUL names (FINEST/FINE/INFO/WARNING/SEVERE), case-insensitive. Output always displays the SLF4J name (a JUL `WARNING` record reads `WARN`; `CONFIG` keeps its JUL name because SLF4J has no counterpart).
 
 ```bash
 -Dcom.myapp.audit.level=FINE
