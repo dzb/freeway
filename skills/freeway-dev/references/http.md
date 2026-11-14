@@ -128,7 +128,7 @@ At startup the module expands every group route to its full path once and indexe
 | `ctx.bodyAsJson(User.class)` | Deserialize the JSON request body |
 | `ctx.param("name")` | Query parameter first, then path variable |
 | `ctx.correlationId()` | Unique request id |
-| `ctx.routePattern()` | Declared route template (`/users/{id}`, `static`, `spa`, `health`, `cors-preflight`, or `unmatched`); set before filters run |
+| `ctx.routePattern()` | Declared route template (`/users/{id}`, `static`, `spa`, `health`, `cors-preflight`, or `unmatched`); matched routes are previewed before filters, and dispatch may refine the category |
 | `ctx.setStatus(201)` | Set the response status |
 | `ctx.setHeader("X-Custom", "value")` | Set a response header, replacing existing values |
 | `ctx.sendText(200, "plain text")` | Send a text response (`text/plain` by default) |

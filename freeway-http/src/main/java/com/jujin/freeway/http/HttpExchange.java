@@ -27,16 +27,27 @@ import java.util.Map;
  */
 public interface HttpExchange extends ExchangeMeta, HttpRequest, HttpResponse {
 
-    /** Attribute key holding the declared route template for this exchange. */
+    /**
+     * Framework-owned attribute key holding the declared route template for
+     * this exchange. Set by the server and by the built-in short-circuiting
+     * filters; handlers should read {@link #routePattern()} rather than the
+     * attribute directly.
+     */
     String ROUTE_ATTRIBUTE = "freeway.http.route";
 
     /**
-     * The declared route template that served this exchange, never the raw
-     * request path: {@code /users/{id}} rather than {@code /users/42}. The
-     * pipeline sets it during dispatch ({@code static}, {@code spa},
-     * {@code health} and {@code cors-preflight} are the non-route values);
-     * before dispatch it is {@code null}. It is exposed for diagnostics and
-     * metrics labels; do not use it for authorization decisions.
+     * The declared route template associated with this exchange, never the raw
+     * request path: {@code /users/{id}} rather than {@code /users/42}.
+     *
+     * <p><b>When it is available.</b> For a matched route the server
+     * pre-matches before the filter chain, so filters and tracing already see
+     * the template; dispatch remains the authoritative match and may replace
+     * the value with the bounded category it actually selected:
+     * {@code static}, {@code spa}, {@code health}, {@code cors-preflight} or
+     * {@code unmatched}. Before any match it is {@code null}.</p>
+     *
+     * <p>It is exposed for diagnostics, access control <em>logging</em> and
+     * metrics labels; do not use it for authorization decisions.</p>
      */
     default String routePattern() {
         Object value = attribute(ROUTE_ATTRIBUTE);

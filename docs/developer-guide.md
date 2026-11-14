@@ -2168,8 +2168,10 @@ template (`/users/{id}`) or one of `unmatched`, `static`, `spa`, `health`,
 **Tracing.** A request runs in one server span named `METHOD + route template`
 (`GET /users/{id}`, `GET unmatched`, `GET static`); raw paths stay in logs and
 exchange events, not span names. Filters and diagnostics can read
-`HttpExchange.routePattern()` — the server pre-matches before the filter chain,
-and dispatch remains the authoritative match.
+`HttpExchange.routePattern()` — the server pre-matches before the filter chain
+for filters/tracing, and dispatch remains the authoritative match; built-in
+short-circuits and dispatch may replace the preview with `static`, `spa`,
+`health`, `cors-preflight` or `unmatched`.
 
 **Failures.** `RpcException`, `SqlException`, `FlowException` and
 `StorageException` implement `Failure`. Its defaults are conservative

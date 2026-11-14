@@ -136,8 +136,10 @@ public final class HttpServer implements AutoCloseable {
 
         RouteHandler request = ctx -> {
             // Filters run before dispatch, and the tracing filter needs the
-            // declared template in its span name. Match once for that preview;
-            // dispatchToRoute remains the authoritative match/selection.
+            // declared template in its span name. This preview is
+            // observability-only: dispatchToRoute remains authoritative and may
+            // replace the value with the category it actually served
+            // (static/spa/unmatched).
             RouteIndex.RouteMatch preview = routes.match(ctx.method(), ctx.path());
             if (preview != null) {
                 ctx.setAttribute(HttpExchange.ROUTE_ATTRIBUTE, preview.routePattern());

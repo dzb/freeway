@@ -26,11 +26,11 @@ import java.util.Set;
  * covers every filter and handler downstream of it.</p>
  *
  * <p>The span name is {@code METHOD route-template} when a route matched
- * ({@code GET /users/{id}}), never the raw request path; a request that matched
- * no route is {@code METHOD unmatched}, and a static-mount request is
- * {@code METHOD static}. The server writes the template onto the exchange
- * before the filter chain, so a path carrying identifiers cannot produce one
- * span name per request.</p>
+ * ({@code GET /users/{id}}), never the raw request path; a request with no
+ * matched route is {@code METHOD unmatched}, and a static-mount request with no
+ * matched route is {@code METHOD static}. The server writes this preview onto
+ * the exchange before the filter chain (dispatch may refine the category), so a
+ * path carrying identifiers cannot produce one span name per request.</p>
  *
  * <p>The framework's own probes and scrape endpoint are skipped: they are
  * infrastructure traffic, and tracing them would drown the application's spans
