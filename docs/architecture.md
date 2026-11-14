@@ -4,7 +4,7 @@ How Freeway is put together — module boundaries, the framework's internal
 contracts, the config cascade mechanics and lifecycle rules. It is the
 architecture counterpart of [AGENTS.md](../AGENTS.md), which holds the repo
 conventions (build, naming, design rules, testing, commit rules); per-module
-*usage* is the [DEVELOPER-GUIDE](DEVELOPER-GUIDE.md).
+*usage* is the [developer guide](developer-guide.md).
 
 Read this when changing framework internals; it is deliberately not
 auto-loaded into agent context, so a task that touches module boundaries,
@@ -180,7 +180,7 @@ freeway-commons         zero deps
 
 All in `com.jujin.freeway.ioc.annotation`. The framework's reflective machinery
 lives in `commons.bean` with a documented site list — see
-[freeway-reflection.md](freeway-reflection.md) before adding a new site.
+[reflection.md](reflection.md) before adding a new site.
 
 - `@Inject` — field/constructor/parameter injection; `@Inject("id")` for
   qualified injection.

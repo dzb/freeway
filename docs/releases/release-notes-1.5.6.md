@@ -17,7 +17,7 @@ shape, and the rules for adding one. ~2255 core tests, ~199 ext tests green.
 
 This is a **breaking release**: **compatibility is not a goal** — compile errors
 are the migration path, and the full replacement tables live in
-[CHANGELOG.md](../CHANGELOG.md). Consumers must move together with it: **ext
+[CHANGELOG.md](../../CHANGELOG.md). Consumers must move together with it: **ext
 ships on the same train** (this release adds the Consul service-discovery
 adapter, and `freeway-http` no longer produces its `tests` classifier artifact).
 
@@ -71,7 +71,7 @@ outlives that phase.
 
 ### The reflection inventory (every module)
 
-`docs/freeway-reflection.md` is the single page for the framework's reflective
+`docs/reflection.md` is the single page for the framework's reflective
 sites: the mechanism, the cache shape, the path, and the rules (ClassValue for
 anything keyed by a class, failures never cached, spread invocation as the
 standard form, pre-adaptation licensed only by profiling). It exists for

@@ -2,8 +2,8 @@
 
 本文是 `freeway-cloud` 的开发方法总览：一个应用如何从单机走向云原生，注册发现、远程调用、
 事件网格分别怎么用、怎么部署、边界在哪。设计取舍见
-[freeway-cloud-design.md](freeway-cloud-design.md)，全部配置键见
-[freeway-config.md](freeway-config.md)。
+[cloud design](../design/cloud.md)，全部配置键见
+[configuration.md](../configuration.md)。
 
 核心承诺只有一句：**单机和云原生是同一套代码的两种放置方式**。业务代码不写注册、不写寻址、
 不写重试；"有邻居"这件事由组合根（放置哪些模块、配哪些键）表达。
@@ -301,6 +301,6 @@ subscribe：对端在握手时看不见的兴趣，是无法被兑现的兴趣�
 
 ## 相关文档
 
-- 设计取舍与边界：[freeway-cloud-design.md](freeway-cloud-design.md)
-- 全部配置键：[freeway-config.md](freeway-config.md)
+- 设计取舍与边界：[cloud design](../design/cloud.md)
+- 全部配置键：[configuration.md](../configuration.md)
 - 三方适配器（Consul、Kafka 平面等）：[freeway-ext](https://github.com/dzb/freeway-ext)

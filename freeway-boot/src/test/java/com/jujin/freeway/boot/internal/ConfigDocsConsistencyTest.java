@@ -17,7 +17,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * The config surface stays consistent with its documentation and its samples:
- * a key a sample writes must have a row in {@code docs/freeway-config.md}, and
+ * a key a sample writes must have a row in {@code docs/configuration.md}, and
  * a key the document promises must be read by some module.
  *
  * <p>Both directions are the same failure — a name nobody reads. A sample that
@@ -37,12 +37,12 @@ class ConfigDocsConsistencyTest {
      *  is the module for a standalone build and the root in some reactor runs. */
     private static final Path REPO = findRepoRoot();
     private static final Path DOCS = REPO == null ? null : REPO.resolve("docs");
-    private static final Path DOC = DOCS == null ? null : DOCS.resolve("freeway-config.md");
+    private static final Path DOC = DOCS == null ? null : DOCS.resolve("configuration.md");
 
     private static Path findRepoRoot() {
         Path candidate = Path.of("").toAbsolutePath().normalize();
         for (int depth = 0; depth < 6 && candidate != null; depth++) {
-            if (Files.isRegularFile(candidate.resolve("docs/freeway-config.md"))
+            if (Files.isRegularFile(candidate.resolve("docs/configuration.md"))
                     && Files.isDirectory(candidate.resolve("freeway-boot"))) {
                 return candidate;
             }
@@ -59,7 +59,7 @@ class ConfigDocsConsistencyTest {
         "freeway.log.file.<name>.", "<logger-name>.level");
 
     private static List<Path> samples() throws IOException {
-        try (Stream<Path> files = Files.list(DOCS)) {
+        try (Stream<Path> files = Files.list(DOCS.resolve("samples"))) {
             return files.filter(p -> p.getFileName().toString().startsWith("application")
                     && p.getFileName().toString().endsWith(".sample"))
                 .sorted()
@@ -74,7 +74,7 @@ class ConfigDocsConsistencyTest {
 
     @Test
     void everySampleKeyHasADocumentedRow() throws IOException {
-        assumeTrue(DOC != null && Files.isRegularFile(DOC), "docs/freeway-config.md not present");
+        assumeTrue(DOC != null && Files.isRegularFile(DOC), "docs/configuration.md not present");
         String doc = Files.readString(DOC);
         List<String> unknown = new ArrayList<>();
         for (Path sample : samples()) {

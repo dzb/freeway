@@ -16,7 +16,7 @@ five container-level defects. ~2077 core tests, ~154 ext tests green.
 
 This is a **breaking release**: **compatibility is not a goal** — compile
 errors are the migration path. The full replacement tables live in
-[CHANGELOG.md](../CHANGELOG.md). Consumers must move together with it:
+[CHANGELOG.md](../../CHANGELOG.md). Consumers must move together with it:
 **ext 1.5.5 ships on the same train** (the kafka bridge shapes are gone),
 and mesh fleets upgrade **fleet-wide, not half at a time** (in-flight legacy
 frames decode and are dropped by reason; routing across old/new nodes is not

@@ -411,7 +411,7 @@ contribution 表达 guard。收益是把“外部 backend 未安装时警告”�
 
 ## 8. S7（已落地）：agentic 时代缺少机器可读的运行时描述
 
-`docs/freeway-module.md` 当前明确写着：组合结构“visible in the startup log rather than
+`docs/module-system.md` 当前明确写着：组合结构“visible in the startup log rather than
 through an API”。对人类日志足够，对 agent 不足：
 
 - 组合树只有 `ModuleNode.render()` 的字符串；

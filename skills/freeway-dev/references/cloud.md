@@ -199,6 +199,6 @@ rotation no longer needs a restart.
 
 ## Full Guides
 
-- Development guide: `docs/freeway-cloud.md`
-- Design rationale: `docs/freeway-cloud-design.md`
-- Every key: `docs/freeway-config.md`
+- Development guide: `docs/modules/cloud.md`
+- Design rationale: `docs/design/cloud.md`
+- Every key: `docs/configuration.md`

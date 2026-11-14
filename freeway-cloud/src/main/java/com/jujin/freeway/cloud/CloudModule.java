@@ -80,7 +80,7 @@ public final class CloudModule implements ModuleEx {
      * Central config keys and canonical defaults for {@code freeway-cloud}: both namespaces it
      * spells ({@code PREFIX} / {@code APP_PREFIX}), every key written as a full literal. How the
      * surface is meant to be read, and which keys a deployment must decide:
-     * {@code docs/freeway-cloud-design.md} §6.
+     * {@code docs/design/cloud.md} §6.
      */
     public static final class ConfigKeys {
         private ConfigKeys() {}

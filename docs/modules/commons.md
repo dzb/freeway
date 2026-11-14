@@ -5,7 +5,7 @@ Commons provides the small, shared runtime utilities used across Freeway.
 ## Stable API
 
 > 这份清单只列 **commons 自己的**类型。`SymbolSpec`（`ioc.symbol`）与 `AppConfig`
-> （`freeway-boot`）属于各自的模块，见 `DEVELOPER-GUIDE` 与 `freeway-config.md`。
+> （`freeway-boot`）属于各自的模块，见 `DEVELOPER-GUIDE` 与 `configuration.md`。
 
 - `JsonCodec` / `JsonCodecDefault` / `JsonUtils`
 - `Defer` / `ScopedCache`
@@ -42,8 +42,8 @@ The value **lifetime** and the value **access window** are separate: inside a `S
 
 For more details, see:
 
-- [Scope primitives — Defer & ScopedCache](freeway-defer-summary.md)
-- [DB usage guide](freeway-db.md)
+- [Scope primitives — Defer & ScopedCache](../design/defer.md)
+- [DB usage guide](db.md)
 
 ## JSON
 
@@ -141,4 +141,4 @@ Console colors auto-detected from TTY. Force on/off with `-Dfreeway.log.color=al
 
 ### Reference Template
 
-See [`docs/freeway-logging.properties.reference`](freeway-logging.properties.reference) for annotated examples with best practices.
+See [`docs/reference/logging.properties.reference`](../reference/logging.properties.reference) for annotated examples with best practices.

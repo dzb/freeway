@@ -12,7 +12,7 @@ green.
 
 This is a **breaking release**. The design rule is explicit: **compatibility is
 not a goal** -- compile errors are the migration path. See the Migration section
-in [CHANGELOG.md](../CHANGELOG.md#unreleased) for the full replacement table.
+in [CHANGELOG.md](../../CHANGELOG.md#unreleased) for the full replacement table.
 
 ## Highlights
 

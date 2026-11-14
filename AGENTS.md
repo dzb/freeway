@@ -4,7 +4,7 @@ Freeway is a JDK 25+ multi-module Maven project. Keep changes scoped, explicit,
 and convention over configuration. This file is the single home for repo-wide
 conventions: build, module layout, naming, design rules, testing, commit rules.
 Architecture boundaries and framework internals live in
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — read it before changing module
+[docs/architecture.md](docs/architecture.md) — read it before changing module
 boundaries, hooks, config resolution or lifecycle.
 
 ## Build
@@ -394,11 +394,11 @@ tests and say so in their names and javadoc.
 
 ## Further Reading
 
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — module boundaries, injection
+- [docs/architecture.md](docs/architecture.md) — module boundaries, injection
   annotations, config cascade mechanics, lifecycle notes.
-- [docs/freeway-reflection.md](docs/freeway-reflection.md) — every reflective
+- [docs/reflection.md](docs/reflection.md) — every reflective
   site, its cache shape, and the rules for adding one.
-- [docs/DEVELOPER-GUIDE.md](docs/DEVELOPER-GUIDE.md) — comprehensive usage
+- [docs/developer-guide.md](docs/developer-guide.md) — comprehensive usage
   guide for all modules.
-- [docs/freeway-config.md](docs/freeway-config.md) — every config key, by module.
+- [docs/configuration.md](docs/configuration.md) — every config key, by module.
 - [docs/](docs/) — config samples, DB usage, feature summaries.

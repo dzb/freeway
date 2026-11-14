@@ -10,8 +10,8 @@
 > 仍然有效的部分并入 §8.3）。
 >
 > **文档分工**：仓库约定见 `AGENTS.md`；模块边界、注入注解、配置级联与
-> 生命周期机制见 `docs/ARCHITECTURE.md`；配置键的语义、默认值与示例见
-> `docs/freeway-config.md`；用法索引见 `docs/DEVELOPER-GUIDE.md`。本文只讲
+> 生命周期机制见 `docs/architecture.md`；配置键的语义、默认值与示例见
+> `docs/configuration.md`；用法索引见 `docs/developer-guide.md`。本文只讲
 > cloud 的设计与边界，**不重复上述内容，也不逐键罗列配置**（§6 给形态分类
 > 与索引）。**源码是最终权威**：与代码不一致时以代码为准，并回改本文。
 
@@ -76,7 +76,7 @@ freeway-cloud  (com.jujin.freeway.cloud)
 整棵树。
 
 - **bundle 是声明，子模块仍是普通模块**：`@SubModule` 是组装组合时读取的静态
-  元数据（见 `docs/freeway-module.md`），不是框架回调模块要子模块。应用可以放
+  元数据（见 `docs/module-system.md`），不是框架回调模块要子模块。应用可以放
   整包，也可以逐个放子模块取子集——没有排除 API，兜底就是"单独加载每一个
   module"：
   ```java
@@ -187,7 +187,7 @@ stop（逆序）:
 | `ServiceHealth` | 实例当下能不能用（发现层维护，不在实例里） |
 | `InvocationContext` | 跨边界传播什么 |
 
-`ServiceId` **有意不是公开类型**（见 `docs/ARCHITECTURE.md`）：服务 id 就是
+`ServiceId` **有意不是公开类型**（见 `docs/architecture.md`）：服务 id 就是
 字符串，归一化（trim + 非空守卫）由 ioc 的 `ServiceIds.normalize` 在绑定 id
 上隐式完成；`ServiceInstance.serviceId()`、`Container.get(type, id)`、
 `RpcHttpClient.call(serviceId, …)` 共用同一个字符串，cloud 不另造包装类型
@@ -578,7 +578,7 @@ API**，遵循 `Database`/`Pool` 模式，并发交给虚拟线程。
 
 - **传输加密（mTLS）**：`TransportSecurity`（`sslContext()`，默认常量
   `NONE` 即开发态明文）。core 用 JDK `SSLContext` + 文件型
-  keystore/truststore（PKCS12/JKS，键见 `docs/freeway-config.md`）：
+  keystore/truststore（PKCS12/JKS，键见 `docs/configuration.md`）：
   `RpcModule` 按键解析——keystore 为空 → `NONE`，否则构建
   `TransportSecurityDefault`。**同一条出站安全面同时服务 RPC（`https://`）
   与事件网格（`wss://`）**：网格不是第二个配置面。能力由运行时配置决定，
@@ -600,7 +600,7 @@ API**，遵循 `Database`/`Pool` 模式，并发交给虚拟线程。
 
 ## 6. 配置键总览
 
-**键的语义、默认值与示例一律见 `docs/freeway-config.md` §五（Cloud）**。本节
+**键的语义、默认值与示例一律见 `docs/configuration.md` §五（Cloud）**。本节
 只固定读键的方式与三种形态，避免同一份清单在两个地方漂移。
 
 - **读取时机**：cloud 的键在启动期解析（各 hook 的 `start`），此后不再重读。
@@ -736,7 +736,7 @@ API**，遵循 `Database`/`Pool` 模式，并发交给虚拟线程。
 | 2026-09-13 | 模块组合改树：`ModuleEx.subModules()` 与 `ModuleTree` 删除，组合成为入口构建的 `ModuleNode` 值（容器持有，`Container.moduleTree()`）；伞模块 `CloudModule` 改为片段工厂 `CloudModules.standard()`，应用可替换或取出其中任一模块 |
 | 2026-09-14 | 结构节点由"命名分组"改为"bundle 模块"：`group` 概念删除，`ModuleEx` 的 bundle 类用 `@SubModule` 声明子模块（构建树时展开，非回调）；`CloudModules.standard()` 工厂删除，恢复为 `CloudModule` + `@SubModule`，子模块仍可单独放置取子集（无排除 API） |
 | 2026-09-12 | 配置面审计：`registry.service-scheme` / `service-host` / `shutdown-drain` 默认改为 `auto`（分别跟随 HTTP 服务器 TLS、推导可路由地址、由注册表后端回答），网格拨号方案改读解析出的实例端点；布尔键统一 `Coercer` 解析（垃圾值启动失败，不再静默 `false`）；override 文件重复键启动告警点名两个文件；新增 `HttpServer.isSecure()` 与 `ServiceRegistry.drainWindow()` |
-| 2026-09-12 | 文档合并：本文取代 `freeway-cloud-unified-design.md` / `freeway-cloud-events-design.md` / `freeway-cloud-rpc-design.md` / `freeway-cloud-implementation-plan.md`；四份文档仍然有效的排除项与能力边界（无应用层心跳、MQ 语义、全局成员视图、webhook 出站、`@CloudEvent` 注解实体）与 core 后续项（含 `Advisor` 织入、网格心跳）并入 §5 / §7 / §8；配置键清单移出为对 `docs/freeway-config.md` 的索引 |
+| 2026-09-12 | 文档合并：本文取代 `freeway-cloud-unified-design.md` / `freeway-cloud-events-design.md` / `freeway-cloud-rpc-design.md` / `freeway-cloud-implementation-plan.md`；四份文档仍然有效的排除项与能力边界（无应用层心跳、MQ 语义、全局成员视图、webhook 出站、`@CloudEvent` 注解实体）与 core 后续项（含 `Advisor` 织入、网格心跳）并入 §5 / §7 / §8；配置键清单移出为对 `docs/configuration.md` 的索引 |
 | 2026-09-14 | 兼容不再是目标：`AGENTS.md` 的可选输入规则删除"记录作为适配器装配点保留旧 arity 委托构造器"（上一轮 09-12 写入）——新增组件直接改变规范构造器形状，编译错误即迁移路径；随之删除 `RpcHttpClientDefault.Wiring` 的 9 参兼容构造（ext `RemoteRpcContract` 同批改传 10 参）与 `freeway-log.properties` 的过渡读取（旧名只检测、告警，不加载） |
 | 2026-09-24 | 广播域平面分离：拆除 `EventSink` 桥——`EventBridge`/`EventBridgePolicy`/`EventBusInbound`/`@Topic`/`Keyed` 删除，`subscriptions`/`allowed-types`/`allowed-topics`/`dedup.*` 四键退役；`MeshEventBus` 显式门面（`publish` topic 定址、Defer 提交耦合、订阅申报-only 且订阅表=入站闸门）；ext kafka 改独立平面 `KafkaEvents`；在途 CLASS 帧解析后按因弃投并计数，wire 格式不变 |
 | 2026-09-28 | 组合面收敛：`ModuleNode` 移入 `ioc.internal` 包私有（`Container.moduleTree()` 删除，历史行所记的公开树值不再有效），应用命名走 `FreewayApp.name` / `Freeway.create(String, …)` |

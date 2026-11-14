@@ -3,7 +3,7 @@
 > 排除了"功能全不全"、"生态大不大"、"用的人多不多"——只谈设计本身。
 >
 > 本文回答"**设计得怎么样**"，是长青的设计评论。工程维度的选型评估（含 Quarkus/Micronaut、
-> 引擎与性能、Agent 友好性）见 [FRAMEWORK-COMPARISON.md](FRAMEWORK-COMPARISON.md)。
+> 引擎与性能、Agent 友好性）见 [framework comparison](framework-comparison.md)。
 
 ---
 
@@ -264,10 +264,10 @@ Freeway 没有一份集中的"设计决策"文件——why 写在变更记录本
 - **CHANGELOG 的 Removed / 迁移条目自带删除理由**：`CorsFilter.Builder` 被删，因为
   "重述策略默认值的对象是同一个答案的第二个持有者"；`internal.HttpModuleConfig` 被删，
   因为它是"键的第二份所有者——13 个 server 旋钮的默认逐个重述"；
-- **复杂模块有自己的决策文档**：`docs/freeway-flow-design-decisions.md` 逐条记录
+- **复杂模块有自己的决策文档**：`docs/design/flow.md` 逐条记录
   （如 "Striped Lock for Singleton Concurrency"：`ConcurrentHashMap.computeIfAbsent`
   在递归场景抛 "Recursive update"，所以选择可重入的锁）；
-- **版本发布说明承载当时的权衡**：`docs/RELEASE-NOTES-*.md` 逐版记录引入与取舍的背景
+- **版本发布说明承载当时的权衡**：`docs/releases/release-notes-*.md` 逐版记录引入与取舍的背景
   （如 1.5.0 讨论 `.primary()` 绑定、构造器选择与配置激活的分工）。
 
 每个决策都对应一个**真实的问题场景**（不是抽象的可能性），然后给出**具体的权衡分析**。

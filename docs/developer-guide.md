@@ -146,7 +146,7 @@ Typical module shapes:
 - framework modules register infrastructure defaults and runtime hooks
 - config-driven modules select one implementation from a set of bindings
 
-For the full module patterns, see [freeway-module.md](freeway-module.md).
+For the full module patterns, see [module-system.md](module-system.md).
 
 ---
 
@@ -747,12 +747,12 @@ binder.contribute(EventSubscriber.class)
     .add(EventSubscriber.of(AppLifecycleEvent.class, e -> { if (e.state() == AppState.STOPPING) cache.flush(); }));
 ```
 
-**Transaction-aware:** Events published inside a `db.transaction()` are automatically deferred and fire only after commit. No manual wiring needed — powered by the `Defer` mechanism (see [Defer](freeway-defer-summary.md)).
+**Transaction-aware:** Events published inside a `db.transaction()` are automatically deferred and fire only after commit. No manual wiring needed — powered by the `Defer` mechanism (see [Defer](design/defer.md)).
 
 **Planes are separate:** the bus never leaves the process — whether a fact
 crosses a boundary is decided at the call site, not by which modules are
 loaded. Cross-JVM broadcast is the cloud plane (see
-[MeshEventBus](freeway-cloud.md)); durable, per-key ordered
+[MeshEventBus](modules/cloud.md)); durable, per-key ordered
 streams are the Kafka plane (see [Kafka](#kafka-freeway-mq-kafka)). A fact
 that must live on two planes is published on both, deliberately.
 
@@ -814,7 +814,7 @@ freeway.log.file.flush-interval=250      # ms; 0 = flush per record
 # (the four values above are the auto defaults — omit to keep, override to change)
 ```
 
-For multi-file logging, per-logger levels, env var support, and the full config reference, see [Commons Reference](freeway-commons.md#logging).
+For multi-file logging, per-logger levels, env var support, and the full config reference, see [Commons Reference](modules/commons.md#logging).
 
 ---
 
@@ -1593,7 +1593,7 @@ db.transaction(IsolationLevel.SERIALIZABLE, () -> {
 
 Nested transactions are detected and rejected. Auto-commit is restored on exit. Queries inside the transaction automatically use the same connection. The transaction is **thread-bound** (backed by `ScopedValue`, which does not propagate to child threads): DB calls made on a different thread while a transaction is active, or consuming a `Query`/`BatchQuery` created inside a transaction on another thread (or after the transaction ends), throw a `SqlException` — the work would otherwise silently borrow an independent pooled connection and run outside the transaction, breaking atomicity. Cross-`Database` work (e.g. via `DatabaseRegistry`) commits independently and is not rolled back with the transaction.
 
-**Transaction-aware side effects:** EventBus events published inside a transaction are automatically deferred and only fire after commit — no manual wiring needed. This is powered by the `Defer` mechanism (see [Defer](freeway-defer-summary.md)):
+**Transaction-aware side effects:** EventBus events published inside a transaction are automatically deferred and only fire after commit — no manual wiring needed. This is powered by the `Defer` mechanism (see [Defer](design/defer.md)):
 
 ```java
 db.transaction(() -> {
@@ -2044,9 +2044,9 @@ code never changes. The event mesh feeds itself from whichever backend is bound
 **The full cloud development guide — backend deployment and semantics, remote
 invocation with its error/idempotency model, the event mesh, health and
 readiness, observability, secrets, storage, key-read timing and shutdown
-ordering — lives in [freeway-cloud.md](freeway-cloud.md).** Design rationale:
-[freeway-cloud-design.md](freeway-cloud-design.md). Every key:
-[freeway-config.md](freeway-config.md).
+ordering — lives in [cloud.md](modules/cloud.md).** Design rationale:
+[cloud design](design/cloud.md). Every key:
+[configuration.md](configuration.md).
 
 ---
 
@@ -2210,7 +2210,7 @@ Commons contains the shared runtime primitives used across Freeway: JSON, coerci
 - JSON parsing, building, and serialization live in `JsonUtils` and `JsonCodec`
 - coercion lives in `Coercer` and `CoerceRule`
 - validation lives in `BeanValidator`
-- scoped primitives are described in [freeway-commons.md](freeway-commons.md) and below
+- scoped primitives are described in [commons.md](modules/commons.md) and below
 
 ### Scope primitives (`Defer` / `ScopedCache` / `ScopeBoundary`)
 
@@ -2247,9 +2247,9 @@ serialize as read-only members.
 
 For more detail:
 
-- [docs/freeway-commons.md](freeway-commons.md)
-- [Defer summary](freeway-defer-summary.md)
-- [DB usage guide](freeway-db.md)
+- [docs/modules/commons.md](modules/commons.md)
+- [Defer summary](design/defer.md)
+- [DB usage guide](modules/db.md)
 
 ---
 
@@ -2295,7 +2295,7 @@ For IoC tests, use `Freeway.create(...)`. For application integration tests, use
 
 Framework internals — module boundaries, `RuntimeHook` ordering, the config
 cascade mechanics, lifecycle rules — are in
-[ARCHITECTURE.md](ARCHITECTURE.md). What follows is the developer-facing
+[architecture.md](architecture.md). What follows is the developer-facing
 summary.
 
 - **`Container`** is the IoC boundary. Created via `Freeway.create()` for tests, received as a parameter in `RuntimeHook` callbacks and provider lambdas. Container is not injectable — use `@Inject` for service dependencies, not for the container itself.

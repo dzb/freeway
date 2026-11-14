@@ -20,7 +20,7 @@ a framework that is complete without being bloated — and predictable enough fo
 both humans and coding agents.
 
 > **Latest release: 1.5.7** · **Development line: 2.0.0-SNAPSHOT**
-> See the [1.5.7 release notes](docs/RELEASE-NOTES-1.5.7.md) and
+> See the [1.5.7 release notes](docs/releases/release-notes-1.5.7.md) and
 > [CHANGELOG.md](CHANGELOG.md) for what changed.
 
 ## Why Freeway
@@ -200,7 +200,7 @@ HTTP/1.1, HTTP/2 and WebSocket; Undertow and Jetty swap in through a module.
 Request-scoped services are opt-in: set `freeway.http.request-scope.enabled=true`
 and `Scope.BOUNDARY` services/caches live for one request (after CORS/health,
 before application filters); see
-[ScopeBoundary / ScopeFilter](docs/DEVELOPER-GUIDE.md#request-scoped-services-scopefilter).
+[ScopeBoundary / ScopeFilter](docs/developer-guide.md#request-scoped-services-scopefilter).
 
 ### DB
 `Database` SQL execution, `Orm` CRUD/upsert, schema-less `Row` with
@@ -237,7 +237,7 @@ The cascade runs lowest to highest:
 Activate a profile with `--freeway.profile=dev`. The environment prefix is
 replaceable (`-Dfreeway.env.prefix=APP_`), and every key is declared in full in
 its module's `ConfigKeys` and documented in
-[docs/freeway-config.md](docs/freeway-config.md).
+[docs/configuration.md](docs/configuration.md).
 
 ## Logging
 
@@ -258,14 +258,14 @@ freeway.log.file.compress=true
 
 Route named files and per-logger levels with `freeway.log.files` and any
 `*.level` key. Full reference:
-[docs/freeway-logging.properties.reference](docs/freeway-logging.properties.reference).
+[docs/reference/logging.properties.reference](docs/reference/logging.properties.reference).
 
 ## Build
 
 Requires JDK 25+.
 
 ```bash
-mvn clean test                     # 2,443 core tests
+mvn clean test                     # all core tests
 mvn -pl freeway-ioc test           # one module
 mvn -pl freeway-http -am test      # module plus its dependencies
 mvn -Pdemos -DskipTests compile    # compile the in-repo consumers
@@ -273,13 +273,20 @@ mvn -Pdemos -DskipTests compile    # compile the in-repo consumers
 
 ## Documentation
 
-- [Developer Guide](docs/DEVELOPER-GUIDE.md) — usage for every module
-- [Architecture](docs/ARCHITECTURE.md) — boundaries, lifecycle, config internals
-- [Configuration keys](docs/freeway-config.md)
-- [Module model](docs/freeway-module.md) · [Commons](docs/freeway-commons.md) · [DB](docs/freeway-db.md) · [Cloud](docs/freeway-cloud.md) · [Flow](docs/freeway-flow-design-decisions.md)
-- [Defer & ScopedCache](docs/freeway-defer-summary.md)
+The documentation index is [`docs/README.md`](docs/README.md). Highlights:
+
+- [Developer guide](docs/developer-guide.md) — usage for every module
+- [Architecture](docs/architecture.md) — boundaries, lifecycle, config internals
+- [Configuration keys](docs/configuration.md) · [Logging template](docs/reference/logging.properties.reference)
+- [Module model](docs/module-system.md) · [Commons](docs/modules/commons.md) · [DB](docs/modules/db.md) · [Cloud](docs/modules/cloud.md) · [Flow design](docs/design/flow.md)
+- [Defer & ScopedCache](docs/design/defer.md) · [Cloud design](docs/design/cloud.md) · [Reflection](docs/reflection.md)
+- [Configuration samples](docs/samples/) · [Release notes](docs/releases/)
 - [Design taste](TASTE.md) — the judgment rules behind these APIs
-- [Changelog](CHANGELOG.md) · [1.5.7 release notes](docs/RELEASE-NOTES-1.5.7.md)
+- [Changelog](CHANGELOG.md) · [1.5.7 release notes](docs/releases/release-notes-1.5.7.md)
+
+Framework comparisons and engineering evaluations are reference-only and live
+under [`demo/reference/`](demo/reference/); they are not part of the normative
+documentation.
 
 ## Extensions
 

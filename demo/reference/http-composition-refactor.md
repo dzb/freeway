@@ -8,7 +8,7 @@
 > `378b2d13`，工作区干净。
 >
 > 相关约定：`AGENTS.md` 的 “Extending versus composing”、
-> `docs/ARCHITECTURE.md` 的 HTTP seam、`freeway-ext/AGENTS.md` 的
+> `docs/architecture.md` 的 HTTP seam、`freeway-ext/AGENTS.md` 的
 > “Core first, adapter second”。
 
 ## 1. 目标
@@ -622,8 +622,8 @@ if (head.sendsBodyBytes() && body.length > 0) {
 | `freeway-benchmark/.../HttpExchangeLookupBenchmark.java` | 同上；setup 构造一次，`@Benchmark` 只读查询（构造放 setup 不影响查找成本） |
 | `freeway-benchmark/.../HttpExchangeOutputBenchmark.java` | 同上；输出路径每次构造新 support，避免 `committed` 状态复用 |
 | `freeway-core/AGENTS.md` | 删除 “implementation shared with third-party adapters” 例外；适配器回归条目改为 `HttpExchangeSupport` + `LimitedInputStream` |
-| `freeway-core/docs/ARCHITECTURE.md` | HTTP seam 图：`HttpExchangeSupport` + `HttpTransport`；说明 adapter 接入方式 |
-| `freeway-core/docs/DEVELOPER-GUIDE.md` | Engine 列表：`HttpContextImpl` → `HttpTransportImpl` + `HttpExchangeSupport`；`WebSocketSessionImpl` → `WebSocketConnection` + `WebSocketSessionSupport` |
+| `freeway-core/docs/architecture.md` | HTTP seam 图：`HttpExchangeSupport` + `HttpTransport`；说明 adapter 接入方式 |
+| `freeway-core/docs/developer-guide.md` | Engine 列表：`HttpContextImpl` → `HttpTransportImpl` + `HttpExchangeSupport`；`WebSocketSessionImpl` → `WebSocketConnection` + `WebSocketSessionSupport` |
 | `freeway-core/skills/freeway-dev/references/http.md` | 自定义引擎接入说明（SPI 方法、Support 构造、不要再继承） |
 | `freeway-core/CHANGELOG.md` | 破坏性改动表：两个基类删除、SPI 名称、reset 义务消失、行为变化 1–8 |
 | `freeway-ext/CHANGELOG.md` | 两个 adapter 的迁移、benchmark 同步 |

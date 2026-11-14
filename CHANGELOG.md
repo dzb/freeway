@@ -566,8 +566,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   throws; `AppState.STOPPING` no longer claims the registry already answered 503;
   the access log says "requests that reached the filter chain"; the
   working-directory-logs contradiction inside one section of
-  `docs/freeway-config.md` is resolved to the implementation; the task vocabulary
-  in `docs/ARCHITECTURE.md` changes `#graph` to `#graphId` (what the same file
+  `docs/configuration.md` is resolved to the implementation; the task vocabulary
+  in `docs/architecture.md` changes `#graph` to `#graphId` (what the same file
   already used seven lines earlier), and the skill's `#graphId` and
   `AppRuntime.container()` (a deleted method) are fixed along with it;
   `BeanPlan.of` no longer claims its result is cached.
@@ -1063,7 +1063,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   suggestions; a table constant outside the declared namespaces fails at bind time.
   `UnknownKeysHook` WARNs once at startup, naming unknown `freeway.*` keys that
   nobody reads.
-- **The reflection inventory `docs/freeway-reflection.md`**: a one-page ledger of
+- **The reflection inventory `docs/reflection.md`**: a one-page ledger of
   every reflective site in the framework (site, cache shape, path and rules). It
   also fixed a real defect: `BeanIntrospector.selectConstructor` used to re-scan
   `getDeclaredConstructors` on every instantiation and now caches per
@@ -1584,8 +1584,8 @@ with the content; the compiler is the migration path):
   application actually gets", where the defaults of `Metrics`/`CorsFilter`/
   `HealthFilter` still come from keys.
 - AGENTS' naming section is rewritten (a builder must not hold defaults; `withX`
-  writes and bare nouns read), with `docs/ARCHITECTURE.md`,
-  `freeway-http/README.md`, `docs/DEVELOPER-GUIDE.md` and both skills updated to
+  writes and bare nouns read), with `docs/architecture.md`,
+  `freeway-http/README.md`, `docs/developer-guide.md` and both skills updated to
   match.
 - Two inaccurate statements corrected: the root `package-info` no longer claims
   `ExchangeMetaDefault` is replaceable — two `new`s construct it directly and the
@@ -2205,7 +2205,7 @@ Behaviour changes (no call sites need changing, but worth knowing):
   - Docs: README's quick start gains `version: 2` (the example lacked the field and
     the gate rejected it outright) and drops the "v1 still supported" claim;
     `migration-notes.md` and `graph-v2.md` note that v1 is deleted; the AST cache
-    entry in `docs/freeway-flow-design-decisions.md` is updated to the present
+    entry in `docs/design/flow.md` is updated to the present
     (`synchronizedMap`, with why the read-write lock was withdrawn).
   - **Deliberately kept and recorded in the design decisions**: the string form of
     `trace` in flow's state documents remains readable — it is historical data
@@ -2480,7 +2480,7 @@ Behaviour changes (no call sites need changing, but worth knowing):
   (`app(String, ModuleNode...)` and `app(String, Class...)` cannot be told apart
   by varargs alone).
 - **Config classification rules + per-key tiers, and 16 doc/sample inconsistencies
-  fixed (docs/freeway-config.md)** — the config surface previously had only three
+  fixed (docs/configuration.md)** — the config surface previously had only three
   tiers ("decision keys / best default / advanced"), mixing declared keys,
   mechanism keys and silent tuning keys in the same tier. The rule itself is now
   written down: four questions (no reasonable default? the default is only a
@@ -2509,7 +2509,7 @@ Behaviour changes (no call sites need changing, but worth knowing):
   home.
 - **The new `ConfigDocsConsistencyTest` (freeway-boot)** — pins the config surface
   from two directions: every `freeway.*` key appearing in a sample must have a key
-  row in `docs/freeway-config.md`, and every key in the doc must be readable by
+  row in `docs/configuration.md`, and every key in the doc must be readable by
   some module's source (keys are discovered the same way the framework reads them:
   string literals, plus constants composed as `PREFIX + "suffix"`). The former
   fails when someone writes a name like `freeway.log.max-size`; the latter fails
@@ -2551,14 +2551,14 @@ Behaviour changes (no call sites need changing, but worth knowing):
   the file remains at the classpath root, startup prints one stderr warning naming
   the rename (the config is not adopted, but it does not fail silently either).
   The reference template is renamed to
-  `docs/freeway-logging.properties.reference` in step. The "every log key can live
+  `docs/reference/logging.properties.reference` in step. The "every log key can live
   in a file" claim is corrected too: `freeway.log.color` / `.mdc` /
   `.mdc.priority` / `.caller-info` work only via `-D`/environment variables (they
   are read at class-load time, before any file parsing), and both the template and
   the docs say so.
 
 - **Docs: freeway-cloud's four design documents merge into
-  `docs/freeway-cloud-design.md`** — `freeway-cloud-unified-design.md` (the master
+  `docs/design/cloud.md`** — `freeway-cloud-unified-design.md` (the master
   design), `freeway-cloud-events-design.md`, `freeway-cloud-rpc-design.md` and
   `freeway-cloud-implementation-plan.md` overlapped heavily and had drifted into
   real contradictions (the master design declared "no method-level RPC" at the top
@@ -2571,7 +2571,7 @@ Behaviour changes (no call sites need changing, but worth knowing):
   key shape, explicit non-goals, roadmap, revision log; the four old documents are
   deleted and in-repo references (`DEVELOPER-GUIDE`, `freeway-config`,
   `RemoteCaller`/`RpcExport` javadoc) point at the new one. The per-key list is no
-  longer duplicated and uniformly points at `docs/freeway-config.md` so the two
+  longer duplicated and uniformly points at `docs/configuration.md` so the two
   cannot drift; the delivered Phase 0–8 task lists keep only their acceptance
   criteria and regression lists, the still-valid exclusions (MQ semantics, a
   global membership view, webhook outbound, the `@CloudEvent` annotation entity)
@@ -2580,11 +2580,11 @@ Behaviour changes (no call sites need changing, but worth knowing):
   metric labels, readiness not published to the registry).
 
 - **Docs: AGENTS.md becomes the single convention source, and architecture sinks
-  into docs/ARCHITECTURE.md (repo root)** — `CLAUDE.md` and `AGENTS.md` were both
+  into docs/architecture.md (repo root)** — `CLAUDE.md` and `AGENTS.md` were both
   auto-loaded guidance files with overlapping content. They now split into two
   layers, one home each: **`AGENTS.md`** = repo-level **conventions** (build,
   module map, naming, design rules, testing, regression watchlist, commit rules,
-  further reading); **`docs/ARCHITECTURE.md`** = **architecture and internals**
+  further reading); **`docs/architecture.md`** = **architecture and internals**
   (dependency graph, module boundaries, injection annotations, the config cascade
   mechanism, lifecycle), pointed to as needed by README/AGENTS/guides and **not
   auto-loaded**, so conversations do not carry it every time. Accompanying
@@ -2699,7 +2699,7 @@ Behaviour changes (no call sites need changing, but worth knowing):
   module; `*.type` is only a declaration of "which backend I expect", consumed by
   the adapter, which warns once at startup when "an external backend is declared
   while the local implementation is still active" (`BackendTypeGuard`). Three
-  places sync: `freeway-config.md` (the two-key-kind comparison table), the
+  places sync: `configuration.md` (the two-key-kind comparison table), the
   DEVELOPER-GUIDE and the cloud design doc.
 - **Docs: the static file validator contract (freeway-http)** — the cache headers
   come from the probe taken at the start of the request and the body opens
@@ -3185,7 +3185,7 @@ Behaviour changes (no call sites need changing, but worth knowing):
   `HttpConfigKeys` and `CloudConfigKeys` reorganize by "decision keys / best
   default / advanced (low probability)" with reasons stated, and each advanced
   cluster names the aggregate key governing it (`rpc.resilience=auto|off`,
-  `event.enabled` presence, `event.dedup.enabled`); `docs/freeway-config.md`'s
+  `event.enabled` presence, `event.dedup.enabled`); `docs/configuration.md`'s
   "required config quick reference" becomes the "decision key quick reference".
   Corrections: the docs used `freeway.http.port` as an example in four places,
   but that key **does not exist** (the real key is
@@ -3621,7 +3621,7 @@ Behaviour changes (no call sites need changing, but worth knowing):
   default is a published password that manufactures a security illusion, and a
   random default would split the mesh at startup over token mismatch.
 - **Stale doc statements corrected** — "empty allowlist = allow all" in
-  `DEVELOPER-GUIDE.md` and `freeway-config.md` syncs with the behaviour change
+  `DEVELOPER-GUIDE.md` and `configuration.md` syncs with the behaviour change
   above: the CLASS channel is deny-by-default, and only the TOPIC channel keeps
   "empty = allow all". The production samples
   `application-prod.properties.sample` / `.json.sample` gain an events section
@@ -3632,7 +3632,7 @@ Behaviour changes (no call sites need changing, but worth knowing):
   putting them in `application.*` or `FREEWAY_*` environment variables is
   **silently ineffective** — and the allowlist's deadness is exactly what keeps
   the sharp default of "any symbol name consults environment variables first"
-  working. `docs/freeway-config.md`'s secrets table and env-mapping section gain
+  working. `docs/configuration.md`'s secrets table and env-mapping section gain
   the "‑D only" annotation and the exception note.
 - **The thread-affinity contract of circuit-breaker reporting** —
   `CircuitBreaker`'s javadoc states: the half-open probe is held by the thread
@@ -4500,7 +4500,7 @@ Behaviour changes (no call sites need changing, but worth knowing):
   assessment, cross-module consistency observations and the test coverage
   analysis; after the three rounds **1517 tests green**
   (commons 374 / ioc 182 / boot 60 / http 349 / db 453 / flow 99).
-- **Defer documentation completed** — `docs/freeway-defer-summary.md`: the
+- **Defer documentation completed** — `docs/design/defer.md`: the
   three-party wiring for DB transactions, the commit/dispatch sequence diagram
   (mermaid), the timing contract and the semantic boundaries; plus a new chapter
   on the nesting contract with `ScopedCache`.
@@ -4526,7 +4526,7 @@ Behaviour changes (no call sites need changing, but worth knowing):
 - **Flow join semantics** — INCLUSIVE gateways now join exactly once when all incoming branches arrive (standard BPMN join; previously every arrival passed through); `FlowContext.stop()` keeps the serialized `stopped` flag in sync when used standalone.
 - **IoC close contract** — `@PreDestroy` callbacks now run before the container is sealed, so cleanup code can still resolve services via `get()`/`extension()`; `close()` is synchronized against concurrent double-shutdown. Documented: only *realized* singletons are cleaned up (a never-invoked lazy proxy gets no `@PreDestroy`).
 - **Boot lifecycle** — `AppStoppingEvent` is only published for a runtime that actually ran (not a startup-failed `FAILED` state); close-once semantics documented.
-- **Flow parallel hardening** — `ExecState` composite operations (inclusive/loop join `peek→count→pop`) are atomic under shared stacks, removing structural races between PARALLEL branches converging on the same gateway; status documented in `docs/freeway-flow-parallel-context-isolation.md`.
+- **Flow parallel hardening** — `ExecState` composite operations (inclusive/loop join `peek→count→pop`) are atomic under shared stacks, removing structural races between PARALLEL branches converging on the same gateway; status documented in `demo/reference/flow-parallel-context-isolation.md`.
 - **IoC class contributions resolve across modules** — `contribute(T).add(Impl.class)` instantiation deferred until after every module's `bind()` has run (`flushPendingCreates()`), so a contributed class may depend on services declared by a later module regardless of declaration order. Previously each module's flush instantiated its class contributions immediately, failing on unregistered bindings from later modules.
 - **HTTP engine** — h2c upgrade repair, request-line cap, connection draining on shutdown, multipart parsing guards, WebSocket subprotocol negotiation.
 - **DB** — never recycle closed physical connections; `queryTimeout=0` supported.
@@ -4737,7 +4737,7 @@ Behaviour changes (no call sites need changing, but worth knowing):
 
 - **ScopedCache** — scoped value cache primitive built on top of JDK 25 `ScopedValue`. Provides a key-value cache that lives within a scope boundary and is automatically discarded on scope exit. Prunes the IoC scope layer by replacing heavier scope machinery with a lightweight cache primitive. (`78e448f`)
 - **ModuleEx** — `@FunctionalInterface` for module definitions. Adds `binder.install()` to compose modules declaratively. Enables multiple `FreewayApp` instances per JVM. (`2eadd5f`)
-- Comprehensive **docs/DEVELOPER-GUIDE.md** — dual-purpose documentation for humans and AI assistants, with a dedicated Module section. (`fd0f67c`, `20114cb`)
+- Comprehensive **docs/developer-guide.md** — dual-purpose documentation for humans and AI assistants, with a dedicated Module section. (`fd0f67c`, `20114cb`)
 
 ### Changed
 

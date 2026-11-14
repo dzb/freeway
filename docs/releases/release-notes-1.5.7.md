@@ -14,7 +14,7 @@ than a capability.
 
 This is a **breaking release**: compatibility is not a goal — compile errors are
 the migration path, and every renamed or deleted shape has a replacement row in
-[CHANGELOG.md](../CHANGELOG.md). Consumers move together with the framework;
+[CHANGELOG.md](../../CHANGELOG.md). Consumers move together with the framework;
 `freeway-ext` ships on the same 1.5.7 train.
 
 ## Highlights
@@ -110,7 +110,7 @@ and an API-documentation consistency test covers the backticked names they cite.
 
 ## Migration
 
-The full replacement table is in [CHANGELOG.md](../CHANGELOG.md). The changes
+The full replacement table is in [CHANGELOG.md](../../CHANGELOG.md). The changes
 that need knowing rather than grepping:
 
 1. **`FreewayApp.run(String[] args, modules)` is gone.** Use

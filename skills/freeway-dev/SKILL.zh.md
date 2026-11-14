@@ -1282,8 +1282,8 @@ MeshSubscription.of("order.", OrderCreated.class, handler))`——topic 不匹�
   入站 `freeway.http.ssl.reload-interval`（引擎每次握手读当前 context）；
 - 停机有序：注册 hook 先摘除并 drain（`registry.shutdown-drain=auto` 由后端回答窗口），
   HTTP 服务后停，出站调用有 `rpc.shutdown-grace`（5s）收尾，网格 peer 收 1001；
-- 完整指南见 `docs/freeway-cloud.md`，设计取舍见 `docs/freeway-cloud-design.md`，
-  全部键见 `docs/freeway-config.md`。
+- 完整指南见 `docs/modules/cloud.md`，设计取舍见 `docs/design/cloud.md`，
+  全部键见 `docs/configuration.md`。
 
 ## 设计约定
 
