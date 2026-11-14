@@ -147,6 +147,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Failure classification is a code contract** (`freeway-commons`):
+  `RpcException`, `SqlException`, `FlowException` and `StorageException`
+  implement the shared `Failure` view (`retryable()`, `outcomeUnknown()`).
+  The defaults are conservative; RPC overrides them from its existing `Kind`
+  mapping, so no second classification enum was introduced. Application code
+  can classify a framework failure without type-switching on the module that
+  threw it.
 - **Property baselines cover HPACK, JSON and SQL parameters**: `HPackPropertyTest`
   round-trips random header blocks through the frame split and decoder (plus
   Huffman), `JsonPropertyTest` round-trips random trees and bounds malformed

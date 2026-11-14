@@ -24,6 +24,30 @@ Graph *configuration* errors (unknown graph, bad task reference, ambiguous
 handler) are `IllegalArgumentException` / `IllegalStateException` at load, not
 `FlowException`; `FlowException` is reserved for execution.
 
+## Java Type
+
+`RpcException`, `SqlException`, `FlowException` and `StorageException`
+implement `com.jujin.freeway.commons.error.Failure`, the shared classification
+view used by callers that must decide whether to replay an operation:
+
+```java
+try {
+    operation();
+} catch (RuntimeException failure) {
+    if (failure instanceof Failure classified
+            && classified.retryable()
+            && !classified.outcomeUnknown()) {
+        // safe automatic replay
+    }
+}
+```
+
+The defaults are conservative — `retryable()` is `false` and
+`outcomeUnknown()` is `true` — for failures the framework does not retry and
+cannot reason about. `RpcException` overrides both from its `Kind` mapping
+below; the other three keep the defaults. This is a view, not an exception
+hierarchy: domain exceptions keep their own types and constructors.
+
 ## `RpcException.Kind`
 
 | Kind | Meaning | `retryable()` | `outcomeUnknown()` |

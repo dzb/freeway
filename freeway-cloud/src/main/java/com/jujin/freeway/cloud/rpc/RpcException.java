@@ -1,4 +1,5 @@
 package com.jujin.freeway.cloud.rpc;
+import com.jujin.freeway.commons.error.Failure;
 
 import java.util.Objects;
 
@@ -29,7 +30,7 @@ import java.util.Objects;
  * ({@link RpcRequest#idempotent()}). Connect failures are false — the
  * request never left this process, so a retry is safe regardless.</p>
  */
-public class RpcException extends RuntimeException {
+public class RpcException extends RuntimeException implements Failure {
 
     /**
      * Why the call failed — the row of the error table this failure came from.
