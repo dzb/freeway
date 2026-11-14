@@ -147,6 +147,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **HTTP request rejections join the failure classification**
+  (`freeway-http`): `ValidationException`, `BodyTooLargeException`,
+  `MultipartException` and `UnsupportedMediaTypeException` implement
+  `Failure` with a known, non-retryable outcome. Callers can classify a request
+  rejection without type-switching on the HTTP module.
+- **`Stepper` moved out of `flow.internal`** into the `flow` package as a
+  package-private helper; the internal public-surface budget drops to 39 types.
 - **HPACK truncated literals are compression errors, not AIOOBE**:
   a peer block ending exactly where a literal name/value starts now throws
   `Http2Exception(COMPRESSION_ERROR)`; `HPackRobustnessTest` fuzzes arbitrary

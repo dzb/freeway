@@ -1,6 +1,7 @@
 package com.jujin.freeway.http.body;
+import com.jujin.freeway.commons.error.Failure;
 
-public final class BodyTooLargeException extends RuntimeException {
+public final class BodyTooLargeException extends RuntimeException implements Failure {
     private final long maxSize;
 
     public BodyTooLargeException(long maxSize) {
@@ -10,5 +11,10 @@ public final class BodyTooLargeException extends RuntimeException {
 
     public long maxSize() {
         return maxSize;
+    }
+
+    @Override
+    public boolean outcomeUnknown() {
+        return false; // the request was rejected before the handler produced an effect
     }
 }

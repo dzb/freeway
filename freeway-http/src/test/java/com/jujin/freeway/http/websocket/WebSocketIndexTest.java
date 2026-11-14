@@ -29,6 +29,14 @@ class WebSocketIndexTest {
     }
 
     @Test
+    void matchCarriesTheDeclaredRouteTemplate() {
+        var index = new WebSocketIndex(List.of(
+            WebSocketRoute.of("/ws/{id}", session -> WebSocketListener.NOOP)));
+
+        assertEquals("/ws/{id}", index.match("GET", "/ws/42").routePattern());
+    }
+
+    @Test
     void rejectsAGroupRouteCollidingWithAnExplicitRoute() {
         // WebSocket routes follow the HTTP rule: a repeated method+path fails
         // instead of one declaration silently overriding the other.

@@ -26,9 +26,11 @@ handler) are `IllegalArgumentException` / `IllegalStateException` at load, not
 
 ## Java Type
 
-`RpcException`, `SqlException`, `FlowException` and `StorageException`
-implement `com.jujin.freeway.commons.error.Failure`, the shared classification
-view used by callers that must decide whether to replay an operation:
+`RpcException`, `SqlException`, `FlowException`, `StorageException`, and the
+four HTTP request rejections (`ValidationException`, `BodyTooLargeException`,
+`MultipartException`, `UnsupportedMediaTypeException`) implement
+`com.jujin.freeway.commons.error.Failure`, the shared classification view used
+by callers that must decide whether to replay an operation:
 
 ```java
 try {

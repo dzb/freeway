@@ -1,4 +1,4 @@
-package com.jujin.freeway.flow.internal;
+package com.jujin.freeway.flow;
 
 import java.util.Iterator;
 import java.util.NoSuchElementException;
@@ -6,7 +6,7 @@ import java.util.NoSuchElementException;
 /**
  * Stepper iterator (range: [start, end), step: step)
  */
-public final class Stepper implements Iterator<Integer> {
+final class Stepper implements Iterator<Integer> {
 
     /**
      * Parses a string and creates a stepper

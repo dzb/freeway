@@ -699,7 +699,7 @@ public final class FlowEngineDefault implements FlowEngine {
             if (!inKeyStr.contains(":") && !inKeyStr.contains("...")) {
                 inObj = execution.context().getAs(inKeyStr);
             } else {
-                inObj = com.jujin.freeway.flow.internal.Stepper.from(inKeyStr);
+                inObj = Stepper.from(inKeyStr);
             }
         } else {
             throw new FlowException(

@@ -2175,11 +2175,14 @@ for filters/tracing, and dispatch remains the authoritative match; built-in
 short-circuits and dispatch may replace the preview with `static`, `spa`,
 `health`, `cors-preflight` or `unmatched`.
 
-**Failures.** `RpcException`, `SqlException`, `FlowException` and
-`StorageException` implement `Failure`. Its defaults are conservative
-(no automatic retry, outcome unknown); `RpcException` maps its `Kind` precisely
-via `retryable()`/`outcomeUnknown()`. Do not infer retry safety from a cause
-type, and do not retry SQL/flow failures blindly. The
+**Failures.** `RpcException`, `SqlException`, `FlowException`, `StorageException`
+and the four HTTP request rejections (`ValidationException`,
+`BodyTooLargeException`, `MultipartException`, `UnsupportedMediaTypeException`)
+implement `Failure`. Its defaults are conservative (no automatic retry, outcome
+unknown); `RpcException` maps its `Kind` precisely via
+`retryable()`/`outcomeUnknown()`, while HTTP rejections report a known outcome
+and are never retried. Do not infer retry safety from a cause type, and do not
+retry SQL/flow failures blindly. The
 [failure taxonomy](reference/failures.md) lists every public exception, its
 classification and its HTTP boundary.
 

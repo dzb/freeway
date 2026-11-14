@@ -44,6 +44,7 @@ class HttpRouteMetricTest {
             send(client, server, "GET", "/users/42", 200);
             send(client, server, "POST", "/users", 201);
             send(client, server, "GET", "/users/42/extra", 404);
+            send(client, server, "GET", "/users", 405);
 
             await(() -> metrics.counterLabels("freeway.http.requests.total").contains(
                     Map.of("method", "GET", "route", "/users/{id}")),
@@ -59,7 +60,7 @@ class HttpRouteMetricTest {
                 "the duration histogram carries method + route (status stays on the counters)");
             assertTrue(metrics.counterLabels("freeway.http.responses.4xx").contains(
                     Map.of("method", "GET", "route", "unmatched")),
-                "the 4xx counter carries the same route category");
+                "the 4xx counter carries the same route category; 405 is one bounded category too");
         } finally {
             server.stop();
         }

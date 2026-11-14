@@ -58,7 +58,7 @@ binder.contribute(CoerceRule.class).add(new CoerceRule<>(
 - `histogram(name, labels)` records the framework's fixed latency buckets (`Metrics.DEFAULT_LATENCY_BUCKETS_NANOS`, 5ms…10s + `Inf`); HTTP and RPC durations use it, and the default registry renders `_bucket`/`_count`/`_sum`. Use it for latency you must alert on or compare; never pass arbitrary bucket lists.
 - `/metrics` is Prometheus text; quantiles are approximate (`histogram_quantile`), and the default registry only holds one process. A backend without histogram support falls back to timer count/sum.
 
-Failures: `RpcException`, `SqlException`, `FlowException`, `StorageException` implement `com.jujin.freeway.commons.error.Failure` (`retryable()`, `outcomeUnknown()`). Defaults are conservative (no retry, outcome unknown); `RpcException` maps its `Kind` precisely. Do not infer retry safety from a cause type, and do not retry SQL/flow failures blindly. Full table: `docs/reference/failures.md`.
+Failures: `RpcException`, `SqlException`, `FlowException`, `StorageException` and the four HTTP request rejections implement `com.jujin.freeway.commons.error.Failure` (`retryable()`, `outcomeUnknown()`). Defaults are conservative (no retry, outcome unknown); `RpcException` maps its `Kind` precisely, and HTTP rejections report a known, non-retryable outcome. Do not infer retry safety from a cause type, and do not retry SQL/flow failures blindly. Full table: `docs/reference/failures.md`.
 
 ## Defer
 
