@@ -50,6 +50,16 @@ binder.contribute(CoerceRule.class).add(new CoerceRule<>(
 
 `JsonUtils.coerce(value, Target.class)` converts an already-parsed node with the built-in coercer; `JsonCodec.coerce(node, type)` does the same with the codec's coercer.
 
+## Metrics and Failure Classification
+
+`Metrics` is the framework-wide observability SPI: `counter(name)`, `timer(name)` and `gauge(name, supplier)`, plus labeled overloads. Names are dot-separated and static; labels are bounded dimensions (`method`, `route`, `service`), never raw paths, URLs, request ids or tenant input. A backend without label support records the name-only aggregate; do not branch on backend type.
+
+- `timer` records count and total duration — only count/average.
+- `histogram(name, labels)` records the framework's fixed latency buckets (`Metrics.DEFAULT_LATENCY_BUCKETS_NANOS`, 5ms…10s + `Inf`); HTTP and RPC durations use it, and the default registry renders `_bucket`/`_count`/`_sum`. Use it for latency you must alert on or compare; never pass arbitrary bucket lists.
+- `/metrics` is Prometheus text; quantiles are approximate (`histogram_quantile`), and the default registry only holds one process. A backend without histogram support falls back to timer count/sum.
+
+Failures: `RpcException`, `SqlException`, `FlowException`, `StorageException` implement `com.jujin.freeway.commons.error.Failure` (`retryable()`, `outcomeUnknown()`). Defaults are conservative (no retry, outcome unknown); `RpcException` maps its `Kind` precisely. Do not infer retry safety from a cause type, and do not retry SQL/flow failures blindly. Full table: `docs/reference/failures.md`.
+
 ## Defer
 
 `Defer` buffers side effects until the enclosing action scope commits. Actions run after a normal return; an exception, or `Defer.rollback()`, discards them. `Defer.defer` outside a scope (or while the scope drains) runs the action immediately.

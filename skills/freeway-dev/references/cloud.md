@@ -192,7 +192,11 @@ restart.
   what the heartbeat verified (registered / draining / consecutive failures),
   never a constant; shutdown reports `draining`
 - observability: `@Inject Metrics` / `Tracer` / `MetricsSnapshot`; every request
-  runs in a server span, `traceparent`/`tracestate` propagate
+  runs in a server span, `traceparent`/`tracestate` propagate; span names use
+  `METHOD + route template` (`GET /users/{id}`, `GET unmatched`); HTTP/RPC
+  durations are fixed-bucket histograms, and labels are bounded dimensions
+  (`method`/`route`/`service`). Failures classify via `Failure`; see
+  `docs/reference/metrics.md` and `docs/reference/failures.md`.
 - resilience: defaults bound and used by the RPC client; `@Inject Retryer` /
   `CircuitBreaker` / `RateLimiter`, `.primary()` to replace
 - secrets: `@Inject SecretStore`; file reread on size/mtime change; keys also

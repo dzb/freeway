@@ -16,7 +16,7 @@ repository-level [`README`](../README.md) covers the project itself and
 | Reflection sites and their cache rules | [Reflection](reflection.md) |
 | Per-module guides | [Commons](modules/commons.md) · [DB](modules/db.md) · [Cloud](modules/cloud.md) |
 | Design decisions and rationale | [Cloud](design/cloud.md) · [Defer & ScopedCache](design/defer.md) · [Flow](design/flow.md) |
-| Reference material | [Logging configuration template](reference/logging.properties.reference) |
+| Reference material | [Metrics](reference/metrics.md) · [Failures](reference/failures.md) · [Logging configuration template](reference/logging.properties.reference) |
 | Configuration samples | [`samples/`](samples/) |
 | Release notes | [`releases/`](releases/) |
 
@@ -33,5 +33,3 @@ repository-level [`README`](../README.md) covers the project itself and
 - Framework comparisons and engineering evaluations are **not** part of this
   normative set; they live under [`demo/reference/`](../demo/reference/) and are
   provided for context only.
-- [Metrics reference](reference/metrics.md) — metric names, types and cardinality rules.
-- [Failure taxonomy](reference/failures.md) — public exceptions and their retry/outcome/HTTP mapping.

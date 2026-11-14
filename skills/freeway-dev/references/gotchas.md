@@ -27,6 +27,16 @@
   really does branch (settings, plain values, runtime config), bind a provider instead of leaving a
   second constructor to be inferred.
 
+## Observability & Failures
+
+- Metric names are static and dot-separated; **never** put a raw path, URL, request id or tenant id in a label. Use `routePattern()` for the declared template; misses are `unmatched`.
+- `timer` only gives count/average; use `histogram` for p95/p99. Buckets are fixed by the framework — do not invent arbitrary bucket lists.
+- `histogram_quantile` is approximate and single-process in `MetricsDefault`; cross-instance aggregation is the backend's job.
+- HTTP duration histograms carry `method` + `route`; `status` stays on the 4xx/5xx counters, so do not expect it on the duration series.
+- Cancelling an RPC future is meaningful (`cancel(true)` interrupts the retry loop); do not rely on abandoning the future alone.
+- `Failure.retryable()` / `outcomeUnknown()` defaults are conservative; do not retry `SqlException`/`FlowException` blindly or infer from a `SocketTimeoutException` cause.
+- A `Metrics` backend without labels/histograms records the name-only aggregate (the default overloads delegate); do not branch on backend type at instrumentation sites.
+
 ## Testing Patterns
 
 ### IoC tests

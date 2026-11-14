@@ -4,6 +4,31 @@ Freeway exposes metrics through the `Metrics` SPI (`counter`, `timer`,
 `gauge`). The default registry renders Prometheus text at `GET /metrics`; a
 backend can replace the SPI without changing the names below.
 
+## Instrumenting
+
+Inject `Metrics` and use the framework conventions:
+
+```java
+@Inject Metrics metrics;
+
+metrics.counter("orders.created").increment();                    // cumulative
+metrics.timer("export.duration").record(duration);                // count + average
+metrics.histogram("orders.duration",
+    Map.of("route", "/orders/{id}")).record(duration);            // fixed buckets
+```
+
+Use `counter` for facts, `timer` only when count/average is enough, and
+`histogram` for latency the fleet must alert or compare. Labels are bounded
+dimensions — a small fixed vocabulary, never raw paths, URLs, request ids or
+tenant input. Labeled/histogram overloads default to the name-only methods, so a
+backend without those features records the aggregate instead of losing the call;
+a backend that models them overrides the overloads.
+
+For backend implementations: honor the framework's fixed bucket list
+(`Metrics.DEFAULT_LATENCY_BUCKETS_NANOS`, plus `+Inf`), and do not invent a
+second bucket set per call site. The default registry keeps one process's
+buckets; cross-instance quantiles are the backend's aggregation job.
+
 ## Naming Grammar
 
 - **Dot-separated lowercase segments**: `freeway.http.requests.total`,

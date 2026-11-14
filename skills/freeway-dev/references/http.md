@@ -128,13 +128,14 @@ At startup the module expands every group route to its full path once and indexe
 | `ctx.bodyAsJson(User.class)` | Deserialize the JSON request body |
 | `ctx.param("name")` | Query parameter first, then path variable |
 | `ctx.correlationId()` | Unique request id |
+| `ctx.routePattern()` | Declared route template (`/users/{id}`, `static`, `spa`, `health`, `cors-preflight`, or `unmatched`); set before filters run |
 | `ctx.setStatus(201)` | Set the response status |
 | `ctx.setHeader("X-Custom", "value")` | Set a response header, replacing existing values |
 | `ctx.sendText(200, "plain text")` | Send a text response (`text/plain` by default) |
 | `ctx.sendJson(200, object)` | Send a JSON response (`application/json` by default) |
 | `ctx.sse()` | Open an SSE emitter (the response must not be committed yet) |
 
-Request accessors for single values return `Optional`; response writers return the `HttpResponse` face, so calls chain. `setPathVars` and `setMaxBodySize` are framework and filter seams rather than handler conveniences.
+Request accessors for single values return `Optional`; response writers return the `HttpResponse` face, so calls chain. `setPathVars` and `setMaxBodySize` are framework and filter seams rather than handler conveniences. `routePattern()` is the observability/diagnostic seam: it is the declared template, never the raw path, and it is already populated when filters run (the server pre-matches; dispatch remains authoritative). HTTP request metrics use `method` + `route` (+ `status` on 4xx/5xx counters); span names use `METHOD + routePattern` with `unmatched` for misses.
 
 ## Filters
 

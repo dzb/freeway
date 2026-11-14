@@ -2142,6 +2142,43 @@ outbound call), **declarative** (`RpcExport`, `MeshSubscription`,
 (`@Inject ServiceDiscovery` / `RemoteCaller` / `MeshEventBus` / `Metrics` /
 `SecretStore` / `ObjectStorage` — what it uses).
 
+### Observability and Failure Classification
+
+**Metrics.** Inject `Metrics` and use dotted names:
+
+```java
+@Inject Metrics metrics;
+
+metrics.counter("orders.created").increment();
+metrics.timer("export.duration").record(duration);          // count + average
+metrics.histogram("orders.duration",
+    Map.of("route", "/orders/{id}")).record(duration);       // fixed buckets, p95/p99
+```
+
+`timer` is for custom metrics that only need count/average; the framework's HTTP
+and RPC durations are `histogram`. Labels are bounded dimensions: use a small
+fixed vocabulary and never raw paths, URLs, ids or user input. A backend that
+does not implement labels/histograms still records the name-only aggregate, so
+instrumentation never branches on backend type. The HTTP request series carry
+`method` + `route` (+ `status` on the 4xx/5xx counters); `route` is the declared
+template (`/users/{id}`) or one of `unmatched`, `static`, `spa`, `health`,
+`cors-preflight`. Buckets and `histogram_quantile` examples are in the
+[metrics reference](reference/metrics.md).
+
+**Tracing.** A request runs in one server span named `METHOD + route template`
+(`GET /users/{id}`, `GET unmatched`, `GET static`); raw paths stay in logs and
+exchange events, not span names. Filters and diagnostics can read
+`HttpExchange.routePattern()` — the server pre-matches before the filter chain,
+and dispatch remains the authoritative match.
+
+**Failures.** `RpcException`, `SqlException`, `FlowException` and
+`StorageException` implement `Failure`. Its defaults are conservative
+(no automatic retry, outcome unknown); `RpcException` maps its `Kind` precisely
+via `retryable()`/`outcomeUnknown()`. Do not infer retry safety from a cause
+type, and do not retry SQL/flow failures blindly. The
+[failure taxonomy](reference/failures.md) lists every public exception, its
+classification and its HTTP boundary.
+
 **Service registration & discovery ships with three backends behind one seam:**
 the in-process store (the default — a single node needs nothing), the
 freeway-native fleet (`FleetRegistryModule` pointing at deployable registry
