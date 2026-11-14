@@ -1,6 +1,7 @@
 package com.jujin.freeway.boot.internal;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
@@ -43,9 +44,6 @@ class DocsLayoutConsistencyTest {
     private static final Pattern SAMPLE =
         Pattern.compile("application(?:-[a-z0-9]+)?\\.(?:json|properties)\\.sample");
 
-    /** The one Chinese document kept on purpose (linked from the English skill). */
-    private static final String CHINESE_SKILL = "skills/freeway-dev/SKILL.zh.md";
-
     private static Path findRepoRoot() {
         Path candidate = Path.of("").toAbsolutePath().normalize();
         for (int depth = 0; depth < 6 && candidate != null; depth++) {
@@ -65,9 +63,6 @@ class DocsLayoutConsistencyTest {
         assumeTrue(REPO != null, "repository layout not present");
         List<String> offenders = new ArrayList<>();
         for (Path file : documentationFiles()) {
-            if (relative(file).equals(CHINESE_SKILL)) {
-                continue; // the documented exception
-            }
             if (CJK.matcher(Files.readString(file)).find()) {
                 offenders.add(relative(file));
             }
@@ -287,16 +282,25 @@ class DocsLayoutConsistencyTest {
     }
 
     @Test
-    void theChineseSkillCopyIsTheDocumentedException() throws IOException {
+    void noChineseSkillCopyRemains() throws IOException {
         assumeTrue(REPO != null, "repository layout not present");
-        Path chinese = REPO.resolve(CHINESE_SKILL);
-        assertTrue(Files.isRegularFile(chinese),
-            "the Chinese skill copy is kept as the one translation exception");
-        assertTrue(CJK.matcher(Files.readString(chinese)).find(),
-            "the exception must actually be the Chinese translation");
-        assertTrue(Files.readString(REPO.resolve("skills/freeway-dev/SKILL.md"))
-                .contains("SKILL.zh.md"),
-            "the English skill must link the exception it carries");
+        assertFalse(Files.exists(REPO.resolve("skills/freeway-dev/SKILL.zh.md")),
+            "the Chinese skill copy is deleted; English is the single source");
+        List<String> stale = new ArrayList<>();
+        List<Path> files = new ArrayList<>();
+        try (Stream<Path> walk = Files.walk(REPO.resolve("skills"))) {
+            walk.filter(Files::isRegularFile).forEach(files::add);
+        }
+        for (String name : List.of("README.md", "AGENTS.md", "TASTE.md")) {
+            files.add(REPO.resolve(name));
+        }
+        for (Path file : files) {
+            if (Files.isRegularFile(file) && Files.readString(file).contains("SKILL.zh")) {
+                stale.add(relative(file));
+            }
+        }
+        assertEquals(List.of(), stale,
+            "a live pointer to the deleted Chinese copy cannot work");
     }
 
     // ── helpers ──────────────────────────────────────────────
