@@ -107,7 +107,10 @@ freeway-commons         zero deps
   the classpath; `-Dslf4j.provider` is the SLF4J-native escape hatch and wins.
   The JUL backend reads the user-provided `freeway-logging.properties` from the
   classpath root (not bundled in the JAR); `-D` values override file values, and
-  all defaults are built into code. Framework code uses
+  all defaults are built into code. When a non-JUL backend is selected, a
+  JUL→SLF4J bridge (`freeway.log.jul-bridge`, on by default) forwards JDK-internal
+  JUL records into that backend and replaces the JDK's untouched default console
+  handler so records are not doubled. Framework code uses
   `LoggerFactory.getLogger()`; displayed levels use SLF4J names (`WARN`,
   `ERROR`, `DEBUG`, `TRACE`) even for JUL-originated records.
 - **HTTP** — `FreewayHttpEngine` (virtual threads, synchronous socket I/O,

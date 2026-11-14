@@ -108,6 +108,12 @@ public final class LogBootstrap {
             }
             if (JUL_PROVIDER.equals(selection.provider())) {
                 JULEnhancer.configure();
+            } else if (bridgeEnabled(EnvKeys.bootstrap(LogKeys.JUL_BRIDGE))) {
+                // JDK-internal logging (HttpClient, JUL libraries) follows the
+                // selected backend; without this it stays on JUL's default console.
+                JULSlf4jBridge.install();
+                System.err.println("[Freeway] JUL→SLF4J bridge: on (JDK logs follow "
+                    + providerLabel(selection.provider()) + ")");
             }
             verifyBinding(selection);
         }
@@ -178,6 +184,11 @@ public final class LogBootstrap {
             return "slf4j-simple";
         }
         return provider;
+    }
+
+    /** {@code freeway.log.jul-bridge}: on unless explicitly set to false. */
+    static boolean bridgeEnabled(String value) {
+        return value == null || !"false".equalsIgnoreCase(value.strip());
     }
 
     /**

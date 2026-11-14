@@ -15,10 +15,10 @@
 #   -D 参数 > 环境变量 FREEWAY_* > freeway-logging.properties
 #     > application.*（freeway.log.* 键）> preset 预设 > 代码默认值
 #
-# 例外：下面五项只有 -D/env，写进任何文件都无效（它们在类加载期读取，
+# 例外：下面六项只有 -D/env，写进任何文件都无效（它们在类加载期读取，
 # 早于文件解析）——本文件里保留它们只作为"存在这些键"的说明：
-#   freeway.log.system / freeway.log.color / freeway.log.mdc /
-#   freeway.log.mdc.priority / freeway.log.caller-info
+#   freeway.log.system / freeway.log.jul-bridge / freeway.log.color /
+#   freeway.log.mdc / freeway.log.mdc.priority / freeway.log.caller-info
 #
 # 每组属性也支持通过环境变量 FREEWAY_<KEY> 传入：
 #   freeway.log.files       → FREEWAY_LOG_FILES
@@ -40,6 +40,10 @@
 #
 # 选中的后端才会配置 Freeway 的 JUL 增强（formatter/文件/轮转）；
 # 外部后端时 freeway.log.* 的 JUL 旋钮不生效，日志格式由该后端自己的配置决定。
+#
+# freeway.log.jul-bridge=false  关闭 JUL→SLF4J 桥（默认开）。默认会把 JDK
+# 自身的 JUL 日志（HttpClient、JUL 库）转发到选定后端，并替换 JUL 默认
+# ConsoleHandler 以免重复；设 false 则保留 JUL 原始输出。
 
 
 # ── 全局日志级别 ────────────────────────────────────────────────

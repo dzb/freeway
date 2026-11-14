@@ -35,6 +35,11 @@ final class LogKeys {
     /** Root level for every logger ({@code INFO} when unset). */
     static final String LEVEL = "freeway.log.level";
 
+    /** Whether JDK logging is forwarded into the selected SLF4J backend when a
+     *  non-JUL backend is selected ({@code true} unless set to {@code false}).
+     *  Read at class-load time. */
+    static final String JUL_BRIDGE = "freeway.log.jul-bridge";
+
     /** Backend selection for SLF4J: {@code freeway} (default), {@code auto},
      *  {@code logback}/{@code log4j2}/{@code simple}, or a provider class name.
      *  Read at class-load time, so only {@code -D}/env can set it. */
@@ -89,7 +94,7 @@ final class LogKeys {
      * applied.
      */
     static Set<String> classLoadKeys() {
-        return Set.of(SYSTEM, COLOR, MDC, MDC_PRIORITY, CALLER_INFO);
+        return Set.of(SYSTEM, JUL_BRIDGE, COLOR, MDC, MDC_PRIORITY, CALLER_INFO);
     }
 
     /** The default file's rotation/compression keys, spelled out in full rather

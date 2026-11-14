@@ -31,6 +31,7 @@ class LogConfigTest {
         assertEquals(Set.of(
             "freeway.log.level",
             "freeway.log.system",
+            "freeway.log.jul-bridge",
             "freeway.log.format",
             "freeway.log.color",
             "freeway.log.mdc",

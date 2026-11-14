@@ -40,6 +40,17 @@ class JULConsoleFormatterTest {
     }
 
     @Test
+    void julNativeMessageParametersAreFormatted() {
+        LogRecord record = new LogRecord(Level.INFO, "user {0} did {1}");
+        record.setParameters(new Object[]{"alice", "login"});
+        record.setMillis(System.currentTimeMillis());
+        JULConsoleFormatter formatter = new JULConsoleFormatter(false);
+        String out = formatter.format(record);
+        assertTrue(out.contains("user alice did login"),
+            "JUL MessageFormat parameters must be resolved for JDK-originated records: " + out);
+    }
+
+    @Test
     void formatNullMessage() {
         JULConsoleFormatter formatter = new JULConsoleFormatter(false);
         LogRecord record = new LogRecord(Level.INFO, null);
