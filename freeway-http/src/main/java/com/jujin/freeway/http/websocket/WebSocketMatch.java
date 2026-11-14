@@ -8,8 +8,13 @@ import java.util.Map;
  * {@link com.jujin.freeway.http.ExchangeHandler#matchWebSocket(String, String, String)};
  * {@code null} from there means no route matched.
  */
-public record WebSocketMatch(WebSocketEndpoint endpoint, Map<String, String> pathVariables) {
+public record WebSocketMatch(
+    WebSocketEndpoint endpoint,
+    Map<String, String> pathVariables,
+    String routePattern
+) {
     public WebSocketMatch {
         pathVariables = pathVariables == null ? Map.of() : Map.copyOf(pathVariables);
+        routePattern = routePattern == null ? "unmatched" : routePattern;
     }
 }

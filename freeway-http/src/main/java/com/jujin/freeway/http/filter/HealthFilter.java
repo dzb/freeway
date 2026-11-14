@@ -100,6 +100,7 @@ public final class HealthFilter implements HttpFilter {
                 || "HEAD".equalsIgnoreCase(ctx.method()))
                 && healthPath.equals(PathPattern.normalize(
                     ctx.path()))) {
+            ctx.setAttribute(HttpExchange.ROUTE_ATTRIBUTE, "health");
             var result = healthCheck.check();
             if (result.healthy()) {
                 ctx.sendJson(HttpStatus.OK, java.util.Map.of("status", "ok"));

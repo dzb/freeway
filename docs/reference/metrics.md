@@ -25,8 +25,9 @@ backend can replace the SPI without changing the names below.
 A metric name can carry bounded dimensions without changing the name:
 
 ```java
-metrics.counter("freeway.http.requests.total", Map.of("method", "GET"));
-metrics.timer("freeway.http.requests.duration", Map.of("method", "GET", "status", "2xx"));
+metrics.counter("freeway.http.requests.total", Map.of("method", "GET", "route", "/users/{id}"));
+metrics.timer("freeway.http.requests.duration",
+    Map.of("method", "GET", "route", "/users/{id}", "status", "2xx"));
 metrics.counter("cloud.rpc.calls", Map.of("service", "orders"));
 ```
 
@@ -37,14 +38,19 @@ name-only methods, so instrumentation never branches on backend type.
 
 | Metric | Labels |
 |---|---|
-| `freeway.http.requests.total` | `method` — GET/HEAD/POST/PUT/PATCH/DELETE/OPTIONS/TRACE/CONNECT, otherwise `OTHER` |
-| `freeway.http.requests.duration` | `method` as above, `status` — `1xx`…`5xx`, or `unknown` |
+| `freeway.http.requests.total` | `method` — GET/HEAD/POST/PUT/PATCH/DELETE/OPTIONS/TRACE/CONNECT, otherwise `OTHER`; `route` — the declared template |
+| `freeway.http.requests.duration` | `method` as above, `route` as above, `status` — `1xx`…`5xx`, or `unknown` |
+| `freeway.http.responses.4xx`, `freeway.http.responses.5xx` | `method`, `route` |
 | `cloud.rpc.calls`, `cloud.rpc.failures`, `cloud.rpc.duration` | `service` — the RPC service id (deployment-bounded, never user input) |
 | all other metrics | no labels |
 
-Labels are dimensions, not a place for raw paths, URLs, request ids or other
-unbounded values. The `method`/`status` labels are bounded by construction; the
-`service` label is bounded by the number of deployed services.
+The `route` label is the **declared template** — `/users/{id}`, never the
+request path `/users/42`. Non-route outcomes use bounded categories:
+`unmatched` (404/405 and other misses), `static`, `spa`, `health` and
+`cors-preflight`. Labels are dimensions, not a place for raw paths, URLs,
+request ids or other unbounded values. The `method`/`status` labels are bounded
+by construction; `route` is bounded by the registered route table plus five
+categories; `service` is bounded by the number of deployed services.
 
 ## Catalog
 

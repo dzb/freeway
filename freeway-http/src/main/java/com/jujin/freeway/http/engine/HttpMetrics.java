@@ -54,12 +54,12 @@ final class HttpMetrics {
         return (status / 100) + "xx";
     }
 
-    Metrics.Counter responses4xx() {
-        return metrics.counter("freeway.http.responses.4xx");
+    Metrics.Counter responses4xx(Map<String, String> labels) {
+        return metrics.counter("freeway.http.responses.4xx", labels);
     }
 
-    Metrics.Counter responses5xx() {
-        return metrics.counter("freeway.http.responses.5xx");
+    Metrics.Counter responses5xx(Map<String, String> labels) {
+        return metrics.counter("freeway.http.responses.5xx", labels);
     }
 
     Metrics.Counter sendfileTransfers() {

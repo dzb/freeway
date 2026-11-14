@@ -351,6 +351,7 @@ public final class HttpServer implements AutoCloseable {
                     // Only a real asset commits a response here; a mount that
                     // matched but has no asset must not shadow later mounts or
                     // the route chain with a premature 404.
+                    ctx.setAttribute(HttpExchange.ROUTE_ATTRIBUTE, "static");
                     mount.serve(ctx, ctx);
                     return;
                 }
@@ -361,6 +362,7 @@ public final class HttpServer implements AutoCloseable {
             if (anyMountMatched && !fallthroughMiss) {
                 // Every matching mount is a non-fallthrough miss — a terminal
                 // 404, mirroring a single mount's direct serve() result.
+                ctx.setAttribute(HttpExchange.ROUTE_ATTRIBUTE, "static");
                 ErrorResponses.notFound().write(ctx);
                 return;
             }
@@ -377,14 +379,18 @@ public final class HttpServer implements AutoCloseable {
             if (allowed.isEmpty()) {
                 StaticResourceMount spa = mostSpecificMount(ctx.method(), ctx.path());
                 if (spa != null && spa.serveSpaFallback(ctx, ctx)) {
+                    ctx.setAttribute(HttpExchange.ROUTE_ATTRIBUTE, "spa");
                     return;
                 }
+                ctx.setAttribute(HttpExchange.ROUTE_ATTRIBUTE, "unmatched");
                 ErrorResponses.notFound().write(ctx);
             } else {
+                ctx.setAttribute(HttpExchange.ROUTE_ATTRIBUTE, "unmatched");
                 ErrorResponses.methodNotAllowed(String.join(", ", allowed)).write(ctx);
             }
             return;
         }
+        ctx.setAttribute(HttpExchange.ROUTE_ATTRIBUTE, match.routePattern());
         ctx.setPathVars(match.pathVariables());
         match.handler().handle(ctx);
     }

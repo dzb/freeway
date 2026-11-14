@@ -6,6 +6,7 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Base64;
+import java.util.Map;
 import java.util.Set;
 
 import org.slf4j.Logger;
@@ -39,6 +40,12 @@ final class WebSocketUpgrade {
         try {
             String origin = HttpSession.headerValue(req.headers(), "Origin");
             WebSocketMatch match = ctx.handler().matchWebSocket(req.method(), req.path(), origin);
+            // An upgrade is an HTTP request too: count it exactly once, with
+            // the declared WebSocket template (or unmatched when the handshake
+            // is refused before a route is selected).
+            ctx.metrics().requestsTotal(Map.of(
+                "method", HttpMetrics.methodLabel(req.method()),
+                "route", match == null ? "unmatched" : match.routePattern())).increment();
             if (match == null) {
                 HttpSession.sendUpgradeError(connection.outputStream(), 403, "Forbidden");
                 return;

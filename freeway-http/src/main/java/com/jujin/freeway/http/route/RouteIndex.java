@@ -30,7 +30,7 @@ public final class RouteIndex {
 
     private final Map<String, TrieNode> methodRoots = new ConcurrentHashMap<>();
     // Fast path: exact match cache for routes without path variables
-    private final Map<String, RouteHandler> exactCache = new ConcurrentHashMap<>();
+    private final Map<String, RouteMatch> exactCache = new ConcurrentHashMap<>();
     /** Registration metadata in declaration order — also the route count. */
     private final List<RouteDescription> descriptions = new ArrayList<>();
 
@@ -151,7 +151,8 @@ public final class RouteIndex {
         // uses the decoded path so an encoded registration matches a plain
         // request (e.g. /hello%20world ↔ /hello world) on the fast path too.
         if (!hasVariables && exactCacheable) {
-            exactCache.put(key + ":" + "/" + String.join("/", stored), handler);
+            exactCache.put(key + ":" + "/" + String.join("/", stored),
+                new RouteMatch(handler, Map.of(), path));
         }
         TrieNode current = root;
         for (int i = 0; i < segments.length; i++) {
@@ -169,6 +170,7 @@ public final class RouteIndex {
             );
         }
         current.handler = handler;
+        current.routePath = path;
         descriptions.add(new RouteDescription(key, path));
     }
 
@@ -180,11 +182,11 @@ public final class RouteIndex {
         // Fast path: exact match cache bypasses trie for routes without variables
         if (rawPath.indexOf('%') < 0 && rawPath.indexOf('+') < 0) {
             String cacheKey = key.concat(":").concat(rawPath);
-            RouteHandler exact = exactCache.get(cacheKey);
-            if (exact != null) return new RouteMatch(exact, Map.of());
+            RouteMatch exact = exactCache.get(cacheKey);
+            if (exact != null) return exact;
             if ("HEAD".equals(key)) {
                 exact = exactCache.get("GET:".concat(rawPath));
-                if (exact != null) return new RouteMatch(exact, Map.of());
+                if (exact != null) return exact;
             }
         }
         TrieNode root = methodRoots.get(key);
@@ -224,7 +226,8 @@ public final class RouteIndex {
     private RouteMatch matchFrom(TrieNode node, String[] rawSegments, int index,
                                  Map<String, String> vars) {
         if (index == rawSegments.length) {
-            return node.handler == null ? null : new RouteMatch(node.handler, Map.copyOf(vars));
+            return node.handler == null ? null
+                : new RouteMatch(node.handler, Map.copyOf(vars), node.routePath);
         }
         String seg = PathPattern.decodeSegment(rawSegments[index]);
         if (seg == null || seg.isEmpty()
@@ -260,7 +263,7 @@ public final class RouteIndex {
                 String decoded = remainder.toString();
                 if (decoded == null || decoded.isEmpty() || PathPattern.containsPathTraversal(decoded)) continue;
                 next.put(param.paramName, decoded);
-                if (param.handler != null) return new RouteMatch(param.handler, Map.copyOf(next));
+                if (param.handler != null) return new RouteMatch(param.handler, Map.copyOf(next), param.routePath);
                 continue;
             }
             if (param.paramPattern != null && !param.paramPattern.matcher(seg).matches()) continue;
@@ -287,6 +290,7 @@ public final class RouteIndex {
         Map<String, TrieNode> literals; // literal children
         List<TrieNode> paramChildren;
         RouteHandler handler; // non-null if route terminates here
+        String routePath; // declared template, for observability
         boolean frozen;
 
         TrieNode() {}
@@ -367,8 +371,13 @@ public final class RouteIndex {
 
     public record RouteMatch(
         RouteHandler handler,
-        Map<String, String> pathVariables
-    ) {}
+        Map<String, String> pathVariables,
+        String routePattern
+    ) {
+        public RouteMatch {
+            routePattern = routePattern == null ? "unmatched" : routePattern;
+        }
+    }
 
     /** A registered route's identity; no handler instance is exposed. */
     public record RouteDescription(String method, String path) {

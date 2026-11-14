@@ -27,6 +27,22 @@ import java.util.Map;
  */
 public interface HttpExchange extends ExchangeMeta, HttpRequest, HttpResponse {
 
+    /** Attribute key holding the declared route template for this exchange. */
+    String ROUTE_ATTRIBUTE = "freeway.http.route";
+
+    /**
+     * The declared route template that served this exchange, never the raw
+     * request path: {@code /users/{id}} rather than {@code /users/42}. The
+     * pipeline sets it during dispatch ({@code static}, {@code spa},
+     * {@code health} and {@code cors-preflight} are the non-route values);
+     * before dispatch it is {@code null}. It is exposed for diagnostics and
+     * metrics labels; do not use it for authorization decisions.
+     */
+    default String routePattern() {
+        Object value = attribute(ROUTE_ATTRIBUTE);
+        return value instanceof String pattern ? pattern : null;
+    }
+
     /**
      * Sets the path variables extracted by the route match. This is the
      * routing seam and lives here (rather than on the read-only

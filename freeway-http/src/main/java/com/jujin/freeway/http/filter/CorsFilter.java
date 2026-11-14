@@ -229,6 +229,7 @@ public final class CorsFilter implements HttpFilter {
         if ("OPTIONS".equalsIgnoreCase(ctx.method())
                 && ctx.header("Access-Control-Request-Method")
                     .isPresent()) {
+            ctx.setAttribute(HttpExchange.ROUTE_ATTRIBUTE, "cors-preflight");
             if (acao == null) {
                 LOG.debug("CORS preflight rejected: origin '{}'", requestOrigin);
                 ctx.setStatus(HttpStatus.FORBIDDEN).body(new byte[0]);

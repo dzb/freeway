@@ -65,7 +65,7 @@ public final class WebSocketIndex {
             return null;
         }
         EndpointHandler handler = (EndpointHandler) match.handler();
-        return new WebSocketMatch(handler.endpoint(), match.pathVariables());
+        return new WebSocketMatch(handler.endpoint(), match.pathVariables(), match.routePattern());
     }
 
     /** RouteHandler adapter so WebSocket endpoints can live in the shared

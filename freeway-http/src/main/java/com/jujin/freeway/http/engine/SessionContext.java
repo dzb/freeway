@@ -35,21 +35,31 @@ record SessionContext(
     void executeRequest(HttpExchange context) throws Exception {
         registry().requestsInFlight.incrementAndGet();
         String method = HttpMetrics.methodLabel(context.method());
-        metrics().requestsTotal(Map.of("method", method)).increment();
         long startNanos = System.nanoTime();
         try {
             handler().handle(context);
         } finally {
             registry().requestsInFlight.decrementAndGet();
+            // The route is known only after dispatch; record in the finally so
+            // every completed request carries the declared template (or the
+            // bounded category the pipeline set for a short-circuit/miss).
+            String route = context.routePattern();
+            if (route == null || route.isBlank()) {
+                route = "unmatched";
+            }
             int status = context.status();
+            Map<String, String> requestLabels = Map.of(
+                "method", method, "route", route);
+            metrics().requestsTotal(requestLabels).increment();
             requestTimer(Map.of(
                     "method", method,
+                    "route", route,
                     "status", HttpMetrics.statusClass(status)))
                 .record(System.nanoTime() - startNanos);
             if (status >= 500) {
-                metrics().responses5xx().increment();
+                metrics().responses5xx(requestLabels).increment();
             } else if (status >= 400) {
-                metrics().responses4xx().increment();
+                metrics().responses4xx(requestLabels).increment();
             }
         }
     }
