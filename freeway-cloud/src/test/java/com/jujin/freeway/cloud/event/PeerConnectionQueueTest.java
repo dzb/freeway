@@ -191,6 +191,11 @@ class PeerConnectionQueueTest {
         java.util.concurrent.atomic.LongAdder dropped =
             new java.util.concurrent.atomic.LongAdder();
         CountDownLatch firstArrived = new CountDownLatch(1);
+        // Hold the first transport delivery until the publisher has queued all
+        // ten frames: the refusal closes the connection, so a drain that runs
+        // mid-loop would make later sends fail for timing reasons rather than
+        // because of the contract under test.
+        CountDownLatch releaseFirstDelivery = new CountDownLatch(1);
         AtomicInteger calls = new AtomicInteger();
         PeerConnection peer = new PeerConnection("rejecting", List.of(""),
             new PeerConnection.Sender() {
@@ -205,6 +210,12 @@ class PeerConnectionQueueTest {
                 }
 
                 private boolean deliver(java.util.List<String> frames) {
+                    try {
+                        releaseFirstDelivery.await();
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        return false;
+                    }
                     if (calls.incrementAndGet() == 1) {
                         firstArrived.countDown();          // first batch is in flight
                         return false;                      // … and the transport refuses it
@@ -217,6 +228,7 @@ class PeerConnectionQueueTest {
         for (int i = 0; i < 10; i++) {
             assertTrue(peer.send("frame-" + i), "frame " + i + " must be accepted");
         }
+        releaseFirstDelivery.countDown();
         assertTrue(firstArrived.await(5, TimeUnit.SECONDS), "the drain reached the transport");
 
         long deadline = System.currentTimeMillis() + 5000;
