@@ -1,5 +1,6 @@
 package com.jujin.freeway.commons.metrics;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Supplier;
@@ -52,6 +53,82 @@ public interface Metrics {
         Objects.requireNonNull(labels, "labels");
         return timer(name);
     }
+
+    /**
+     * Fixed latency bucket upper bounds in nanoseconds. The set is deliberately
+     * small and framework-owned: five milliseconds to ten seconds, plus the
+     * implicit {@code +Inf} bucket. A backend maps these to its own histogram
+     * model; a caller never supplies arbitrary buckets.
+     */
+    List<Long> DEFAULT_LATENCY_BUCKETS_NANOS = List.of(
+        5_000_000L, 10_000_000L, 25_000_000L, 50_000_000L,
+        100_000_000L, 250_000_000L, 500_000_000L,
+        1_000_000_000L, 2_500_000_000L, 5_000_000_000L, 10_000_000_000L);
+
+    /** Returns the default histogram (see {@link #DEFAULT_LATENCY_BUCKETS_NANOS}). */
+    default Histogram histogram(String name) {
+        return histogram(name, Map.of());
+    }
+
+    /**
+     * Returns a histogram for tail-latency observation. The default delegates
+     * to {@link #timer(String, Map)}, so a backend without histogram support
+     * still records the aggregate count/sum; a caller never has to branch on
+     * backend type. The framework's default registry renders the buckets and
+     * implements quantile queries.
+     */
+    default Histogram histogram(String name, Map<String, String> labels) {
+        Objects.requireNonNull(labels, "labels");
+        Timer timer = timer(name, labels);
+        return new Histogram() {
+            @Override
+            public void record(long nanos) {
+                timer.record(nanos);
+            }
+
+            @Override
+            public long count() {
+                return timer.count();
+            }
+
+            @Override
+            public long totalNanos() {
+                return timer.totalNanos();
+            }
+        };
+    }
+
+    /**
+     * A latency distribution with fixed buckets. Implementations must be
+     * thread-safe. {@link #record(long)} is the only abstract method; the
+     * convenience overloads normalize to nanoseconds.
+     */
+    interface Histogram {
+        void record(long nanos);
+
+        default void record(Duration duration) {
+            record(duration.toNanos());
+        }
+
+        default <T> T record(Supplier<T> work) {
+            long start = System.nanoTime();
+            try {
+                return work.get();
+            } finally {
+                record(System.nanoTime() - start);
+            }
+        }
+
+        long count();
+
+        long totalNanos();
+    }
+
+    Histogram NOOP_HISTOGRAM = new Histogram() {
+        @Override public void record(long nanos) { }
+        @Override public long count() { return 0L; }
+        @Override public long totalNanos() { return 0L; }
+    };
 
     /**
      * A named cumulative counter with integer semantics. Implementations

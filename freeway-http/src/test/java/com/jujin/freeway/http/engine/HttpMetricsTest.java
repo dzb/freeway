@@ -29,20 +29,21 @@ class HttpMetricsTest {
         HttpMetrics metrics = new HttpMetrics(registry);
 
         metrics.requestsTotal(Map.of("method", "GET")).increment();
-        metrics.requestsDuration(Map.of("method", "GET", "status", "2xx"))
+        metrics.requestsDuration(Map.of("method", "GET", "route", "/x"))
             .record(1_000_000);
 
         assertEquals(1, registry.counters.get("freeway.http.requests.total").size());
-        assertEquals(1, registry.timers.get("freeway.http.requests.duration").size());
+        assertEquals(1, registry.histograms.get("freeway.http.requests.duration").size());
         assertEquals(Map.of("method", "GET"),
             registry.counters.get("freeway.http.requests.total").getFirst());
-        assertEquals(Map.of("method", "GET", "status", "2xx"),
-            registry.timers.get("freeway.http.requests.duration").getFirst());
+        assertEquals(Map.of("method", "GET", "route", "/x"),
+            registry.histograms.get("freeway.http.requests.duration").getFirst());
     }
 
     private static final class LabelMetrics implements Metrics {
         final Map<String, java.util.List<Map<String, String>>> counters = new HashMap<>();
         final Map<String, java.util.List<Map<String, String>>> timers = new HashMap<>();
+        final Map<String, java.util.List<Map<String, String>>> histograms = new HashMap<>();
 
         @Override
         public Counter counter(String name) {
@@ -68,6 +69,17 @@ class HttpMetricsTest {
         public Timer timer(String name, Map<String, String> labels) {
             timers.computeIfAbsent(name, k -> new java.util.ArrayList<>()).add(labels);
             return Metrics.NOOP_TIMER;
+        }
+
+        @Override
+        public Histogram histogram(String name) {
+            return histogram(name, Map.of());
+        }
+
+        @Override
+        public Histogram histogram(String name, Map<String, String> labels) {
+            histograms.computeIfAbsent(name, k -> new java.util.ArrayList<>()).add(labels);
+            return Metrics.NOOP_HISTOGRAM;
         }
 
         @Override

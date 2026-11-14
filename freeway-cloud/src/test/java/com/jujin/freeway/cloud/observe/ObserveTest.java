@@ -81,6 +81,24 @@ class ObserveTest {
     }
 
     @Test
+    void histogramRendersCumulativeBucketsAndTorchesTheAverage() {
+        MetricsDefault reg = new MetricsDefault();
+        reg.histogram("lat", Map.of("route", "/x")).record(Duration.ofMillis(50));
+
+        assertEquals(1, reg.histogramCount("lat", Map.of("route", "/x")));
+        assertTrue(reg.histogramTotalSeconds("lat", Map.of("route", "/x")) >= 0.05);
+
+        String text = reg.prometheusText();
+        assertTrue(text.contains("lat_bucket{le=\"0.005\",route=\"/x\"} 0"),
+            "a 50ms sample is above the 5ms bucket: " + text);
+        assertTrue(text.contains("lat_bucket{le=\"0.05\",route=\"/x\"} 1"));
+        assertTrue(text.contains("lat_bucket{le=\"+Inf\",route=\"/x\"} 1"));
+        assertTrue(text.contains("lat_count{route=\"/x\"} 1"));
+        assertTrue(text.contains("lat_sum{route=\"/x\"} 0.05"));
+        assertTrue(text.contains("# TYPE lat histogram"));
+    }
+
+    @Test
     void labelValuesAreEscapedForTheExposition() {
         MetricsDefault reg = new MetricsDefault();
         reg.counter("hits", Map.of("note", "a\"b\\c\nd")).increment();

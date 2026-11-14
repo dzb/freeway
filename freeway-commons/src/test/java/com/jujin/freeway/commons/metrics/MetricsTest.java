@@ -69,6 +69,17 @@ class MetricsTest {
     }
 
     @Test
+    void defaultHistogramFallsBackToTheTimerContract() {
+        Metrics metrics = new CountingMetrics();
+        Metrics.Histogram histogram = metrics.histogram(
+            "lat", java.util.Map.of("route", "/x"));
+        histogram.record(Duration.ofMillis(7));
+        assertEquals(1, histogram.count());
+        assertEquals(7_000_000L, histogram.totalNanos(),
+            "a backend without histogram support keeps the count/sum aggregate");
+    }
+
+    @Test
     void timerDurationOverloadNormalizesToNanos() {
         Metrics metrics = new CountingMetrics();
         Metrics.Timer t = metrics.timer("lat");

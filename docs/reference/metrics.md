@@ -39,7 +39,7 @@ name-only methods, so instrumentation never branches on backend type.
 | Metric | Labels |
 |---|---|
 | `freeway.http.requests.total` | `method` — GET/HEAD/POST/PUT/PATCH/DELETE/OPTIONS/TRACE/CONNECT, otherwise `OTHER`; `route` — the declared template |
-| `freeway.http.requests.duration` | `method` as above, `route` as above, `status` — `1xx`…`5xx`, or `unknown` |
+| `freeway.http.requests.duration` | `method` as above, `route` as above |
 | `freeway.http.responses.4xx`, `freeway.http.responses.5xx` | `method`, `route` |
 | `cloud.rpc.calls`, `cloud.rpc.failures`, `cloud.rpc.duration` | `service` — the RPC service id (deployment-bounded, never user input) |
 | all other metrics | no labels |
@@ -52,6 +52,25 @@ request ids or other unbounded values. The `method`/`status` labels are bounded
 by construction; `route` is bounded by the registered route table plus five
 categories; `service` is bounded by the number of deployed services.
 
+## Histograms
+
+`freeway.http.requests.duration` and `cloud.rpc.duration` are histograms with
+fixed buckets (seconds): `0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5,
+5, 10`, plus the implicit `+Inf`. The exposition is the standard
+`_bucket{le="..."}`, `_count` and `_sum` family; no arbitrary bucket list is
+accepted from callers.
+
+```promql
+# p95 per route (5-minute rate)
+histogram_quantile(0.95,
+  sum by (le, route) (rate(freeway_http_requests_duration_bucket[5m])))
+```
+
+Quantiles are approximate and bucket-bound; a single scrape is not a
+time-series query. The default registry keeps buckets in memory for one
+process; cross-instance aggregation is the backend's job. `Timer` remains for
+custom metrics that only need count/average.
+
 ## Catalog
 
 | Name | Type | Unit | Meaning |
@@ -61,7 +80,7 @@ categories; `service` is bounded by the number of deployed services.
 | `freeway.http.connections.active` | gauge | connections | Open connections right now |
 | `freeway.http.requests.total` | counter | requests | Parsed HTTP requests |
 | `freeway.http.requests.active` | gauge | requests | Requests currently being handled |
-| `freeway.http.requests.duration` | timer | seconds | Request handling duration |
+| `freeway.http.requests.duration` | histogram | seconds | Request handling duration (bucket distribution) |
 | `freeway.http.responses.4xx` | counter | responses | Responses with a 4xx status |
 | `freeway.http.responses.5xx` | counter | responses | Responses with a 5xx status |
 | `freeway.http.h2.connections` | counter | connections | HTTP/2 connections established |
@@ -74,7 +93,7 @@ categories; `service` is bounded by the number of deployed services.
 | `eventbus.stream.drops` | counter | events | Stream events dropped under backpressure |
 | `cloud.rpc.calls` | counter | calls | Logical RPC calls started |
 | `cloud.rpc.failures` | counter | failures | Logical RPC calls that failed |
-| `cloud.rpc.duration` | timer | seconds | Logical RPC call duration (all attempts) |
+| `cloud.rpc.duration` | histogram | seconds | Logical RPC call duration (all attempts) |
 | `cloud.event.published` | gauge | events | Events published through the mesh bus |
 | `cloud.event.frames.queued` | gauge | frames | Outbound frames waiting to send |
 | `cloud.event.frames.dropped` | gauge | frames | Outbound frames dropped |

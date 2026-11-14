@@ -147,6 +147,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **HTTP and RPC durations are histograms** (`freeway-commons` /
+  `freeway-cloud` / `freeway-http`): `Metrics.Histogram` records the fixed
+  framework bucket set (5ms…10s, plus `+Inf`); the default registry renders
+  standard `_bucket`/`_count`/`_sum` series, so `histogram_quantile` works per
+  `route`/`service`. HTTP histogram labels are `method` + `route` (status stays
+  on the 4xx/5xx counters to keep series finite). A backend without histogram
+  support falls back to the timer aggregate. `Timer` remains for custom
+  metrics that only need count/average.
 - **HTTP server spans use the declared route template** (`freeway-cloud` +
   `freeway-http`): the tracing filter names a span `GET /users/{id}` instead of
   `GET /users/42`; requests with no matching route are `GET unmatched`, and

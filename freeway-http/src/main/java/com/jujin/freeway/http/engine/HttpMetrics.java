@@ -26,8 +26,8 @@ final class HttpMetrics {
         return metrics.counter("freeway.http.connections.rejected");
     }
 
-    Metrics.Timer requestsDuration(Map<String, String> labels) {
-        return metrics.timer("freeway.http.requests.duration", labels);
+    Metrics.Histogram requestsDuration(Map<String, String> labels) {
+        return metrics.histogram("freeway.http.requests.duration", labels);
     }
 
     Metrics.Counter requestsTotal(Map<String, String> labels) {

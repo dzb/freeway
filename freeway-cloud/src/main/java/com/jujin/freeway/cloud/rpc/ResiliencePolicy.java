@@ -177,7 +177,7 @@ final class ResiliencePolicy {
         }
         Map<String, String> labels = Map.of("service", serviceId);
         metrics.counter("cloud.rpc.calls", labels).increment();
-        metrics.timer("cloud.rpc.duration", labels)
+        metrics.histogram("cloud.rpc.duration", labels)
             .record(Duration.ofNanos(System.nanoTime() - startNanos));
     }
 
@@ -187,7 +187,7 @@ final class ResiliencePolicy {
         }
         Map<String, String> labels = Map.of("service", serviceId);
         metrics.counter("cloud.rpc.failures", labels).increment();
-        metrics.timer("cloud.rpc.duration", labels)
+        metrics.histogram("cloud.rpc.duration", labels)
             .record(Duration.ofNanos(System.nanoTime() - startNanos));
     }
 

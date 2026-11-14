@@ -2,7 +2,10 @@ package com.jujin.freeway.cloud.observe;
 
 import com.jujin.freeway.commons.metrics.Metrics;
 
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.TreeMap;
@@ -28,6 +31,7 @@ public final class MetricsDefault implements Metrics, MetricsSnapshot {
     private final Map<Key, LongAdder> counters = new ConcurrentHashMap<>();
     private final Map<Key, TimerData> timers = new ConcurrentHashMap<>();
     private final Map<Key, Supplier<Number>> gauges = new ConcurrentHashMap<>();
+    private final Map<Key, HistogramData> histograms = new ConcurrentHashMap<>();
     /** Final rendered Prometheus series name → "kind:rawName{labels}" owner
      *  token. Tracked on the rendered name so timer-suffixed series
      *  ({@code _count}/{@code _seconds_total}) collide with plain meters too. */
@@ -75,6 +79,28 @@ public final class MetricsDefault implements Metrics, MetricsSnapshot {
         gauges.put(key, supplier);
     }
 
+    @Override
+    public Histogram histogram(String name) {
+        return histogram(name, Map.of());
+    }
+
+    @Override
+    public Histogram histogram(String name, Map<String, String> labels) {
+        Key key = key(name, labels);
+        String base = prometheusName(key.name());
+        String renderedLabels = renderLabels(key.labels());
+        List<String> renderedNames = new ArrayList<>();
+        for (long bound : Metrics.DEFAULT_LATENCY_BUCKETS_NANOS) {
+            renderedNames.add(base + "_bucket"
+                + renderLabels(withLabel(key.labels(), "le", seconds(bound))));
+        }
+        renderedNames.add(base + "_count" + renderedLabels);
+        renderedNames.add(base + "_sum" + renderedLabels);
+        registerSeriesName(renderedSeries, "histogram:" + key.name() + renderedLabels,
+            renderedNames.toArray(String[]::new));
+        return new HistogramImpl(histograms.computeIfAbsent(key, k -> new HistogramData()));
+    }
+
     /**
      * Fails fast when a registration would emit a Prometheus series another
      * metric already occupies. {@code prometheusName} folds {@code a.b} and
@@ -90,7 +116,15 @@ public final class MetricsDefault implements Metrics, MetricsSnapshot {
         String kind,
         String... renderedNames
     ) {
-        String token = kind + ":" + key.name() + renderLabels(key.labels());
+        registerSeriesName(series, kind + ":" + key.name() + renderLabels(key.labels()),
+            renderedNames);
+    }
+
+    private static void registerSeriesName(
+        Map<String, String> series,
+        String token,
+        String... renderedNames
+    ) {
         for (int i = 0; i < renderedNames.length; i++) {
             String rendered = renderedNames[i];
             String previous = series.putIfAbsent(rendered, token);
@@ -101,7 +135,7 @@ public final class MetricsDefault implements Metrics, MetricsSnapshot {
                     series.remove(renderedNames[j], token);
                 }
                 throw new IllegalArgumentException(
-                    "Metric name '" + key.name() + "' (" + kind + ") renders as the same "
+                    "Metric series '" + token + "' renders as the same "
                         + "Prometheus series '" + rendered + "' as the earlier registration '"
                         + previous.substring(previous.indexOf(':') + 1)
                         + "' — rename one of them");
@@ -152,6 +186,24 @@ public final class MetricsDefault implements Metrics, MetricsSnapshot {
         return value == null ? 0.0 : value.doubleValue();
     }
 
+    public long histogramCount(String name) {
+        return histogramCount(name, Map.of());
+    }
+
+    public long histogramCount(String name, Map<String, String> labels) {
+        HistogramData data = histograms.get(key(name, labels));
+        return data == null ? 0 : data.count();
+    }
+
+    public double histogramTotalSeconds(String name) {
+        return histogramTotalSeconds(name, Map.of());
+    }
+
+    public double histogramTotalSeconds(String name, Map<String, String> labels) {
+        HistogramData data = histograms.get(key(name, labels));
+        return data == null ? 0.0 : data.totalNanos() / 1_000_000_000.0;
+    }
+
     /** Renders the registry as Prometheus text format ({@code /metrics} route). */
     public String prometheusText() {
         StringBuilder sb = new StringBuilder();
@@ -168,6 +220,8 @@ public final class MetricsDefault implements Metrics, MetricsSnapshot {
         });
         gauges.keySet().forEach(key ->
             types.put(prometheusName(key.name()), "gauge"));
+        histograms.keySet().forEach(key ->
+            types.put(prometheusName(key.name()), "histogram"));
         types.forEach((name, type) ->
             sb.append("# TYPE ").append(name).append(' ').append(type).append('\n'));
 
@@ -180,6 +234,9 @@ public final class MetricsDefault implements Metrics, MetricsSnapshot {
         gauges.entrySet().stream()
             .sorted(byKey())
             .forEach(entry -> sb.append(renderGauge(entry.getKey(), entry.getValue())));
+        histograms.entrySet().stream()
+            .sorted(byKey())
+            .forEach(entry -> sb.append(renderHistogram(entry.getKey(), entry.getValue())));
         return sb.toString();
     }
 
@@ -212,6 +269,39 @@ public final class MetricsDefault implements Metrics, MetricsSnapshot {
         }
         return prometheusName(key.name()) + renderLabels(key.labels())
             + " " + value + "\n";
+    }
+
+    private static String renderHistogram(Key key, HistogramData data) {
+        String base = prometheusName(key.name());
+        StringBuilder sb = new StringBuilder();
+        long cumulative = 0;
+        for (int i = 0; i < data.bucketCount(); i++) {
+            cumulative += data.bucketCount(i);
+            long bound = data.bucketBoundNanos(i);
+            sb.append(base).append("_bucket")
+                .append(renderLabels(withLabel(key.labels(), "le", seconds(bound))))
+                .append(' ').append(cumulative).append('\n');
+        }
+        sb.append(base).append("_bucket")
+            .append(renderLabels(withLabel(key.labels(), "le", "+Inf")))
+            .append(' ').append(data.count()).append('\n');
+        sb.append(base).append("_count").append(renderLabels(key.labels()))
+            .append(' ').append(data.count()).append('\n');
+        sb.append(base).append("_sum").append(renderLabels(key.labels()))
+            .append(' ').append(Double.toString(data.totalNanos() / 1_000_000_000.0))
+            .append('\n');
+        return sb.toString();
+    }
+
+    private static Map<String, String> withLabel(
+            Map<String, String> labels, String name, String value) {
+        Map<String, String> copy = new LinkedHashMap<>(labels);
+        copy.put(name, value);
+        return Map.copyOf(copy);
+    }
+
+    private static String seconds(long nanos) {
+        return Double.toString(nanos / 1_000_000_000.0);
     }
 
     /** Sanitizes a metric name to Prometheus name rules
@@ -350,6 +440,74 @@ public final class MetricsDefault implements Metrics, MetricsSnapshot {
         }
 
         public long totalNanos() {
+            return totalNanos.sum();
+        }
+    }
+
+    private static final class HistogramImpl implements Histogram {
+        private final HistogramData data;
+
+        HistogramImpl(HistogramData data) {
+            this.data = data;
+        }
+
+        @Override
+        public void record(long nanos) {
+            data.record(nanos);
+        }
+
+        @Override
+        public long count() {
+            return data.count();
+        }
+
+        @Override
+        public long totalNanos() {
+            return data.totalNanos();
+        }
+    }
+
+    private static final class HistogramData {
+        private final long[] bounds = Metrics.DEFAULT_LATENCY_BUCKETS_NANOS.stream()
+            .mapToLong(Long::longValue).toArray();
+        private final LongAdder[] buckets = new LongAdder[bounds.length];
+        private final LongAdder count = new LongAdder();
+        private final LongAdder totalNanos = new LongAdder();
+
+        HistogramData() {
+            for (int i = 0; i < buckets.length; i++) {
+                buckets[i] = new LongAdder();
+            }
+        }
+
+        void record(long nanos) {
+            count.increment();
+            totalNanos.add(nanos);
+            for (int i = 0; i < bounds.length; i++) {
+                if (nanos <= bounds[i]) {
+                    buckets[i].increment(); // non-cumulative; renderer prefixes
+                    return;
+                }
+            }
+        }
+
+        int bucketCount() {
+            return bounds.length;
+        }
+
+        long bucketBoundNanos(int index) {
+            return bounds[index];
+        }
+
+        long bucketCount(int index) {
+            return buckets[index].sum();
+        }
+
+        long count() {
+            return count.sum();
+        }
+
+        long totalNanos() {
             return totalNanos.sum();
         }
     }

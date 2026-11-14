@@ -22,7 +22,7 @@ record SessionContext(
     ConnectionRegistry registry,
     HttpMetrics metrics
 ) {
-    Metrics.Timer requestTimer(Map<String, String> labels) {
+    Metrics.Histogram requestTimer(Map<String, String> labels) {
         return metrics.requestsDuration(labels);
     }
 
@@ -51,10 +51,7 @@ record SessionContext(
             Map<String, String> requestLabels = Map.of(
                 "method", method, "route", route);
             metrics().requestsTotal(requestLabels).increment();
-            requestTimer(Map.of(
-                    "method", method,
-                    "route", route,
-                    "status", HttpMetrics.statusClass(status)))
+            requestTimer(Map.of("method", method, "route", route))
                 .record(System.nanoTime() - startNanos);
             if (status >= 500) {
                 metrics().responses5xx(requestLabels).increment();

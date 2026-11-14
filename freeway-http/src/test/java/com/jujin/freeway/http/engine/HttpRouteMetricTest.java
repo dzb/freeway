@@ -54,9 +54,9 @@ class HttpRouteMetricTest {
             assertTrue(metrics.counterLabels("freeway.http.requests.total").contains(
                     Map.of("method", "GET", "route", "unmatched")),
                 "a miss is one bounded category, never the raw path");
-            assertTrue(metrics.timerLabels("freeway.http.requests.duration").contains(
-                    Map.of("method", "GET", "route", "/users/{id}", "status", "2xx")),
-                "the duration carries method + route + status");
+            assertTrue(metrics.histogramLabels("freeway.http.requests.duration").contains(
+                    Map.of("method", "GET", "route", "/users/{id}")),
+                "the duration histogram carries method + route (status stays on the counters)");
             assertTrue(metrics.counterLabels("freeway.http.responses.4xx").contains(
                     Map.of("method", "GET", "route", "unmatched")),
                 "the 4xx counter carries the same route category");
@@ -99,6 +99,8 @@ class HttpRouteMetricTest {
             new ConcurrentHashMap<>();
         private final Map<String, List<Map<String, String>>> timers =
             new ConcurrentHashMap<>();
+        private final Map<String, List<Map<String, String>>> histograms =
+            new ConcurrentHashMap<>();
 
         Set<Map<String, String>> counterLabels(String name) {
             return Set.copyOf(counters.getOrDefault(name, List.of()));
@@ -106,6 +108,10 @@ class HttpRouteMetricTest {
 
         Set<Map<String, String>> timerLabels(String name) {
             return Set.copyOf(timers.getOrDefault(name, List.of()));
+        }
+
+        Set<Map<String, String>> histogramLabels(String name) {
+            return Set.copyOf(histograms.getOrDefault(name, List.of()));
         }
 
         @Override
@@ -132,6 +138,17 @@ class HttpRouteMetricTest {
         public Timer timer(String name, Map<String, String> labels) {
             timers.computeIfAbsent(name, key -> new CopyOnWriteArrayList<>()).add(labels);
             return Metrics.NOOP_TIMER;
+        }
+
+        @Override
+        public Histogram histogram(String name) {
+            return histogram(name, Map.of());
+        }
+
+        @Override
+        public Histogram histogram(String name, Map<String, String> labels) {
+            histograms.computeIfAbsent(name, key -> new CopyOnWriteArrayList<>()).add(labels);
+            return Metrics.NOOP_HISTOGRAM;
         }
 
         @Override

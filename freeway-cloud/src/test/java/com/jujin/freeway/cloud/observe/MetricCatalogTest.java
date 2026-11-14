@@ -30,9 +30,9 @@ class MetricCatalogTest {
         : REPO.resolve("docs/reference/metrics.md");
     private static final Pattern NAME = Pattern.compile("^[a-z][a-z0-9]*(\\.[a-z0-9]+)+$");
     private static final Pattern ROW = Pattern.compile(
-        "^\\|\\s*`([^`]+)`\\s*\\|\\s*(counter|timer|gauge)\\s*\\|.*\\|$");
+        "^\\|\\s*`([^`]+)`\\s*\\|\\s*(counter|timer|gauge|histogram)\\s*\\|.*\\|$");
     private static final Pattern LITERAL = Pattern.compile(
-        "metrics\\.(counter|timer|gauge)\\(\"([^\"]+)\"");
+        "metrics\\.(counter|timer|gauge|histogram)\\(\"([^\"]+)\"");
 
     private static Path findRepoRoot() {
         Path candidate = Path.of("").toAbsolutePath().normalize();
@@ -102,6 +102,7 @@ class MetricCatalogTest {
                     case "counter" -> metrics.counter(entry.getKey());
                     case "timer" -> metrics.timer(entry.getKey());
                     case "gauge" -> metrics.gauge(entry.getKey(), () -> 0L);
+                    case "histogram" -> metrics.histogram(entry.getKey());
                     default -> throw new AssertionError(entry.getValue());
                 }
             }

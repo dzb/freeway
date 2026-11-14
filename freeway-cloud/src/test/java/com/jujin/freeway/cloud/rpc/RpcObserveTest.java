@@ -67,7 +67,7 @@ class RpcObserveTest {
                 "each successful call must increment cloud.rpc.calls");
             assertEquals(0, metrics.counterValue("cloud.rpc.failures", Map.of("service", "echo")),
                 "a 2xx call must not count as a failure");
-            assertEquals(1, metrics.timerCount("cloud.rpc.duration", Map.of("service", "echo")),
+            assertEquals(1, metrics.histogramCount("cloud.rpc.duration", Map.of("service", "echo")),
                 "the call duration must be recorded");
         }
     }
