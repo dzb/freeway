@@ -25,7 +25,7 @@ repository-level [`README`](../README.md) covers the project itself and
 - Every documentation directory uses lower-case kebab-case file names
   (`developer-guide.md`, `release-notes-1.5.7.md`); the repository root keeps
   only the conventional upper-case entry points (`README.md`, `AGENTS.md`,
-  `CHANGELOG.md`, `TASTE.md`).
+  `CHANGELOG.md`, `TASTE.md`, `ROADMAP.md`).
 - Category directories are plural (`modules/`, `design/`, `samples/`,
   `releases/`, `reference/`); a document lives in the most specific directory
   that describes its role, not in a per-version or per-author folder.

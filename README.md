@@ -21,7 +21,8 @@ both humans and coding agents.
 
 > **Latest release: 1.5.7** · **Development line: 2.0.0-SNAPSHOT**
 > See the [1.5.7 release notes](docs/releases/release-notes-1.5.7.md) and
-> [CHANGELOG.md](CHANGELOG.md) for what changed.
+> [CHANGELOG.md](CHANGELOG.md) for what changed; [ROADMAP.md](ROADMAP.md)
+> tracks the remaining evaluated work.
 
 ## Why Freeway
 
@@ -35,7 +36,7 @@ a concrete refusal behind it.
 | **Clean** | Every fact has one owner. If two layers can decide the same thing, they will eventually disagree. | `ResponsePlan` + `HttpTransport` own response execution; `RequestHead` + `RequestViewSupport` own request reads; `FlowContextState` keeps execution writes out of the public read interface; no scanning or bytecode weaving. |
 | **Composition-only** | A framework should provide contracts, not a base class to inherit from. Subclassing couples callers to implementation history and lets each adapter drift differently. | No Freeway class extends another Freeway class. Extension seams such as `HttpTransport`, `FlowDriver`, `ServiceRegistry` and `ServiceDiscovery` are interfaces; implementations are final and selected by the container. The only class `extends` clauses in `src/main` are standard-library boundary bases (exceptions, streams/collections, TLS, logging, publication). |
 | **Consistent** | A reader should not have to relearn the framework in every module. The same action has the same shape everywhere. | One `find`/`require` contract, one `metadata()`/`putMetadata()` family, one `withX` convention, one `ConfigKeys` per module, one lifecycle, and `ModuleDeclaration` as the single module-composition value. |
-| **Solid** | Safety comes from types and tests, not from comments asking callers to be careful. Failure modes should be unrepresentable or covered. | Sealed pattern switches force exhaustive dispatch; `ErrorMapper` returns data while `HttpServer` owns the only write path; `HttpTransport` owns commit/framing; `mvn clean test` passes 2,443 tests with zero failures, errors or skips. |
+| **Solid** | Safety comes from types and tests, not from comments asking callers to be careful. Failure modes should be unrepresentable or covered. | Sealed pattern switches force exhaustive dispatch; `ErrorMapper` returns data while `HttpServer` owns the only write path; `HttpTransport` owns commit/framing; `mvn clean test` passes 2,537 tests with zero failures, errors or skips. |
 | **Full-featured** | A framework is only useful when the whole application lifecycle is covered without dragging in a second stack. | Seven core modules plus adapters: IoC, boot/config, HTTP, DB/ORM/migrations, Flow, Cloud discovery/RPC/event mesh/observability/resilience/secrets/storage. HTTP includes routing, filters, multipart, SSE, static resources and WebSocket. |
 | **Agentic-friendly** | Coding agents need discoverable metadata and stable contracts, not log archaeology or guesswork. | `Container.describe()` and `AppRuntime.describe()` expose metadata-only composition snapshots; `RouteIndex.descriptions()` and `HttpServer.routeDescriptions()` expose route identity; stable error codes; every config key is declared in `ConfigKeys`; compile errors are the migration path. |
 
@@ -409,7 +410,7 @@ The refactor is backed by the core suite, not just by compile success:
 mvn clean test
   commons 422 · ioc 335 · boot 128 · http 527
   db 541 · flow 129 · cloud 361
-  total 2,443 — 0 failures, 0 errors, 0 skipped
+  total 2,537 — 0 failures, 0 errors, 0 skipped
 ```
 
 `mvn -Pdemos -DskipTests compile` also compiles the in-repo consumers against
