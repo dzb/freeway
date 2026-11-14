@@ -56,7 +56,9 @@ class MetricsAssemblyTest {
 
             HttpResponse<String> metrics = get(app, "/metrics");
             assertEquals(200, metrics.statusCode());
-            assertTrue(metrics.body().contains("# TYPE hits counter\nhits 1"),
+            assertTrue(metrics.body().contains("# TYPE hits counter"),
+                "the /metrics route must type the recorded metric");
+            assertTrue(metrics.body().contains("\nhits 1"),
                 "the /metrics route must export exactly the registry the Metrics SPI records into");
         }
     }

@@ -20,6 +20,32 @@ backend can replace the SPI without changing the names below.
 - **Timers record duration**: the exposition exposes a count and a seconds
   total (`_count`, `_seconds_total`); the Java side records nanoseconds.
 
+## Labels
+
+A metric name can carry bounded dimensions without changing the name:
+
+```java
+metrics.counter("freeway.http.requests.total", Map.of("method", "GET"));
+metrics.timer("freeway.http.requests.duration", Map.of("method", "GET", "status", "2xx"));
+metrics.counter("cloud.rpc.calls", Map.of("service", "orders"));
+```
+
+The default registry renders them as `name{key="value",...}` in the Prometheus
+text (labels sorted, values escaped). A backend that does not model dimensions
+keeps the aggregate: the `Metrics` SPI's labeled overloads delegate to the
+name-only methods, so instrumentation never branches on backend type.
+
+| Metric | Labels |
+|---|---|
+| `freeway.http.requests.total` | `method` — GET/HEAD/POST/PUT/PATCH/DELETE/OPTIONS/TRACE/CONNECT, otherwise `OTHER` |
+| `freeway.http.requests.duration` | `method` as above, `status` — `1xx`…`5xx`, or `unknown` |
+| `cloud.rpc.calls`, `cloud.rpc.failures`, `cloud.rpc.duration` | `service` — the RPC service id (deployment-bounded, never user input) |
+| all other metrics | no labels |
+
+Labels are dimensions, not a place for raw paths, URLs, request ids or other
+unbounded values. The `method`/`status` labels are bounded by construction; the
+`service` label is bounded by the number of deployed services.
+
 ## Catalog
 
 | Name | Type | Unit | Meaning |

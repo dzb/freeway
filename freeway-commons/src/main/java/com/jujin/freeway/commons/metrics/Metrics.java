@@ -1,5 +1,7 @@
 package com.jujin.freeway.commons.metrics;
 import java.time.Duration;
+import java.util.Map;
+import java.util.Objects;
 import java.util.function.Supplier;
 
 /**
@@ -22,10 +24,33 @@ public interface Metrics {
     /** Returns the named counter, creating it on first access. */
     Counter counter(String name);
 
+    /**
+     * Returns a counter distinguished by bounded labels (method, status class,
+     * service, ...). The default delegates to {@link #counter(String)} and
+     * ignores the labels: a backend that does not model dimensions still
+     * records the aggregate, and a caller never has to branch on backend type.
+     * The framework's default registry ({@code MetricsDefault}) implements
+     * them.
+     *
+     * <p>Labels are dimensions, not names: use a small fixed vocabulary and
+     * never raw paths, URLs, ids or user input as a value. The aggregate name
+     * is unchanged, so an unlabeled reader still sees the same series.
+     */
+    default Counter counter(String name, Map<String, String> labels) {
+        Objects.requireNonNull(labels, "labels");
+        return counter(name);
+    }
+
     /** Returns the named duration timer, creating it on first access.
      *  Defaults to a no-op so existing implementations keep working. */
     default Timer timer(String name) {
         return NOOP_TIMER;
+    }
+
+    /** Labeled timer; the default delegates to {@link #timer(String)}. */
+    default Timer timer(String name, Map<String, String> labels) {
+        Objects.requireNonNull(labels, "labels");
+        return timer(name);
     }
 
     /**
@@ -82,4 +107,10 @@ public interface Metrics {
      * value is read (e.g. pool depth, queue size).
      */
     void gauge(String name, Supplier<Number> value);
+
+    /** Labeled gauge; the default delegates to {@link #gauge(String, Supplier)}. */
+    default void gauge(String name, Map<String, String> labels, Supplier<Number> value) {
+        Objects.requireNonNull(labels, "labels");
+        gauge(name, value);
+    }
 }

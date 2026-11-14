@@ -63,11 +63,11 @@ class RpcObserveTest {
             RpcResponse resp = client.call("echo", RpcRequest.get("/api/echo"));
             assertTrue(resp.isSuccess());
 
-            assertEquals(1, metrics.counterValue("cloud.rpc.calls"),
+            assertEquals(1, metrics.counterValue("cloud.rpc.calls", Map.of("service", "echo")),
                 "each successful call must increment cloud.rpc.calls");
-            assertEquals(0, metrics.counterValue("cloud.rpc.failures"),
+            assertEquals(0, metrics.counterValue("cloud.rpc.failures", Map.of("service", "echo")),
                 "a 2xx call must not count as a failure");
-            assertEquals(1, metrics.timerCount("cloud.rpc.duration"),
+            assertEquals(1, metrics.timerCount("cloud.rpc.duration", Map.of("service", "echo")),
                 "the call duration must be recorded");
         }
     }
@@ -83,7 +83,7 @@ class RpcObserveTest {
             RpcResponse resp = client.call("echo", RpcRequest.get("/api/echo"));
             assertTrue(resp.isSuccess());
 
-            assertEquals(1, metrics.counterValue("cloud.rpc.calls"),
+            assertEquals(1, metrics.counterValue("cloud.rpc.calls", Map.of("service", "echo")),
                 "metrics must stay wired when tracing is disabled");
         }
     }

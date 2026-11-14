@@ -7,6 +7,7 @@ import com.jujin.freeway.cloud.resilience.Retryer;
 import com.jujin.freeway.commons.metrics.Metrics;
 
 import java.time.Duration;
+import java.util.Map;
 
 /**
  * The retry/breaker/limiter/deadline state machine behind
@@ -87,17 +88,17 @@ final class ResiliencePolicy {
             int attemptNo = 0;
             while (true) {
                 if (deadlineExceeded(callStart, deadlineNanos, 0)) {
-                    recordFailure(startNanos);
+                    recordFailure(serviceId, startNanos);
                     throw RpcException.timeout(serviceId);
                 }
                 // Rate limit first: a local rejection must not consume a half-open
                 // probe — only an actual probe outcome may settle the circuit.
                 if (!rateLimiter.tryAcquire()) {
-                    recordFailure(startNanos);
+                    recordFailure(serviceId, startNanos);
                     throw RpcException.rateLimited(serviceId);
                 }
                 if (!breaker.allowRequest()) {
-                    recordFailure(startNanos);
+                    recordFailure(serviceId, startNanos);
                     throw RpcException.circuitOpen(serviceId);
                 }
                 boolean probe = breaker.state() == CircuitBreaker.State.HALF_OPEN;
@@ -113,7 +114,7 @@ final class ResiliencePolicy {
                     if (span != null) {
                         span.addTag("http.status", String.valueOf(response.status()));
                     }
-                    recordCall(startNanos);
+                    recordCall(serviceId, startNanos);
                     return response;
                 } catch (RpcException failure) {
                     if (span != null) {
@@ -133,7 +134,7 @@ final class ResiliencePolicy {
                         && (idempotent || !failure.outcomeUnknown())
                         && retryer.shouldRetry(attemptNo, failure);
                     if (!mayRetry) {
-                        recordFailure(startNanos);
+                        recordFailure(serviceId, startNanos);
                         throw failure;
                     }
                     long backoff = retryer.backoffMillis(attemptNo);
@@ -141,7 +142,7 @@ final class ResiliencePolicy {
                     // orTimeout has fired the result is discarded anyway, and
                     // retrying keeps the connection pool and breaker busy.
                     if (deadlineExceeded(callStart, deadlineNanos, backoff)) {
-                        recordFailure(startNanos);
+                        recordFailure(serviceId, startNanos);
                         throw RpcException.timeout(serviceId);
                     }
                     sleepBackoff(backoff);
@@ -170,21 +171,23 @@ final class ResiliencePolicy {
         return System.nanoTime() - callStart + pendingMillis * 1_000_000L >= deadlineNanos;
     }
 
-    private void recordCall(long startNanos) {
+    private void recordCall(String serviceId, long startNanos) {
         if (metrics == null) {
             return;
         }
-        metrics.counter("cloud.rpc.calls").increment();
-        metrics.timer("cloud.rpc.duration")
+        Map<String, String> labels = Map.of("service", serviceId);
+        metrics.counter("cloud.rpc.calls", labels).increment();
+        metrics.timer("cloud.rpc.duration", labels)
             .record(Duration.ofNanos(System.nanoTime() - startNanos));
     }
 
-    private void recordFailure(long startNanos) {
+    private void recordFailure(String serviceId, long startNanos) {
         if (metrics == null) {
             return;
         }
-        metrics.counter("cloud.rpc.failures").increment();
-        metrics.timer("cloud.rpc.duration")
+        Map<String, String> labels = Map.of("service", serviceId);
+        metrics.counter("cloud.rpc.failures", labels).increment();
+        metrics.timer("cloud.rpc.duration", labels)
             .record(Duration.ofNanos(System.nanoTime() - startNanos));
     }
 

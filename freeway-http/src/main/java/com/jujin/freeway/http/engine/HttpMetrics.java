@@ -1,5 +1,6 @@
 package com.jujin.freeway.http.engine;
 
+import java.util.Map;
 import java.util.function.IntSupplier;
 
 import com.jujin.freeway.commons.metrics.Metrics;
@@ -25,12 +26,32 @@ final class HttpMetrics {
         return metrics.counter("freeway.http.connections.rejected");
     }
 
-    Metrics.Timer requestsDuration() {
-        return metrics.timer("freeway.http.requests.duration");
+    Metrics.Timer requestsDuration(Map<String, String> labels) {
+        return metrics.timer("freeway.http.requests.duration", labels);
     }
 
-    Metrics.Counter requestsTotal() {
-        return metrics.counter("freeway.http.requests.total");
+    Metrics.Counter requestsTotal(Map<String, String> labels) {
+        return metrics.counter("freeway.http.requests.total", labels);
+    }
+
+    /** Bounded method dimension: unknown extension methods collapse to OTHER. */
+    static String methodLabel(String method) {
+        if (method == null) {
+            return "OTHER";
+        }
+        return switch (method.toUpperCase(java.util.Locale.ROOT)) {
+            case "GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "TRACE",
+                 "CONNECT" -> method.toUpperCase(java.util.Locale.ROOT);
+            default -> "OTHER";
+        };
+    }
+
+    /** Bounded status dimension: 1xx..5xx, or unknown for an unset/invalid status. */
+    static String statusClass(int status) {
+        if (status < 100 || status >= 600) {
+            return "unknown";
+        }
+        return (status / 100) + "xx";
     }
 
     Metrics.Counter responses4xx() {

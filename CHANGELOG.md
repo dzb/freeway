@@ -147,6 +147,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Metrics carry bounded dimensions** (`freeway-commons` / `freeway-cloud` /
+  `freeway-http`): `Metrics` gained labeled `counter`/`timer`/`gauge` overloads
+  (the default delegates to the name-only methods, so existing backends keep
+  recording aggregates). `MetricsDefault` renders `name{label="value"}`;
+  HTTP request metrics carry `method` and `status` (bounded classes), RPC
+  metrics carry `service`. The unlabeled series for these metrics are no longer
+  emitted — aggregate them in the query.
 - **Failure classification is a code contract** (`freeway-commons`):
   `RpcException`, `SqlException`, `FlowException` and `StorageException`
   implement the shared `Failure` view (`retryable()`, `outcomeUnknown()`).

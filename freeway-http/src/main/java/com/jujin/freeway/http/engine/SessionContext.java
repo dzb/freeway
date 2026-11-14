@@ -6,6 +6,7 @@ import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.http.HttpExchange;
 import com.jujin.freeway.http.ExchangeHandler;
 import com.jujin.freeway.http.HttpServerConfig;
+import java.util.Map;
 
 /**
  * Bundles the shared dependencies a per-protocol session needs, so each
@@ -21,8 +22,8 @@ record SessionContext(
     ConnectionRegistry registry,
     HttpMetrics metrics
 ) {
-    Metrics.Timer requestTimer() {
-        return metrics.requestsDuration();
+    Metrics.Timer requestTimer(Map<String, String> labels) {
+        return metrics.requestsDuration(labels);
     }
 
     /**
@@ -33,14 +34,18 @@ record SessionContext(
      */
     void executeRequest(HttpExchange context) throws Exception {
         registry().requestsInFlight.incrementAndGet();
-        metrics().requestsTotal().increment();
+        String method = HttpMetrics.methodLabel(context.method());
+        metrics().requestsTotal(Map.of("method", method)).increment();
         long startNanos = System.nanoTime();
         try {
             handler().handle(context);
         } finally {
             registry().requestsInFlight.decrementAndGet();
-            requestTimer().record(System.nanoTime() - startNanos);
             int status = context.status();
+            requestTimer(Map.of(
+                    "method", method,
+                    "status", HttpMetrics.statusClass(status)))
+                .record(System.nanoTime() - startNanos);
             if (status >= 500) {
                 metrics().responses5xx().increment();
             } else if (status >= 400) {

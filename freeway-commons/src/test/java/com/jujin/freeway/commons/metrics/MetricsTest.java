@@ -55,6 +55,20 @@ class MetricsTest {
     }
 
     @Test
+    void labeledCallsFallBackToTheNameOnlyContract() {
+        Metrics metrics = new CountingMetrics();
+        Metrics.Counter counter = metrics.counter("hits", java.util.Map.of("method", "GET"));
+        counter.increment();
+        assertEquals(1, counter.value(),
+            "a backend without label support records the aggregate instead of dropping the call");
+
+        Metrics.Timer timer = metrics.timer("lat", java.util.Map.of("method", "GET"));
+        timer.record(Duration.ofMillis(5));
+        assertEquals(1, timer.count());
+        assertEquals(5_000_000L, timer.totalNanos());
+    }
+
+    @Test
     void timerDurationOverloadNormalizesToNanos() {
         Metrics metrics = new CountingMetrics();
         Metrics.Timer t = metrics.timer("lat");

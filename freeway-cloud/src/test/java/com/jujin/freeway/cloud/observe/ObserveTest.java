@@ -48,10 +48,44 @@ class ObserveTest {
         reg.gauge("depth", () -> 42);
 
         String text = reg.prometheusText();
-        assertTrue(text.contains("# TYPE hits counter\nhits 2"));
-        assertTrue(text.contains("# TYPE lat_count counter\nlat_count 1"));
-        assertTrue(text.contains("# TYPE lat_seconds_total counter\nlat_seconds_total 0.1"));
-        assertTrue(text.contains("# TYPE depth gauge\ndepth 42.0"));
+        assertTrue(text.contains("# TYPE hits counter"));
+        assertTrue(text.contains("\nhits 2"));
+        assertTrue(text.contains("# TYPE lat_count counter"));
+        assertTrue(text.contains("\nlat_count 1"));
+        assertTrue(text.contains("# TYPE lat_seconds_total counter"));
+        assertTrue(text.contains("\nlat_seconds_total 0.1"));
+        assertTrue(text.contains("# TYPE depth gauge"));
+        assertTrue(text.contains("\ndepth 42.0"));
+    }
+
+    @Test
+    void labeledSeriesStaySeparateAndRenderTheirDimensions() {
+        MetricsDefault reg = new MetricsDefault();
+        reg.counter("hits").increment();
+        reg.counter("hits", Map.of("method", "GET")).add(2);
+        reg.counter("hits", Map.of("method", "POST")).increment();
+        reg.timer("lat", Map.of("method", "GET")).record(Duration.ofMillis(50));
+
+        assertEquals(1, reg.counterValue("hits"));
+        assertEquals(2, reg.counterValue("hits", Map.of("method", "GET")));
+        assertEquals(1, reg.counterValue("hits", Map.of("method", "POST")));
+        assertEquals(1, reg.timerCount("lat", Map.of("method", "GET")));
+
+        String text = reg.prometheusText();
+        assertTrue(text.contains("hits 1"));
+        assertTrue(text.contains("hits{method=\"GET\"} 2"));
+        assertTrue(text.contains("hits{method=\"POST\"} 1"));
+        assertTrue(text.contains("lat_count{method=\"GET\"} 1"));
+        assertTrue(text.contains("lat_seconds_total{method=\"GET\"} 0.05"));
+        assertTrue(text.contains("# TYPE hits counter"));
+    }
+
+    @Test
+    void labelValuesAreEscapedForTheExposition() {
+        MetricsDefault reg = new MetricsDefault();
+        reg.counter("hits", Map.of("note", "a\"b\\c\nd")).increment();
+        String text = reg.prometheusText();
+        assertTrue(text.contains("hits{note=\"a\\\"b\\\\c\\nd\"} 1"), text);
     }
 
     @Test

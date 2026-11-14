@@ -87,7 +87,8 @@ final class Http1xSession {
                 if (req.isUpgradeRequest() && upgradeHeader != null
                         && !upgradeHeader.isEmpty()
                         && "websocket".equalsIgnoreCase(upgradeHeader.getFirst())) {
-                    ctx.metrics().requestsTotal().increment();
+                    ctx.metrics().requestsTotal(java.util.Map.of(
+                        "method", HttpMetrics.methodLabel(req.method()))).increment();
                     new WebSocketUpgrade(ctx).handle(connection, parser, req);
                     return;
                 }
