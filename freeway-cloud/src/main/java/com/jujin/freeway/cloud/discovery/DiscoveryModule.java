@@ -1,6 +1,7 @@
 package com.jujin.freeway.cloud.discovery;
 
 import com.jujin.freeway.cloud.CloudHooks;
+import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
 import com.jujin.freeway.cloud.annotation.Local;
 import com.jujin.freeway.cloud.health.CloudHealthContributor;
 import com.jujin.freeway.cloud.internal.ActiveBindingProbe;
@@ -16,6 +17,8 @@ import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.RuntimeHook;
 import com.jujin.freeway.ioc.annotation.Builtin;
 import com.jujin.freeway.ioc.annotation.Marker;
+import com.jujin.freeway.ioc.symbol.SymbolSource;
+import com.jujin.freeway.ioc.symbol.SymbolSpec;
 
 /**
  * IoC wiring for discovery: {@link ServiceRegistry} / {@link ServiceDiscovery}
@@ -33,6 +36,9 @@ import com.jujin.freeway.ioc.annotation.Marker;
 @Marker(Builtin.class)
 public final class DiscoveryModule implements ModuleEx {
 
+    private static final SymbolSpec<String> LOCAL_ZONE = SymbolSpec.of(
+        ConfigKeys.DISCOVERY_LOCAL_ZONE, String.class, "");
+
     @Override
     public void bind(Binder b) {
         b.bind(RegistryStore.class).to(RegistryStore.class);
@@ -45,7 +51,8 @@ public final class DiscoveryModule implements ModuleEx {
             .marker(Local.class)
             ;
         b.bind(LoadBalancer.class)
-            .to(LoadBalancerDefault.class)
+            .to((Container container) -> new LoadBalancerDefault(
+                container.get(SymbolSource.class).resolve(LOCAL_ZONE)))
             .marker(Local.class)
             ;
         // Lets container-created health contributions ask whether the @Local

@@ -86,7 +86,7 @@ freeway.cloud.registry.service-id=order-service
 | Startup | Resolve identity (service-id + host:port) → POST registration to **every** node; a single node failure logs a warning and the others keep serving; startup fails only when **all** nodes reject it |
 | Every 10 seconds | Heartbeat fan-out; a node returning 404 (it was restarted) → **refill it in place** with the instances this process has registered |
 | Every `discovery-feed-ms` | Pull the same-service instance list once and feed the whole snapshot to the event mesh — new instances are dialed automatically, departed ones are disconnected automatically |
-| Calling others | `RemoteProxyFactory` selects an instance from discovery results + weighted round-robin |
+| Calling others | `RemoteProxyFactory` selects an instance from discovery results + zone-aware weighted round-robin |
 | `GET /health/ready` | Reports real registration state: registered / draining / consecutive heartbeat failures |
 | Shutdown | Deregister from all nodes first (drain window), then close the process |
 
@@ -270,7 +270,7 @@ state check.
 
 | Capability | Application side | Keys / notes |
 |------------|------------------|--------------|
-| Load balancing | Weighted round-robin by default; `.primary()` swaps the strategy | `ServiceInstance.weight()/zone()/version()/isCanary()` are the strategy's inputs |
+| Load balancing | Weighted round-robin over the local zone when `freeway.cloud.discovery.local-zone` is set and instances declare `zone`; falls back to the full list when no local candidate exists. Canary stays a weight/custom-policy input. `.primary()` swaps the strategy | `ServiceInstance.weight()/zone()/version()/isCanary()` are the strategy's inputs |
 | Observability | `@Inject Metrics` (counters/timers/gauges, bounded labels; HTTP/RPC durations are fixed-bucket histograms), `@Inject Tracer` (`start(name)`), `@Inject MetricsSnapshot`; every request runs in a server-side span and logs carry `traceId`; span names use the declared route template (`GET /users/{id}`) and misses are `GET unmatched`; probes and `/metrics` are not traced; failure classification and HTTP mapping are in [the failure taxonomy](../reference/failures.md) | `GET /metrics` |
 | Resilience | Bound by default and used by RPC clients; `@Inject Retryer` / `RetryBudget` / `CircuitBreaker` / `RateLimiter`, or replace with `.primary()`; the per-service retry budget caps replay pressure | `freeway.cloud.rpc.resilience=auto\|off` and the per-capability keys |
 | Context propagation | `InvocationContext.current()` reads baggage/principal/trace; zero wiring | inbound filter + outbound header injection |

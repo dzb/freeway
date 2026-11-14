@@ -134,6 +134,11 @@ local or remote is a decision of the composition root, never of the call site.
 - calls are POST and travel outside any local transaction — post-commit side
   effects belong on the EventBus (Defer), not on RPC
 
+- `LoadBalancerDefault` prefers this process's zone when
+  `freeway.cloud.discovery.local-zone` is set and instances declare `zone`;
+  no local candidate falls back to the whole list. `canary` is a weight/custom
+  policy input, not an automatic traffic switch.
+
 ## Event Mesh (`EventMeshModule`)
 
 Presence-driven activation:

@@ -147,6 +147,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Zone-aware default load balancing** (`freeway-cloud`): with
+  `freeway.cloud.discovery.local-zone` set and `zone` metadata on instances,
+  `LoadBalancerDefault` runs weighted round-robin over local-zone candidates
+  and falls back to the full list when none exist. `canary` stays a
+  weight/custom-policy input; the default never redirects all traffic to a
+  canary just because one is present.
 - **RPC retry budget** (`freeway-cloud`): each service has a token bucket
   (`freeway.cloud.rpc.retry.budget`, default 20). Successful calls replenish it,
   each retry consumes one, and an exhausted budget fails the original failure

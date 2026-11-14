@@ -1,6 +1,7 @@
 package com.jujin.freeway.cloud.discovery;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.HashMap;
@@ -49,6 +50,65 @@ class LoadBalancerDefaultTest {
         assertEquals(1, hits.get("zero"),
             "weight 0 means minimum share, not invisible — removal is deregistration");
         assertEquals(1, hits.get("normal"));
+    }
+
+    @Test
+    void localZoneInstancesArePreferred() {
+        var lb = new LoadBalancerDefault("zone-a");
+        var local = instance("local", Map.of("zone", "zone-a"));
+        var remote = instance("remote", Map.of("zone", "zone-b"));
+        var instances = List.of(remote, local);
+
+        for (int i = 0; i < 10; i++) {
+            assertEquals("local", lb.choose(instances).orElseThrow().instanceId(),
+                "a process with a local zone must prefer it");
+        }
+    }
+
+    @Test
+    void noLocalCandidateFallsBackToTheWholeTopology() {
+        var lb = new LoadBalancerDefault("zone-c");
+        var a = instance("a", Map.of("zone", "zone-a"));
+        var b = instance("b", Map.of("zone", "zone-b"));
+        var instances = List.of(a, b);
+
+        var hits = new HashMap<String, Integer>();
+        for (int i = 0; i < 2; i++) {
+            hits.merge(lb.choose(instances).orElseThrow().instanceId(), 1, Integer::sum);
+        }
+        assertEquals(1, hits.get("a"), "no local zone must not empty the candidate set");
+        assertEquals(1, hits.get("b"));
+    }
+
+    @Test
+    void unknownZoneMetadataDoesNotTriggerPreference() {
+        var lb = new LoadBalancerDefault("zone-a");
+        var a = instance("a", Map.of());
+        var b = instance("b", Map.of());
+
+        var hits = new HashMap<String, Integer>();
+        for (int i = 0; i < 2; i++) {
+            hits.merge(lb.choose(List.of(a, b)).orElseThrow().instanceId(), 1, Integer::sum);
+        }
+        assertEquals(1, hits.get("a"));
+        assertEquals(1, hits.get("b"));
+    }
+
+    @Test
+    void weightsStillApplyInsideThePreferredZone() {
+        var lb = new LoadBalancerDefault("zone-a");
+        var heavy = instance("heavy", Map.of("zone", "zone-a", "weight", "3"));
+        var light = instance("light", Map.of("zone", "zone-a"));
+        var remote = instance("remote", Map.of("zone", "zone-b", "weight", "100"));
+        var instances = List.of(remote, heavy, light);
+
+        var hits = new HashMap<String, Integer>();
+        for (int i = 0; i < 4; i++) {
+            hits.merge(lb.choose(instances).orElseThrow().instanceId(), 1, Integer::sum);
+        }
+        assertEquals(3, hits.get("heavy"));
+        assertEquals(1, hits.get("light"));
+        assertNull(hits.get("remote"), "the remote zone is not in the local cycle");
     }
 
     @Test

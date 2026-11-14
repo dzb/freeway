@@ -132,6 +132,8 @@ public final class CloudModule implements ModuleEx {
         public static final String SECRET_TYPE        = "freeway.cloud.secret.type";
         public static final String STORAGE_TYPE       = "freeway.cloud.storage.type";
         public static final String DISCOVERY_TYPE        = "freeway.cloud.discovery.type";
+        /** This process's zone; blank = no zone preference. */
+        public static final String DISCOVERY_LOCAL_ZONE   = "freeway.cloud.discovery.local-zone";
         public static final String REGISTRY_TYPE         = "freeway.cloud.registry.type";
 
         // ── Default-optimal: feature posture ────────────────────
