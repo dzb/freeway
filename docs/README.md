@@ -29,7 +29,9 @@ repository-level [`README`](../README.md) covers the project itself and
 - Category directories are plural (`modules/`, `design/`, `samples/`,
   `releases/`, `reference/`); a document lives in the most specific directory
   that describes its role, not in a per-version or per-author folder.
-- Documentation is written in English from Freeway 2.0 on.
+- Documentation is written in English from Freeway 2.0 on. The single
+  exception is [`skills/freeway-dev/SKILL.zh.md`](../skills/freeway-dev/SKILL.zh.md),
+  the Chinese translation of the skill entry, linked from `SKILL.md`.
 - Framework comparisons and engineering evaluations are **not** part of this
   normative set; they live under [`demo/reference/`](../demo/reference/) and are
   provided for context only.

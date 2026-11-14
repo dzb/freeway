@@ -33,3 +33,23 @@ jobs:
       # this job existed nothing did.
       - name: Build core and demos
         run: mvn -B -ntp -Pdemos verify
+
+  docs:
+    name: docs consistency
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+      # Fast, focused gate: English-only, naming/placement, link integrity,
+      # index coverage and javadoc doc-path references. The core job runs the
+      # same tests as part of verify; this job makes a docs-only regression
+      # visible without waiting for the full build.
+      - name: Documentation checks
+        run: >-
+          mvn -B -ntp -pl freeway-boot -am test
+          -Dtest=ConfigDocsConsistencyTest,DocsLayoutConsistencyTest
+          -Dsurefire.failIfNoSpecifiedTests=false

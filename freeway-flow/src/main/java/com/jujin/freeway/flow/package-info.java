@@ -21,7 +21,7 @@
  * execution model, the join/loop semantics and the validation stance are
  * freeway-native rework, not upstream compatibility. See
  * {@code README.md} for the dependency-removal table and
- * {@code docs/graph-v3.md} for the schema.</p>
+ * {@code freeway-flow/docs/graph-v3.md} for the schema.</p>
  *
  * <h3>Core entry points</h3>
  * <ul>

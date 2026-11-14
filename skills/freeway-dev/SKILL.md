@@ -65,6 +65,8 @@ Scope primitives: `Defer` and `ScopedCache` share one `ScopeSession`. Use `Defer
 - Call out when behavior is an inference rather than a directly verified fact.
 - If asked to change docs or code, do the change instead of only describing it.
 
+> Chinese translation: [SKILL.zh.md](SKILL.zh.md) — kept as the one exception to the English-only documentation rule.
+
 ## References
 
 - [IoC reference](references/ioc.md)
