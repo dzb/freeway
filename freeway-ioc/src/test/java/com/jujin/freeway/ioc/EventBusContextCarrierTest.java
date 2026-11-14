@@ -1,6 +1,6 @@
 package com.jujin.freeway.ioc;
 
-import com.jujin.freeway.ioc.event.AsyncCarrier;
+import com.jujin.freeway.commons.util.ContextCarrier;
 import com.jujin.freeway.ioc.event.EventBus;
 
 import java.util.ArrayList;
@@ -15,18 +15,18 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
- * Pins the {@link AsyncCarrier} contract on the bus's async paths: capture
+ * Pins the {@link ContextCarrier} contract on the bus's async paths: capture
  * runs synchronously on the submitting thread, the wrapped task runs on an
  * executor thread, and a container without a bound carrier falls back to
  * identity without breaking delivery (never invents a context).
  */
-class EventBusAsyncCarrierTest {
+class EventBusContextCarrierTest {
 
     /**
      * Stub carrier recording where {@link #capture} ran and where the
      * returned (wrapped) runnable later ran.
      */
-    private static final class RecordingCarrier implements AsyncCarrier {
+    private static final class RecordingCarrier implements ContextCarrier {
         private final AtomicInteger captureCount = new AtomicInteger();
         private volatile Thread captureThread;
         private volatile Thread runThread;
@@ -44,7 +44,7 @@ class EventBusAsyncCarrierTest {
 
     private static Container containerWith(RecordingCarrier carrier) {
         return Freeway.create(binder ->
-            binder.bind(AsyncCarrier.class).to(c -> carrier));
+            binder.bind(ContextCarrier.class).to(c -> carrier));
     }
 
     @Test
@@ -96,7 +96,7 @@ class EventBusAsyncCarrierTest {
 
     @Test
     void unboundCarrierFallsBackToIdentityAndStillDelivers() throws Exception {
-        // No AsyncCarrier binding: EventBus must fall back to the identity
+        // No ContextCarrier binding: EventBus must fall back to the identity
         // function (work -> work) — dispatch stays bare but unbroken.
         try (Container container = Freeway.create()) {
             EventBus bus = EventBus.create(container);
@@ -122,8 +122,8 @@ class EventBusAsyncCarrierTest {
             // Distinct ids: two id-less bindings of one type are a
             // registration-time duplicate (IllegalStateException), not a
             // lookup-time ambiguity.
-            binder.bind(AsyncCarrier.class).id("first").to(c -> new RecordingCarrier());
-            binder.bind(AsyncCarrier.class).id("second").to(c -> new RecordingCarrier());
+            binder.bind(ContextCarrier.class).id("first").to(c -> new RecordingCarrier());
+            binder.bind(ContextCarrier.class).id("second").to(c -> new RecordingCarrier());
         })) {
             assertThrows(AmbiguousBindingException.class, () -> EventBus.create(container),
                 "isActiveBindingMarked must raise AmbiguousBindingException, not fall back to identity");

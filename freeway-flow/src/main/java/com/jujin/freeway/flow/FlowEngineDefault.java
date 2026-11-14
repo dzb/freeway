@@ -13,6 +13,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import com.jujin.freeway.commons.util.ContextCarrier;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
@@ -72,17 +73,26 @@ public final class FlowEngineDefault implements FlowEngine {
     private final List<FlowInterceptor> interceptors;
     /** The module-level exit, or null for a standalone engine (see FlowEngine). */
     private final BiConsumer<String, Object> eventSink;
+    /** Ambient-context carrier for parallel branch workers, or null. */
+    private final ContextCarrier contextCarrier;
 
     public FlowEngineDefault(Map<String, FlowDriver> drivers,
             List<FlowInterceptor> interceptors) {
-        this(drivers, interceptors, null);
+        this(drivers, interceptors, null, null);
     }
 
     public FlowEngineDefault(Map<String, FlowDriver> drivers,
             List<FlowInterceptor> interceptors, BiConsumer<String, Object> eventSink) {
+        this(drivers, interceptors, eventSink, null);
+    }
+
+    public FlowEngineDefault(Map<String, FlowDriver> drivers,
+            List<FlowInterceptor> interceptors, BiConsumer<String, Object> eventSink,
+            ContextCarrier contextCarrier) {
         this.drivers = Map.copyOf(Objects.requireNonNull(drivers, "drivers"));
         this.interceptors = List.copyOf(Objects.requireNonNull(interceptors, "interceptors"));
         this.eventSink = eventSink;
+        this.contextCarrier = contextCarrier;
     }
 
     @Override
@@ -531,7 +541,7 @@ public final class FlowEngineDefault implements FlowEngine {
             .capturing(execution.driver().executor());
         for (Node branch : branches) {
             try {
-                ctxExecutor.execute(() -> {
+                Runnable task = () -> {
                     try {
                         if (errorRef.get() != null) return;
                         runBranch(execution, node, branch);
@@ -540,7 +550,11 @@ public final class FlowEngineDefault implements FlowEngine {
                     } finally {
                         latch.countDown();
                     }
-                });
+                };
+                // The carrier restores trace/principal/MDC on the worker; the
+                // frame executor above restores the branch scope. Both capture
+                // on this submitting thread, so nesting composes.
+                ctxExecutor.execute(contextCarrier == null ? task : contextCarrier.capture(task));
             } catch (RejectedExecutionException rejected) {
                 // Executor no longer accepting work (shutting down): record
                 // and release this branch's latch slot so await() cannot hang

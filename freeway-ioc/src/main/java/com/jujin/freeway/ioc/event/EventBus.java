@@ -1,6 +1,7 @@
 package com.jujin.freeway.ioc.event;
 
 import com.jujin.freeway.commons.metrics.Metrics;
+import com.jujin.freeway.commons.util.ContextCarrier;
 import com.jujin.freeway.commons.scoped.Defer;
 import com.jujin.freeway.ioc.Container;
 
@@ -58,7 +59,7 @@ public final class EventBus implements AutoCloseable {
     private final EventExecutorSupport executors;
     /**
      * Restores the submitting thread's ambient context on the executor
-     * thread. Identity when no {@link AsyncCarrier} is bound (a bus
+     * thread. Identity when no {@link ContextCarrier} is bound (a bus
      * without the cloud context module dispatches bare, as before).
      * Binding the type more than once without a primary does not fall
      * back to identity: {@code isActiveBindingMarked} raises the same
@@ -78,14 +79,14 @@ public final class EventBus implements AutoCloseable {
      * A bus over its three collaborators, none of which is the container:
      * the {@link Metrics} that observes it, the composition-time
      * {@link EventSubscriber} contributions, and an optional
-     * {@link AsyncCarrier}. The bus outlives composition and is handed to
+     * {@link ContextCarrier}. The bus outlives composition and is handed to
      * application code, so it must not hold a container that can reach
      * everything (see {@code AGENTS.md}, "Who may hold the Container").
      *
      * @param carrier the ambient-context carrier, or {@code null} for none
      */
     public EventBus(Metrics metrics, List<EventSubscriber<?>> subscribers,
-            AsyncCarrier carrier) {
+            ContextCarrier carrier) {
         this.stats = new EventStats(Objects.requireNonNull(metrics, "metrics"));
         // Contributions are sealed by the time the bus is built (the container
         // resolves it lazily, after composition), so the list is the table —
@@ -113,8 +114,8 @@ public final class EventBus implements AutoCloseable {
         return new EventBus(
             container.get(Metrics.class),
             subscribers,
-            container.isActiveBindingMarked(AsyncCarrier.class)
-                ? container.get(AsyncCarrier.class)
+            container.isActiveBindingMarked(ContextCarrier.class)
+                ? container.get(ContextCarrier.class)
                 : null);
     }
 
@@ -209,7 +210,7 @@ public final class EventBus implements AutoCloseable {
     /** Async version of {@link #publish(Object)}.
      *
      * <p>The submitting thread's ambient async context (see
-     * {@link AsyncCarrier} — the cloud context module binds the
+     * {@link ContextCarrier} — the cloud context module binds the
      * {@code InvocationContext} carrier) is captured here and restored
      * around dispatch on the executor thread. A traceless submit dispatches
      * bare, like the mesh plane's inbound rule. */

@@ -1196,6 +1196,22 @@ overrides silently. WebSocket routes follow the same rule, because both
 families share one `RouteIndex`: matching, path variables and specificity are
 identical, and so is the duplicate check.
 
+**Matching precedence** is a contract, not insertion order. When several routes
+recognize a request, the first applicable rule wins:
+
+| Order | Rule | Example |
+|---|---|---|
+| 1 | Literal segment | `/users/me` beats `/users/{id}` |
+| 2 | Regex-constrained parameter | `{id:\d+}` beats `{name}` for `/items/42` |
+| 3 | Plain path parameter | `{name}` serves values the regex rejects |
+| 4 | Terminal wildcard | `{path:.*}` only when no more specific route matches |
+| — | Method | The exact method wins; `HEAD` falls back to `GET`; `methods()` drives `Allow` for 405 |
+
+Path variables are decoded per segment: `%2F` stays inside its original segment
+and never creates a new path level. A terminal wildcard cannot share a node
+with a literal child — registration refuses the ambiguous shape instead of
+letting one silently shadow the other.
+
 **Choosing lambda vs handler class:**
 
 | Style | When to use |
@@ -2146,7 +2162,14 @@ ordering — lives in [cloud.md](modules/cloud.md).** Design rationale:
 
 ## Flow (`freeway-flow`)
 
-Lightweight graph-based workflow engine. Graphs are defined by the canonical `GraphSpec` (`nodes`+`links` structure with explicit `entry`). Zero external dependencies beyond commons + ioc. The legacy solon-flow `layout` format was removed — only the canonical shape loads.
+Lightweight graph-based workflow engine.
+
+Parallel branches inherit the submitting thread's ambient work context through
+the single `ContextCarrier` binding (the cloud context module supplies it):
+trace, principal, baggage and MDC reach every branch worker, exactly as they
+reach an `EventBus.publishAsync` task. A standalone engine (`FlowEngine.create()`
+without a carrier) runs branches bare; the branch scope itself is still carried
+by the flow engine's own `ScopedValue` frame. Graphs are defined by the canonical `GraphSpec` (`nodes`+`links` structure with explicit `entry`). Zero external dependencies beyond commons + ioc. The legacy solon-flow `layout` format was removed — only the canonical shape loads.
 
 **7 node types:**
 

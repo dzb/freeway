@@ -20,7 +20,7 @@ import com.jujin.freeway.cloud.secret.SecretModule;
 import com.jujin.freeway.cloud.secret.SecretStore;
 import com.jujin.freeway.cloud.storage.ObjectStorage;
 import com.jujin.freeway.cloud.storage.StorageModule;
-import com.jujin.freeway.ioc.event.AsyncCarrier;
+import com.jujin.freeway.commons.util.ContextCarrier;
 import com.jujin.freeway.http.route.Route;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.symbol.KnownKeys;
@@ -76,7 +76,7 @@ class CloudModuleTest {
         // Placing the bundle is placing its eight submodules — asserted through what each one makes
         // available, not through the tree the framework builds internally.
         try (Container container = Freeway.create(new CloudModule())) {
-            assertNotNull(container.get(AsyncCarrier.class), "context: the async carrier is bound");
+            assertNotNull(container.get(ContextCarrier.class), "context: the async carrier is bound");
             assertNotNull(container.get(SecretStore.class), "secret");
             assertNotNull(container.get(ServiceRegistry.class), "discovery: registry");
             assertNotNull(container.get(ServiceDiscovery.class), "discovery: client");

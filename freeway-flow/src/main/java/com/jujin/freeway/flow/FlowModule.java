@@ -1,6 +1,7 @@
 package com.jujin.freeway.flow;
 
 import com.jujin.freeway.ioc.Binder;
+import com.jujin.freeway.commons.util.ContextCarrier;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.Scope;
@@ -57,8 +58,11 @@ public final class FlowModule implements ModuleEx {
                 List<FlowInterceptor> interceptors =
                     container.extension(FlowInterceptor.class).all();
                 EventBus events = container.get(EventBus.class);
+                ContextCarrier carrier = container.isActiveBindingMarked(ContextCarrier.class)
+                    ? container.get(ContextCarrier.class)
+                    : null;
                 return FlowEngine.create(driverMap, interceptors,
-                    (topic, payload) -> events.publish("flow." + topic, payload));
+                    (topic, payload) -> events.publish("flow." + topic, payload), carrier);
             })
             .scope(Scope.SINGLETON);
     }

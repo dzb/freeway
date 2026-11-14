@@ -4,7 +4,9 @@ import com.jujin.freeway.cloud.context.internal.AuthPropagator;
 import com.jujin.freeway.cloud.context.internal.BaggagePropagator;
 import com.jujin.freeway.cloud.context.internal.PropagationFilter;
 import com.jujin.freeway.cloud.context.internal.TracePropagator;
-import com.jujin.freeway.ioc.event.AsyncCarrier;
+import com.jujin.freeway.commons.util.ContextCarrier;
+import java.util.Map;
+import org.slf4j.MDC;
 import com.jujin.freeway.http.filter.HttpFilter;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.ModuleEx;
@@ -25,13 +27,41 @@ public final class CloudContextModule implements ModuleEx {
         // the same trust domain — the handler sees what a synchronous publish
         // on the submitting thread would have seen. A traceless submit
         // dispatches bare (the mesh inbound rule).
-        b.bind(AsyncCarrier.class).to(c -> work -> {
-            var captured = InvocationContext.current();
-            if (captured.isEmpty() || captured.get().carriesNothing()) {
+        // One carrier for every context this module owns: the invocation
+        // context (trace/principal/baggage) *and* the MDC fields the tracer
+        // writes. A worker therefore logs the same traceId/spanId a
+        // synchronous call would, and the previous worker state is restored
+        // afterwards so a pooled thread cannot leak one task into the next.
+        b.bind(ContextCarrier.class).to(c -> work -> {
+            InvocationContext ctx = InvocationContext.current()
+                .filter(value -> !value.carriesNothing())
+                .orElse(null);
+            Map<String, String> capturedMdc = MDC.getCopyOfContextMap();
+            boolean hasMdc = capturedMdc != null && !capturedMdc.isEmpty();
+            if (ctx == null && !hasMdc) {
                 return work;
             }
-            InvocationContext ctx = captured.get();
-            return () -> InvocationContext.runWith(ctx, work);
+            return () -> {
+                Map<String, String> previousMdc = MDC.getCopyOfContextMap();
+                try {
+                    if (hasMdc) {
+                        MDC.setContextMap(capturedMdc);
+                    } else {
+                        MDC.clear();
+                    }
+                    if (ctx != null) {
+                        InvocationContext.runWith(ctx, work);
+                    } else {
+                        work.run();
+                    }
+                } finally {
+                    if (previousMdc == null) {
+                        MDC.clear();
+                    } else {
+                        MDC.setContextMap(previousMdc);
+                    }
+                }
+            };
         });
         b.contribute(Propagator.class).add("freeway.cloud.propagation.trace", new TracePropagator());
         // Container-created so the auth propagator can read the

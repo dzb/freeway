@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Renamed / API vocabulary
 
+- **`AsyncCarrier` → `ContextCarrier`** (`freeway-commons`): the ambient
+  work-context carrier moved out of `ioc.event` into
+  `com.jujin.freeway.commons.util`, beside `ContextExecutor`. It is the one
+  contract every offload point uses (event bus, flow parallel branches,
+  asynchronous RPC); the cloud context module's binding now captures MDC in
+  addition to the invocation context, so an asynchronous task logs the same
+  `traceId`/`spanId` as inline code and restores the worker's previous MDC
+  afterwards.
+
 - **HTTP**: `HttpContext` → `HttpExchange`, `HttpContextSupport` →
   `HttpExchangeSupport`; `ResolvableSupport` → `ResolvableValue`, `SslSettings` →
   `SslConfig`; `HttpServer.secure` / `HttpEngine.secure` → `isSecure`;
@@ -137,6 +146,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fails when `HttpServer` is constructed.
 
 ### Changed
+
+- **Flow parallel branches inherit ambient context** (`freeway-flow`): a
+  `PARALLEL` fork now wraps each branch with the bound `ContextCarrier`, so
+  trace/principal/baggage/MDC cross into the branch worker. Previously only the
+  branch write frame crossed, and a branch that logged or called out ran bare.
+  The carrier is optional: a standalone engine runs branches bare, as before.
 
 - **Logging backend selection defaults to Freeway's JUL provider** (freeway-commons): previously an
   external SLF4J provider on the classpath (Logback, Log4j 2, slf4j-simple) was pinned automatically

@@ -1,6 +1,7 @@
 package com.jujin.freeway.flow;
 
 import java.util.Collection;
+import com.jujin.freeway.commons.util.ContextCarrier;
 import java.util.Optional;
 import java.util.List;
 import java.util.function.BiConsumer;
@@ -61,6 +62,20 @@ public interface FlowEngine {
             List<FlowInterceptor> interceptors,
             BiConsumer<String, Object> eventSink) {
         return new FlowEngineDefault(drivers, interceptors, eventSink);
+    }
+
+    /**
+     * Creates an engine whose parallel branches run under {@code carrier}.
+     * The carrier captures the submitting thread's ambient work context
+     * (trace, principal, MDC, ...) and restores it in each branch worker, so
+     * a branch logs and calls out with the same context as inline code.
+     * A {@code null} carrier keeps the worker's ambient state untouched.
+     */
+    static FlowEngine create(Map<String, FlowDriver> drivers,
+            List<FlowInterceptor> interceptors,
+            BiConsumer<String, Object> eventSink,
+            ContextCarrier carrier) {
+        return new FlowEngineDefault(drivers, interceptors, eventSink, carrier);
     }
 
     // --- driver ---
