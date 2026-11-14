@@ -147,6 +147,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **HPACK truncated literals are compression errors, not AIOOBE**:
+  a peer block ending exactly where a literal name/value starts now throws
+  `Http2Exception(COMPRESSION_ERROR)`; `HPackRobustnessTest` fuzzes arbitrary
+  blocks and Huffman bytes, and `Http2FrameRobustnessTest` fuzzes arbitrary and
+  structured frames. Both are fixed-seed, so failures reproduce.
+- **The default metrics registry has a series budget**: 10,000 distinct
+  name+label meter sets per registry; the next new set throws
+  `IllegalArgumentException` at registration. Re-registering an admitted set is
+  still allowed. This makes label-cardinality mistakes loud before memory or
+  the scrape payload grows without bound.
 - **HTTP and RPC durations are histograms** (`freeway-commons` /
   `freeway-cloud` / `freeway-http`): `Metrics.Histogram` records the fixed
   framework bucket set (5ms…10s, plus `+Inf`); the default registry renders

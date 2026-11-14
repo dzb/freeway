@@ -77,6 +77,19 @@ request ids or other unbounded values. The `method`/`status` labels are bounded
 by construction; `route` is bounded by the registered route table plus five
 categories; `service` is bounded by the number of deployed services.
 
+## Series Budget
+
+The default registry admits at most **10,000 distinct name+label meter sets**.
+Registering a new set beyond that throws `IllegalArgumentException` at the
+instrumentation site — it does not silently drop samples or grow until the JVM
+runs out of memory. Re-registering an admitted set (a gauge refresh, another
+sample on the same counter) is not a new series.
+
+This is the guardrail behind the label rules: `method`, `status` and `route`
+are bounded, and `service` is bounded by the deployment. If your dimensions are
+not bounded, aggregate before recording or use a backend with its own
+cardinality policy; do not push raw ids into labels.
+
 ## Histograms
 
 `freeway.http.requests.duration` and `cloud.rpc.duration` are histograms with

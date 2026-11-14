@@ -30,6 +30,7 @@
 ## Observability & Failures
 
 - Metric names are static and dot-separated; **never** put a raw path, URL, request id or tenant id in a label. Use `routePattern()` for the declared template; misses are `unmatched`.
+- `MetricsDefault` admits 10,000 distinct name+label sets and throws at registration beyond that; bounded labels are a correctness requirement, not only a style rule.
 - `timer` only gives count/average; use `histogram` for p95/p99. Buckets are fixed by the framework — do not invent arbitrary bucket lists.
 - `histogram_quantile` is approximate and single-process in `MetricsDefault`; cross-instance aggregation is the backend's job.
 - HTTP duration histograms carry `method` + `route`; `status` stays on the 4xx/5xx counters, so do not expect it on the duration series.

@@ -364,7 +364,12 @@ final class HPackContext {
      */
     private int decodeName(byte[] block, int pos, int index, Http2HeaderField field) throws IOException {
         if (index == 0) {
-            // Literal name
+            // Literal name. A block ending exactly where the name should start
+            // is truncated, not an array access.
+            if (pos >= block.length) {
+                throw new Http2Exception(Http2ErrorCode.COMPRESSION_ERROR,
+                    "Truncated HPACK literal name");
+            }
             boolean huffmanEncoded = (block[pos] & 0x80) != 0;
             var result = readInt(block, pos, 7);
             if (result.position + result.value > block.length)
@@ -401,6 +406,13 @@ final class HPackContext {
      * Decodes a header value (supports Huffman encoding).
      */
     private int decodeValue(byte[] block, int pos, Http2HeaderField field) throws IOException {
+        // A block ending exactly where the value should start is truncated.
+        // readInt() checks its own prefix byte, but the huffman flag is read
+        // before it.
+        if (pos >= block.length) {
+            throw new Http2Exception(Http2ErrorCode.COMPRESSION_ERROR,
+                "Truncated HPACK literal value");
+        }
         boolean huffmanEncoded = (block[pos] & 0x80) != 0;
         var result = readInt(block, pos, 7);
         if (result.position + result.value > block.length) throw new Http2Exception(Http2ErrorCode.COMPRESSION_ERROR);

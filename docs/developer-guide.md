@@ -2157,8 +2157,10 @@ metrics.histogram("orders.duration",
 
 `timer` is for custom metrics that only need count/average; the framework's HTTP
 and RPC durations are `histogram`. Labels are bounded dimensions: use a small
-fixed vocabulary and never raw paths, URLs, ids or user input. A backend that
-does not implement labels/histograms still records the name-only aggregate, so
+fixed vocabulary and never raw paths, URLs, ids or user input. The default
+registry admits at most 10,000 distinct name+label sets and throws at
+registration beyond that, so cardinality mistakes stay loud. A backend that does
+not implement labels/histograms still records the name-only aggregate, so
 instrumentation never branches on backend type. The HTTP request series carry
 `method` + `route` (+ `status` on the 4xx/5xx counters); `route` is the declared
 template (`/users/{id}`) or one of `unmatched`, `static`, `spa`, `health`,

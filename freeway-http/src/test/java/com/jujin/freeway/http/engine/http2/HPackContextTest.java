@@ -71,6 +71,25 @@ class HPackContextTest {
     }
 
     @Test
+    void truncatedLiteralNameIsACompressionError() {
+        // Without-indexing literal, name index 0 (literal follows), block ends:
+        // the decoded name position is past the array. It must be a compression
+        // error, not an ArrayIndexOutOfBoundsException.
+        var ex = assertThrows(Http2Exception.class,
+            () -> new HPackContext().decode(new byte[]{(byte) 0x00}));
+        assertEquals(Http2ErrorCode.COMPRESSION_ERROR, ex.errorCode());
+    }
+
+    @Test
+    void truncatedLiteralValueIsACompressionError() {
+        // Without-indexing literal with literal name "x" and no value prefix.
+        var ex = assertThrows(Http2Exception.class,
+            () -> new HPackContext().decode(
+                new byte[]{(byte) 0x00, (byte) 0x01, (byte) 'x'}));
+        assertEquals(Http2ErrorCode.COMPRESSION_ERROR, ex.errorCode());
+    }
+
+    @Test
     void encodeStringHandlesLength128() {
         byte[] value = new byte[128];
         byte[] encoded = HPackContext.encodeString(value);

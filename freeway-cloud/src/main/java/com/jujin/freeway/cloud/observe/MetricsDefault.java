@@ -26,8 +26,14 @@ import java.util.function.Supplier;
  */
 public final class MetricsDefault implements Metrics, MetricsSnapshot {
 
+    /** Default cap on distinct name+label meter sets in one registry. */
+    public static final int DEFAULT_MAX_SERIES = 10_000;
+
     private static final int MAX_LABELS = 16;
 
+    private final int maxSeries;
+    /** Every admitted name+label set, across meter types. */
+    private final java.util.Set<Key> admitted = ConcurrentHashMap.newKeySet();
     private final Map<Key, LongAdder> counters = new ConcurrentHashMap<>();
     private final Map<Key, TimerData> timers = new ConcurrentHashMap<>();
     private final Map<Key, Supplier<Number>> gauges = new ConcurrentHashMap<>();
@@ -37,6 +43,18 @@ public final class MetricsDefault implements Metrics, MetricsSnapshot {
      *  ({@code _count}/{@code _seconds_total}) collide with plain meters too. */
     private final Map<String, String> renderedSeries = new ConcurrentHashMap<>();
 
+    public MetricsDefault() {
+        this(DEFAULT_MAX_SERIES);
+    }
+
+    /** Test/embedded form with an explicit series budget. */
+    MetricsDefault(int maxSeries) {
+        if (maxSeries <= 0) {
+            throw new IllegalArgumentException("maxSeries must be positive: " + maxSeries);
+        }
+        this.maxSeries = maxSeries;
+    }
+
     @Override
     public Counter counter(String name) {
         return counter(name, Map.of());
@@ -45,6 +63,7 @@ public final class MetricsDefault implements Metrics, MetricsSnapshot {
     @Override
     public Counter counter(String name, Map<String, String> labels) {
         Key key = key(name, labels);
+        admit(key);
         registerSeriesName(renderedSeries, key, "counter",
             prometheusName(key.name()) + renderLabels(key.labels()));
         return new CounterImpl(counters.computeIfAbsent(key, k -> new LongAdder()));
@@ -58,6 +77,7 @@ public final class MetricsDefault implements Metrics, MetricsSnapshot {
     @Override
     public Timer timer(String name, Map<String, String> labels) {
         Key key = key(name, labels);
+        admit(key);
         String base = prometheusName(key.name());
         String renderedLabels = renderLabels(key.labels());
         registerSeriesName(renderedSeries, key, "timer",
@@ -74,6 +94,7 @@ public final class MetricsDefault implements Metrics, MetricsSnapshot {
     @Override
     public void gauge(String name, Map<String, String> labels, Supplier<Number> supplier) {
         Key key = key(name, labels);
+        admit(key);
         registerSeriesName(renderedSeries, key, "gauge",
             prometheusName(key.name()) + renderLabels(key.labels()));
         gauges.put(key, supplier);
@@ -87,6 +108,7 @@ public final class MetricsDefault implements Metrics, MetricsSnapshot {
     @Override
     public Histogram histogram(String name, Map<String, String> labels) {
         Key key = key(name, labels);
+        admit(key);
         String base = prometheusName(key.name());
         String renderedLabels = renderLabels(key.labels());
         List<String> renderedNames = new ArrayList<>();
@@ -349,6 +371,25 @@ public final class MetricsDefault implements Metrics, MetricsSnapshot {
         return value.replace("\\", "\\\\")
             .replace("\n", "\\n")
             .replace("\"", "\\\"");
+    }
+
+    private void admit(Key key) {
+        if (admitted.contains(key)) {
+            return;
+        }
+        synchronized (admitted) {
+            if (admitted.contains(key)) {
+                return;
+            }
+            if (admitted.size() >= maxSeries) {
+                throw new IllegalArgumentException(
+                    "Metric series budget exceeded (" + maxSeries
+                        + " name+label sets): metric '" + key.name()
+                        + "' must use bounded label values; aggregate or drop the "
+                        + "dimension before recording");
+            }
+            admitted.add(key);
+        }
     }
 
     private static Key key(String name, Map<String, String> labels) {
