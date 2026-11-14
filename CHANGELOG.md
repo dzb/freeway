@@ -147,6 +147,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Property baselines cover HPACK, JSON and SQL parameters**: `HPackPropertyTest`
+  round-trips random header blocks through the frame split and decoder (plus
+  Huffman), `JsonPropertyTest` round-trips random trees and bounds malformed
+  input to `IllegalArgumentException`, and `SqlParameterPropertyTest` pins
+  positional/named/repeated/comment/string/cast binding. All use fixed seeds,
+  so a failure is reproducible.
 - **Hot reload has an explicit contract** (`freeway-boot` / docs): the file tier
   is swapped live and `SymbolSource` sees new values, but module binding and
   already-injected singletons are startup-static. `docs/configuration.md` now
