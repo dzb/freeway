@@ -305,7 +305,14 @@ public final class SseEmitter implements AutoCloseable {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt(); // shutting down
         } catch (IOException e) {
-            closed = true; // the stream is broken — stop the heartbeat
+            // The stream is broken (client gone). Release the pump exactly as
+            // complete() would: an idle publisher leaves it parked on `done`
+            // forever, keeping the handler, response and request scope alive.
+            try {
+                complete();
+            } catch (IOException ignored) {
+                // Already broken; the latch and cancellation happened.
+            }
         }
     }
 }

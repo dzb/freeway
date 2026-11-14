@@ -150,8 +150,11 @@ public final class RegistryStore {
             // One definition of the threshold, owned by ServiceHealth — this method
             // used to spell the same comparison out inline.
             if (e.health.isStale(maxAge)) {
-                // Stale — evict so the map cannot grow without bound.
-                instances.remove(me.getKey(), e);
+                // Stale — evict so the map cannot grow without bound. Re-check
+                // inside the bin lock: a heartbeat may have refreshed this very
+                // Entry after the read above, which must not be evicted.
+                instances.compute(me.getKey(), (key, current) ->
+                    current == e && current.health.isStale(maxAge) ? null : current);
             } else if (e.health.live() && e.health.ready()) {
                 result.add(e.instance);
             }

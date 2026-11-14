@@ -29,9 +29,9 @@ import com.jujin.freeway.http.route.Route;
  * :path} must be origin-form ("/..." or "*" for OPTIONS only — no "//…"
  * authority-form, no absolute-form), and {@code :authority} must follow the
  * HTTP/1.1 Host character rules. {@code :authority} is optional for
- * non-CONNECT requests. Invalid pseudo-headers fail the connection with
- * GOAWAY(PROTOCOL_ERROR), matching how HeaderFields.validate() errors are
- * surfaced by Http2Connection.
+ * non-CONNECT requests. Invalid pseudo-headers are a per-stream error: the
+ * server resets that stream with PROTOCOL_ERROR (RFC 9113 §8.2.1) and keeps
+ * the connection and its other streams alive.
  */
 class Http2PseudoHeaderValidationTest {
 
@@ -49,7 +49,7 @@ class Http2PseudoHeaderValidationTest {
         byte[] block = concat(new byte[] {GET, (byte) 0x44, 0x04},
             "nope".getBytes(StandardCharsets.ISO_8859_1),
             new byte[] {SCHEME_HTTP}, authority("localhost"));
-        assertGoawayProtocolError(block, "a :path without a leading '/'");
+        assertStreamReset(block, "a :path without a leading '/'");
     }
 
     @Test
@@ -58,7 +58,7 @@ class Http2PseudoHeaderValidationTest {
         byte[] block = concat(new byte[] {GET, (byte) 0x44, 0x0C},
             "//evil.com/x".getBytes(StandardCharsets.ISO_8859_1),
             new byte[] {SCHEME_HTTP}, authority("localhost"));
-        assertGoawayProtocolError(block, "a network-path :path '//…'");
+        assertStreamReset(block, "a network-path :path '//…'");
     }
 
     @Test
@@ -67,7 +67,7 @@ class Http2PseudoHeaderValidationTest {
         byte[] block = concat(new byte[] {GET, (byte) 0x44, 0x11},
             "http://evil.com/x".getBytes(StandardCharsets.ISO_8859_1),
             new byte[] {SCHEME_HTTP}, authority("localhost"));
-        assertGoawayProtocolError(block, "an absolute-form :path");
+        assertStreamReset(block, "an absolute-form :path");
     }
 
     @Test
@@ -75,14 +75,14 @@ class Http2PseudoHeaderValidationTest {
         // :authority "user@host" — '@' is forbidden in authority/Host.
         byte[] block = concat(new byte[] {GET, PATH_INDEX, SCHEME_HTTP,
             (byte) 0x41, 0x09}, "user@host".getBytes(StandardCharsets.ISO_8859_1));
-        assertGoawayProtocolError(block, "an :authority with userinfo");
+        assertStreamReset(block, "an :authority with userinfo");
     }
 
     @Test
     void authorityWithWhitespaceIsRejected() throws Exception {
         byte[] block = concat(new byte[] {GET, PATH_INDEX, SCHEME_HTTP,
             (byte) 0x41, 0x05}, "ho st".getBytes(StandardCharsets.ISO_8859_1));
-        assertGoawayProtocolError(block, "an :authority with whitespace");
+        assertStreamReset(block, "an :authority with whitespace");
     }
 
     @Test
@@ -152,7 +152,7 @@ class Http2PseudoHeaderValidationTest {
             TestServerConfig.loopback(), HttpPipeline.of(Route.get("/", ctx -> ctx.sendText(200, "ok"))));
     }
 
-    private static void assertGoawayProtocolError(byte[] block, String what)
+    private static void assertStreamReset(byte[] block, String what)
             throws Exception {
         var server = server();
         server.start();
@@ -170,16 +170,19 @@ class Http2PseudoHeaderValidationTest {
                     int type = header[3] & 0xff;
                     byte[] payload = new byte[len];
                     readFully(in, payload);
-                    if (type == 0x7 && len >= 8) { // GOAWAY
-                        int errorCode = ((payload[4] & 0xff) << 24)
-                            | ((payload[5] & 0xff) << 16)
-                            | ((payload[6] & 0xff) << 8) | (payload[7] & 0xff);
+                    if (type == 0x7) { // GOAWAY: the wrong scope for a header error
+                        fail(what + " must reset its stream, not close the connection");
+                    }
+                    if (type == 0x3 && len >= 4) { // RST_STREAM: 4-byte error code
+                        int errorCode = ((payload[0] & 0xff) << 24)
+                            | ((payload[1] & 0xff) << 16)
+                            | ((payload[2] & 0xff) << 8) | (payload[3] & 0xff);
                         assertEquals(0x1, errorCode,
-                            what + " must fail with GOAWAY(PROTOCOL_ERROR)");
+                            what + " must reset the stream with PROTOCOL_ERROR");
                         return;
                     }
                 }
-                fail(what + " must produce a GOAWAY(PROTOCOL_ERROR)");
+                fail(what + " must produce a RST_STREAM(PROTOCOL_ERROR)");
             }
         } finally {
             server.stop();

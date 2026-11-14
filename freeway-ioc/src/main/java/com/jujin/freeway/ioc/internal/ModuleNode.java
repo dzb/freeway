@@ -277,16 +277,31 @@ final class ModuleNode {
      * the entry point built. A cycle (a class reaching itself through
      * {@code @SubModule}) is a construction mistake and fails here.
      */
+    private static final int MAX_SUBMODULE_DEPTH = 64;
+
     private static ModuleNode expand(
         ModuleDeclaration declaration, Set<Class<?>> visiting
     ) {
-        List<ModuleNode> children = declaredSubModules(declaration, visiting);
+        return expand(declaration, visiting, 0);
+    }
+
+    private static ModuleNode expand(
+        ModuleDeclaration declaration, Set<Class<?>> visiting, int depth
+    ) {
+        if (depth > MAX_SUBMODULE_DEPTH) {
+            // The final normalize() is iterative, but this expansion is not:
+            // a deep enough @SubModule chain would exhaust the stack first.
+            throw new IllegalStateException(
+                "Module tree exceeds " + MAX_SUBMODULE_DEPTH + " nested @SubModule levels at "
+                    + declaration.type().getName() + " — flatten the declaration");
+        }
+        List<ModuleNode> children = declaredSubModules(declaration, visiting, depth);
         ModuleNode candidate = new ModuleNode(declaration, null, children);
         return children.isEmpty() ? candidate : normalize(candidate);
     }
 
     private static List<ModuleNode> declaredSubModules(
-        ModuleDeclaration declaration, Set<Class<?>> visiting
+        ModuleDeclaration declaration, Set<Class<?>> visiting, int depth
     ) {
         List<Class<? extends ModuleEx>> submodules = declaration.submodules();
         if (submodules.isEmpty()) {
@@ -302,7 +317,7 @@ final class ModuleNode {
         try {
             List<ModuleNode> children = new ArrayList<>(submodules.size());
             for (Class<? extends ModuleEx> child : submodules) {
-                children.add(expand(ModuleDeclaration.of(child), visiting));
+                children.add(expand(ModuleDeclaration.of(child), visiting, depth + 1));
             }
             return children;
         } finally {

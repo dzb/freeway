@@ -281,9 +281,12 @@ public final class HttpExchangeSupport implements HttpExchange {
     @Override
     public HttpResponse setStatus(int status) {
         if (isCommitted()) return this;
-        if (status < 100 || status > 599) {
+        if (status < 200 || status > 599) {
+            // Informational responses are not final: a client would keep waiting
+            // for the real response while this one completed the exchange.
             throw new IllegalArgumentException(
-                "Invalid HTTP status code: " + status + " (must be between 100 and 599)");
+                "Invalid final response status: " + status
+                    + " (1xx is informational; use 200-599)");
         }
         this.responseStatus = status;
         return this;
@@ -373,11 +376,16 @@ public final class HttpExchangeSupport implements HttpExchange {
             writeResponse(responseHead(), ResponseBody.Empty.INSTANCE);
             return this;
         }
-        boolean gzip = gzipGate == GzipGate.MATERIALIZED
+        // A Content-Encoding the handler set is an encoding that already
+        // happened: compressing again would double-encode the bytes and lie
+        // about the length (the same applies to a non-gzip encoding).
+        String existingEncoding = responseHeader("Content-Encoding");
+        boolean alreadyEncoded = existingEncoding != null && !existingEncoding.isBlank();
+        boolean gzip = !alreadyEncoded && (gzipGate == GzipGate.MATERIALIZED
             ? ResponseFraming.shouldGzip(compression, responseStatus, true,
                 bodyLength, acceptsGzip(), compressibleContentType())
             : ResponseFraming.shouldGzipStream(compression, responseStatus, true,
-                acceptsGzip(), compressibleContentType());
+                acceptsGzip(), compressibleContentType()));
         if (gzip) {
             // Compression is the transport's execution; the plan carries the
             // source body and the head states the encoding once.

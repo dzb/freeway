@@ -58,6 +58,17 @@ public final class RouteIndex {
                         + "both, or declare the route with a handler instance");
             }
         }
+        Map<String, String> declaredShapes = new java.util.HashMap<>();
+        for (Route route : all) {
+            String methodKey = route.method() == null ? "" : route.method().toUpperCase(Locale.ROOT);
+            String previous = declaredShapes.putIfAbsent(
+                methodKey + " " + shapeOf(route.path()), route.path());
+            if (previous != null) {
+                throw new IllegalStateException("Routes " + methodKey + " " + previous
+                    + " and " + route.path() + " have the same matching shape: path-parameter"
+                    + " names do not affect matching, so the later route could never be reached");
+            }
+        }
         for (Route route : all) {
             addRoute(route.method(), route.path(), route.handler());
         }
@@ -73,6 +84,27 @@ public final class RouteIndex {
     /** Registered routes in declaration order, without exposing handlers. */
     public List<RouteDescription> descriptions() {
         return List.copyOf(descriptions);
+    }
+
+    /** The path's matching shape: parameter names replaced by {} so two
+     *  templates that differ only by name (and thus match identically) collide. */
+    private static String shapeOf(String path) {
+        PathPattern template = new PathPattern(path);
+        String[] segments = template.segments();
+        String[] names = template.paramNames();
+        Pattern[] patterns = template.paramPatterns();
+        StringBuilder shape = new StringBuilder();
+        for (int i = 0; i < segments.length; i++) {
+            shape.append('/');
+            if (names[i] != null) {
+                shape.append("{}");
+                if (patterns[i] != null) shape.append(':').append(patterns[i].pattern());
+            } else {
+                shape.append(segments[i]);
+            }
+        }
+        if (template.wildcard()) shape.append("/**");
+        return shape.toString();
     }
 
     private void addRoute(String method, String path, RouteHandler handler) {

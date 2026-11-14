@@ -585,11 +585,18 @@ final class JsonCoercions {
                     // coercion can proceed with the raw bound.
                     return Object.class;
                 }
-                Type bound = bindings.get(variable);
-                if (bound != null) {
-                    return resolve(bound, seen);
+                try {
+                    Type bound = bindings.get(variable);
+                    if (bound != null) {
+                        return resolve(bound, seen);
+                    }
+                    return firstBound(variable);
+                } finally {
+                    // The guard is for the current path only: sharing it with
+                    // sibling arguments made Map<T,T> resolve the second T to
+                    // Object even though the first resolved to String.
+                    seen.remove(variable);
                 }
-                return firstBound(variable);
             }
             if (type instanceof ParameterizedType parameterizedType) {
                 Type ownerType = parameterizedType.getOwnerType();

@@ -76,7 +76,12 @@ final class DiscoveryPeerFeeder implements AutoCloseable {
             if (selfInstanceId.equals(instance.instanceId())) {
                 continue; // dialing ourselves would only be closed at the hello
             }
-            peers.add(instance.endpoint().host() + ":" + instance.endpoint().port());
+            String host = instance.endpoint().host();
+                // PeerAddress.parse reads a bare multi-colon value as an IPv6
+                // host with no port; without brackets an IPv6 endpoint is
+                // dialled on port 80 forever.
+                String peerHost = host.indexOf(':') >= 0 ? "[" + host + "]" : host;
+                peers.add(peerHost + ":" + instance.endpoint().port());;
         }
         sink.accept(List.copyOf(peers));
         LOG.debug("Mesh peer feed: service '{}' → {} discovered peer(s)", serviceId, peers.size());

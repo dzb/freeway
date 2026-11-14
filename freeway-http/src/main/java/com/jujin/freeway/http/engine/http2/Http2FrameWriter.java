@@ -54,17 +54,29 @@ final class Http2FrameWriter {
         if (leader) drainOutbound();
     }
 
-    /** Queues a DATA frame without copying the payload: header slice plus the
-     *  payload range are appended contiguously under one lock acquisition. */
+    /** Queues a DATA frame: header slice plus the payload range are appended
+     *  contiguously under one lock acquisition.
+     *
+     *  <p>The payload is referenced only when this call is the leader (the
+     *  frame is written before returning). A follower appends a copy: the
+     *  caller reuses its 8KB body buffer as soon as this returns, so a queued
+     *  reference would be overwritten by the next read before the leader
+     *  writes it — data frames with the right length and corrupted bytes.</p> */
     void writeDataFrame(byte[] header, byte[] payload, int offset, int length)
             throws IOException {
         boolean leader;
         lock();
         try {
             outbound.add(new OutboundChunk(header, 0, header.length));
-            outbound.add(new OutboundChunk(payload, offset, length));
-            leader = !writing;
-            if (leader) writing = true;
+            if (writing) {
+                outbound.add(new OutboundChunk(
+                    java.util.Arrays.copyOfRange(payload, offset, offset + length), 0, length));
+                leader = false;
+            } else {
+                outbound.add(new OutboundChunk(payload, offset, length));
+                writing = true;
+                leader = true;
+            }
         } finally {
             unlock();
         }

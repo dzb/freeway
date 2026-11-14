@@ -47,6 +47,8 @@ public final class PeerHub implements WebSocketEndpoint {
     private final Map<String, PeerConnection> peers = new ConcurrentHashMap<>();
     /** Keepalive probe interval for inbound sessions; 0 = off (see Wiring). */
     private volatile long keepaliveMs;
+    /** Pre-hello admission window; 0 disables the timer (tests, embedded). */
+    private volatile long handshakeTimeoutMs;
     /** Drives the inbound keepalive probes; created at wiring, released on stop. */
     private volatile java.util.concurrent.ScheduledExecutorService scheduler;
     /** Contributed at hook time, read per inbound frame on WS threads —
@@ -78,7 +80,8 @@ public final class PeerHub implements WebSocketEndpoint {
         String serviceId,
         String instanceId,
         String token,
-        long keepaliveMs
+        long keepaliveMs,
+        long handshakeTimeoutMs
     ) {}
 
     /** RuntimeHook-time wiring: resolves builtins and config-derived state. */
@@ -89,6 +92,7 @@ public final class PeerHub implements WebSocketEndpoint {
         this.origin = Objects.requireNonNull(w.instanceId(), "instanceId");
         this.token = w.token() == null ? "" : w.token();
         this.keepaliveMs = Math.max(0, w.keepaliveMs());
+        this.handshakeTimeoutMs = Math.max(0, w.handshakeTimeoutMs());
         this.scheduler = java.util.concurrent.Executors.newSingleThreadScheduledExecutor(
             Thread.ofVirtual().name("cloud-mesh-keepalive-", 0).factory());
         this.wired = true;
@@ -276,6 +280,24 @@ public final class PeerHub implements WebSocketEndpoint {
         }
 
         @Override
+        public void onOpen(WebSocketSession opened) {
+            // Before hello the session has no identity and consumes a slot:
+            // close it when the handshake window passes without admission.
+            if (handshakeTimeoutMs <= 0) {
+                return;
+            }
+            scheduler.schedule(() -> {
+                if (!handshaken) {
+                    try {
+                        session.close(1008, "handshake timeout");
+                    } catch (Exception ignored) {
+                        // session already gone
+                    }
+                }
+            }, handshakeTimeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS);
+        }
+
+        @Override
         public void onText(String text) {
             // Which frame this is, and whether the session may see it, is
             // decided once in MeshFrame — see the note there on why the two
@@ -340,6 +362,7 @@ public final class PeerHub implements WebSocketEndpoint {
                     }
                     if (connection != null) {
                         unregister(connection);
+                        connection.close();
                     }
                 },
                 interval, MeshKeepalive.timeoutFor(interval), PING_PAYLOAD);
@@ -404,6 +427,10 @@ public final class PeerHub implements WebSocketEndpoint {
             }
             if (connection != null) {
                 unregister(connection);
+                // Closing is what stops the connection's sender thread and
+                // reports whatever it still had queued; unregistering alone
+                // leaks one thread per disconnect for the process lifetime.
+                connection.close();
                 LOG.info("Peer disconnected: {} (code={}, remote={})",
                     connection.remoteOrigin(), code, remote);
             }

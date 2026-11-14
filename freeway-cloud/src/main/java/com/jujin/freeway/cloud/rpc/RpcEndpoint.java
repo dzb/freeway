@@ -137,8 +137,8 @@ public final class RpcEndpoint {
             args[i] = rebind(elements.get(i), parameterTypes[i], codec);
         }
         if (isVarArgs) {
-            Class<?> component =
-                ((Class<?>) parameterTypes[parameterTypes.length - 1]).getComponentType();
+            Class<?> component = varargsComponent(
+                parameterTypes[parameterTypes.length - 1]);
             Object tail = Array.newInstance(component, elements.size() - fixed);
             for (int i = fixed; i < elements.size(); i++) {
                 Array.set(tail, i - fixed, rebind(elements.get(i), component, codec));
@@ -146,6 +146,26 @@ public final class RpcEndpoint {
             args[fixed] = tail;
         }
         return args;
+    }
+
+    /** The array component of a varargs tail; a generic {@code T...} erases to Object. */
+    private static Class<?> varargsComponent(java.lang.reflect.Type tail) {
+        if (tail instanceof Class<?> c && c.isArray()) {
+            return c.getComponentType();
+        }
+        if (tail instanceof java.lang.reflect.GenericArrayType generic) {
+            java.lang.reflect.Type element = generic.getGenericComponentType();
+            if (element instanceof Class<?> c) {
+                return c;
+            }
+            if (element instanceof java.lang.reflect.ParameterizedType p
+                    && p.getRawType() instanceof Class<?> c) {
+                return c;
+            }
+            return Object.class; // a type variable erases to its bound's JSON shape
+        }
+        throw new IllegalArgumentException(
+            "cannot resolve the varargs tail type " + tail + " — declare a concrete array type");
     }
 
     private static Object rebind(Object element, Type declared, JsonCodec codec) {

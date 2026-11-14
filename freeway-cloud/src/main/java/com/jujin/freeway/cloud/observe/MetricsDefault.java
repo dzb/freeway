@@ -135,7 +135,14 @@ public final class MetricsDefault implements Metrics, MetricsSnapshot {
      *  ([a-zA-Z0-9_:]), preventing format-breaking characters (spaces,
      *  newlines) from reaching the text exposition. */
     private static String prometheusName(String name) {
-        return name.replaceAll("[^a-zA-Z0-9_:]", "_");
+        String sanitized = name.replaceAll("[^a-zA-Z0-9_:]", "_");
+        if (sanitized.isEmpty()) {
+            return "_";
+        }
+        char first = sanitized.charAt(0);
+        // The exposition grammar requires [a-zA-Z_:] first; a scrape rejects
+        // the whole payload over one such name.
+        return first >= '0' && first <= '9' ? "_" + sanitized : sanitized;
     }
 
     private static final class CounterImpl implements Counter {

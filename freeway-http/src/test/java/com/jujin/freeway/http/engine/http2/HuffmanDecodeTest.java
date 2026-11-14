@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import com.jujin.freeway.http.engine.http2.Http2ErrorCode;
 import com.jujin.freeway.http.engine.http2.Http2Exception;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -36,10 +37,10 @@ class HuffmanDecodeTest {
             "expected a ~62 KB encoded block, got " + encoded.length + " bytes");
 
         long start = System.nanoTime();
-        String decoded = Huffman.decode(encoded);
+        byte[] decodedBytes = Huffman.decodeBytes(encoded, 0, encoded.length);
         long elapsedMillis = (System.nanoTime() - start) / 1_000_000;
 
-        assertEquals(new String(payload, StandardCharsets.ISO_8859_1), decoded,
+        assertArrayEquals(payload, decodedBytes,
             "decoded content must match the encoded payload");
         assertTrue(elapsedMillis < 2_000,
             "decoding a 64 KB block must complete well under 2 s, took "
@@ -56,8 +57,7 @@ class HuffmanDecodeTest {
             payload[i] = (byte) i;
         }
         byte[] encoded = Huffman.encode(payload);
-        String decoded = Huffman.decode(encoded);
-        assertEquals(new String(payload, StandardCharsets.ISO_8859_1), decoded);
+        assertArrayEquals(payload, Huffman.decodeBytes(encoded, 0, encoded.length));
     }
 
     @Test

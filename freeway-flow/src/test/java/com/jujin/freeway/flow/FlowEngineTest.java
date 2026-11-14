@@ -103,6 +103,22 @@ class FlowEngineTest {
     }
 
     @Test
+    void aGraphWithoutAnEndNodeFailsInsteadOfReportingSuccess() {
+        // START -> ACTIVITY is the whole graph: the walk completes, nobody
+        // reports a dead end, and the run used to return as if it had finished.
+        Graph graph = Graph.create("no-end", spec -> {
+            spec.addStart("s").linkTo("a");
+            spec.addActivity("a").task("@noop");
+        });
+        FlowEngine engine = newEngine(driverResolving(Map.of("noop",
+            (TaskHandler) (ctx, node) -> { }), null));
+
+        FlowException failure = assertThrows(FlowException.class,
+            () -> engine.run(graph, FlowContext.of()));
+        assertTrue(failure.getMessage().contains("no END"), failure.getMessage());
+    }
+
+    @Test
     void findReturnsEmptyAndRequireThrowsForUnknownGraph() {
         FlowEngine engine = newEngine(driverResolving(Map.of(), null));
 
@@ -1298,8 +1314,9 @@ class FlowEngineTest {
         engine.load(g);
 
         assertDoesNotThrow(() -> engine.run("loopjoin", FlowContext.of()));
-        assertEquals(1, joinExecutions.get(),
-            "the join must activate exactly once (iteration 2, after both arrivals), got "
+        assertEquals(2, joinExecutions.get(),
+            "the inclusive join must activate once per iteration — iteration 1 has one"
+                + " active branch (the other is dead), iteration 2 has both, got "
                 + joinExecutions.get());
     }
 
@@ -1392,17 +1409,15 @@ class FlowEngineTest {
     }
 
     @Test
-    void inclusiveJoinMissingArrivalThrows() {
-        // An INCLUSIVE join with two incoming links but only one reachable
-        // branch never activates — the join body and downstream were silently
-        // skipped. It must now fail the run.
+    void inclusiveJoinCompletesWhenAConditionalBranchIsSkipped() {
+        // BPMN inclusive join: waits for the incoming flows that are ACTIVE.
+        // EXCLUSIVE routes to branch a only, so the join below has one live
+        // arrival and one dead path — it must run, not report a dead end.
         var executed = new ArrayList<String>();
         FlowEngine engine = newEngine(tasksRun(node -> executed.add(node.id())));
-        Graph g = GraphSpec.create("inc_dead", spec -> {
+        Graph g = GraphSpec.create("inc_skip", spec -> {
             spec.entry("s");
             spec.addStart("s").linkTo("x");
-            // EXCLUSIVE always routes to branch a; branch b is never reached,
-            // so the join below only ever receives one of its two arrivals.
             spec.addExclusive("x").task("@dummy")
                 .linkTo("a", link -> link.when("true == true"))
                 .linkTo("b", link -> link.when("false == true"));
@@ -1412,12 +1427,70 @@ class FlowEngineTest {
             spec.addEnd("e");
         }).create();
         engine.load(g);
+        // END has no task, so `executed` records gateways only; a completed run
+        // (no dead end) is the END assertion here.
+        assertDoesNotThrow(() -> engine.run("inc_skip", FlowContext.of()));
+        assertTrue(executed.contains("gw"), "the inclusive join must run");
+    }
+
+    @Test
+    void convergingDeadPathsCountOncePerIncomingFlow() {
+        // Three conditional forks skip into the same shared dead branch, which
+        // feeds ONE incoming flow of the join. That flow is absent once, not
+        // three times: the join must run when the live branch arrives, and the
+        // accounting must not report an over-count.
+        var executed = new ArrayList<String>();
+        FlowEngine engine = newEngine(tasksRun(node -> executed.add(node.id())));
+        Graph g = GraphSpec.create("converging_dead", spec -> {
+            spec.entry("s");
+            spec.addStart("s").linkTo("x1");
+            spec.addExclusive("x1").task("@noop")
+                .linkTo("a1", link -> link.when("true == true"))
+                .linkTo("t1", link -> link.when("false == true"));
+            spec.addActivity("a1").linkTo("x2");
+            spec.addExclusive("x2").task("@noop")
+                .linkTo("a2", link -> link.when("true == true"))
+                .linkTo("t2", link -> link.when("false == true"));
+            spec.addActivity("a2").linkTo("x3");
+            spec.addExclusive("x3").task("@noop")
+                .linkTo("live", link -> link.when("true == true"))
+                .linkTo("t3", link -> link.when("false == true"));
+            spec.addActivity("t1").linkTo("shared");
+            spec.addActivity("t2").linkTo("shared");
+            spec.addActivity("t3").linkTo("shared");
+            spec.addActivity("shared").linkTo("j");
+            spec.addActivity("live").linkTo("j");
+            spec.addInclusive("j").task("@noop").linkTo("e");
+            spec.addEnd("e");
+        }).create();
+        engine.load(g);
+        assertDoesNotThrow(() -> engine.run("converging_dead", FlowContext.of()));
+        assertTrue(executed.contains("j"), "the join must run");
+    }
+
+    @Test
+    void inclusiveJoinWithEveryBranchSkippedStopsTheRun() {
+        // Both incoming flows are dead: absence is not a token, so the gateway
+        // must not fire (and the run must fail loudly, not end early).
+        var executed = new ArrayList<String>();
+        FlowEngine engine = newEngine(tasksRun(node -> executed.add(node.id())));
+        Graph g = GraphSpec.create("inc_all_dead", spec -> {
+            spec.entry("s");
+            spec.addStart("s").linkTo("x");
+            spec.addExclusive("x").task("@dummy")
+                .linkTo("a", link -> link.when("false == true"))
+                .linkTo("b", link -> link.when("false == true"));
+            spec.addActivity("a").task("@dummy").linkTo("gw");
+            spec.addActivity("b").task("@dummy").linkTo("gw");
+            spec.addInclusive("gw").task("@dummy").linkTo("e");
+            spec.addEnd("e");
+        }).create();
+        engine.load(g);
         FlowException ex = assertThrows(FlowException.class,
-            () -> engine.run("inc_dead", FlowContext.of()));
-        assertTrue(ex.getMessage().contains("gw"),
-            "error must name the stuck join, got: " + ex.getMessage());
-        assertFalse(executed.contains("e"),
-            "the join body and downstream must not run");
+            () -> engine.run("inc_all_dead", FlowContext.of()));
+        assertTrue(ex.getMessage().contains("no END") || ex.getMessage().contains("dead end"),
+            "the run must fail, not silently stop: " + ex.getMessage());
+        assertFalse(executed.contains("gw"), "an all-dead join must not run");
     }
 
     @Test
@@ -1971,20 +2044,151 @@ class FlowEngineTest {
         // thread is exactly when that happens.
         FlowContextImpl ctx = new FlowContextImpl();
         try (FlowContext.Branch failed = ctx.beginBranch()) {
-            ctx.put("abandoned", "v");
-            throw new IllegalStateException("branch failed");
+            failed.run(() -> {
+                ctx.put("abandoned", "v");
+                throw new IllegalStateException("branch failed");
+            });
         } catch (IllegalStateException expected) {
-            // the branch failed; its buffer must not survive it
+            // the branch failed; its buffer must not survive the binding
         }
 
         try (FlowContext.Branch retry = ctx.beginBranch()) {
-            ctx.put("after-retry", "visible");
+            retry.run(() -> ctx.put("after-retry", "visible"));
             retry.commit();
         }
 
         assertEquals("visible", ctx.get("after-retry"),
             "the retry's write must reach the parent, not an abandoned layer");
         assertNull(ctx.get("abandoned"), "the failed branch's write must be discarded");
+    }
+
+    // ── 嵌套并行：分支作用域随任务传播 ────────────────────────────
+
+    /** s → p1{ a → p2{ x, y } → j2 → f, b } → j1 → e */
+    private static Graph nestedParallelGraph(String innerTask, String secondInnerTask,
+                                             String tailTask, String innerForkMode) {
+        return GraphSpec.create("nested", spec -> {
+            spec.entry("s");
+            spec.addStart("s").linkTo("p1");
+            spec.addParallel("p1").linkTo("a").linkTo("b");
+            spec.addActivity("a").linkTo("p2");
+            var inner = spec.addParallel("p2");
+            if (innerForkMode != null) {
+                inner.putMetadata("join", innerForkMode);
+            }
+            inner.linkTo("x").linkTo("y");
+            spec.addActivity("x").task(innerTask).linkTo("j2");
+            spec.addActivity("y").task(secondInnerTask).linkTo("j2");
+            spec.addInclusive("j2").linkTo("f");
+            spec.addActivity("b").task("@noop").linkTo("j1");
+            spec.addActivity("f").task(tailTask).linkTo("j1");
+            spec.addInclusive("j1").linkTo("e");
+            spec.addEnd("e");
+        }).create();
+    }
+
+    private static FlowEngine nestedEngine(ExecutorService executor, Map<String, TaskHandler> tasks) {
+        return newEngine(driverResolving(tasks, executor));
+    }
+
+    private static Map<String, TaskHandler> nestedTasks(Map<String, TaskHandler> extra) {
+        Map<String, TaskHandler> tasks = new HashMap<>(extra);
+        tasks.put("noop", (ctx, node) -> { });
+        return tasks;
+    }
+
+    @Test
+    void nestedParallelWritesReachTheEnclosingBranchThenTheRoot() {
+        ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+        try {
+            FlowEngine engine = nestedEngine(executor, nestedTasks(Map.of(
+                "inner", (TaskHandler) (ctx, node) -> ctx.put("inner", "v"))));
+            Graph g = nestedParallelGraph("@inner", "@noop", "@noop", null);
+            engine.load(g);
+            FlowContext ctx = FlowContext.of();
+            engine.run(g, ctx);
+            assertEquals("v", ctx.get("inner"),
+                "the inner fork's write must merge into the enclosing branch, then the root");
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void aFailedEnclosingBranchDiscardsItsNestedParallelWrites() {
+        ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+        try {
+            FlowEngine engine = nestedEngine(executor, nestedTasks(Map.of(
+                "inner", (TaskHandler) (ctx, node) -> ctx.put("inner", "v"),
+                "fail", (TaskHandler) (ctx, node) -> {
+                    throw new IllegalStateException("branch failed after the inner fork");
+                })));
+            Graph g = nestedParallelGraph("@inner", "@noop", "@fail", null);
+            engine.load(g);
+            FlowContext ctx = FlowContext.of();
+            assertThrows(RuntimeException.class, () -> engine.run(g, ctx));
+            assertNull(ctx.get("inner"),
+                "writes from a nested fork must not escape when the enclosing branch fails");
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void siblingInnerForksConflictingOnAKeyFailTheRun() {
+        ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+        try {
+            // Both branches must capture their baseline before either merges;
+            // otherwise the second write legitimately bases on the first and is
+            // a last-write-wins overwrite, not a conflict.
+            var barrier = new java.util.concurrent.CyclicBarrier(2);
+            FlowEngine engine = nestedEngine(executor, nestedTasks(Map.of(
+                "a", (TaskHandler) (ctx, node) -> {
+                    ctx.put("k", "A");
+                    barrier.await();
+                },
+                "b", (TaskHandler) (ctx, node) -> {
+                    ctx.put("k", "B");
+                    barrier.await();
+                })));
+            Graph g = nestedParallelGraph("@a", "@b", "@noop", null);
+            engine.load(g);
+            FlowException failure = assertThrows(FlowException.class,
+                () -> engine.run(g, FlowContext.of()));
+            assertTrue(failure.getMessage().contains("conflicting"),
+                "nested sibling writes must be checked like top-level ones: " + failure.getMessage());
+            assertTrue(failure.getMessage().contains("'k'"), failure.getMessage());
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void sharedForkInsideABranchWritesToTheBranchScope() {
+        ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+        try {
+            FlowEngine engine = nestedEngine(executor, nestedTasks(Map.of(
+                "inner", (TaskHandler) (ctx, node) -> ctx.put("inner", "v"),
+                "fail", (TaskHandler) (ctx, node) -> {
+                    throw new IllegalStateException("branch failed after the shared fork");
+                })));
+            Graph failing = nestedParallelGraph("@inner", "@noop", "@fail", "shared");
+            engine.load(failing);
+            FlowContext ctx = FlowContext.of();
+            assertThrows(RuntimeException.class, () -> engine.run(failing, ctx));
+            assertNull(ctx.get("inner"),
+                "join: \"shared\" shares the fork's enclosing branch, not the root");
+
+            engine.unload("nested");
+            Graph ok = nestedParallelGraph("@inner", "@noop", "@noop", "shared");
+            engine.load(ok);
+            FlowContext second = FlowContext.of();
+            engine.run(ok, second);
+            assertEquals("v", second.get("inner"),
+                "a clean shared fork still reaches the root through the branch commit");
+        } finally {
+            executor.shutdownNow();
+        }
     }
 
     @Test
@@ -1994,10 +2198,15 @@ class FlowEngineTest {
         // branch and is refused loudly instead.
         FlowContextImpl ctx = new FlowContextImpl();
         FlowContext.Branch outer = ctx.beginBranch();
-        FlowContext.Branch inner = ctx.beginBranch();
-        assertThrows(IllegalStateException.class, outer::commit);
+        FlowContext.Branch[] inner = new FlowContext.Branch[1];
+        outer.run(() -> {
+            // Nested branch: its frame chains onto outer's.
+            inner[0] = ctx.beginBranch();
+        });
+        assertThrows(IllegalStateException.class, outer::commit,
+            "the enclosing branch must not fold while a child is still open");
         assertDoesNotThrow(() -> {
-            inner.commit();
+            inner[0].commit();
             outer.commit();
         });
     }

@@ -61,7 +61,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `RegistryFleetModule` → `FleetRegistryClient` / `FleetServiceRegistry` /
   `FleetServiceDiscovery` / `FleetRegistryModule`.
 
+  - `ErrorHandler` → `ErrorMapper`: error mapping no longer writes the response.
+    A mapper returns `Optional<ErrorResponse>` (the server is the only writer),
+    and a throwing mapper is skipped for the next one. Port a
+    `contribute(ErrorHandler.class)` lambda to `contribute(ErrorMapper.class)`
+    returning `Optional.of(ErrorResponse.of(...))`.
+
 ### Added
+
+- **`ScopeSession.propagate(Executor, ScopedValue...)`** (freeway-commons): wraps an executor so each
+  task runs with the submitting thread's `Defer`/`ScopedCache` scope, plus caller-supplied context
+  keys. This is the mechanism `ScopeFilter`'s async guidance referred to but could not name, because
+  the scope keys were package-private. Deferred actions registered on the worker join the submitting
+  scope; a task submitted outside any scope inherits nothing, and `addAction` is synchronized so the
+  propagated scope's id set and pending list stay one structure.
 
 - **Runtime description API** (freeway-ioc / freeway-boot): `Container.describe()`
   returns a read-only `RuntimeDescription` (module tree, each binding's
@@ -115,6 +128,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fails when `HttpServer` is constructed.
 
 ### Changed
+
+- **INCLUSIVE joins wait for active flows, not the static in-degree** (freeway-flow): a conditional
+  fork that does not take a branch now propagates a dead path to the inclusive joins that branch
+  would have fed (dead-path elimination, the BPMN semantics). A join with one taken and one skipped
+  incoming flow runs; a join whose every incoming flow is dead never runs and the run fails loudly
+  (absence is not a token) instead of reporting a misleading dead end. PARALLEL joins keep the
+  static in-degree: a conditional split feeding one is a modelling error and still fails. Dead-path
+  reachability is cached per skipped-link target; an over-counted path (a skipped branch reaching a
+  join outside its scope) fails with a named error rather than silently miscounting.
+
+- **Flow branch isolation is a `ScopedValue` frame, not a `ThreadLocal` stack** (freeway-flow):
+  `FlowContext.beginBranch()` now creates an immutable frame, `Branch.run(body)` binds it for the
+  branch body, and the PARALLEL dispatcher carries the submitting thread's frame into its workers
+  (`ContextExecutor`-style propagation). A fork nested inside a branch therefore writes into that
+  enclosing branch and is discarded with it on failure; previously the worker's empty thread-local
+  stack sent those writes straight to the root, so an outer branch could not roll them back.
+  `join: "shared"` now writes into the fork's enclosing branch (or the root at top level) instead
+  of always the root. Branch-sibling conflicts are still detected; commits/closes refuse a parent
+  that folds while a child scope is open. `FlowContext.Branch` gained `run(Runnable)`.
 
 - **Module composition converges into one resolution** (freeway-ioc /
   freeway-boot): `ModuleDeclaration` unifies class/instance, no-arg construction

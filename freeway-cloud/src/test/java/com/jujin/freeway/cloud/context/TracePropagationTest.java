@@ -81,11 +81,17 @@ class TracePropagationTest {
             assertEquals(TRACE_STATE, entry.traceState(),
                 "vendor trace state must survive the hop, not be dropped");
 
-            // Outbound: the callee handler saw the same trace id (re-injected).
+            // Outbound: the callee handler saw the same trace id, and its parent
+            // is the RPC client span — a child of the server span — not the
+            // server span itself. Re-using the inbound span as the outbound
+            // parent would make the remote hop a sibling/collision instead of a
+            // child on the trace.
             TraceContext callee = TraceModule.CALLEE_SEEN.get();
             assertEquals(TRACE_ID, callee.traceId());
-            assertEquals(entry.spanId(), callee.parentSpanId(),
-                "the outbound call is a child of the server span");
+            assertNotEquals(entry.spanId(), callee.parentSpanId(),
+                "the outbound call must carry the RPC client span, not the server span");
+            assertEquals(16, callee.parentSpanId().length(),
+                "a W3C span id is 16 hex characters");
             assertEquals(TRACE_STATE, callee.traceState());
         }
     }

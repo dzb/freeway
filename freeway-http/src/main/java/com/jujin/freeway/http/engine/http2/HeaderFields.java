@@ -23,6 +23,17 @@ final class HeaderFields {
 
     public void add(Http2HeaderField f) throws IOException {
         if (f.isPseudoHeader() && !PSEUDO.contains(f.name)) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
+        // RFC 9113 §8.2.1: a field value must not carry CR, LF or NUL — the
+        // access log prints User-Agent verbatim, so a newline forged log lines.
+        if (f.value != null) {
+            for (int i = 0; i < f.value.length(); i++) {
+                char c = f.value.charAt(i);
+                if (c == '\r' || c == '\n' || c == 0 || c == 0x7f || (c < 0x20 && c != '\t')) {
+                    throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR,
+                        "Invalid control character in header field " + f.name);
+                }
+            }
+        }
         if (PROHIBITED.contains(f.name)) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
         if ("te".equals(f.name) && !"trailers".equals(f.value)) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
         if (!f.isPseudoHeader()) seenRegularHeader = true;

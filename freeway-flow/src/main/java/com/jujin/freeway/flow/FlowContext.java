@@ -107,12 +107,14 @@ public interface FlowContext {
     // --- engine-internal ---
 
     /**
-     * @hidden Opens a branch-local write buffer on the calling thread: every
-     *  write until the scope commits lands in the buffer, reads see
-     *  buffer-then-parent. The PARALLEL dispatcher wraps each branch with
-     *  this; committing folds the buffer into the parent (conflict if a key
-     *  this branch wrote was written differently meanwhile), and closing
-     *  without committing discards it.
+     * @hidden Opens a branch-local write buffer: every write made while
+     *  {@link Branch#run} executes the branch body lands in the buffer, reads
+     *  see buffer-then-parent. The PARALLEL dispatcher wraps each branch with
+     *  this and carries the enclosing frame to the worker ({@code ScopedValue}
+     *  propagation), so a fork nested inside a branch writes into that branch
+     *  instead of the root; committing folds the buffer into the parent
+     *  (conflict if a key this branch wrote was written differently
+     *  meanwhile), and closing without committing discards it.
      *
      *  <p>The scope is the shape: a branch cannot forget to either commit or
      *  discard, because try-with-resources closes it on every exit path —
@@ -125,6 +127,14 @@ public interface FlowContext {
      *  scope discards whatever was not committed.
      */
     interface Branch extends AutoCloseable {
+
+        /**
+         * Runs {@code body} with this branch as the current scope: writes land
+         * in its buffer, and nested PARALLEL branches that inherit the scope
+         * write there too. Call before {@link #commit()}; a branch whose body
+         * is not run this way has nothing to fold.
+         */
+        void run(Runnable body);
 
         /** Folds the buffer into the parent; fails on a write-write conflict. */
         void commit();

@@ -1,5 +1,6 @@
 package com.jujin.freeway.commons.scoped;
 
+import com.jujin.freeway.commons.util.ContextExecutor;
 import com.jujin.freeway.commons.util.TopologicalOrder;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -12,6 +13,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.Executor;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -74,6 +76,36 @@ public final class ScopeSession {
         return CURRENT.isBound() ? CURRENT.get() : null;
     }
 
+    /**
+     * Wraps an executor so each task runs with the submitting thread's current
+     * scope — the missing half of {@code ScopeFilter}'s "async work must use
+     * {@code ContextExecutor}" advice, which callers could not follow because
+     * the keys are package-private.
+     *
+     * <p>Scoped values do not propagate to child threads: a task submitted to a
+     * plain executor sees no {@code Defer} scope and no scoped cache. This
+     * wrapper captures {@link #CURRENT} at submission and restores it in the
+     * task, so {@code Defer.defer(...)} inside the task joins the submitting
+     * scope and {@code ScopedCache.computeIfAbsent(...)} attaches to the same
+     * session. Wait for the work before the scope closes: the wrapper makes the
+     * binding visible across threads, it does not extend the scope's lifetime.
+     *
+     * <p>{@code extra} keys are carried alongside {@code CURRENT}, for callers
+     * with a context of their own (a flow branch frame, a trace context). A
+     * task submitted outside any scope inherits nothing, which is the same
+     * "no propagation by default" rule the framework follows elsewhere.
+     */
+    public static Executor propagate(Executor delegate, ScopedValue<?>... extra) {
+        Objects.requireNonNull(delegate, "delegate");
+        if (extra == null || extra.length == 0) {
+            return ContextExecutor.wrapping(delegate, CURRENT);
+        }
+        ScopedValue<?>[] keys = new ScopedValue<?>[extra.length + 1];
+        keys[0] = CURRENT;
+        System.arraycopy(extra, 0, keys, 1, extra.length);
+        return ContextExecutor.wrapping(delegate, keys);
+    }
+
     /** True for an action scope, including while it closes (values may still attach). */
     public boolean isActionScope() {
         return actions;
@@ -102,12 +134,16 @@ public final class ScopeSession {
     // ==================== actions ====================
 
     void addAction(DeferAction action) {
-        if (action.id() != null && !ids.add(action.id())) {
-            throw new IllegalStateException(
-                "Duplicate deferred action id '" + action.id() + "'"
-            );
+        // A propagated scope can register from its worker: the id set and the
+        // pending list are one structure, and both live under the same lock.
+        synchronized (lock) {
+            if (action.id() != null && !ids.add(action.id())) {
+                throw new IllegalStateException(
+                    "Duplicate deferred action id '" + action.id() + "'"
+                );
+            }
+            pending.add(action);
         }
-        pending.add(action);
     }
 
     void closeAfterSuccess() {

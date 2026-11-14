@@ -100,7 +100,7 @@ The `match()` method contains a fix where operator characters (like `!`) skip id
 public static final long DEFAULT_MAX_BODY_SIZE = 10 * 1024 * 1024L; // 10MB
 ```
 
-When exceeded, a `BodyTooLargeException` is thrown and handled by the built-in `ErrorHandler` returning HTTP 413 Payload Too Large.
+When exceeded, a `BodyTooLargeException` is thrown and mapped by the built-in `ErrorMapper` default to a 413 `ErrorResponse` (the server writes it).
 
 **See also:** `HttpServerConfig.java`, `MultipartForm.java` (`freeway-http`)
 

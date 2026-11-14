@@ -87,6 +87,8 @@ public final class TracerDefault implements Tracer {
         String baseSpanId;
         String baseSpanName;
         boolean captured;
+        /** The thread whose ThreadLocals this frame mirrors. */
+        final Thread owner = Thread.currentThread();
     }
 
     private record ActiveSpan(InvocationContext context, String traceId, String spanId, String name) {}
@@ -173,10 +175,19 @@ public final class TracerDefault implements Tracer {
          */
         private void restoreThreadState() {
             Frame frame = this.frame;
-            if (!frame.stack.remove(active)) {
-                return; // already closed — never restore twice
+            ActiveSpan top;
+            synchronized (frame) {
+                if (!frame.stack.remove(active)) {
+                    return; // already closed — never restore twice
+                }
+                top = frame.stack.peekLast();
             }
-            ActiveSpan top = frame.stack.peekLast();
+            if (Thread.currentThread() != frame.owner) {
+                // A cross-thread close pops the span (under the frame lock) but
+                // must not replace the closing thread's ambient context/MDC with
+                // the opener's — that belongs to the opening thread.
+                return;
+            }
             if (top == null) {
                 InvocationContext.replaceAmbient(frame.baseAmbient);
                 restore("traceId", frame.baseTraceId);

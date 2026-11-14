@@ -713,6 +713,7 @@ final class PeerConnector implements AutoCloseable {
             sessions.remove(this);
             if (connection != null) {
                 hub.unregister(connection);
+                connection.close();
                 LOG.info("Peer connection lost: {} ({})", connection.remoteOrigin(), cause);
             } else {
                 // Opened but never handshaked (rejected hello, watchdog abort,

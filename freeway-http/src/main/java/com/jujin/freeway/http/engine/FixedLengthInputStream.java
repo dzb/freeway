@@ -14,6 +14,7 @@ final class FixedLengthInputStream extends InputStream {
     private long remaining;
     private boolean closed;
     private boolean eof;
+    private static final long MAX_CLOSE_DRAIN = 64 * 1024;
     private final byte[] oneByte = new byte[1];
     private final byte[] drainBuf = new byte[2048];
 
@@ -63,12 +64,22 @@ final class FixedLengthInputStream extends InputStream {
         if (closed) return;
         closed = true;
         if (!eof) {
-            drain(remaining);
+            long bounded = Math.min(remaining, MAX_CLOSE_DRAIN);
+            long drained = drain(bounded);
+            remaining -= drained;
+            if (remaining > 0) {
+                // A body past the close-path bound is abandoned: closing the
+                // transport stream stops the unbounded drain and prevents the
+                // next request from consuming leftover body bytes as a request.
+                in.close();
+            }
             eof = true;
         }
     }
 
-    private void drain(long n) throws IOException {
+    /** Drains at most {@code n} bytes; returns how many were consumed. */
+    private long drain(long n) throws IOException {
+        long wanted = n;
         while (n > 0) {
             long skipped = in.skip(n);
             if (skipped > 0) {
@@ -80,5 +91,6 @@ final class FixedLengthInputStream extends InputStream {
                 n -= r;
             }
         }
+        return wanted - n;
     }
 }

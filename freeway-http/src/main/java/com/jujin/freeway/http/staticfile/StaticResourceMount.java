@@ -744,11 +744,22 @@ public final class StaticResourceMount {
                         }
                         Set<OpenOption> options = new HashSet<>();
                         options.add(StandardOpenOption.READ);
-                        var opened = current.newByteChannel(
-                            Path.of(parts[parts.length - 1]), options);
-                        if (!(opened instanceof FileChannel channel)) {
-                            opened.close();
-                            return null;
+                        options.add(LinkOption.NOFOLLOW_LINKS);
+                        FileChannel channel;
+                        try {
+                            var opened = current.newByteChannel(
+                                Path.of(parts[parts.length - 1]), options);
+                            if (!(opened instanceof FileChannel ch)) {
+                                opened.close();
+                                return null;
+                            }
+                            channel = ch;
+                        } catch (IOException ex) {
+                            // A symlink leaf (or a filesystem without link-aware
+                            // open): fall back to the containment-verified real
+                            // path, so an in-root symlink still serves and an
+                            // escaping one is rejected.
+                            return fallbackChannel(relative);
                         }
                         return channel;
                     } finally {

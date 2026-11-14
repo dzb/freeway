@@ -350,8 +350,10 @@ public final class RpcHttpClientDefault implements RpcHttpClient {
         String serviceId, RpcRequest request, boolean async, long deadlineNanos) {
         CircuitBreaker breaker = breakerFor(serviceId);
         RateLimiter rateLimiter = rateLimiterFor(serviceId);
+        long callStart = System.nanoTime();
         return policy.run(serviceId, deadlineNanos, breaker, rateLimiter,
-            request.idempotent(), () -> attempt(serviceId, request, async));
+            request.idempotent(),
+            () -> attempt(serviceId, request, async, deadlineNanos, callStart));
     }
 
     /** Per-service breaker shard. No injection → fresh default; an injected
@@ -401,12 +403,13 @@ public final class RpcHttpClientDefault implements RpcHttpClient {
      * — the caller sees one failure type, and a half-open probe still gets an
      * outcome instead of being lost to an escaping RuntimeException.
      */
-    private RpcResponse attempt(String serviceId, RpcRequest request, boolean async) {
+    private RpcResponse attempt(String serviceId, RpcRequest request, boolean async,
+                                long deadlineNanos, long callStart) {
         try {
             List<ServiceInstance> instances = discovery.instances(serviceId);
             ServiceInstance instance = loadBalancer.choose(instances)
                 .orElseThrow(() -> RpcException.noInstance(serviceId));
-            return doCall(instance, request, async);
+            return doCall(instance, request, async, deadlineNanos, callStart);
         } catch (RpcException e) {
             throw e;
         } catch (RuntimeException e) {
@@ -414,7 +417,8 @@ public final class RpcHttpClientDefault implements RpcHttpClient {
         }
     }
 
-    private RpcResponse doCall(ServiceInstance instance, RpcRequest request, boolean async) {
+    private RpcResponse doCall(ServiceInstance instance, RpcRequest request, boolean async,
+                               long deadlineNanos, long callStart) {
         // The endpoint URI never ends in '/' (ServiceEndpoint normalizes its base
         // path) and a RpcRequest path always starts with '/', so a plain
         // join cannot produce a double slash.
@@ -425,8 +429,21 @@ public final class RpcHttpClientDefault implements RpcHttpClient {
                 propagator.inject(ctx, outbound);
             }
         });
+        // The deadline owns this attempt: a fixed request timeout let a send
+        // keep running past the caller's bound (orTimeout only ends the future).
+        java.time.Duration attemptTimeout = requestTimeout;
+        if (deadlineNanos > 0) {
+            long remaining = deadlineNanos - (System.nanoTime() - callStart);
+            if (remaining <= 0) {
+                throw RpcException.timeout(instance.serviceId());
+            }
+            java.time.Duration remainingTimeout = java.time.Duration.ofNanos(remaining);
+            if (remainingTimeout.compareTo(attemptTimeout) < 0) {
+                attemptTimeout = remainingTimeout;
+            }
+        }
         HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url))
-            .timeout(requestTimeout);
+            .timeout(attemptTimeout);
         outbound.forEach(builder::header);
         builder.method(request.method(),
             request.body() == null ? HttpRequest.BodyPublishers.noBody()

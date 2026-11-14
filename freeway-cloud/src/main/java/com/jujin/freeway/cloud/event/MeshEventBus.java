@@ -181,9 +181,10 @@ public final class MeshEventBus {
             if (peer.send(json)) {
                 framesQueued.increment();
             } else {
-                // The frame was never taken; the connection's own accounting
-                // covers everything it had accepted before it failed.
-                framesDropped.increment();
+                // The frame was never taken (closed / queue full), so it never
+                // entered framesQueued: counting it as dropped would break the
+                // queued - dropped invariant. The connection reports what it had
+                // already accepted when it closes.
                 sendFailures.increment();
                 LOG.warn("Send to peer {} failed — dropping connection", peer.remoteOrigin());
                 hub.unregister(peer);

@@ -12,7 +12,7 @@ Examples below are minimal snippets. They omit imports and app-specific domain t
 - `HttpTransport`, `ResponseHead`, `HttpExchangeSupport` (engine SPI — see below)
 - `WebSocketTransport`, `WebSocketSessionSupport`
 - `Route`, `RouteGroup`, `WebSocketRoute`, `WebSocketGroup`
-- `HttpFilter`, `ScopeFilter`, `ErrorHandler`, `HealthFilter`, `HealthCheck`
+- `HttpFilter`, `ScopeFilter`, `ErrorMapper`, `HealthFilter`, `HealthCheck`
 - `StaticResourceMount`
 
 ## Configuration Keys
@@ -71,8 +71,7 @@ subclassed (`AbstractHttpContext`/`AbstractWebSocketSession` are gone):
 
 1. Implement `HttpTransport` — the request bytes in (`method`, `path`,
    `queryParams`, `headers`, `framedBodyStream`, TLS/remote) and the response bytes
-   out (`writeResponse(head, byte[])`, `openSse`; the stream/file defaults
-   buffer, override them to stream). Contract edges: the request snapshots are
+   out (`writeResponse(ResponsePlan)`, `openSse`). Contract edges: the request snapshots are
    immutable with lower-cased names, `framedBodyStream()` returns the
    transport-framed stream and translates native limits (e.g. Undertow's
    `RequestTooBigException`) into `BodyTooLargeException`, **no body bytes

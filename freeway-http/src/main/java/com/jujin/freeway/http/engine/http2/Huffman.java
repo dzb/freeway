@@ -316,7 +316,9 @@ final class Huffman {
      * (RFC 7541 Appendix B), EOS excluded.
      */
     public static byte[] encode(String value) {
-        return encode(value.getBytes(StandardCharsets.ISO_8859_1));
+        // HPACK values are octet sequences interpreted as UTF-8; the ISO-8859-1
+        // shortcut made Huffman and plain encodings disagree on non-ASCII text.
+        return encode(value.getBytes(StandardCharsets.UTF_8));
     }
 
     /**
@@ -365,7 +367,16 @@ final class Huffman {
      * @return the decoded string
      */
     public static String decode(byte[] data, int offset, int length) throws IOException {
-        var output = new StringBuilder(length);
+        // HPACK strings are byte sequences interpreted as UTF-8 regardless of
+        // Huffman encoding; appending (char) symbol treated each byte as a
+        // character, so the same non-ASCII value decoded differently per form.
+        return new String(decodeBytes(data, offset, length),
+            java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+    /** Decodes to the raw octets — the form the code-table tests compare. */
+    public static byte[] decodeBytes(byte[] data, int offset, int length) throws IOException {
+        var output = new java.io.ByteArrayOutputStream(length);
         long buffer = 0;
         int bitsInBuffer = 0;
 
@@ -394,7 +405,7 @@ final class Huffman {
                 if (matchedSymbol == -1) break;
                 if (matchedSymbol == 256) throw new Http2Exception(Http2ErrorCode.COMPRESSION_ERROR);
 
-                output.append((char) matchedSymbol);
+                output.write(matchedSymbol);
                 bitsInBuffer -= matchedBits;
                 buffer &= (1L << bitsInBuffer) - 1;
             }
@@ -403,6 +414,6 @@ final class Huffman {
         if (bitsInBuffer > 7) throw new Http2Exception(Http2ErrorCode.COMPRESSION_ERROR);
         if (bitsInBuffer > 0 && buffer != (1L << bitsInBuffer) - 1)
             throw new Http2Exception(Http2ErrorCode.COMPRESSION_ERROR);
-        return output.toString();
+        return output.toByteArray();
     }
 }

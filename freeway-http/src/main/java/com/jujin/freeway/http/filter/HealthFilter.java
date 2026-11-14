@@ -96,7 +96,8 @@ public final class HealthFilter implements HttpFilter {
 
     @Override
     public void doFilter(HttpExchange ctx, RouteHandler next) throws Exception {
-        if (enabled && "GET".equalsIgnoreCase(ctx.method())
+        if (enabled && ("GET".equalsIgnoreCase(ctx.method())
+                || "HEAD".equalsIgnoreCase(ctx.method()))
                 && healthPath.equals(PathPattern.normalize(
                     ctx.path()))) {
             var result = healthCheck.check();

@@ -11,6 +11,8 @@ import java.io.InputStream;
 final class ChunkedInputStream extends InputStream {
 
     private static final int MAX_CHUNK_HEADER_SIZE = 2050;
+    /** Close-path drain bound (see FixedLengthInputStream.close). */
+    private static final long MAX_CLOSE_DRAIN = 64 * 1024;
     private static final int MAX_TRAILER_BYTES = 8192;
     private static final int MAX_TRAILER_COUNT = 200;
     static final char CR = '\r';
@@ -79,13 +81,26 @@ final class ChunkedInputStream extends InputStream {
     public void close() throws IOException {
         if (closed) return;
         if (!eof) {
-            // drain remaining chunk data
+            long drained = 0;
             try {
-                while (!eof) {
+                while (!eof && drained < MAX_CLOSE_DRAIN) {
                     int n = read(drainBuf, 0, drainBuf.length);
                     if (n < 0) break;
+                    drained += n;
                 }
-            } catch (IOException ignored) { /* best-effort drain */ }
+            } catch (IOException ignored) {
+                // best-effort drain; the stream is going away either way
+            }
+            if (!eof) {
+                // Past the bound the body is abandoned and the transport stream
+                // is closed, so the connection is not reused with unread bytes.
+                try {
+                    in.close();
+                } catch (IOException ignored) {
+                    // already unusable
+                }
+                eof = true;
+            }
         }
         closed = true;
     }

@@ -401,16 +401,36 @@ public final class Http2Connection {
                     continue;
                 }
                 boolean requestEndStream = headerBlock.endStream;
-                var fields = decodeFields(headerBlock);
-                fields.validate();
+                HeaderFields fields;
+                try {
+                    fields = decodeFields(headerBlock);
+                    fields.validate();
+                } catch (Http2Exception e) {
+                    // Header semantics are per-stream (RFC 9113 §8.2.1): reset
+                    // this stream instead of tearing down every concurrent one.
+                    // HPACK/compression failures stay connection-level.
+                    if (e.errorCode() == Http2ErrorCode.COMPRESSION_ERROR) throw e;
+                    // The block was already decoded (that is where validation
+                    // ran): resetting the stream must not decode it again, or
+                    // its incremental-index entries would enter the dynamic
+                    // table twice and desync every later block.
+                    resetRefusedStream(Http2ErrorCode.PROTOCOL_ERROR, streamId, headerBlock);
+                    continue;
+                }
 
                 Map<String, List<String>> requestHeaders =
                     new LinkedHashMap<>(fields.size() * 2);
                 for (var headerField : fields.fields()) {
                     if (headerField.value != null) {
+                        // Pseudo-header names stay as-is (":path"); regular
+                        // names are lower-cased here so every consumer (the
+                        // transport, Host/:authority checks, Content-Length)
+                        // reads the same key format.
+                        String key = headerField.isPseudoHeader()
+                            ? headerField.normalizedName
+                            : headerField.name.toLowerCase(java.util.Locale.ROOT);
                         requestHeaders.computeIfAbsent(
-                            headerField.normalizedName,
-                            k -> new ArrayList<>(4)).add(headerField.value);
+                            key, k -> new ArrayList<>(4)).add(headerField.value);
                     }
                 }
 
@@ -481,9 +501,27 @@ public final class Http2Connection {
      *  in-progress block state. */
     private void rejectNewStream(Http2ErrorCode code, int streamId,
                                  HeaderBlockState headerBlock) throws IOException {
+        // (decodeFields below is required: this overload is used when the block
+        // has not been decoded yet, e.g. the concurrent-stream limit.)
         lastSeenStreamId = streamId;
         // Deliberately not lastHandledStreamId: nothing was dispatched, so
         // a later GOAWAY must not claim this stream as possibly handled.
+        // The block must still be decoded: HPACK is connection-level state, and
+        // skipping a refused block desyncs every later dynamic-table index.
+        try {
+            decodeFields(headerBlock);
+        } catch (Http2Exception e) {
+            if (e.errorCode() == Http2ErrorCode.COMPRESSION_ERROR) throw e;
+        } finally {
+            headerBlock.reset();
+        }
+        sendResetStream(code, streamId);
+    }
+
+    /** Resets a stream whose header block has already been decoded. */
+    private void resetRefusedStream(Http2ErrorCode code, int streamId,
+                                    HeaderBlockState headerBlock) throws IOException {
+        lastSeenStreamId = streamId;
         headerBlock.reset();
         sendResetStream(code, streamId);
     }
@@ -546,6 +584,9 @@ public final class Http2Connection {
      *  block carries END_STREAM, so the stream can be marked half-closed once
      *  the block completes. */
     private static final class HeaderBlockState {
+        /** Zero-length fragments cost no bytes; without a count cap a peer
+         *  could append them forever without ever tripping the byte limit. */
+        static final int MAX_FRAGMENTS = 1024;
         final List<byte[]> fragments = new ArrayList<>();
         final int limit;
         int size;
@@ -561,6 +602,10 @@ public final class Http2Connection {
             if (size + block.length > limit) {
                 throw new Http2Exception(Http2ErrorCode.COMPRESSION_ERROR,
                     "Header block exceeds " + limit + " bytes");
+            }
+            if (fragments.size() >= MAX_FRAGMENTS) {
+                throw new Http2Exception(Http2ErrorCode.COMPRESSION_ERROR,
+                    "Header block exceeds " + MAX_FRAGMENTS + " fragments");
             }
             fragments.add(block);
             size += block.length;
@@ -623,7 +668,11 @@ public final class Http2Connection {
                 // poison the HPACK decoder state.
                 if (parameter.value < 0 || parameter.value > 0xFFFFFFFFL)
                     throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
-                hpack.setMaxDynamicTableSize(parameter.value);
+                // RFC 7541 §6.3: this is the peer's *decoder* capacity, i.e. a
+                // bound on our encoder's dynamic table. Our decoder is bounded
+                // by the value we advertised (never sent: the default 4096);
+                // applying the peer's value here rejected legal HPACK state
+                // when a client announced 0 while still indexing against 4096.
             } else if (parameter.identifier == SettingIdentifier.SETTINGS_ENABLE_PUSH) {
                 // RFC 7540 §6.5.2: ENABLE_PUSH is sent by clients (it disables
                 // server push); any value other than 0 or 1 is a connection error.

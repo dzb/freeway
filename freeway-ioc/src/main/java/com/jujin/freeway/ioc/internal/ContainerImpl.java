@@ -280,7 +280,7 @@ public final class ContainerImpl implements Container {
             // would deadlock. Realization during the drain is handled by the
             // re-snapshot loop; realization after close is rejected inside
             // realize() (it re-checks the closed flag under the lock).
-            RuntimeException drained = shutdown.close();
+            RuntimeException drained = shutdown.drainMain();
             // Sealing is three steps, and the middle one is outside the realize
             // lock on purpose: the flag goes up under it (so no realization can
             // publish into the caches about to be cleared), the final drain —
@@ -288,7 +288,19 @@ public final class ContainerImpl implements Container {
             // See ServiceRuntime#seal for why the drain must not hold that lock.
             RuntimeException failure = serviceRuntime.seal(
                 () -> closed = true,
-                () -> shutdown.drainRemaining(drained)
+                () -> {
+                    RuntimeException finalDrain = shutdown.drainRemaining(drained);
+                    // Only now may the buses close: the final drain's callbacks
+                    // could still publish (see Shutdown.closeBuses).
+                    RuntimeException buses = shutdown.closeBuses();
+                    if (finalDrain == null) {
+                        return buses;
+                    }
+                    if (buses != null) {
+                        finalDrain.addSuppressed(buses);
+                    }
+                    return finalDrain;
+                }
             );
             bindingIndex.clear();
             markerIndex.clear();

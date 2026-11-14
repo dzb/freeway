@@ -847,7 +847,7 @@ public final class Sql {
     }
 
     private String buildSql(Dialect dialect) {
-        String withClause = renderWithClause();
+        String withClause = renderWithClause(dialect);
         if (isInsert()) {
             if (dmlTargets.isEmpty()) {
                 throw new SqlException(
@@ -1050,9 +1050,14 @@ public final class Sql {
         }
         if (clauses.conflictColumns() != null) {
             if (clauses.conflictDoNothing()) {
-                // DO NOTHING has no portable dialect spelling here; the target is a
-                // name list, so it needs no quoting and reads as the author wrote it.
-                out.append(" ON CONFLICT (").append(String.join(", ", clauses.conflictColumns()))
+                // Same target quoting as DO UPDATE's upsertClause: a reserved
+                // word or a mixed-case column is not a raw name on the wire.
+                Dialect targetDialect = dialect == null ? DEFAULT_DIALECT : dialect;
+                out.append(" ON CONFLICT (")
+                    .append(String.join(", ",
+                        clauses.conflictColumns().stream()
+                            .map(targetDialect::quoteName)
+                            .toList()))
                     .append(") DO NOTHING");
             } else {
                 out.append((dialect == null ? DEFAULT_DIALECT : dialect)
@@ -1065,7 +1070,9 @@ public final class Sql {
         return out.toString();
     }
 
-    private String renderWithClause() {
+    /** CTEs render in the outer dialect: a MySQL statement must not carry a
+     *  PostgreSQL-spelled sub-query (RETURNING/ON CONFLICT/OFFSET). */
+    private String renderWithClause(Dialect dialect) {
         if (ctes.isEmpty()) {
             return "";
         }
@@ -1079,7 +1086,8 @@ public final class Sql {
             if (cte.columns() != null && !cte.columns().isBlank()) {
                 sb.append(" (").append(cte.columns().trim()).append(")");
             }
-            sb.append(" AS (").append(cte.query().toSql()).append(")");
+            sb.append(" AS (").append(dialect == null
+                ? cte.query().toSql() : cte.query().toSql(dialect)).append(")");
         }
         sb.append(' ');
         return sb.toString();

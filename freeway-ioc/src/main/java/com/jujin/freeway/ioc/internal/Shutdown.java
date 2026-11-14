@@ -49,10 +49,18 @@ final class Shutdown {
      * so a realization racing {@code close()} cannot insert a fresh singleton
      * past the last snapshot and escape lifecycle cleanup.
      */
-    RuntimeException close() {
-        RuntimeException failure = drainRemaining(null);
-        // The bus is the last thing to close: every @PreDestroy/close callback
-        // has already run, so no code can publish into a closed bus.
+    /** The main drain only: the final drain still runs after it (see seal). */
+    RuntimeException drainMain() {
+        return drainRemaining(null);
+    }
+
+    /**
+     * Closes the deferred buses. Must run after the <em>final</em> drain: a
+     * target realized concurrently with close still runs its @PreDestroy/close
+     * there, and those callbacks may publish.
+     */
+    RuntimeException closeBuses() {
+        RuntimeException failure = null;
         for (EventBus bus : deferredBuses) {
             try {
                 bus.close();
@@ -63,6 +71,19 @@ final class Shutdown {
         }
         deferredBuses.clear();
         return failure;
+    }
+
+    /** Test/standalone convenience: main drain plus bus close. */
+    RuntimeException close() {
+        RuntimeException drained = drainMain();
+        RuntimeException buses = closeBuses();
+        if (drained == null) {
+            return buses;
+        }
+        if (buses != null) {
+            drained.addSuppressed(buses);
+        }
+        return drained;
     }
 
     /**

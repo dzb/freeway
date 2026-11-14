@@ -12,7 +12,9 @@ import java.util.Objects;
  *
  * <p>It is not a transaction boundary — commit/rollback and deferred events
  * remain {@code Defer}'s job. It is also not async propagation: work handed to
- * another thread after the request ends must use {@code ContextExecutor}.</p>
+ * another thread must run on an executor wrapped with
+ * {@code ScopeSession.propagate(...)}, otherwise the worker sees no request
+ * scope (and must not outlive it).</p>
  *
  * <p>Contribute it directly for an application-owned ordering, or enable
  * {@code freeway.http.request-scope.enabled} and let {@code HttpModule} add it

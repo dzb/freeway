@@ -102,7 +102,13 @@ final class ResiliencePolicy {
                 }
                 boolean probe = breaker.state() == CircuitBreaker.State.HALF_OPEN;
                 try {
-                    RpcResponse response = attempt.attempt();
+                    // Bind the RPC child span for the attempt: propagators read
+                    // the current context, and without this the outbound trace
+                    // carried the parent span (the child never reached the wire).
+                    RpcResponse response = span != null
+                        ? com.jujin.freeway.cloud.context.InvocationContext.runWith(
+                            span.context(), () -> attempt.attempt())
+                        : attempt.attempt();
                     breaker.onSuccess();
                     if (span != null) {
                         span.addTag("http.status", String.valueOf(response.status()));

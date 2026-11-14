@@ -724,6 +724,16 @@ class SqlTest {
     }
 
     @Test
+    void doNothingQuotesTheConflictTargetLikeDoUpdate() {
+        // `order` is a reserved word: the unquoted target produced
+        // `ON CONFLICT (order) DO NOTHING`, which the database rejects — while
+        // the DO UPDATE path already quoted it.
+        String sql = Sql.insert("users").value("id", 1)
+            .onConflict("order").doNothing().toSql(new PostgresDialect());
+        assertTrue(sql.contains("ON CONFLICT (\"order\") DO NOTHING"), sql);
+    }
+
+    @Test
     void aConflictActionWithoutItsTargetIsRejectedAtTheCall() {
         // Emitted alone, the action read `INSERT … VALUES (…) DO NOTHING`:
         // syntactically invalid, and the database rejected it far from the

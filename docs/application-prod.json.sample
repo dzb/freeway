@@ -48,7 +48,7 @@
 				"health-check-query": "SELECT 1",
 				"health-check-timeout": "5s"
 			},
-			"schema": { "auto": false },
+			"schema": { "mode": "validate" },
 			"migration": {
 				"enabled": true,
 				"path": "db/migration/",

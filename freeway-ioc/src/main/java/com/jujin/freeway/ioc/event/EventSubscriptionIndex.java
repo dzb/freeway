@@ -177,7 +177,7 @@ final class EventSubscriptionIndex {
                 while (!queue.isEmpty()) {
                     Class<?> c = queue.poll();
                     Class<?> sup = c.getSuperclass();
-                    if (sup != null && sup != Object.class && seen.add(sup)) {
+                    if (sup != null && seen.add(sup)) {
                         result.add(sup);
                         queue.add(sup);
                     }

@@ -88,17 +88,20 @@ public final class JULFileHandler extends StreamHandler {
         Executors.newSingleThreadExecutor(
             Thread.ofPlatform().daemon().name("freeway-log-compressor").factory());
 
+    /** The registered hook, kept so an explicit close can unregister it. */
+    private static volatile Thread compressorShutdownHook;
+
     static {
         // Daemon threads do not block JVM exit, but an explicit shutdown
         // keeps test JVMs and container redeploys from accumulating an idle
         // compressor thread per classloader lifetime.
         try {
-            Runtime.getRuntime().addShutdownHook(
-                Thread.ofPlatform()
+            Thread hook = Thread.ofPlatform()
                     .daemon()
                     .name("freeway-log-compressor-shutdown")
-                    .unstarted(COMPRESSOR::shutdown)
-            );
+                    .unstarted(COMPRESSOR::shutdown);
+            compressorShutdownHook = hook;
+            Runtime.getRuntime().addShutdownHook(hook);
         } catch (SecurityException | IllegalStateException ignored) {
             // Restricted environment or late class init during shutdown —
             // the daemon flag alone still guarantees no JVM hang.
@@ -312,6 +315,17 @@ public final class JULFileHandler extends StreamHandler {
         closed = true;
         if (flusher != null) {
             flusher.interrupt();
+        }
+        // The hook pins this classloader until JVM exit; an explicit close is
+        // the signal that the application is done with it.
+        Thread hook = compressorShutdownHook;
+        if (hook != null && compressorShutdownHook == hook) {
+            compressorShutdownHook = null;
+            try {
+                Runtime.getRuntime().removeShutdownHook(hook);
+            } catch (IllegalStateException | SecurityException ignored) {
+                // already shutting down, or a restricted environment
+            }
         }
         super.close();
     }

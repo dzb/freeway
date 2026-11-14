@@ -41,7 +41,7 @@
 				"max-size": 4,
 				"min-idle": 1
 			},
-			"schema": { "auto": true },
+			"schema": { "mode": "auto" },
 			"migration": { "enabled": true }
 		}
 	}

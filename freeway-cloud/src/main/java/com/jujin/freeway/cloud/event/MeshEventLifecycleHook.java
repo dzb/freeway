@@ -84,10 +84,12 @@ final class MeshEventLifecycleHook implements RuntimeHook {
 
         List<String> peers = symbols.resolve(PEERS);
         long keepaliveMs = keepaliveMs(symbols);   // one fact, read once
-        if (!meshOn(symbols.resolve(EVENT_ENABLED_EXPLICIT), peers)) {
-            LOG.info("MeshEventBus not wired — dial peers with {}=<host:port,...> "
-                    + "or set {}=true (discovery-fed mesh)",
-                ConfigKeys.EVENT_PEERS, ConfigKeys.EVENT_ENABLED);
+        boolean discoveryFeed = symbols.resolve(EVENT_DISCOVERY_FEED_MS) != null;
+        if (!meshOn(symbols.resolve(EVENT_ENABLED_EXPLICIT), peers, discoveryFeed)) {
+            LOG.info("MeshEventBus not wired — dial peers with {}=<host:port,...>, "
+                    + "set {}=true, or set {}=<millis> (discovery-fed mesh)",
+                ConfigKeys.EVENT_PEERS, ConfigKeys.EVENT_ENABLED,
+                ConfigKeys.EVENT_DISCOVERY_FEED_MS);
             return;
         }
 
@@ -107,7 +109,8 @@ final class MeshEventLifecycleHook implements RuntimeHook {
             self.serviceId(),
             self.instanceId(),
             symbols.resolve(TOKEN),
-            keepaliveMs));
+            keepaliveMs,
+            symbols.resolve(HANDSHAKE_TIMEOUT_MS)));
 
         // Contributions are resolved lazily at lookup — safe even when the
         // contribution view was built at bind time.
@@ -257,8 +260,10 @@ final class MeshEventLifecycleHook implements RuntimeHook {
         }
     }
 
-    private static boolean meshOn(Boolean enabled, List<String> peers) {
-        return enabled != null ? enabled : !peers.isEmpty();
+    private static boolean meshOn(Boolean enabled, List<String> peers, boolean discoveryFeed) {
+        // Presence activates: an explicit switch wins; otherwise static peers
+        // or a discovery-feed interval are both a reason to run a mesh.
+        return enabled != null ? enabled : (!peers.isEmpty() || discoveryFeed);
     }
 
     @Override

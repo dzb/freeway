@@ -47,8 +47,19 @@ public final class AccessLog implements Consumer<HttpExchangeEvent> {
         String ua = exchange.userAgent() == null || exchange.userAgent().isEmpty()
             ? "-"
             : exchange.userAgent();
-        out.println(exchange.method() + " " + exchange.path()
+        out.println(sanitize(exchange.method()) + " " + sanitize(exchange.path())
             + " " + exchange.statusCode()
-            + " " + exchange.elapsedMs() + "ms " + ip + " " + ua);
+            + " " + exchange.elapsedMs() + "ms " + ip + " " + sanitize(ua));
+    }
+
+    /** Control characters would let a header value forge extra log lines. */
+    private static String sanitize(String value) {
+        if (value == null) return "-";
+        StringBuilder safe = new StringBuilder(value.length());
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            safe.append(c < 0x20 || c == 0x7f ? '?' : c);
+        }
+        return safe.toString();
     }
 }

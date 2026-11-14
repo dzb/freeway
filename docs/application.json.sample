@@ -69,7 +69,7 @@
 				"health-check-query": "",
 				"health-check-timeout": "5s"
 			},
-			"schema": { "auto": true, "groups": "" },
+			"schema": { "mode": "auto", "groups": "" },
 			"migration": {
 				"enabled": true,
 				"path": "db/migration/",

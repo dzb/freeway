@@ -32,6 +32,14 @@ final class ExecState {
 
     private final Set<DeadEnd> deadEnds = ConcurrentHashMap.newKeySet();
     private final Map<String, AtomicInteger> counts = new ConcurrentHashMap<>();
+    /**
+     * Dead-path skips per join: the incoming links reported dead so far. A set,
+     * because several skipped paths can converge on the same incoming flow —
+     * that flow is absent once, no matter how many dead tokens reached it.
+     */
+    private final Map<String, Set<String>> skips = new ConcurrentHashMap<>();
+    /** Joins whose real arrival was completed by a skip, awaiting their run. */
+    private final Set<String> awakened = ConcurrentHashMap.newKeySet();
     private final Map<String, ArrayDeque<Iterator<?>>> loopStacks = new ConcurrentHashMap<>();
     private final Map<String, List<String>> loopBodyJoins = new ConcurrentHashMap<>();
 
@@ -81,10 +89,22 @@ final class ExecState {
      *         fork-join inside a LOOP body works again on the next iteration.
      */
     boolean join(Graph graph, String nodeId, int expected) {
-        AtomicInteger counter = counter(graph.id() + "/" + nodeId);
+        String key = graph.id() + "/" + nodeId;
+        AtomicInteger counter = counter(key);
         synchronized (counter) {
-            if (counter.incrementAndGet() >= expected) {
+            if (awakened.remove(key)) {
+                // A dead-path skip completed this join while the real token had
+                // already arrived: consume that completion and run the gateway.
                 counter.set(0);
+                skips.remove(key);
+                deadEnds.remove(new DeadEnd(graph.id(), nodeId));
+                return true;
+            }
+            int skipped = skipped(key);
+            int arrived = counter.incrementAndGet();
+            if (arrived + skipped >= expected) {
+                counter.set(0);
+                skips.remove(key);
                 deadEnds.remove(new DeadEnd(graph.id(), nodeId));
                 return true;
             }
@@ -94,14 +114,62 @@ final class ExecState {
     }
 
     /**
+     * One dead-path arrival: a conditional fork did not take the branch that
+     * ends at this join, so that incoming flow can never carry a token. It is
+     * accounted exactly like a real arrival, except that a join with no real
+     * arrival at all must never activate (absence is not a token).
+     *
+     * @return true when this skip completed a join whose real token had already
+     *         arrived; the caller runs the gateway
+     */
+    boolean joinSkipped(Graph graph, String nodeId, int expected, String incoming) {
+        String key = graph.id() + "/" + nodeId;
+        AtomicInteger counter = counter(key);
+        synchronized (counter) {
+            Set<String> dead = skips.computeIfAbsent(key, k -> ConcurrentHashMap.newKeySet());
+            if (!dead.add(incoming)) {
+                return false; // this incoming flow was already accounted as absent
+            }
+            int skipped = dead.size();
+            if (skipped > expected) {
+                throw new IllegalStateException(
+                    "Dead-path accounting over-counted join '" + key + "': " + skipped
+                        + " skipped incoming flows for " + expected + " branches — a skipped"
+                        + " conditional path reached a join outside its own scope");
+            }
+            int arrived = counter.get();
+            if (arrived > 0 && arrived + skipped >= expected) {
+                awakened.add(key);
+                counter.set(0);
+                dead.removeAll(dead);
+                deadEnds.remove(new DeadEnd(graph.id(), nodeId));
+                return true;
+            }
+            if (skipped >= expected) {
+                // Every incoming flow is dead: no token can reach the gateway.
+                deadEnds.add(new DeadEnd(graph.id(), nodeId));
+            }
+            return false;
+        }
+    }
+
+    private int skipped(String key) {
+        Set<String> dead = skips.get(key);
+        return dead == null ? 0 : dead.size();
+    }
+
+    /**
      * Re-arm a body join for the next LOOP iteration. Takes the same monitor
      * as {@link #join} so a reset cannot interleave with a branch arriving at
      * a join that a nested parallel inside the body is still feeding.
      */
     void joinReset(Graph graph, String nodeId) {
-        AtomicInteger counter = counter(graph.id() + "/" + nodeId);
+        String key = graph.id() + "/" + nodeId;
+        AtomicInteger counter = counter(key);
         synchronized (counter) {
             counter.set(0);
+            skips.remove(key);
+            awakened.remove(key);
             deadEnds.remove(new DeadEnd(graph.id(), nodeId));
         }
     }

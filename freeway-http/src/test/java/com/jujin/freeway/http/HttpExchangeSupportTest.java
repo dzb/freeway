@@ -257,10 +257,14 @@ class HttpExchangeSupportTest {
     @Test
     void acceptsBoundaryStatusCodes() {
         var ctx = exchange("GET", "/");
-        ctx.setStatus(100);
-        assertEquals(100, ctx.status(), "100 is the lowest legal status code");
+        ctx.setStatus(200);
+        assertEquals(200, ctx.status(), "200 is the lowest final status code");
         ctx.setStatus(599);
         assertEquals(599, ctx.status(), "599 is the highest legal status code");
+        // 1xx is informational: completing an exchange with one would leave the
+        // client waiting for the real response.
+        assertThrows(IllegalArgumentException.class, () -> ctx.setStatus(100));
+        assertThrows(IllegalArgumentException.class, () -> ctx.setStatus(199));
     }
 
     @Test

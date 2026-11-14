@@ -2054,7 +2054,7 @@ Lightweight graph-based workflow engine. Graphs are defined by the canonical `Gr
 | `END` | Marks the graph completed; a run that never reaches it fails |
 | `ACTIVITY` | Writes its `data`, then executes a task, then and-fans out |
 | `EXCLUSIVE` | Xor gateway — first matching `when`, else default link, else a dead end |
-| `INCLUSIVE` | Inclusive gateway — joins (activates once all arrivals counted), then runs, then fans |
+| `INCLUSIVE` | Inclusive gateway — joins on the **active** incoming flows (conditional branches that were not taken are dead paths and do not count), then runs, then fans |
 | `PARALLEL` | Parallel fork/join, with declared write isolation (see *Branch isolation*) |
 | `LOOP` | Sequential `$in` iteration over its body (no link back-edges) |
 
@@ -2143,12 +2143,16 @@ truthy and `"false"`/`"0"` falsy in boolean contexts. A `when` may also be a
 `@name` handler reference.
 
 **Branch isolation:** a `PARALLEL` fork defaults to `join: "merge"` — each
-branch runs over a thread-local write buffer and merges into the context on
-clean completion; two branches that write different values to the same key
-fail the run with a conflict error naming the key (not a silent winner).
-Declare `{"type":"parallel","meta":{"join":"shared"}}` to opt the fork back
-into shared writes (single-writer discipline is then the graph's job). The
-join counter re-arms each LOOP iteration for a fork-join inside a loop body.
+branch runs over a scoped write buffer (a `ScopedValue` frame, carried to the
+worker) and merges into the context on clean completion; two branches that
+write different values to the same key fail the run with a conflict error
+naming the key (not a silent winner). Because the frame is carried, a fork
+nested inside a branch writes into that enclosing branch and is discarded with
+it on failure — nesting no longer escapes to the root. Declare
+`{"type":"parallel","meta":{"join":"shared"}}` to opt the fork back into shared
+writes (single-writer discipline is then the graph's job); its writes land in
+the fork's enclosing branch scope, or the root at top level. The join counter
+re-arms each LOOP iteration for a fork-join inside a loop body.
 
 **Key types:**
 

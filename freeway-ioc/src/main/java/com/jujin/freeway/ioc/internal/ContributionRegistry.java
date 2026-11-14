@@ -171,6 +171,7 @@ final class ContributionRegistry {
                     }
                 };
                 Consumer<Object> publish = instance -> {
+                    constructed.add(instance);
                     Ordering real = ext.add(id, (V) instance);
                     wire(entryType, instance);
                     ordering.applyTo(real);
@@ -193,6 +194,7 @@ final class ContributionRegistry {
                     "factory returned null for contribution " + id
                 );
                 Consumer<Object> publish = instance -> {
+                    constructed.add(instance);
                     Ordering real = ext.add(id, (V) instance);
                     wire(entryType, instance);
                     ordering.applyTo(real);
@@ -272,8 +274,25 @@ final class ContributionRegistry {
         }
     }
 
+    /** Instances this registry constructed; closed with the container. */
+    private final List<Object> constructed = new java.util.concurrent.CopyOnWriteArrayList<>();
+
     /** Drops every store and deferred queue — container close. */
     void clear() {
+        for (Object instance : constructed) {
+            try {
+                // These never entered ServiceRuntime's target cache, so the
+                // container's shutdown drain does not know them; a file handle
+                // or connection they opened would otherwise leak.
+                Lifecycle.invokePreDestroy(instance);
+                if (instance instanceof AutoCloseable closeable) {
+                    closeable.close();
+                }
+            } catch (Exception ignored) {
+                // One bad contribution must not abort the rest of the drain.
+            }
+        }
+        constructed.clear();
         extensions.clear();
         pending.clear();
         deferredConfig.clear();

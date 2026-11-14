@@ -266,11 +266,20 @@ public final class FreewayApp {
         Thread shutdownThread = null;
 
         if (shutdownHook) {
+            // The hook outlives start(); holding the runtime strongly would pin
+            // every closed application until JVM exit. A weak referent lets a
+            // closed-then-dropped runtime be collected, and JVM shutdown after
+            // an explicit close simply has nothing left to do.
+            var appRef = new java.lang.ref.WeakReference<AppRuntime>(app);
             shutdownThread = Thread.ofPlatform()
                 .name("freeway-shutdown-hook")
                 .unstarted(() -> {
+                    AppRuntime target = appRef.get();
+                    if (target == null) {
+                        return;
+                    }
                     try {
-                        app.close();
+                        target.close();
                     } catch (Exception ex) {
                         LOG.warn("Error during shutdown", ex);
                     }

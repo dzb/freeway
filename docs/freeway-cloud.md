@@ -53,14 +53,14 @@ FreewayApp.run(
 ```java
 public static void main(String[] args) {
     FreewayApp.run(Launch.of(args),
-        new HttpModule(),              // HTTP 面：注册/心跳/发现四条路由
+        new HttpModule(),              // HTTP 面：注册/续约/注销/发现/就绪/索引六条路由
         new DiscoveryModule(),    // 实例表（RegistryStore）
         new RegistryServerModule());   // 把实例表发布成 HTTP 面
 }
 ```
 
 ```properties
-freeway.cloud.server-port=8060
+freeway.http.server.port=8060
 freeway.cloud.registry.token=s3cret      # 出了本机必设：读写都要这个头
 ```
 
@@ -83,7 +83,7 @@ freeway.cloud.registry.service-id=order-service
 
 | 时机 | 自动发生 |
 |---|---|
-| 启动 | 解析身份（service-id + host:port）→ POST 注册到**每个**节点；任一节点拒收 → 启动响亮失败 |
+| 启动 | 解析身份（service-id + host:port）→ POST 注册到**每个**节点；单个节点失败记录告警、其余节点继续服务，**所有**节点都拒收才启动失败 |
 | 每 10 秒 | 心跳扇出；某节点 404（它重启过）→ 用本进程注册过的实例**就地重灌**该节点 |
 | 每 `discovery-feed-ms` | 拉一次同服务实例列表，整份喂给事件网格——新实例自动拨通，离开的自动断开 |
 | 调用别人 | `RemoteProxyFactory` 按发现结果 + 加权轮询选实例 |

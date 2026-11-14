@@ -29,7 +29,9 @@ public final class WebSocketReadLoop {
     public static void readLoop(InputStream in,
                          WebSocketConnection connection,
                          WebSocketListener listener) {
-        connection.markOpen();
+        // No markOpen: the session starts open, and an endpoint that closes it
+        // from onOpen() must keep its close code (reopening here rewrote 1008 to
+        // an abnormal closure and kept dispatching buffered frames).
         var textBuf = new ByteArrayOutputStream();
         var binaryBuf = new ByteArrayOutputStream();
         OpCode fragType = null;

@@ -139,6 +139,9 @@ public final class Http2Stream {
         }
         var t = thread;
         if (t != null) t.interrupt();
+        // Release a writer parked on flow control: this stream will never get
+        // another WINDOW_UPDATE, and the park would otherwise resume as a spin.
+        connection.unparkWindowWaiters();
     }
 
     /**
@@ -171,11 +174,16 @@ public final class Http2Stream {
                 if (flowLength > receiveWindow.get())
                     throw new Http2Exception(Http2ErrorCode.FLOW_CONTROL_ERROR);
                 receiveWindow.addAndGet(-flowLength);
-                if (dataFrame.body.length == 0 && flowLength > 0) {
-                    // Padding-only DATA has no application read that can
-                    // trigger the normal stream WINDOW_UPDATE path.
-                    receiveWindow.addAndGet(flowLength);
-                    connection.writeFrame(new WindowUpdateFrame(streamId, flowLength).encode());
+                if (dataFrame.body.length == 0) {
+                    // An empty (or padding-only) DATA frame carries no body
+                    // bytes, so it must not create a queue entry: the peer can
+                    // send them without consuming flow-control credit, and an
+                    // unbounded queue would exhaust memory.
+                    if (flowLength > 0) {
+                        // Padding consumes credit but has no read to return it.
+                        receiveWindow.addAndGet(flowLength);
+                        connection.writeFrame(new WindowUpdateFrame(streamId, flowLength).encode());
+                    }
                 } else {
                     dataIn.enqueue(dataFrame.body, flowLength);
                 }
@@ -269,7 +277,6 @@ public final class Http2Stream {
         public void write(byte[] data, int offset, int length) throws IOException {
             if (peerReset) throw new IOException("stream reset by peer");
             waitForSendWindow();
-            if (connection.isClosed()) throw new IOException("connection closed");
             // Checked before the header write: an aborted/reset stream must not
             // emit a response head either.
             if (streamOutputClosed) throw new IOException("output closed");
@@ -280,7 +287,6 @@ public final class Http2Stream {
                     Math.min(connection.sendWindow.get(), sendWindow.get()));
                 if (chunkSize <= 0) {
                     waitForSendWindow();
-                    if (connection.isClosed()) throw new IOException("closed");
                     continue;
                 }
                 if (connection.sendWindow.addAndGet(-chunkSize) < 0) {
@@ -304,9 +310,14 @@ public final class Http2Stream {
          * window here prevents a busy spin when other streams have consumed
          * the shared connection window while this stream's own window is open.
          */
-        private void waitForSendWindow() {
+        private void waitForSendWindow() throws IOException {
             while ((sendWindow.get() <= 0 || connection.sendWindow.get() <= 0)
                     && !connection.isClosed()) {
+                // A stream the peer reset (or one whose output was closed) will
+                // never receive another WINDOW_UPDATE: parking again would spin
+                // forever as the interrupted park returns immediately.
+                if (peerReset) throw new IOException("stream reset by peer");
+                if (streamOutputClosed) throw new IOException("output closed");
                 connection.windowWaiters.add(Thread.currentThread());
                 try {
                     if ((sendWindow.get() > 0 && connection.sendWindow.get() > 0)
@@ -315,7 +326,13 @@ public final class Http2Stream {
                 } finally {
                     connection.windowWaiters.remove(Thread.currentThread());
                 }
+                if (Thread.interrupted()) {
+                    throw new IOException("interrupted while waiting for the send window");
+                }
             }
+            if (peerReset) throw new IOException("stream reset by peer");
+            if (streamOutputClosed) throw new IOException("output closed");
+            if (connection.isClosed()) throw new IOException("connection closed");
         }
 
         @Override
@@ -401,6 +418,11 @@ public final class Http2Stream {
                     break; // the peer went quiet: do not hold the thread
                 }
                 total += read;
+            }
+            if (halfClosed) {
+                // The body ended exactly at the cap: END_STREAM already arrived,
+                // so there is nothing to reset.
+                return;
             }
             halfClosed = true;
             connection.sendResetStream(Http2ErrorCode.NO_ERROR, streamId);

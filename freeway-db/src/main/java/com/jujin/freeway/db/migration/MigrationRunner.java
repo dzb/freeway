@@ -137,7 +137,15 @@ public final class MigrationRunner {
             return 0;
         }
 
-        ensureTable();
+        try {
+            ensureTable();
+        } catch (RuntimeException ex) {
+            // Two instances racing their first startup both run the DDL, and
+            // "if not exists" is not mutually exclusive on every database
+            // (PostgreSQL may raise 42P07, H2 a duplicate-object error). The
+            // table existing is all this needs — the lock below decides the rest.
+            if (!isAlreadyExists(ex)) throw ex;
+        }
         acquireLock();
         try {
             return doRun();
@@ -531,6 +539,20 @@ public final class MigrationRunner {
                 return msg.contains("duplicate")
                         || msg.contains("unique")
                         || msg.contains("primary key");
+            }
+        }
+        return false;
+    }
+
+    /** True when the failure is "the table is already there" (a startup race). */
+    private static boolean isAlreadyExists(Throwable failure) {
+        for (Throwable t = failure; t != null; t = t.getCause()) {
+            String message = t.getMessage();
+            if (message == null) continue;
+            String lower = message.toLowerCase(java.util.Locale.ROOT);
+            if (lower.contains("already exists") || lower.contains("duplicate")
+                    || lower.contains("42p07") || lower.contains("42s01")) {
+                return true;
             }
         }
         return false;

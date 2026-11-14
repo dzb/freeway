@@ -443,7 +443,11 @@ public final class SqlTextParser {
             char c = sql.charAt(i);
             int after = skipCommentish(sql, i, config);
             if (after > i) {
-                // line and block comments are dropped from statements
+                // A comment is a token separator: deleting it outright turned
+                // SELECT/*c*/1 into SELECT1. One space keeps the tokens apart.
+                if (!current.isEmpty() && current.charAt(current.length() - 1) != ' ') {
+                    current.append(' ');
+                }
                 i = after;
                 continue;
             }

@@ -35,12 +35,13 @@ final class ServiceProxy {
         Supplier<T> target,
         String description,
         List<AdviceEntry> advices,
-        boolean cacheTarget
+        boolean cacheTarget,
+        Runnable requireOpen
     ) {
         return (T) Proxy.newProxyInstance(
             interfaceType.getClassLoader(),
             new Class<?>[] { interfaceType },
-            new AdvisedHandler<>(target, description, advices, cacheTarget)
+            new AdvisedHandler<>(target, description, advices, cacheTarget, requireOpen)
         );
     }
 
@@ -49,6 +50,8 @@ final class ServiceProxy {
         private final String description;
         private final List<AdviceEntry> advices;
         private final boolean cacheTarget;
+        /** Checked per call: a proxy handed out before close() must not resume work. */
+        private final Runnable requireOpen;
         private volatile T cachedTarget;
         /** Target handles for this proxy's interface methods — keeps the
          *  invocation hot path free of even a shared-map lookup. Bounded by
@@ -59,12 +62,14 @@ final class ServiceProxy {
             Supplier<T> provider,
             String description,
             List<AdviceEntry> advices,
-            boolean cacheTarget
+            boolean cacheTarget,
+            Runnable requireOpen
         ) {
             this.provider = provider;
             this.description = description;
             this.advices = advices;
             this.cacheTarget = cacheTarget;
+            this.requireOpen = requireOpen;
         }
 
         @Override
@@ -72,6 +77,9 @@ final class ServiceProxy {
             if (method.getDeclaringClass() == Object.class) {
                 return Proxies.objectMethod(proxy, method, args, () -> description);
             }
+            // Both the lazy first resolution and a cached target bypass the
+            // container's closed check, so the proxy checks it itself.
+            requireOpen.run();
             return invokeAdvised(resolveTarget(), method, args, 0);
         }
 

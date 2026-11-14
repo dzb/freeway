@@ -266,7 +266,12 @@ final class ServiceRuntime {
             target,
             binding.type().getSimpleName() + "[" + binding.id() + "]",
             binding.advices(),
-            perProxyTarget
+            perProxyTarget,
+            () -> {
+                if (container.isClosed()) {
+                    throw new IllegalStateException("Container is closed");
+                }
+            }
         );
     }
 

@@ -714,7 +714,16 @@ final class JULEnhancer {
                 cfg.path, cfg.maxSize(), cfg.maxHistory(),
                 cfg.compress(), cfg.flushIntervalMs());
             freewayHandlers.add(handler);
-            if (cfg.level != null) handler.setLevel(cfg.level);
+            if (cfg.level != null) {
+                handler.setLevel(cfg.level);
+                // The logger filters before its handlers: a file configured for
+                // FINE must widen the logger too, or the handler never sees a
+                // record the global level suppressed. Only ever widen.
+                var current = target.getLevel();
+                if (current == null || current.intValue() > cfg.level.intValue()) {
+                    target.setLevel(cfg.level);
+                }
+            }
 
             target.addHandler(handler);
             if (target.getParent() != null) {

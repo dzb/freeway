@@ -35,7 +35,7 @@ FreewayApp.run(Launch.of(args), new HttpModule(),
 ```
 
 ```properties
-freeway.cloud.server-port=8060
+freeway.http.server.port=8060
 freeway.cloud.registry.token=s3cret      # X-Registry-Token required on reads and writes
 ```
 
@@ -50,7 +50,7 @@ freeway.cloud.registry.token-previous=old      # accepted during rotation, then 
   answered `426` (with the supported version), never a 404. A node always
   accepts older protocols, so nodes upgrade before clients.
 - `GET /registry` is readable without credentials: it announces the protocol,
-  the four routes and the auth posture — a mismatch is diagnosable before auth.
+  the six routes and the auth posture — a mismatch is diagnosable before auth.
 - `POST …/instances/{id}/ready` (body `{"ready":true|false}` or `?ready=`)
   flips readiness immediately; the same bit also rides the 10s heartbeat, so an
   older node is a delay, not a divergence.
@@ -69,7 +69,7 @@ freeway.cloud.registry.token=s3cret                          # matches the nodes
 freeway.cloud.registry.timeout-ms=3000
 ```
 
-- register: fan-out to every node; any node refusing fails startup loudly
+- register: fan-out to every node; one node failing is logged and the rest keep serving — startup fails only when every node refuses
 - renew (every 10s): fan-out; a 404 re-asserts the instance this client
   registered (cached, never guessed) on that node
 - instances: union across alive nodes by instance id; all nodes down throws

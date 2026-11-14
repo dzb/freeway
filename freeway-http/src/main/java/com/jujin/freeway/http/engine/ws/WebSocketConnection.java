@@ -154,8 +154,6 @@ public final class WebSocketConnection implements WebSocketTransport {
         }
     }
 
-    void markOpen() { open = true; }
-
     void markClosed(CloseCode code, String reason) {
         markClosed(code.value(), reason);
     }

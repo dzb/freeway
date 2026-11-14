@@ -167,6 +167,15 @@ final class Http2Session {
             String method = HttpSession.headerValue(reqHeaders, ":method");
             String fullPath = HttpSession.headerValue(reqHeaders, ":path");
             String authority = HttpSession.headerValue(reqHeaders, ":authority");
+            // RFC 9113 §8.3.1: Host and :authority, when both present, must be
+            // identical. Keeping one silently would let tenant/ACL checks
+            // disagree with the authority the request was routed by.
+            List<String> hostHeaders = reqHeaders.get("host");
+            if (authority != null && hostHeaders != null
+                    && hostHeaders.stream().anyMatch(
+                        h -> !h.trim().equalsIgnoreCase(authority.trim()))) {
+                throw new IOException("Host header conflicts with :authority");
+            }
             if (method == null || fullPath == null)
                 throw new IOException("Missing pseudo-headers");
 
@@ -183,9 +192,33 @@ final class Http2Session {
             headers.remove(":scheme"); headers.remove(":authority");
             if (authority != null) headers.put("Host", List.of(authority));
 
+            // RFC 9113 §8.1.1: a duplicated Content-Length must agree, and the
+            // body must match the declared length. Without this the view
+            // reported an unknown length while the bytes still arrived.
+            List<String> declaredValues = reqHeaders.get("content-length");
+            long declaredLength = -1;
+            if (declaredValues != null && !declaredValues.isEmpty()) {
+                String first = null;
+                for (String value : declaredValues) {
+                    if (first == null) {
+                        first = value.trim();
+                    } else if (!first.equals(value.trim())) {
+                        throw new IOException("Conflicting Content-Length values: " + declaredValues);
+                    }
+                }
+                try {
+                    declaredLength = Long.parseLong(first);
+                } catch (NumberFormatException e) {
+                    throw new IOException("Invalid Content-Length: " + first);
+                }
+                if (declaredLength < 0) throw new IOException("Invalid Content-Length: " + first);
+            }
+            InputStream body = declaredLength >= 0
+                ? new ContentLengthGuard(in, declaredLength) : in;
+
             String correlationId = HttpSession.headerValue(reqHeaders, "x-request-id");
             var transport = new HttpTransportImpl(method, path, rawQuery,
-                headers, in, -1, false, out, false,
+                headers, body, declaredLength, false, out, false,
                 sslSession != null, sslSession,
                 HttpSession.remoteAddress(socket));
             transport.setWriter(new Http2ResponseWriter(stream));
@@ -206,6 +239,51 @@ final class Http2Session {
             } catch (Exception ignored) {
             }
             stream.close();
+        }
+    }
+
+    /** Enforces the declared request length on the body the handler reads. */
+    private static final class ContentLengthGuard extends java.io.FilterInputStream {
+        private final long expected;
+        private long seen;
+
+        ContentLengthGuard(InputStream in, long expected) {
+            super(in);
+            this.expected = expected;
+        }
+
+        @Override
+        public int read() throws IOException {
+            int b = super.read();
+            if (b < 0) {
+                verify();
+            } else if (++seen > expected) {
+                throw tooLong();
+            }
+            return b;
+        }
+
+        @Override
+        public int read(byte[] buffer, int offset, int length) throws IOException {
+            int n = super.read(buffer, offset, length);
+            if (n > 0) {
+                seen += n;
+                if (seen > expected) throw tooLong();
+            } else if (n < 0) {
+                verify();
+            }
+            return n;
+        }
+
+        private IOException tooLong() {
+            return new IOException("Request body exceeds Content-Length " + expected);
+        }
+
+        private void verify() throws IOException {
+            if (seen != expected) {
+                throw new IOException("Request body length " + seen
+                    + " does not match Content-Length " + expected);
+            }
         }
     }
 }
