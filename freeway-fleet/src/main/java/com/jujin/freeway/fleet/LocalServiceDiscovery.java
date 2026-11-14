@@ -10,11 +10,11 @@ import java.util.Objects;
  * In-process {@link ServiceDiscovery} backed by {@link FleetStore}.
  * Returns live && ready, non-stale instances; stale entries are evicted lazily.
  */
-public final class ServiceDiscoveryDefault implements ServiceDiscovery {
+public final class LocalServiceDiscovery implements ServiceDiscovery {
 
     private final FleetStore store;
 
-    public ServiceDiscoveryDefault(FleetStore store) {
+    public LocalServiceDiscovery(FleetStore store) {
         this.store = Objects.requireNonNull(store, "store");
     }
 

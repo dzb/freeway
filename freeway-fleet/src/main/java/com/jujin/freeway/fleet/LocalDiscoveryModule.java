@@ -43,11 +43,11 @@ public final class LocalDiscoveryModule implements ModuleEx {
     public void bind(Binder b) {
         b.bind(FleetStore.class).to(FleetStore.class);
         b.bind(ServiceRegistry.class)
-            .to((Container container) -> new ServiceRegistryDefault(container.get(FleetStore.class)))
+            .to((Container container) -> new LocalServiceRegistry(container.get(FleetStore.class)))
             .marker(Local.class)
             ;
         b.bind(ServiceDiscovery.class)
-            .to((Container container) -> new ServiceDiscoveryDefault(container.get(FleetStore.class)))
+            .to((Container container) -> new LocalServiceDiscovery(container.get(FleetStore.class)))
             .marker(Local.class)
             ;
         b.bind(LoadBalancer.class)

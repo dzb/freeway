@@ -11,8 +11,8 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * In-process lease store shared by {@link ServiceRegistryDefault} and
- * {@link ServiceDiscoveryDefault}, and by the Fleet Server. One instance per
+ * In-process lease store shared by {@link LocalServiceRegistry} and
+ * {@link LocalServiceDiscovery}, and by the Fleet Server. One instance per
  * container, bound as a singleton by {@code LocalDiscoveryModule}.
  */
 public final class FleetStore {

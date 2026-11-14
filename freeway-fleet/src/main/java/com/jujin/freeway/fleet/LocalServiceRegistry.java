@@ -12,11 +12,11 @@ import java.util.Objects;
  * Cross-process registration/discovery needs a custom backend bound primary
  * (an extension module — freeway-cloud-consul in freeway-ext is one).
  */
-public final class ServiceRegistryDefault implements ServiceRegistry {
+public final class LocalServiceRegistry implements ServiceRegistry {
 
     private final FleetStore store;
 
-    public ServiceRegistryDefault(FleetStore store) {
+    public LocalServiceRegistry(FleetStore store) {
         this.store = Objects.requireNonNull(store, "store");
     }
 
