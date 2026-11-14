@@ -1,10 +1,10 @@
 # Gotchas
 
 - Unknown `before()` / `after()` targets throw `IllegalArgumentException` — they are not silently ignored.
-- `StaticResourceMount` is the static-file API, not `StaticResources`.
+- `StaticResourceMount` is the static-file API; use its `classpath(...)` / `directory(...)` mount factories.
 - `HealthCheck` lives in `com.jujin.freeway.http.filter`.
 - `AppRuntime` is `AutoCloseable`; examples should close it.
-- If a snippet uses CLI args, define them in the snippet or use `new String[0]`.
+- If a snippet uses CLI args, pass them through `Launch.of("--freeway.profile=dev")` to `FreewayApp.run(...)`, or use `FreewayApp.create(...).args(...)`; there is no argument-array parameter on the launcher.
 - `FreewayApp.run(...)` already starts the runtime; `HttpModule` already contributes the server hook.
 - A `BOUNDARY` scoped concrete class should not be injected directly into a singleton; inject the interface so the container can hand out a scoped proxy.
 - `Binding.primary()` and the `@Primary` marker are equivalent — the DSL call maps to the marker internally, so both forms resolve through the same marker index.
@@ -26,4 +26,54 @@
   container inferring. So give the class one constructor and mark it `@Inject`, and when construction
   really does branch (settings, plain values, runtime config), bind a provider instead of leaving a
   second constructor to be inferred.
+
+## Testing Patterns
+
+### IoC tests
+
+```java
+Container c = Freeway.create(binder -> {
+    binder.bind(MyService.class).to(MyServiceImpl.class);
+});
+MyService svc = c.get(MyService.class);
+c.close();
+```
+
+### HTTP tests
+
+`c` is a container that placed `HttpModule`. Set `freeway.http.server.port=0`
+through the test's config so parallel runs cannot collide, and read the bound
+port from `server.port()`:
+
+```java
+HttpServer server = c.get(HttpServer.class);
+server.start();
+try {
+    HttpClient client = HttpClient.newHttpClient();
+    HttpResponse<String> resp = client.send(
+        HttpRequest.newBuilder().uri(URI.create("http://localhost:" + server.port() + "/test"))
+            .GET().build(), BodyHandlers.ofString());
+    assertEquals(200, resp.statusCode());
+} finally { server.stop(); }
+```
+
+### DB tests (H2 in memory)
+
+```java
+PoolConfig config = PoolConfig.defaults("jdbc:h2:mem:test;DB_CLOSE_DELAY=-1", "sa", "");
+Database db = Database.create(config);
+Schema.ensure(db, TestEntity.class);
+```
+
+Close the database when the test ends. `DB_CLOSE_DELAY=-1` keeps the in-memory
+database alive after the last connection closes, so the schema a test created is
+still there for its later connections.
+
+## Design Conventions
+
+- **Public interfaces use the bare domain name**: `Container`, `JsonCodec`, `HttpExchange`.
+- **Default implementations use the `XDefault` suffix**: `AppRuntimeDefault`, `JsonCodecDefault`, `CoercerDefault`.
+- **`Impl` is reserved for non-strategic concrete implementations**: container-internal assembly (`ContainerImpl`), engine internals (`HttpTransportImpl`), and per-owner types that coexist with siblings (`PooledConnectionImpl`).
+- **Library types do not import IoC types** - the `Library -> DbModule` pattern: the library itself has zero IoC dependencies.
+- **Do not start work in `bind()`** - modules only declare; `RuntimeHook.start()` is the activation point.
 

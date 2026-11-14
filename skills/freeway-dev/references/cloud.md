@@ -46,6 +46,12 @@ freeway.cloud.registry.token=s3cret            # current shared secret
 freeway.cloud.registry.token-previous=old      # accepted during rotation, then cleared
 ```
 
+Rotation is online: move the current value into `token-previous`, put the new
+value in `token` (both are accepted while both are set), roll the writers over,
+then clear `token-previous`. The node re-reads the token per request, so neither
+step needs a restart; the previous value is accepted by a node only and a
+client never sends it.
+
 - wire protocol: clients send `X-Registry-Proto: 1`; an unsupported value is
   answered `426` (with the supported version), never a 404. A node always
   accepts older protocols, so nodes upgrade before clients.
@@ -75,16 +81,18 @@ freeway.cloud.registry.timeout-ms=3000
 - instances: union across alive nodes by instance id; all nodes down throws
 - unregister: best-effort fan-out during shutdown (after the drain window)
 
-The lifecycle itself (register on start, heartbeats, lost-lease self-heal,
-deregister, startup compensation) is driven by the core `RegistryLifecycleHook` —
-adapters implement transport only.
+The lifecycle itself (register on start, the readiness gate, heartbeats,
+lost-lease self-heal, deregister, startup compensation) is driven by the core
+`RegistryLifecycleHook` — adapters implement transport only, and application code
+contains no registration logic.
 
 **Readiness (the instance is not discoverable until it can serve).** An
 application that contributes `CloudHealthContributor`s registers as
-`ServiceHealth.starting()`, and a gate flips it to ready only when **every** check
-passes (retried every second, off the startup thread). No contributors ⇒ ready
-as registered — the old behaviour, deliberately. `ServiceRegistry.markReady` is
-the seam (default no-op, so Consul-style adapters are unaffected).
+`ServiceHealth.starting()` - present in the registry, absent from discovery
+results - and a gate flips it to ready only when **every** check passes (retried
+every second, off the startup thread). No contributors ⇒ ready as registered —
+the old behaviour, deliberately. `ServiceRegistry.markReady` is the seam
+(default no-op, so Consul-style adapters are unaffected).
 
 **Caching is the discovery implementation's own policy.** A network-backed
 implementation wraps itself with `CachingServiceDiscovery.around(delegate, ttl,
@@ -114,6 +122,9 @@ binder.bind(UserApi.class).to(container -> RemoteProxyFactory
     .build(UserApi.class));
 ```
 
+Business code always stays `@Inject UserApi`: whether the implementation is
+local or remote is a decision of the composition root, never of the call site.
+
 - served route: `POST /rpc/{mapping}/{method}`; only declared mappings are
   reachable; duplicate exports, exporting an unbound type, and overloaded
   handler methods fail startup
@@ -131,7 +142,7 @@ Presence-driven activation:
 freeway.cloud.event.peers=10.0.0.11:8080        # non-empty list IS the activation
 freeway.cloud.event.enabled=true                # or explicit, e.g. discovery-fed mesh
 freeway.cloud.event.discovery-feed-ms=10000     # peers polled from the bound discovery
-freeway.cloud.event.token=mesh-secret           # production MUST set it (WS 1008 on mismatch)
+freeway.cloud.event.token=mesh-secret           # production MUST set it; all nodes must agree (WS 1008 on mismatch)
 ```
 
 - publish: `mesh.publish("order.created", payload)` — topic string is the wire
@@ -145,18 +156,19 @@ freeway.cloud.event.token=mesh-secret           # production MUST set it (WS 100
   node's own service and hand the whole snapshot to the mesh (self excluded;
   failed poll keeps the previous set; empty snapshot clears it; static `peers`
   survive — union semantics)
-- delivery is at-most-once, real-time; durable per-key ordering is the Kafka
-  plane. Local `EventBus` is untouched; mirror a remote fact into the local bus
-  explicitly inside the handler
-- `keepalive-ms` (default off): each connection pings its peer and requires the
-  pong before the next tick, catching half-open links a NAT/LB drops silently;
-  a missed probe closes the connection and the existing reconnect/unregister
-  path takes over. No protocol change — it reuses WebSocket ping/pong
-  (`WebSocketListener.onPong` is how the mesh sees the answer)
+- delivery is at-most-once with no redelivery, real-time; durable per-key
+  ordering is the Kafka plane. Local `EventBus` is untouched; mirror a remote
+  fact into the local bus explicitly inside the handler
+- `freeway.cloud.event.keepalive-ms` (default off): each connection pings its
+  peer and requires the pong before the next tick, catching half-open links a
+  NAT/LB drops silently; a missed probe closes the connection and the existing
+  reconnect/unregister path takes over. No protocol change — it reuses WebSocket
+  ping/pong (`WebSocketListener.onPong` is how the mesh sees the answer)
 - observability: `stats()` — `published / framesQueued / framesDropped /
-  sendFailures / droppedNoSubscriber / droppedLegacy`; the same counters are
-  scraped as `cloud_event_*` gauges on `/metrics` when an observability module
-  is installed (registered even with no peers: "no peers" is a fact)
+  sendFailures / inboundDelivered / droppedLegacy / droppedNoSubscriber`; the
+  same counters plus the peer count are scraped as `cloud_event_*` gauges on
+  `/metrics` when an observability module is installed (registered even with no
+  peers: "no peers" is a fact)
 
 ## TLS Material Rotation
 
@@ -166,10 +178,13 @@ freeway.http.ssl.reload-interval=5s          # inbound: the certificate the serv
 ```
 
 Outbound rotation cannot rebuild the `HttpClient` (the JDK captures its
-`SSLContext` at construction), so it keeps one context and delegates to
+`SSLContext` at construction, and a rebuilt client would reopen the connection
+pool and strand in-flight calls), so it keeps one context and delegates to
 rotating material — the key/trust managers re-read the files per handshake
-(throttled, keep-on-failure). Point it at short-lived certificates and the
-rotation no longer needs a restart.
+(throttled, keep-on-failure). Inbound rotation is the engine reading the current
+context on each handshake, so the server presents the new certificate the same
+way. Point both at short-lived certificates and rotation no longer needs a
+restart.
 
 ## Health, Observability, Resilience, Secrets, Storage
 
@@ -188,7 +203,9 @@ rotation no longer needs a restart.
 ## Semantics Worth Remembering
 
 - cloud keys are read once when the owning component is built (exceptions:
-  per-call values, the secret file reread) — changing a key needs a restart
+  per-call budgets, the secret file reread on size/mtime change, and the registry
+  token, re-read per request so rotation needs no restart) — changing any other
+  key needs a restart
 - shutdown order: registry hook first (draining → deregister → drain window
   `freeway.cloud.registry.shutdown-drain`, default `auto` answered by the
   backend), then the HTTP server stops accepting; in-flight outbound calls get

@@ -270,6 +270,23 @@ class DocsLayoutConsistencyTest {
     // ── the one deleted file ─────────────────────────────────
 
     @Test
+    void everySkillReferenceIsLinkedFromTheEntry() throws IOException {
+        assumeTrue(REPO != null, "repository layout not present");
+        Path skills = REPO.resolve("skills/freeway-dev");
+        String entry = Files.readString(skills.resolve("SKILL.md"));
+        List<String> orphans = new ArrayList<>();
+        try (Stream<Path> walk = Files.list(skills.resolve("references"))) {
+            for (Path reference : walk.filter(Files::isRegularFile).toList()) {
+                if (!entry.contains(reference.getFileName().toString())) {
+                    orphans.add(reference.getFileName().toString());
+                }
+            }
+        }
+        assertEquals(List.of(), orphans,
+            "a reference the entry does not link is a file the skill never reads");
+    }
+
+    @Test
     void theChineseSkillCopyIsTheDocumentedException() throws IOException {
         assumeTrue(REPO != null, "repository layout not present");
         Path chinese = REPO.resolve(CHINESE_SKILL);
