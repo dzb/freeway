@@ -1,0 +1,48 @@
+# Public types in `internal` packages — the API surface budget.
+#
+# `internal` means "no stability promise", not "invisible": a public type here
+# is still reachable by every consumer and must be treated as a deliberate API
+# decision. InternalSurfaceBudgetTest fails when the tree and this list differ,
+# so adding (or removing) one is an explicit edit, never an accident.
+#
+# One entry per line: path/to/File.java#TypeName
+freeway-boot/src/main/java/com/jujin/freeway/boot/internal/AppConfigDefault.java#AppConfigDefault
+freeway-boot/src/main/java/com/jujin/freeway/boot/internal/AppLogSource.java#AppLogSource
+freeway-boot/src/main/java/com/jujin/freeway/boot/internal/AppRuntimeDefault.java#AppRuntimeDefault
+freeway-boot/src/main/java/com/jujin/freeway/boot/internal/BootModule.java#BootModule
+freeway-boot/src/main/java/com/jujin/freeway/boot/internal/ConfigCascade.java#ConfigCascade
+freeway-boot/src/main/java/com/jujin/freeway/boot/internal/ConfigSources.java#ConfigSources
+freeway-cloud/src/main/java/com/jujin/freeway/cloud/context/internal/AuthPropagator.java#AuthPropagator
+freeway-cloud/src/main/java/com/jujin/freeway/cloud/context/internal/BaggagePropagator.java#BaggagePropagator
+freeway-cloud/src/main/java/com/jujin/freeway/cloud/context/internal/PropagationFilter.java#PropagationFilter
+freeway-cloud/src/main/java/com/jujin/freeway/cloud/context/internal/TracePropagator.java#TracePropagator
+freeway-cloud/src/main/java/com/jujin/freeway/cloud/discovery/internal/DiscoveryConnectionHook.java#DiscoveryConnectionHook
+freeway-cloud/src/main/java/com/jujin/freeway/cloud/discovery/internal/RegistryHealthContributor.java#RegistryHealthContributor
+freeway-cloud/src/main/java/com/jujin/freeway/cloud/discovery/internal/RegistryLifecycleHook.java#RegistryLifecycleHook
+freeway-cloud/src/main/java/com/jujin/freeway/cloud/discovery/internal/RegistryRenewal.java#RegistryRenewal
+freeway-cloud/src/main/java/com/jujin/freeway/cloud/discovery/internal/RegistryStore.java#RegistryStore
+freeway-cloud/src/main/java/com/jujin/freeway/cloud/health/internal/ReadyHandler.java#ReadyHandler
+freeway-cloud/src/main/java/com/jujin/freeway/cloud/internal/ActiveBindingProbe.java#ActiveBindingProbe
+freeway-cloud/src/main/java/com/jujin/freeway/cloud/internal/BackendTypeGuard.java#BackendTypeGuard
+freeway-cloud/src/main/java/com/jujin/freeway/cloud/internal/CloudHttpClients.java#CloudHttpClients
+freeway-cloud/src/main/java/com/jujin/freeway/cloud/internal/ConstantTime.java#ConstantTime
+freeway-cloud/src/main/java/com/jujin/freeway/cloud/internal/HttpServiceDeclaration.java#HttpServiceDeclaration
+freeway-cloud/src/main/java/com/jujin/freeway/cloud/internal/OptionalBinding.java#OptionalBinding
+freeway-cloud/src/main/java/com/jujin/freeway/cloud/observe/internal/MetricsHandler.java#MetricsHandler
+freeway-cloud/src/main/java/com/jujin/freeway/cloud/observe/internal/TracingFilter.java#TracingFilter
+freeway-db/src/main/java/com/jujin/freeway/db/internal/DatabaseImpl.java#DatabaseImpl
+freeway-db/src/main/java/com/jujin/freeway/db/internal/DatabaseRegistryImpl.java#DatabaseRegistryImpl
+freeway-db/src/main/java/com/jujin/freeway/db/internal/PoolDefault.java#PoolDefault
+freeway-db/src/main/java/com/jujin/freeway/db/internal/RowMapperResolver.java#RowMapperResolver
+freeway-flow/src/main/java/com/jujin/freeway/flow/internal/FlowContextImpl.java#FlowContextImpl
+freeway-flow/src/main/java/com/jujin/freeway/flow/internal/FlowContextState.java#FlowContextState
+freeway-flow/src/main/java/com/jujin/freeway/flow/internal/FlowContexts.java#FlowContexts
+freeway-flow/src/main/java/com/jujin/freeway/flow/internal/Stepper.java#Stepper
+freeway-http/src/main/java/com/jujin/freeway/http/internal/HeaderStore.java#HeaderStore
+freeway-http/src/main/java/com/jujin/freeway/http/internal/HttpHeaders.java#HttpHeaders
+freeway-http/src/main/java/com/jujin/freeway/http/internal/HttpUtils.java#HttpUtils
+freeway-http/src/main/java/com/jujin/freeway/http/internal/LimitedInputStream.java#LimitedInputStream
+freeway-http/src/main/java/com/jujin/freeway/http/internal/ResolvableValue.java#ResolvableValue
+freeway-http/src/main/java/com/jujin/freeway/http/internal/ResponseFraming.java#ResponseFraming
+freeway-http/src/main/java/com/jujin/freeway/http/internal/WebSocketCloseReason.java#WebSocketCloseReason
+freeway-ioc/src/main/java/com/jujin/freeway/ioc/internal/ContainerImpl.java#ContainerImpl

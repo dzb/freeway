@@ -307,14 +307,31 @@ public final class RpcHttpClientDefault implements RpcHttpClient {
         // shutdownNow would never complete on its own, so close() must see it
         // to settle it — and must see it to drain it first.
         java.util.concurrent.CompletableFuture<RpcResponse> future = enter(serviceId);
+        // Cancellation is a first-class shape: cancelling the returned future
+        // aborts the in-flight send (when one exists) and interrupts the
+        // worker, so the retry loop/backoff stops instead of running on for a
+        // result nobody will read. The underlying transport is best-effort:
+        // the JDK client owns the connection, and cancel() asks it to drop it.
+        CallState state = new CallState();
+        future.whenComplete((response, error) -> {
+            if (future.isCancelled()) {
+                state.cancel();
+            }
+        });
         Runnable work = () -> {
+            if (state.cancelled()) {
+                return;
+            }
+            state.worker(Thread.currentThread());
             try {
                 future.complete(ctx == null
-                    ? orchestrate(serviceId, request, true, deadlineNanos)
+                    ? orchestrate(serviceId, request, true, deadlineNanos, state)
                     : InvocationContext.runWith(ctx,
-                        () -> orchestrate(serviceId, request, true, deadlineNanos)));
+                        () -> orchestrate(serviceId, request, true, deadlineNanos, state)));
             } catch (Throwable failure) {
                 future.completeExceptionally(failure);
+            } finally {
+                state.worker(null);
             }
         };
         try {
@@ -327,6 +344,48 @@ public final class RpcHttpClientDefault implements RpcHttpClient {
             throw new IllegalStateException("RpcHttpClient is closed", rejected);
         }
         return future;
+    }
+
+    /**
+     * The per-call cancellation handle: the worker thread and the in-flight
+     * send it is waiting on. Cancellation interrupts both, and the retry loop
+     * sees an interrupted failure (non-retryable) instead of continuing.
+     */
+    private static final class CallState {
+        private volatile java.util.concurrent.CompletableFuture<HttpResponse<byte[]>> send;
+        private volatile Thread worker;
+        private volatile boolean cancelled;
+
+        void worker(Thread thread) {
+            this.worker = thread;
+        }
+
+        void send(java.util.concurrent.CompletableFuture<HttpResponse<byte[]>> future) {
+            this.send = future;
+            if (cancelled) {
+                future.cancel(true);
+            }
+        }
+
+        void clearSend() {
+            this.send = null;
+        }
+
+        void cancel() {
+            cancelled = true;
+            java.util.concurrent.CompletableFuture<HttpResponse<byte[]>> inFlight = send;
+            if (inFlight != null) {
+                inFlight.cancel(true);
+            }
+            Thread thread = worker;
+            if (thread != null) {
+                thread.interrupt();
+            }
+        }
+
+        boolean cancelled() {
+            return cancelled;
+        }
     }
 
     private void requireUsable(String serviceId) {
@@ -348,12 +407,18 @@ public final class RpcHttpClientDefault implements RpcHttpClient {
      */
     private RpcResponse orchestrate(
         String serviceId, RpcRequest request, boolean async, long deadlineNanos) {
+        return orchestrate(serviceId, request, async, deadlineNanos, null);
+    }
+
+    private RpcResponse orchestrate(
+        String serviceId, RpcRequest request, boolean async, long deadlineNanos,
+        CallState state) {
         CircuitBreaker breaker = breakerFor(serviceId);
         RateLimiter rateLimiter = rateLimiterFor(serviceId);
         long callStart = System.nanoTime();
         return policy.run(serviceId, deadlineNanos, breaker, rateLimiter,
             request.idempotent(),
-            () -> attempt(serviceId, request, async, deadlineNanos, callStart));
+            () -> attempt(serviceId, request, async, deadlineNanos, callStart, state));
     }
 
     /** Per-service breaker shard. No injection → fresh default; an injected
@@ -404,12 +469,12 @@ public final class RpcHttpClientDefault implements RpcHttpClient {
      * outcome instead of being lost to an escaping RuntimeException.
      */
     private RpcResponse attempt(String serviceId, RpcRequest request, boolean async,
-                                long deadlineNanos, long callStart) {
+                                long deadlineNanos, long callStart, CallState state) {
         try {
             List<ServiceInstance> instances = discovery.instances(serviceId);
             ServiceInstance instance = loadBalancer.choose(instances)
                 .orElseThrow(() -> RpcException.noInstance(serviceId));
-            return doCall(instance, request, async, deadlineNanos, callStart);
+            return doCall(instance, request, async, deadlineNanos, callStart, state);
         } catch (RpcException e) {
             throw e;
         } catch (RuntimeException e) {
@@ -418,7 +483,7 @@ public final class RpcHttpClientDefault implements RpcHttpClient {
     }
 
     private RpcResponse doCall(ServiceInstance instance, RpcRequest request, boolean async,
-                               long deadlineNanos, long callStart) {
+                               long deadlineNanos, long callStart, CallState state) {
         // The endpoint URI never ends in '/' (ServiceEndpoint normalizes its base
         // path) and a RpcRequest path always starts with '/', so a plain
         // join cannot produce a double slash.
@@ -451,16 +516,35 @@ public final class RpcHttpClientDefault implements RpcHttpClient {
         try {
             HttpResponse<byte[]> response;
             if (async) {
+                java.util.concurrent.CompletableFuture<HttpResponse<byte[]>> sendFuture =
+                    http.sendAsync(builder.build(),
+                        HttpResponse.BodyHandlers.ofByteArray());
+                if (state != null) {
+                    state.send(sendFuture);
+                }
                 try {
-                    response = http.sendAsync(builder.build(),
-                        HttpResponse.BodyHandlers.ofByteArray()).join();
-                } catch (java.util.concurrent.CompletionException ce) {
-                    // Unwrap so the sync catch chain (timeout/connect) applies unchanged.
-                    Throwable c = ce.getCause() == null ? ce : ce.getCause();
+                    // get(), not join(): a cancelled call interrupts the worker,
+                    // and join() would keep it parked until the peer answers.
+                    response = sendFuture.get();
+                } catch (java.util.concurrent.CancellationException ce) {
+                    throw RpcException.interrupted(instance.serviceId(), ce);
+                } catch (java.util.concurrent.ExecutionException ee) {
+                    Throwable c = ee.getCause() == null ? ee : ee.getCause();
                     if (c instanceof HttpTimeoutException ht) throw ht;
                     if (c instanceof IOException io) throw io;
                     if (c instanceof RuntimeException re) throw re;
-                    throw ce;
+                    if (c instanceof InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        throw RpcException.interrupted(instance.serviceId(), ie);
+                    }
+                    throw new java.util.concurrent.CompletionException(c);
+                } catch (InterruptedException ie) {
+                    sendFuture.cancel(true);
+                    throw ie; // mapped by the outer catch below
+                } finally {
+                    if (state != null) {
+                        state.clearSend();
+                    }
                 }
             } else {
                 response = http.send(builder.build(), HttpResponse.BodyHandlers.ofByteArray());

@@ -43,6 +43,17 @@ public interface RpcHttpClient extends AutoCloseable {
      * virtual-thread based send that keeps the caller's thread free.
      * Completes exceptionally with {@link RpcException}; never returns
      * {@code null}.
+     *
+     * <p>Cancelling the returned future should abort the orchestration: the
+     * retry loop (including backoff) is interrupted, the in-flight send is
+     * asked to cancel, and the in-flight registration is settled.
+     * {@link RpcHttpClientDefault} implements that contract; the default
+     * implementation below runs a blocking call and can only settle the
+     * future, because it has no handle on the running attempt. Transport
+     * support is best-effort — the JDK client owns the connection — but the
+     * retry loop stops consuming attempts and worker time. Cancellation is
+     * distinct from a deadline: a deadline fails the call with a timeout,
+     * while cancellation means the caller no longer wants the result.</p>
      */
     default java.util.concurrent.CompletableFuture<RpcResponse> callAsync(
         String serviceId, RpcRequest request) {

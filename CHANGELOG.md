@@ -147,6 +147,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Async RPC cancellation is end-to-end** (`freeway-cloud`): cancelling the
+  future returned by `RpcHttpClient.callAsync` now interrupts the retry loop
+  (backoff included) and asks the in-flight send to cancel; previously only the
+  returned future settled and the worker kept retrying. Cancellation is distinct
+  from a deadline (a timeout failure), and the in-flight registration is settled
+  the same way.
+- **Public types in `internal` are budgeted** (`freeway-boot`): `api/internal-surface.txt`
+  plus `InternalSurfaceBudgetTest` make every public type under an `internal`
+  package an explicit decision instead of an accidental API addition.
 - **Flow parallel branches inherit ambient context** (`freeway-flow`): a
   `PARALLEL` fork now wraps each branch with the bound `ContextCarrier`, so
   trace/principal/baggage/MDC cross into the branch worker. Previously only the

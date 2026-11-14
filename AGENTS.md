@@ -106,7 +106,9 @@ transitively) plus JUnit at test scope. Anything else belongs in an ext adapter.
   longer disagree with `Freeway.create` next to them.
 - Package location is orthogonal to the suffix: `internal` is part of Freeway
   and marks "no stability promise" for callers, not a visibility gate — classes
-  there may stay `public` when sibling packages assemble them. A `XDefault`
+  there may stay `public` when sibling packages assemble them. Public types under `internal` are budgeted in
+  [`api/internal-surface.txt`](api/internal-surface.txt) and guarded by
+  `InternalSurfaceBudgetTest`: the surface can grow, but only deliberately. A `XDefault`
   may live in `internal` when the module so organizes it (`PoolDefault` in
   `db/internal` is still substituted from outside via `.primary()`, which never
   references the class itself).

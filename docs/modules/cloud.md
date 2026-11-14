@@ -125,6 +125,13 @@ warning are all driven by core, and the adapter implements only the transport. N
 
 ## Remote Invocation
 
+`RpcHttpClient.callAsync` returns a future whose `cancel(true)` is meaningful:
+it interrupts the retry loop (backoff included) and asks the in-flight send to
+cancel, so a cancelled call stops consuming attempts and worker time. This is
+separate from a deadline — a deadline fails the call with a timeout, while
+cancellation means the caller no longer wants the result. The transport is
+best-effort: the JDK `HttpClient` owns the connection.
+
 Cross-process method invocation: the provider declares which mappings can be called externally, and the consumer binds a typed client to that mapping.
 Dispatch goes through `RpcHttpClient`, so discovery, load balancing, retries, circuit breaking, and context propagation all apply.
 
