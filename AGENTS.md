@@ -30,6 +30,10 @@ signing is skipped because it belongs to the release step), the demos profile,
 the docs consistency tests, and a cross-repository job that installs this
 snapshot and clean-builds `freeway-ext` against it. Dependabot updates SLF4J,
 JUnit and the Actions versions weekly; dependency review gates pull requests.
+CI is **verification-only**: it never signs, deploys or publishes and holds no
+release credentials. Releasing is a manual step on a machine that owns the
+signing key; the key, passphrase and Central token never enter this repository
+or its CI configuration.
 
 ## Module Map
 
