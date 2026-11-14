@@ -126,82 +126,116 @@ CLI 参数（`--freeway.config.file=...`）同样无效——启动时会打 WAR
 
 ---
 
-## 二、Commons — 日志系统
+## II. Commons — logging
 
-### 配置文件的两个家
+### Where log configuration lives
 
-日志键可以住在两个地方（`-D` 系统属性与环境变量都高于两个文件；专用文件更具体、优先于 app 文件；本节全部键只在 `freeway.log.*` 命名空间内生效）：
+Log keys have two file homes (`-D` system properties and environment variables
+outrank both files; the dedicated file is the more specific declaration and
+outranks the application files; every key in this chapter is scoped to the
+`freeway.log.*` namespace):
 
-1. **专用文件** `freeway-logging.properties`（classpath 根）——日志专属声明，**优先生效**。旧名 `freeway-log.properties` **不再被读取**：若它仍留在 classpath 根，启动会打一行 stderr 提示改名（配置不会被采纳，但也不会静默失效）
-2. **应用主配置** `application.properties` / `application.json`（类路径根与激活 profile 的变体；**工作目录中的同名文件与热重载不参与日志侧**，只有类路径基线参与）——只取 `freeway.log.*` 键
+1. **Dedicated file** `freeway-logging.properties` (classpath root) — the
+   log-specific declaration and the higher-ranked file. The pre-1.5.2 name
+   `freeway-log.properties` is **no longer read**: if it is still on the
+   classpath, startup prints a one-line rename notice instead of silently
+   ignoring it.
+2. **Application config** `application.properties` / `application.json`
+   (classpath root and the active profile variants; working-directory files and
+   hot reload never participate in logging) — only `freeway.log.*` keys are
+   taken.
 
-**后端选择**由 `freeway.log.system` 在**类加载期**决定：默认 `freeway` 让 Freeway 的 JUL provider 胜出，classpath 上传递进来的 Logback/Log4j 不会静默接管（启动会打一行提示，并给出切换键）；`auto` 恢复"外部 provider 优先"；也可以显式写 `logback`/`log4j2`/`simple` 或 provider 全限定类名。显式选择的后端不在 classpath 时启动失败并点名缺的依赖；`-Dslf4j.provider` 是 SLF4J 原生逃生舱，优先级更高。启动报告形如 `[Freeway] logging: freeway-logging (JUL) | provider=... | selected by ...`。
+**Backend selection** is decided at class-load time by `freeway.log.system`.
+The default `freeway` keeps Freeway's JUL provider even when Logback/Log4j is
+on the classpath (startup names the ignored provider and the switch); `auto`
+restores "external provider first"; `logback` / `log4j2` / `simple`, or a
+fully-qualified provider class, selects one explicitly — if it is not on the
+classpath, startup fails and names the missing dependency. `-Dslf4j.provider`
+is SLF4J's own escape hatch and takes precedence. Every startup prints one
+report: `[Freeway] logging: freeway-logging (JUL) | provider=... | selected by ...`.
 
-注意三条边界：
+With a non-JUL backend selected, Freeway pins the SLF4J binding and **leaves
+`java.util.logging` untouched**: it attaches no JUL handlers, formatters or
+files. JDK-internal JUL records (for example HttpClient) stay on JUL's own
+configuration; an application that wants them in its backend adds the standard
+`jul-to-slf4j` bridge itself (dependency plus the usual `LogManager` reset).
+Freeway's JUL enhancement is configured only for its own JUL backend.
 
-- **六个键住不进文件**：`freeway.log.system`、`freeway.log.jul-bridge`、`freeway.log.color`、`freeway.log.mdc`、`freeway.log.mdc.priority`、`freeway.log.caller-info` 在**类加载期**读取（早于文件解析），只认 `-D` 与环境变量；写进任何配置**文件**都不生效——启动会对这类声明打一行 WARN 点名（键、值、来源，以及可用的通道）。
-- **per-logger 级别**（`<logger>.level`）只支持专用文件——在应用主配置里它与普通点号键无法区分（会把任意应用键误认成 logger）。
-- 应用文件侧走主级联的 **classpath 基线**（含 `-D`/env/类路径文件声明的 profile 选择）；工作目录文件声明与热重载不参与日志侧。
-- 因此 **CLI 参数**（`--freeway.log.level=DEBUG`）与**工作目录覆盖文件**里的 `freeway.log.*` 不会作用于 logger。它们仍会进入符号链，看起来像生效了——启动会为每个这样的键打一行 WARN，点名键、值、来源和三条可用通道（`-D`、环境变量、类路径配置文件）。
+Three boundaries:
 
-另有三个**进程级键**（不是 `freeway.*`，框架同样读取）：
+- **Five keys cannot live in files**: `freeway.log.system`, `freeway.log.color`,
+  `freeway.log.mdc`, `freeway.log.mdc.priority` and
+  `freeway.log.caller-info` are read at **class-load time** (before any file is
+  parsed) and only honour `-D` and environment variables. A declaration in any
+  config **file** never takes effect, and startup prints a WARN naming the key,
+  its value, its source and the available channels.
+- **Per-logger levels** (`<logger>.level`) are supported only in the dedicated
+  file: in the application config they cannot be distinguished from ordinary
+  dotted keys, so they would turn arbitrary application keys into loggers.
+- The application-file side is the main cascade's **classpath baseline**
+  (including the profile selected through `-D`/env/classpath files);
+  working-directory declarations and hot reload never reach logging. Therefore
+  **CLI arguments** (`--freeway.log.level=DEBUG`) and `freeway.log.*` keys in
+  working-directory override files do not affect loggers; startup warns for each
+  such key with the three working channels (`-D`, environment, classpath file).
 
-| 键 | 档 | 类型 | 默认值 | 说明 |
-|----|------|------|--------|------|
-| `app.name`（JVM `-D`） | 机制 | String | `freeway` | 默认日志文件名 `logs/{app.name}.log`。与 `freeway.app.name`（cloud 服务名回退）是两回事 |
-| `slf4j.provider`（JVM `-D`） | 机制 | String | 由 `freeway.log.system` 决定 | SLF4J provider 的 JVM 级逃生舱；显式设置后**优先于** `freeway.log.system`，两者冲突时启动会说明以本属性为准 |
-| `NO_COLOR`（环境变量） | 机制 | 存在性 | 未设 | 存在即关闭 ANSI 颜色（遵循 no-color.org） |
+Three **process-level keys** (not under `freeway.*`, but read by the framework):
 
-#### 全局日志
+| Key | Class | Type | Default | Meaning |
+|-----|-------|------|---------|---------|
+| `app.name` (JVM `-D`) | mechanism | String | `freeway` | Base name of the default log file `logs/{app.name}.log`. Unrelated to `freeway.app.name` (the cloud service-name fallback) |
+| `slf4j.provider` (JVM `-D`) | mechanism | String | decided by `freeway.log.system` | JVM-level escape hatch for the SLF4J provider; when set it **outranks** `freeway.log.system`, and startup explains the conflict |
+| `NO_COLOR` (env) | mechanism | presence | unset | Disables ANSI colour (no-color.org) |
 
-| 键 | 档 | 类型 | 默认值 | 必填 | 说明 |
-|----|------|------|--------|------|------|
-| `freeway.log.system` | 机制·-D | String | `freeway` | 否 | SLF4J 后端选择：`freeway`（默认，Freeway 的 JUL 后端）、`auto`（外部 provider 优先）、`logback`/`log4j2`/`simple`，或 provider 全限定类名。类加载期读取，写进文件无效。显式选择的后端不在 classpath 时启动失败并点名缺的依赖 |
-| `freeway.log.jul-bridge` | 机制·-D | Boolean | `true` | 否 | 选中非 JUL 后端时，把 JDK 自身的 JUL 日志转发到该后端（并替换 JUL 默认 ConsoleHandler，避免重复打印）。设 `false` 保留 JUL 原始输出。类加载期读取 |
-| `freeway.log.level` | 决策 | String | `INFO` | 否 | 全局日志级别。SLF4J 名（TRACE/DEBUG/INFO/WARN/OFF）或 JUL 名（FINEST/FINE/INFO/WARNING/SEVERE）；输出统一显示 SLF4J 名（JUL 记录亦然） |
-| `freeway.log.format` | 调优·auto | String | `auto` | 否 | 格式化模式：`auto`（Freeway formatter + ANSI）或 `simple`（JUL SimpleFormatter） |
-| `freeway.log.color` | 调优·auto·-D | String | `auto` | 否 | 颜色模式：`auto`（跟随 format）、`always`（强制 ANSI）、`never`（强制无色）。遵循 `NO_COLOR` 规范 |
-| `freeway.log.caller-info` | 调优·-D | Boolean | `true` | 否 | 每条日志解析 source class/method。日志量大时可设为 `false` 提升吞吐 |
-| `freeway.log.mdc` | 调优·-D | Boolean | `true` | 否 | 日志输出是否包含 MDC 上下文。MDC（Mapped Diagnostic Context）是每线程级的上下文键值对，用于分布式链路追踪、请求关联等场景 |
-| `freeway.log.mdc.priority` | 调优·-D | String | 未设（全部按字母序） | 否 | MDC 键的显示优先级顺序（逗号分隔），未列出的键按字母序排列。**框架不预设任何键名**——要突出的键（如 `traceId`/`requestId`）由应用自己声明 |
+#### Global logging
 
-#### 控制台输出
+| Key | Class | Type | Default | Required | Meaning |
+|-----|-------|------|---------|----------|---------|
+| `freeway.log.system` | mechanism·-D | String | `freeway` | no | SLF4J backend: `freeway` (default, Freeway's JUL backend), `auto` (external provider first), `logback`/`log4j2`/`simple`, or a provider class name. Read at class-load time; ignored in files. A named backend that is absent from the classpath fails startup and names the missing dependency |
+| `freeway.log.level` | decision | String | `INFO` | no | Root log level. SLF4J names (TRACE/DEBUG/INFO/WARN/ERROR/OFF) or JUL names (FINEST/FINE/INFO/WARNING/SEVERE); output always displays the SLF4J name, including JUL-origin records |
+| `freeway.log.format` | tuning·auto | String | `auto` | no | Formatter mode: `auto` (Freeway formatter + ANSI) or `simple` (JUL `SimpleFormatter`) |
+| `freeway.log.color` | tuning·auto·-D | String | `auto` | no | Colour mode: `auto` (follows format), `always`, `never`. Honours `NO_COLOR` |
+| `freeway.log.caller-info` | tuning·-D | Boolean | `true` | no | Resolve source class/method per record. Set `false` for higher throughput on very high-volume logging |
+| `freeway.log.mdc` | tuning·-D | Boolean | `true` | no | Include the MDC block in output. MDC is the per-thread context map used for tracing/request correlation |
+| `freeway.log.mdc.priority` | tuning·-D | String | unset (alphabetical) | no | Display order of MDC keys (comma-separated); unlisted keys stay alphabetical. The framework presets no key names — declare the keys you want to highlight (`traceId`, `requestId`, ...) |
 
-| 键 | 档 | 类型 | 默认值 | 必填 | 说明 |
-|----|------|------|--------|------|------|
-| `freeway.log.console.enabled` | 姿态 | Boolean | `true` | 否 | 是否启用控制台处理器 |
-| `freeway.log.console.level` | 调优 | String | *(继承 root)* | 否 | 控制台处理器级别。空则继承全局级别 |
+#### Console output
 
-#### 默认文件日志
+| Key | Class | Type | Default | Required | Meaning |
+|-----|-------|------|---------|----------|---------|
+| `freeway.log.console.enabled` | posture | Boolean | `true` | no | Enable the console handler |
+| `freeway.log.console.level` | tuning | String | *(inherits root)* | no | Console handler level; empty inherits the global level |
 
-| 键 | 档 | 类型 | 默认值 | 必填 | 说明 |
-|----|------|------|--------|------|------|
-| `freeway.log.file` | 调优·auto | String | `auto` | 否 | 文件日志模式：`auto`（全托管 `logs/{app.name}.log`）或 `off`（禁用） |
-| `freeway.log.file.max-size` | 调优 | Long | `104857600` (100 MB) | 否 | 大小滚动阈值（字节） |
-| `freeway.log.file.max-history` | 调优 | Integer | `30` | 否 | 归档保留天数 |
-| `freeway.log.file.compress` | 调优 | Boolean | `true` | 否 | 归档后是否 GZIP 压缩 |
-| `freeway.log.file.flush-interval` | 调优 | Long | `250` | 否 | 后台刷盘间隔（毫秒）。`0` = 每条立即刷盘（最保险，吞吐低） |
+#### Default file logging
 
-#### 多文件日志
+| Key | Class | Type | Default | Required | Meaning |
+|-----|-------|------|---------|----------|---------|
+| `freeway.log.file` | tuning·auto | String | `auto` | no | File mode: `auto` (managed `logs/{app.name}.log`) or `off` (disabled) |
+| `freeway.log.file.max-size` | tuning | Long | `104857600` (100 MB) | no | Size-rotation threshold in bytes |
+| `freeway.log.file.max-history` | tuning | Integer | `30` | no | Days to keep archives |
+| `freeway.log.file.compress` | tuning | Boolean | `true` | no | GZIP archives after rotation |
+| `freeway.log.file.flush-interval` | tuning | Long | `250` | no | Background flush interval in milliseconds; `0` flushes every record (safest, lowest throughput) |
 
-| 键 | 档 | 类型 | 默认值 | 必填 | 说明 |
-|----|------|------|--------|------|------|
-| `freeway.log.files` | 姿态·presence | String | *(空)* | 否 | 逗号分隔的命名文件列表（如 `biz,audit`） |
-| `freeway.log.file.<name>.path` | 必填·条件 | String | *(必填)* | 是 | 命名文件的路径（命名文件场景下必填） |
-| `freeway.log.file.<name>.logger` | 决策 | String | *(root)* | 否 | 绑定到命名文件的 Logger 名 |
-| `freeway.log.file.<name>.level` | 调优 | String | *(继承父)* | 否 | 命名文件的日志级别 |
-| `freeway.log.file.<name>.max-size` | 调优 | Long | `104857600` | 否 | 命名文件大小阈值 |
-| `freeway.log.file.<name>.max-history` | 调优 | Integer | `30` | 否 | 命名文件归档保留天数 |
-| `freeway.log.file.<name>.compress` | 调优 | Boolean | `true` | 否 | 命名文件是否 GZIP 压缩 |
-| `freeway.log.file.<name>.flush-interval` | 调优 | Long | `250` | 否 | 命名文件刷盘间隔 |
+#### Multi-file logging
 
-#### 按包/类粒度级别
+| Key | Class | Type | Default | Required | Meaning |
+|-----|-------|------|---------|----------|---------|
+| `freeway.log.files` | posture·presence | String | *(empty)* | no | Comma-separated named files (for example `biz,audit`) |
+| `freeway.log.file.<name>.path` | required·conditional | String | *(required)* | yes | Path of the named file (required for a named file) |
+| `freeway.log.file.<name>.logger` | decision | String | *(root)* | no | Logger bound to the named file |
+| `freeway.log.file.<name>.level` | tuning | String | *(inherits parent)* | no | Level of the named file |
+| `freeway.log.file.<name>.max-size` | tuning | Long | `104857600` | no | Size-rotation threshold of the named file |
+| `freeway.log.file.<name>.max-history` | tuning | Integer | `30` | no | Days to keep the named file's archives |
+| `freeway.log.file.<name>.compress` | tuning | Boolean | `true` | no | GZIP the named file's archives |
+| `freeway.log.file.<name>.flush-interval` | tuning | Long | `250` | no | Flush interval of the named file |
 
-| 键 | 档 | 类型 | 默认值 | 必填 | 说明 |
-|----|------|------|--------|------|------|
-| `<logger-name>.level` | 调优 | String | *(继承父)* | 否 | 按包/类设置日志级别，如 `com.zaxxer.hikari.level=WARNING` |
+#### Per-package/class levels
 
-### 示例
+| Key | Class | Type | Default | Required | Meaning |
+|-----|-------|------|---------|----------|---------|
+| `<logger-name>.level` | tuning | String | *(inherits parent)* | no | Level for a package/class, for example `com.zaxxer.hikari.level=WARNING` |
+
+### Example
 
 ```json
 {
@@ -223,10 +257,12 @@ CLI 参数（`--freeway.config.file=...`）同样无效——启动时会打 WAR
 }
 ```
 
-> `color` / `caller-info` / `mdc` / `mdc.priority` 不在此例中：它们只认 `-D` 与环境变量
-> （如 `-Dfreeway.log.mdc.priority=code,traceId`），写进文件静默无效。`file.max-size`
-> 等四项属 `freeway.log.file.*`，写成一层的 `"max-size"` 会变成 `freeway.log.max-size`
-> 这个不存在的键。
+> `color`, `caller-info`, `mdc` and `mdc.priority` are absent on purpose: they
+> only honour `-D` and environment variables (for example
+> `-Dfreeway.log.mdc.priority=code,traceId`); a file declaration is silently
+> ineffective (startup warns). `file.max-size` and its siblings belong under
+> `freeway.log.file.*`; writing a one-level `"max-size"` would create the
+> nonexistent key `freeway.log.max-size`.
 
 ---
 

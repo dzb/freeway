@@ -31,7 +31,10 @@ import org.slf4j.LoggerFactory;
  * <p>After selection a one-line report names the active backend, the provider
  * class and what selected it; a provider seen on the classpath but not selected
  * is reported with the exact switch. JUL enhancement (formatters, file
- * logging) is configured only when the JUL provider is the one selected.
+ * logging) is configured only when the JUL provider is selected. With an
+ * external backend Freeway leaves JUL untouched — it does not attach handlers
+ * or forward JUL records; applications that want JDK-internal JUL logging in
+ * their backend add the standard {@code jul-to-slf4j} bridge themselves.
  */
 public final class LogBootstrap {
 
@@ -108,13 +111,10 @@ public final class LogBootstrap {
             }
             if (JUL_PROVIDER.equals(selection.provider())) {
                 JULEnhancer.configure();
-            } else if (bridgeEnabled(EnvKeys.bootstrap(LogKeys.JUL_BRIDGE))) {
-                // JDK-internal logging (HttpClient, JUL libraries) follows the
-                // selected backend; without this it stays on JUL's default console.
-                JULSlf4jBridge.install();
-                System.err.println("[Freeway] JUL→SLF4J bridge: on (JDK logs follow "
-                    + providerLabel(selection.provider()) + ")");
             }
+            // An external backend owns logging: Freeway pins the SLF4J binding
+            // and leaves java.util.logging alone. JDK-internal JUL records stay
+            // on JUL unless the application adds jul-to-slf4j itself.
             verifyBinding(selection);
         }
     }
@@ -190,11 +190,6 @@ public final class LogBootstrap {
             return "slf4j-simple";
         }
         return provider;
-    }
-
-    /** {@code freeway.log.jul-bridge}: on unless explicitly set to false. */
-    static boolean bridgeEnabled(String value) {
-        return value == null || !"false".equalsIgnoreCase(value.strip());
     }
 
     /**

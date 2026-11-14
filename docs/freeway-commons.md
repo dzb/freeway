@@ -98,7 +98,7 @@ Freeway ships a JUL-backed SLF4J provider and selects it by default. Use `freewa
 
 `-Dslf4j.provider=<class>` is SLF4J's own escape hatch and takes precedence. The startup report (`[Freeway] logging: ... | provider=... | selected by ...`) names what actually bound.
 
-When a non-JUL backend is selected, `freeway.log.jul-bridge` (default `true`) installs a JUL→SLF4J bridge: JDK-internal JUL records are forwarded to the chosen backend, and the JDK's untouched default console handler is replaced so nothing is printed twice. Set it to `false` to keep JUL's own output.
+With a non-JUL backend selected, Freeway only pins the SLF4J binding and leaves `java.util.logging` untouched — no JUL handlers, no forwarding. Add the standard `jul-to-slf4j` bridge yourself if JDK-internal JUL records should follow your backend. Freeway's own JUL enhancement is configured only for the JUL backend.
 
 ### Multi-File Logging
 

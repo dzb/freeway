@@ -69,11 +69,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **JUL→SLF4J bridge for external backends** (freeway-commons): with a non-JUL backend selected,
-  `freeway.log.jul-bridge` (default `true`) forwards JDK-internal JUL records into that backend and
-  replaces the JDK's untouched default console handler so records are not doubled. The bridge
-  resolves JUL's `MessageFormat` parameters and resource bundles before forwarding; a per-thread
-  guard prevents a backend that itself logs through JUL from looping back.
 
 - **`freeway.log.system`** (freeway-commons): class-load-time backend selection for SLF4J —
   `freeway` (default), `auto`, `logback`/`log4j2`/`simple`, or a provider class name. The default
@@ -148,6 +143,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and won over the bundled JUL backend. Now `freeway.log.system` decides, defaulting to `freeway`;
   `auto` preserves the old external-first behaviour. The change is loud: startup reports the chosen
   backend and offers the switch when another provider is present.
+- **External logging backends leave JUL alone** (freeway-commons): selecting Logback/Log4j 2/
+  slf4j-simple pins the SLF4J binding and does not attach JUL handlers or forward JUL records.
+  JDK-internal JUL logging stays on JUL; an application that wants it in its backend adds the
+  standard `jul-to-slf4j` bridge itself. The former `freeway.log.jul-bridge` key is gone.
 
 - **INCLUSIVE joins wait for active flows, not the static in-degree** (freeway-flow): a conditional
   fork that does not take a branch now propagates a dead path to the inclusive joins that branch
