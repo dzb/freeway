@@ -147,6 +147,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **RPC retry budget** (`freeway-cloud`): each service has a token bucket
+  (`freeway.cloud.rpc.retry.budget`, default 20). Successful calls replenish it,
+  each retry consumes one, and an exhausted budget fails the original failure
+  immediately instead of starting another retry loop. It is separate from
+  `max-attempts` and is sharded per service like the breaker/limiter; a custom
+  `RetryBudget` replaces it via `.primary()`. `0` means unlimited.
 - **HTTP request rejections join the failure classification**
   (`freeway-http`): `ValidationException`, `BodyTooLargeException`,
   `MultipartException` and `UnsupportedMediaTypeException` implement

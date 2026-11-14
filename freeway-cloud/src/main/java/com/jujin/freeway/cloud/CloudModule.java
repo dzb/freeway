@@ -268,6 +268,8 @@ public final class CloudModule implements ModuleEx {
         public static final String RPC_RETRY_MAX_ATTEMPTS  = "freeway.cloud.rpc.retry.max-attempts";
         public static final String RPC_RETRY_BACKOFF_BASE  = "freeway.cloud.rpc.retry.backoff-base";
         public static final String RPC_RETRY_BACKOFF_MAX   = "freeway.cloud.rpc.retry.backoff-max";
+        /** Per-service retry tokens: successful calls replenish, retries consume, 0 = unlimited. */
+        public static final String RPC_RETRY_BUDGET        = "freeway.cloud.rpc.retry.budget";
         public static final String RPC_CB_ENABLED          = "freeway.cloud.rpc.circuit-breaker.enabled";
         public static final String RPC_CB_FAILURE_THRESHOLD = "freeway.cloud.rpc.circuit-breaker.failure-threshold";
         /** Seconds a failure stays in the sliding window before it drops out of the count. */
@@ -301,6 +303,7 @@ public final class CloudModule implements ModuleEx {
         public static final int RPC_RETRY_MAX_ATTEMPTS_DEFAULT    = 3;
         public static final long RPC_RETRY_BACKOFF_BASE_DEFAULT   = 100;
         public static final long RPC_RETRY_BACKOFF_MAX_DEFAULT    = 5000;
+        public static final int RPC_RETRY_BUDGET_DEFAULT          = 20;
         public static final int RPC_CB_FAILURE_THRESHOLD_DEFAULT  = 5;
         public static final long RPC_CB_FAILURE_WINDOW_DEFAULT    = 60;
         public static final long RPC_CB_OPEN_WINDOW_DEFAULT       = 30;

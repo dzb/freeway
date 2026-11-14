@@ -11,6 +11,8 @@ import com.jujin.freeway.cloud.resilience.CircuitBreaker;
 import com.jujin.freeway.cloud.resilience.CircuitBreakerDefault;
 import com.jujin.freeway.cloud.resilience.RateLimiter;
 import com.jujin.freeway.cloud.resilience.RateLimiterDefault;
+import com.jujin.freeway.cloud.resilience.RetryBudget;
+import com.jujin.freeway.cloud.resilience.RetryBudgetDefault;
 import com.jujin.freeway.cloud.resilience.Retryer;
 import com.jujin.freeway.cloud.resilience.RetryerDefault;
 import com.jujin.freeway.commons.metrics.Metrics;
@@ -86,6 +88,9 @@ public final class RpcHttpClientDefault implements RpcHttpClient {
      *  is shared verbatim — see {@link #newBreaker()}/{@link #newRateLimiter()}. */
     private final ConcurrentHashMap<String, CircuitBreaker> breakers = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, RateLimiter> rateLimiters = new ConcurrentHashMap<>();
+    /** Per-service retry budgets; the injected value is the shard template. */
+    private final RetryBudget injectedRetryBudget;
+    private final ConcurrentHashMap<String, RetryBudget> retryBudgets = new ConcurrentHashMap<>();
     /**
      * Backstop against unbounded growth: breakers/rate limiters are sharded per
      * {@code serviceId}, and that id space comes from the discovery source — its
@@ -223,6 +228,17 @@ public final class RpcHttpClientDefault implements RpcHttpClient {
 
     public RpcHttpClientDefault(
         ServiceDiscovery discovery, LoadBalancer loadBalancer, Wiring wiring) {
+        this(discovery, loadBalancer, wiring, null);
+    }
+
+    /**
+     * Package-visible assembly used by {@link RpcModule}, which resolves the
+     * optional {@link RetryBudget} binding without widening {@link Wiring}.
+     * A null budget uses the library default.
+     */
+    RpcHttpClientDefault(
+        ServiceDiscovery discovery, LoadBalancer loadBalancer, Wiring wiring,
+        RetryBudget retryBudget) {
         Objects.requireNonNull(wiring, "wiring");
         this.discovery = Objects.requireNonNull(discovery, "discovery");
         this.loadBalancer = Objects.requireNonNull(loadBalancer, "loadBalancer");
@@ -241,7 +257,11 @@ public final class RpcHttpClientDefault implements RpcHttpClient {
         Retryer resolvedRetryer = wiring.retryer() != null
             ? wiring.retryer()
             : RetryerDefault.withDefaults();
-        this.policy = new ResiliencePolicy(resolvedRetryer, this.tracer, this.metrics);
+        this.injectedRetryBudget = retryBudget != null
+            ? retryBudget
+            : RetryBudgetDefault.withDefaults();
+        this.policy = new ResiliencePolicy(
+            resolvedRetryer, this.tracer, this.metrics, this::retryBudgetFor);
         this.shutdownGrace = wiring.shutdownGrace();
         this.requestTimeout = wiring.requestTimeout();
         this.http = CloudHttpClients
@@ -453,6 +473,14 @@ public final class RpcHttpClientDefault implements RpcHttpClient {
         if (r != null) return r;
         if (rateLimiters.size() >= MAX_SHARDED_RESILIENCE) evictOne(rateLimiters);
         return rateLimiters.computeIfAbsent(serviceId, k -> newRateLimiter());
+    }
+
+    /** Per-service retry budget shard — same bounded-shard policy as the breaker. */
+    private RetryBudget retryBudgetFor(String serviceId) {
+        RetryBudget b = retryBudgets.get(serviceId);
+        if (b != null) return b;
+        if (retryBudgets.size() >= MAX_SHARDED_RESILIENCE) evictOne(retryBudgets);
+        return retryBudgets.computeIfAbsent(serviceId, k -> injectedRetryBudget.newShard());
     }
 
     private static <V> void evictOne(ConcurrentHashMap<String, V> map) {

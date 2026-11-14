@@ -66,7 +66,7 @@ name-only methods, so instrumentation never branches on backend type.
 | `freeway.http.requests.total` | `method` — GET/HEAD/POST/PUT/PATCH/DELETE/OPTIONS/TRACE/CONNECT, otherwise `OTHER`; `route` — the declared template |
 | `freeway.http.requests.duration` | `method` as above, `route` as above |
 | `freeway.http.responses.4xx`, `freeway.http.responses.5xx` | `method`, `route` |
-| `cloud.rpc.calls`, `cloud.rpc.failures`, `cloud.rpc.duration` | `service` — the RPC service id (deployment-bounded, never user input) |
+| `cloud.rpc.calls`, `cloud.rpc.failures`, `cloud.rpc.duration`, `cloud.rpc.retry.budget.denied` | `service` — the RPC service id (deployment-bounded, never user input) |
 | all other metrics | no labels |
 
 The `route` label is the **declared template** — `/users/{id}`, never the
@@ -131,6 +131,7 @@ custom metrics that only need count/average.
 | `eventbus.stream.drops` | counter | events | Stream events dropped under backpressure |
 | `cloud.rpc.calls` | counter | calls | Logical RPC calls started |
 | `cloud.rpc.failures` | counter | failures | Logical RPC calls that failed |
+| `cloud.rpc.retry.budget.denied` | counter | retries | Retries refused by the per-service retry budget |
 | `cloud.rpc.duration` | histogram | seconds | Logical RPC call duration (all attempts) |
 | `cloud.event.published` | gauge | events | Events published through the mesh bus |
 | `cloud.event.frames.queued` | gauge | frames | Outbound frames waiting to send |

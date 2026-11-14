@@ -11,6 +11,7 @@ import com.jujin.freeway.cloud.observe.ObserveModule;
 import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.cloud.observe.Tracer;
 import com.jujin.freeway.cloud.resilience.ResilienceModule;
+import com.jujin.freeway.cloud.resilience.RetryBudget;
 import com.jujin.freeway.cloud.resilience.Retryer;
 import com.jujin.freeway.cloud.resilience.RateLimiter;
 import com.jujin.freeway.cloud.rpc.RpcHttpClient;
@@ -83,6 +84,7 @@ class CloudModuleTest {
             assertNotNull(container.get(RpcHttpClient.class), "rpc");
             assertNotNull(container.get(Tracer.class), "observe");
             assertNotNull(container.get(Retryer.class), "resilience");
+            assertNotNull(container.get(RetryBudget.class), "retry budget");
             assertTrue(container.extension(Route.class).all().stream()
                     .map(Route::path)
                     .toList()

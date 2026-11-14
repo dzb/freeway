@@ -700,7 +700,7 @@ bring your own backend marker and type-key consumption when needed, and it must 
 | Item | Why it is worth doing | Minimal closing action |
 |---|---|---|
 | Metric dimensions (labels) + per-service attribution | There are 4 unlabeled series today; a failure cannot answer "which service" | Add an optional tags parameter to `Metrics` (without breaking the existing call surface); tag `cloud.rpc.*` with `service` first |
-| retry budget | Retries are per-call only; a retry storm adds pressure when a dependency fails broadly | Add a per-service token budget to `Retryer`; over budget fails immediately instead of backing off further |
+| ~~retry budget~~ **Delivered (2.0)**: a per-service `RetryBudget` token bucket; successes replenish, retries consume, an exhausted budget fails the original failure immediately. `Retryer` still owns per-call attempts/backoff | — |
 | zone / canary default policy | weight is already read by `LoadBalancerDefault`; zone/canary remain metadata only, "labeled but useless" | Prefer by zone when the metadata is present, keep weighted round robin when it is absent |
 | ~~Mesh drop-count metrics~~ **Delivered (1.5.7)**: `/metrics` exposes the `cloud_event.*` series (published/frames.queued/frames.dropped/send.failures/inbound.delivered/dropped.legacy/dropped.no.subscriber/peers; API names use the dot grammar since 2.0, the Prometheus exposition is unchanged); the label dimension is still pending |
 | ~~Mesh application-level heartbeat~~ **Delivered (1.5.7)**: `WebSocketListener.onPong` is visible + mesh-side `MeshKeepalive` (`event.keepalive-ms`, one shared policy for both legs), no protocol change (reuses WS ping/pong) |

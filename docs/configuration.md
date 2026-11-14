@@ -617,10 +617,14 @@ silently take effect, but warns once at startup.
 | `freeway.cloud.rpc.retry.max-attempts` | tuning | Integer | `3` | no | Maximum retry attempts (ignored when `resilience=off`) |
 | `freeway.cloud.rpc.retry.backoff-base` | tuning | Long | `100` | no | Retry backoff base (milliseconds) |
 | `freeway.cloud.rpc.retry.backoff-max` | tuning | Long | `5000` | no | Maximum backoff time (milliseconds) |
+| `freeway.cloud.rpc.retry.budget` | tuning | Integer | `20` | no | Per-service retry tokens; success adds one, retry consumes one, `0` = unlimited |
 
 Retries pass through two gates: the failure category (connection failure/timeout/mid-flight I/O/5xx are
 retryable; 4xx and local rejections are not) and the **idempotency gate** — timeout/mid-flight I/O/5xx are
 "unknown outcome" (the peer may have executed the request), so they are replayed only for idempotent operations.
+A per-service **retry budget** caps the replay pressure across calls: successful calls replenish it, retries
+consume it, and an exhausted budget fails fast with the original failure. It is separate from `max-attempts`
+(one call's bound) and protects against a fleet-wide retry storm.
 Idempotency is carried by the request: derived from the HTTP verb (`GET/HEAD/PUT/DELETE/OPTIONS/TRACE` are
 idempotent, `POST/PATCH` are not), explicitly overridden by `RpcRequest.withIdempotent(true)`, and declared for
 remote calls by the consumer interface's `@Idempotent` annotation (method-level/interface-level). A

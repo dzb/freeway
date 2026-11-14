@@ -198,7 +198,9 @@ restart.
   (`method`/`route`/`service`). Failures classify via `Failure`; see
   `docs/reference/metrics.md` and `docs/reference/failures.md`.
 - resilience: defaults bound and used by the RPC client; `@Inject Retryer` /
-  `CircuitBreaker` / `RateLimiter`, `.primary()` to replace
+  `RetryBudget` / `CircuitBreaker` / `RateLimiter`, `.primary()` to replace.
+  The retry budget is per service: successes replenish, retries consume, and a
+  drained budget fails the original failure immediately instead of retrying.
 - secrets: `@Inject SecretStore`; file reread on size/mtime change; keys also
   symbol-resolvable (`@Symbol("db.password")`)
 - storage: `@Inject ObjectStorage`; `ObjectStoredEvent`/`ObjectDeletedEvent` on

@@ -2,6 +2,8 @@ package com.jujin.freeway.cloud.rpc;
 
 import com.jujin.freeway.cloud.resilience.CircuitBreaker;
 import com.jujin.freeway.cloud.resilience.RateLimiter;
+import com.jujin.freeway.cloud.resilience.RetryBudget;
+import com.jujin.freeway.cloud.resilience.RetryBudgetDefault;
 import com.jujin.freeway.cloud.resilience.Retryer;
 
 import java.io.IOException;
@@ -109,7 +111,7 @@ class ResiliencePolicyTest {
     }
 
     @Test
-    void retryBudgetExhaustionPropagatesTheLastFailure() {
+    void retryerExhaustionPropagatesTheLastFailure() {
         FakeBreaker breaker = FakeBreaker.closed();
         ResiliencePolicy policy = policy(new FakeRetryer(1, 0));
         AtomicInteger attempts = new AtomicInteger();
@@ -123,6 +125,52 @@ class ResiliencePolicyTest {
         assertTrue(ex.retryable());
         assertEquals(2, attempts.get(), "initial attempt + one retry");
         assertEquals(2, breaker.failures);
+    }
+
+    @Test
+    void retryBudgetStopsFurtherRetriesAcrossCalls() {
+        FakeBreaker breaker = FakeBreaker.closed();
+        RetryBudget budget = new RetryBudgetDefault(1);
+        ResiliencePolicy policy = new ResiliencePolicy(
+            new FakeRetryer(10, 0), null, null, serviceId -> budget);
+        AtomicInteger attempts = new AtomicInteger();
+
+        RpcException first = assertThrows(RpcException.class,
+            () -> policy.run("svc", 0, breaker, FakeLimiter.unlimited(), true, () -> {
+                attempts.incrementAndGet();
+                throw connectFailure();
+            }));
+        assertTrue(first.retryable());
+        assertEquals(2, attempts.get(), "initial attempt + the one token-backed retry");
+
+        RpcException second = assertThrows(RpcException.class,
+            () -> policy.run("svc", 0, breaker, FakeLimiter.unlimited(), true, () -> {
+                attempts.incrementAndGet();
+                throw connectFailure();
+            }));
+        assertTrue(second.retryable(), "the original failure is propagated when the budget is empty");
+        assertEquals(3, attempts.get(),
+            "the drained budget fails fast instead of starting another retry loop");
+    }
+
+    @Test
+    void budgetDenialIsCountedAgainstTheService() {
+        FakeBreaker breaker = FakeBreaker.closed();
+        RetryBudget budget = new RetryBudgetDefault(1);
+        var metrics = new com.jujin.freeway.cloud.observe.MetricsDefault();
+        ResiliencePolicy policy = new ResiliencePolicy(
+            new FakeRetryer(10, 0), null, metrics, serviceId -> budget);
+
+        for (int i = 0; i < 2; i++) {
+            assertThrows(RpcException.class,
+                () -> policy.run("svc", 0, breaker, FakeLimiter.unlimited(), true, () -> {
+                    throw connectFailure();
+                }));
+        }
+
+        assertEquals(2, metrics.counterValue("cloud.rpc.retry.budget.denied",
+            Map.of("service", "svc")),
+            "the first call drains the bucket and is denied once; the next call is denied immediately");
     }
 
     // ==================== idempotency gate ====================

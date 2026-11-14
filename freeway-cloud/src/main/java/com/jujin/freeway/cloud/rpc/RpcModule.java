@@ -8,6 +8,7 @@ import com.jujin.freeway.cloud.discovery.ServiceDiscovery;
 import com.jujin.freeway.cloud.observe.Tracer;
 import com.jujin.freeway.cloud.resilience.CircuitBreaker;
 import com.jujin.freeway.cloud.resilience.RateLimiter;
+import com.jujin.freeway.cloud.resilience.RetryBudget;
 import com.jujin.freeway.cloud.resilience.Retryer;
 import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.cloud.CloudHooks;
@@ -124,7 +125,8 @@ public final class RpcModule implements ModuleEx {
                         container.get(Metrics.class),
                         Duration.ofMillis(requestMs),
                         Duration.ofMillis(connectMs),
-                        shutdownGrace));
+                        shutdownGrace),
+                    OptionalBinding.get(container, RetryBudget.class));
             })
             .marker(Local.class)
             ;

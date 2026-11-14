@@ -272,7 +272,7 @@ state check.
 |------------|------------------|--------------|
 | Load balancing | Weighted round-robin by default; `.primary()` swaps the strategy | `ServiceInstance.weight()/zone()/version()/isCanary()` are the strategy's inputs |
 | Observability | `@Inject Metrics` (counters/timers/gauges, bounded labels; HTTP/RPC durations are fixed-bucket histograms), `@Inject Tracer` (`start(name)`), `@Inject MetricsSnapshot`; every request runs in a server-side span and logs carry `traceId`; span names use the declared route template (`GET /users/{id}`) and misses are `GET unmatched`; probes and `/metrics` are not traced; failure classification and HTTP mapping are in [the failure taxonomy](../reference/failures.md) | `GET /metrics` |
-| Resilience | Bound by default and used by RPC clients; `@Inject Retryer` / `CircuitBreaker` / `RateLimiter`, or replace with `.primary()` | `freeway.cloud.rpc.resilience=auto\|off` and the per-capability keys |
+| Resilience | Bound by default and used by RPC clients; `@Inject Retryer` / `RetryBudget` / `CircuitBreaker` / `RateLimiter`, or replace with `.primary()`; the per-service retry budget caps replay pressure | `freeway.cloud.rpc.resilience=auto\|off` and the per-capability keys |
 | Context propagation | `InvocationContext.current()` reads baggage/principal/trace; zero wiring | inbound filter + outbound header injection |
 | Secrets | `@Inject SecretStore`; secrets can also be resolved as symbols (`@Symbol("db.password")`). Files are re-read when size/mtime changes (rotation without restart) | `freeway.cloud.secret.*` (system properties only) |
 | Object storage | `@Inject ObjectStorage`; `ObjectStoredEvent` / `ObjectDeletedEvent` are published to the event bus | `freeway.cloud.storage.*` |

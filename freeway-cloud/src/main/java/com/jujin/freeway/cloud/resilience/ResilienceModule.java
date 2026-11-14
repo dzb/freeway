@@ -52,6 +52,9 @@ public final class ResilienceModule implements ModuleEx {
     private static final SymbolSpec<Long> RETRY_BACKOFF_MAX = SymbolSpec.of(
         ConfigKeys.RPC_RETRY_BACKOFF_MAX, Long.class,
         ConfigKeys.RPC_RETRY_BACKOFF_MAX_DEFAULT, Long::parseLong);
+    private static final SymbolSpec<Integer> RETRY_BUDGET = SymbolSpec.of(
+        ConfigKeys.RPC_RETRY_BUDGET, Integer.class,
+        ConfigKeys.RPC_RETRY_BUDGET_DEFAULT, Integer::parseInt);
     private static final SymbolSpec<Boolean> CB_ENABLED = SymbolSpec.of(
         ConfigKeys.RPC_CB_ENABLED, Boolean.class, true);
     private static final SymbolSpec<Integer> CB_FAILURE_THRESHOLD = SymbolSpec.of(
@@ -90,6 +93,20 @@ public final class ResilienceModule implements ModuleEx {
                     symbols.resolve(RETRY_MAX_ATTEMPTS),
                     symbols.resolve(RETRY_BACKOFF_BASE),
                     symbols.resolve(RETRY_BACKOFF_MAX));
+            })
+            .marker(Local.class)
+            ;
+
+        b.bind(RetryBudget.class)
+            .to((Container container) -> {
+                SymbolSource symbols = container.get(SymbolSource.class);
+                if (mode(symbols) == Mode.OFF) {
+                    return RetryBudget.NO_LIMIT;
+                }
+                int capacity = symbols.resolve(RETRY_BUDGET);
+                return capacity <= 0
+                    ? RetryBudget.NO_LIMIT
+                    : new RetryBudgetDefault(capacity);
             })
             .marker(Local.class)
             ;

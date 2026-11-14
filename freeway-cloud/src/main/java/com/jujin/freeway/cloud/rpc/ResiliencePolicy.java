@@ -3,10 +3,13 @@ package com.jujin.freeway.cloud.rpc;
 import com.jujin.freeway.cloud.observe.Tracer;
 import com.jujin.freeway.cloud.resilience.CircuitBreaker;
 import com.jujin.freeway.cloud.resilience.RateLimiter;
+import com.jujin.freeway.cloud.resilience.RetryBudget;
 import com.jujin.freeway.cloud.resilience.Retryer;
 import com.jujin.freeway.commons.metrics.Metrics;
 
 import java.time.Duration;
+import java.util.Map;
+import java.util.function.Function;
 import java.util.Map;
 
 /**
@@ -51,15 +54,23 @@ import java.util.Map;
 final class ResiliencePolicy {
 
     private final Retryer retryer;
+    /** Per-service retry budget shards; the 3-argument form uses NO_LIMIT. */
+    private final Function<String, RetryBudget> retryBudgets;
     /** Tracing wiring; null when the observe module is not installed. */
     private final Tracer tracer;
     /** Metrics registry; null when not wired (span/metrics hooks no-op). */
     private final Metrics metrics;
 
     ResiliencePolicy(Retryer retryer, Tracer tracer, Metrics metrics) {
+        this(retryer, tracer, metrics, serviceId -> RetryBudget.NO_LIMIT);
+    }
+
+    ResiliencePolicy(Retryer retryer, Tracer tracer, Metrics metrics,
+            Function<String, RetryBudget> retryBudgets) {
         this.retryer = retryer;
         this.tracer = tracer;
         this.metrics = metrics;
+        this.retryBudgets = retryBudgets;
     }
 
     /**
@@ -82,6 +93,10 @@ final class ResiliencePolicy {
         TransportAttempt attempt
     ) {
         Tracer.Span span = tracer != null ? tracer.start("cloud.rpc." + serviceId) : null;
+        RetryBudget budget = retryBudgets.apply(serviceId);
+        if (budget == null) {
+            budget = RetryBudget.NO_LIMIT;
+        }
         long callStart = System.nanoTime();
         long startNanos = metrics != null ? callStart : 0;
         try {
@@ -111,6 +126,7 @@ final class ResiliencePolicy {
                             span.context(), () -> attempt.attempt())
                         : attempt.attempt();
                     breaker.onSuccess();
+                    budget.onSuccess();
                     if (span != null) {
                         span.addTag("http.status", String.valueOf(response.status()));
                     }
@@ -144,6 +160,16 @@ final class ResiliencePolicy {
                     if (deadlineExceeded(callStart, deadlineNanos, backoff)) {
                         recordFailure(serviceId, startNanos);
                         throw RpcException.timeout(serviceId);
+                    }
+                    // The budget is checked after the deadline gate: a token is
+                    // consumed only when this retry will actually be attempted.
+                    if (!budget.tryAcquire()) {
+                        if (metrics != null) {
+                            metrics.counter("cloud.rpc.retry.budget.denied",
+                                Map.of("service", serviceId)).increment();
+                        }
+                        recordFailure(serviceId, startNanos);
+                        throw failure;
                     }
                     sleepBackoff(backoff);
                     attemptNo++;
