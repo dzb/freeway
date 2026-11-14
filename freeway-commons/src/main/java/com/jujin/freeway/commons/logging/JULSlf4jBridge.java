@@ -98,7 +98,7 @@ final class JULSlf4jBridge extends Handler {
         }
     }
 
-    private static void forward(Logger logger, Level level, String message, Throwable thrown) {
+    static void forward(Logger logger, Level level, String message, Throwable thrown) {
         int severity = level.intValue();
         if (severity >= Level.SEVERE.intValue()) {
             logger.error(message, thrown);

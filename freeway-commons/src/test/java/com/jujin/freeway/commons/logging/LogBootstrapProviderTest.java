@@ -10,6 +10,7 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -181,6 +182,37 @@ class LogBootstrapProviderTest {
 
         assertNull(selection.conflict());
         assertEquals(LOGBACK, selection.provider());
+    }
+
+    @Test
+    void explicitlyPinnedJulProviderBeatsAnExternalOneAndExplainsWhy() {
+        ClassLoader loader = new FakeProviderLoader(
+            getClass().getClassLoader(), LOGBACK);
+        LogBootstrap.Selection selection =
+            LogBootstrap.select(null, LogBootstrap.JUL_PROVIDER, loader);
+
+        assertEquals(LogBootstrap.JUL_PROVIDER, selection.provider());
+        assertEquals(LogBootstrap.SLF4J_PROVIDER_PROPERTY, selection.source());
+        String report = LogBootstrap.startupReport(selection);
+        assertTrue(report.contains("logback is on the classpath but not selected"), report);
+        assertTrue(report.contains("-Dslf4j.provider pins freeway-logging (JUL)"), report);
+        assertFalse(report.contains("freeway.log.system=auto"),
+            "the switch is slf4j.provider here, not the Freeway key: " + report);
+    }
+
+    @Test
+    void autoFallsBackThroughThePriorityOrder() {
+        ClassLoader log4jOnly = new FakeProviderLoader(
+            getClass().getClassLoader(), SIMPLE, LOG4J);
+        assertEquals(LOG4J, LogBootstrap.select("auto", null, log4jOnly).provider(),
+            "log4j wins when logback is absent");
+
+        ClassLoader simpleOnly = new FakeProviderLoader(
+            getClass().getClassLoader(), SIMPLE);
+        assertEquals(SIMPLE, LogBootstrap.select("auto", null, simpleOnly).provider());
+
+        ClassLoader none = new FakeProviderLoader(getClass().getClassLoader());
+        assertEquals(LogBootstrap.JUL_PROVIDER, LogBootstrap.select("auto", null, none).provider());
     }
 
     @Test

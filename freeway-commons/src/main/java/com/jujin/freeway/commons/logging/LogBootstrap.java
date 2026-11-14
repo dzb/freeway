@@ -164,8 +164,14 @@ public final class LogBootstrap {
                 && !selection.detectedExternal().equals(selection.provider())) {
             report.append('\n')
                 .append("[Freeway] ").append(providerLabel(selection.detectedExternal()))
-                .append(" is on the classpath but not selected; set")
-                .append(" -Dfreeway.log.system=auto (or logback/log4j2/simple) to use it");
+                .append(" is on the classpath but not selected");
+            if (SLF4J_PROVIDER_PROPERTY.equals(selection.source())) {
+                report.append(" (-D").append(SLF4J_PROVIDER_PROPERTY)
+                    .append(" pins ").append(providerLabel(selection.provider())).append(')');
+            } else {
+                report.append("; set -Dfreeway.log.system=auto")
+                    .append(" (or logback/log4j2/simple) to use it");
+            }
         }
         return report.toString();
     }
