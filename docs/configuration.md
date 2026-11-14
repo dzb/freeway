@@ -63,6 +63,30 @@ Two boundaries: the extra files listed by `freeway.config.file` **do not derive 
 
 ---
 
+## Hot Reload: What Changes, What Does Not
+
+The file tier is watched and swapped in place; the `SymbolSource` reads the
+live snapshot on every lookup. That is the **whole** hot-reload mechanism — it
+does not re-run module binding, rebuild constructed objects, or re-inject
+singletons. Use the table as the deployment contract:
+
+| Surface | Hot reload |
+|---|---|
+| Values read through `SymbolSource` on each lookup | **live** — the source resolves the new snapshot |
+| `@Symbol` / `@Value` constructor or field injection | **startup** — captured when the object is realized |
+| HTTP host/port, TLS enablement, routes, filters, static mounts, CORS policy | **startup** |
+| DB URL/credentials, pool sizing, schema posture, migrations | **startup** |
+| Cloud discovery/registry, RPC settings, resilience policy, mesh peers, storage | **startup** |
+| `freeway.profile` and the active profile set | **startup-static** by design |
+| HTTP TLS key/trust **material** | **live** when `freeway.http.ssl.reload-interval` is non-zero; the interval itself is startup-captured |
+| Cloud outbound RPC TLS **material** | **live** when `freeway.cloud.rpc.tls.reload-interval` is set; the interval itself is startup-captured |
+| Logging configuration | **startup** — the logging bootstrap runs before the config cascade and is not part of file-tier reload |
+| Application code that resolves a symbol per call | **live**, because it reads the same chain |
+
+To change a startup-only key, restart the process. The explicit TLS exceptions
+exist because certificate rotation cannot wait for a restart; they re-read the
+files named by the already-resolved config, not the config keys.
+
 ## Module overview
 
 | Module | Namespace | Notes |

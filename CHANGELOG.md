@@ -147,6 +147,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Hot reload has an explicit contract** (`freeway-boot` / docs): the file tier
+  is swapped live and `SymbolSource` sees new values, but module binding and
+  already-injected singletons are startup-static. `docs/configuration.md` now
+  carries the full matrix (including the two explicit TLS-material reload
+  exceptions), and `ConfigReloadContractTest` pins the distinction between "the
+  source changed" and "the component changed".
 - **RPC shutdown settles before it interrupts** (`freeway-cloud`): `close()`
   now fails the calls the grace could not drain with the documented
   "RpcHttpClient is closed" failure *before* stopping the executor. Interrupting
