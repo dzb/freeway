@@ -135,6 +135,16 @@ public final class HttpServer implements AutoCloseable {
         this.publishEvents = this.eventSink != NOOP_SINK;
 
         RouteHandler request = ctx -> {
+            // Filters run before dispatch, and the tracing filter needs the
+            // declared template in its span name. Match once for that preview;
+            // dispatchToRoute remains the authoritative match/selection.
+            RouteIndex.RouteMatch preview = routes.match(ctx.method(), ctx.path());
+            if (preview != null) {
+                ctx.setAttribute(HttpExchange.ROUTE_ATTRIBUTE, preview.routePattern());
+            } else if (!staticMounts.isEmpty()
+                    && staticMounts.stream().anyMatch(m -> m.matches(ctx.method(), ctx.path()))) {
+                ctx.setAttribute(HttpExchange.ROUTE_ATTRIBUTE, "static");
+            }
             try {
                 filterChain.handle(ctx);
             } catch (Exception ex) {

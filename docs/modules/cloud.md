@@ -271,7 +271,7 @@ state check.
 | Capability | Application side | Keys / notes |
 |------------|------------------|--------------|
 | Load balancing | Weighted round-robin by default; `.primary()` swaps the strategy | `ServiceInstance.weight()/zone()/version()/isCanary()` are the strategy's inputs |
-| Observability | `@Inject Metrics` (counters/timers/gauges), `@Inject Tracer` (`start(name)`), `@Inject MetricsSnapshot`; every request runs in a server-side span and logs carry `traceId`; probes and `/metrics` are not traced | `GET /metrics` |
+| Observability | `@Inject Metrics` (counters/timers/gauges), `@Inject Tracer` (`start(name)`), `@Inject MetricsSnapshot`; every request runs in a server-side span and logs carry `traceId`; span names use the declared route template (`GET /users/{id}`) and misses are `GET unmatched`; probes and `/metrics` are not traced | `GET /metrics` |
 | Resilience | Bound by default and used by RPC clients; `@Inject Retryer` / `CircuitBreaker` / `RateLimiter`, or replace with `.primary()` | `freeway.cloud.rpc.resilience=auto\|off` and the per-capability keys |
 | Context propagation | `InvocationContext.current()` reads baggage/principal/trace; zero wiring | inbound filter + outbound header injection |
 | Secrets | `@Inject SecretStore`; secrets can also be resolved as symbols (`@Symbol("db.password")`). Files are re-read when size/mtime changes (rotation without restart) | `freeway.cloud.secret.*` (system properties only) |

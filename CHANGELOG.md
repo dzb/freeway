@@ -147,6 +147,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **HTTP server spans use the declared route template** (`freeway-cloud` +
+  `freeway-http`): the tracing filter names a span `GET /users/{id}` instead of
+  `GET /users/42`; requests with no matching route are `GET unmatched`, and
+  static-mount traffic is `GET static`. The server pre-matches the route before
+  the filter chain for this preview (dispatch still owns the authoritative
+  match), so identifier-bearing paths no longer create one span name per
+  request.
 - **Metrics carry bounded dimensions** (`freeway-commons` / `freeway-cloud` /
   `freeway-http`): `Metrics` gained labeled `counter`/`timer`/`gauge` overloads
   (the default delegates to the name-only methods, so existing backends keep

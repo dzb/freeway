@@ -25,10 +25,12 @@ import java.util.Set;
  * the span must be a child of the context extracted from the request, and it
  * covers every filter and handler downstream of it.</p>
  *
- * <p>The span name is {@code METHOD path}. The framework does not expose the
- * matched route template, so a path carrying identifiers produces one name per
- * request — a backend that needs low cardinality (or a route-pattern name)
- * should normalize in its own {@link Tracer} implementation.</p>
+ * <p>The span name is {@code METHOD route-template} when a route matched
+ * ({@code GET /users/{id}}), never the raw request path; a request that matched
+ * no route is {@code METHOD unmatched}, and a static-mount request is
+ * {@code METHOD static}. The server writes the template onto the exchange
+ * before the filter chain, so a path carrying identifiers cannot produce one
+ * span name per request.</p>
  *
  * <p>The framework's own probes and scrape endpoint are skipped: they are
  * infrastructure traffic, and tracing them would drown the application's spans
@@ -65,7 +67,9 @@ public final class TracingFilter implements HttpFilter {
             next.handle(ctx);
             return;
         }
-        Tracer.Span span = tracer.start(ctx.method() + " " + ctx.path());
+        String route = ctx.routePattern();
+        Tracer.Span span = tracer.start(
+            ctx.method() + " " + (route == null ? "unmatched" : route));
         try {
             InvocationContext spanContext = span.context();
             if (spanContext == null) {

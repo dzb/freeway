@@ -114,6 +114,21 @@ class InboundTracingTest {
     }
 
     @Test
+    void spanNamesUseTheRouteTemplateNeverTheRawPath() throws Exception {
+        RecordingTracer tracer = new RecordingTracer();
+        try (AppRuntime app = FreewayApp.create(new HttpModule()).add(CloudModule.class)
+                .add(new Routes())
+                .add(binder -> binder.bind(Tracer.class).to(container -> tracer).primary())
+                .start()) {
+            assertEquals(200, get(app, "/api/items/42", true).statusCode());
+            assertEquals(404, get(app, "/api/items/42/extra", true).statusCode());
+
+            assertEquals(List.of("GET /api/items/{id}", "GET unmatched"), tracer.names,
+                "a parameterised route is one span name; a miss is one bounded name");
+        }
+    }
+
+    @Test
     void aMovedHealthPathIsStillNotTraced() throws Exception {
         RecordingTracer tracer = new RecordingTracer();
         // The probe path is configurable; the skip list must follow the
@@ -162,6 +177,8 @@ class InboundTracingTest {
         @Override
         public void bind(Binder binder) {
             binder.contribute(Route.class).add(Route.get("/api/thing", new Handler()));
+            binder.contribute(Route.class).add(
+                Route.get("/api/items/{id}", ctx -> ctx.sendText(200, "item")));
         }
     }
 
