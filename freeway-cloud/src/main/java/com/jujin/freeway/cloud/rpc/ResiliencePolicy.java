@@ -92,6 +92,23 @@ final class ResiliencePolicy {
         boolean idempotent,
         TransportAttempt attempt
     ) {
+        return run(serviceId, deadlineNanos, breaker, rateLimiter, idempotent, 0, attempt);
+    }
+
+    /**
+     * As {@link #run(String, long, CircuitBreaker, RateLimiter, boolean,
+     * TransportAttempt)} with a per-call total-attempt cap. {@code 0} leaves
+     * the Retryer's own bound in charge; {@code 1} disables retry.
+     */
+    RpcResponse run(
+        String serviceId,
+        long deadlineNanos,
+        CircuitBreaker breaker,
+        RateLimiter rateLimiter,
+        boolean idempotent,
+        int maxAttempts,
+        TransportAttempt attempt
+    ) {
         Tracer.Span span = tracer != null ? tracer.start("cloud.rpc." + serviceId) : null;
         RetryBudget budget = retryBudgets.apply(serviceId);
         if (budget == null) {
@@ -146,8 +163,11 @@ final class ResiliencePolicy {
                     // Two gates: the category (retryable class of failure)
                     // and idempotency (ambiguous outcomes may have been
                     // applied by the peer). The Retryer only bounds attempts.
+                    boolean attemptCapReached = maxAttempts > 0
+                        && attemptNo + 1 >= maxAttempts;
                     boolean mayRetry = failure.retryable()
                         && (idempotent || !failure.outcomeUnknown())
+                        && !attemptCapReached
                         && retryer.shouldRetry(attemptNo, failure);
                     if (!mayRetry) {
                         recordFailure(serviceId, startNanos);

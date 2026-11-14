@@ -109,6 +109,28 @@ public final class RemoteCaller {
         java.time.Duration timeout,
         boolean idempotent
     ) throws RpcException {
+        return invoke(serviceId, mapping, method, args, returnType, timeout, idempotent, 0);
+    }
+
+    /**
+     * As {@link #invoke(String, String, String, List, Class, java.time.Duration, boolean)}
+     * with a per-call total-attempt cap ({@code 0} = client Retryer;
+     * {@code 1} = no retry). {@link RemoteProxyFactory} passes the value read
+     * from {@link RemotePolicy}.
+     */
+    public <T> T invoke(
+        String serviceId,
+        String mapping,
+        String method,
+        List<?> args,
+        Class<T> returnType,
+        java.time.Duration timeout,
+        boolean idempotent,
+        int maxAttempts
+    ) throws RpcException {
+        if (maxAttempts < 0) {
+            throw new IllegalArgumentException("maxAttempts must be >= 0: " + maxAttempts);
+        }
         RpcPaths.validateSegment(mapping, "mapping");
         RpcPaths.validateSegment(method, "method");
         List<?> positional = args == null ? List.of() : args;
@@ -133,11 +155,11 @@ public final class RemoteCaller {
             if (timeout != null && !timeout.isZero() && !timeout.isNegative()) {
                 // The deadline rides into the orchestration itself: without it
                 // the retry loop keeps working after the caller has given up.
-                response = http.callAsync(serviceId, request, timeout)
+                response = http.callAsync(serviceId, request, timeout, maxAttempts)
                     .orTimeout(timeout.toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS)
                     .join();
             } else {
-                response = http.call(serviceId, request);
+                response = http.call(serviceId, request, maxAttempts);
             }
         } catch (java.util.concurrent.CompletionException ce) {
             // orTimeout deadline → uniform timeout semantics

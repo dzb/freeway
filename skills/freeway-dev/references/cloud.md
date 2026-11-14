@@ -133,6 +133,10 @@ local or remote is a decision of the composition root, never of the call site.
   mark `@Idempotent`); remote handler exception → not retryable
 - calls are POST and travel outside any local transaction — post-commit side
   effects belong on the EventBus (Defer), not on RPC
+- per-method bounds: `@RemotePolicy(timeoutMillis, maxAttempts)` on the method
+  or interface; `maxAttempts` is total attempts (1 = no retry, 0 = inherit the
+  client Retryer); timeout 0 inherits the factory. It selects bounds only, not
+  a second resilience policy.
 
 - `LoadBalancerDefault` prefers this process's zone when
   `freeway.cloud.discovery.local-zone` is set and instances declare `zone`;

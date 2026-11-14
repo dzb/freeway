@@ -35,6 +35,17 @@ public interface RpcHttpClient extends AutoCloseable {
     RpcResponse call(String serviceId, RpcRequest request) throws RpcException;
 
     /**
+     * As {@link #call(String, RpcRequest)} with a per-call total-attempt cap
+     * ({@code 0} = the client's configured Retryer). The default ignores the
+     * cap so existing implementations keep compiling; the framework default
+     * honors it at the resilience loop.
+     */
+    default RpcResponse call(String serviceId, RpcRequest request, int maxAttempts)
+            throws RpcException {
+        return call(serviceId, request);
+    }
+
+    /**
      * Async variant of {@link #call}: the full resilience orchestration
      * (discovery, load balancing, retry, breaker, rate limit) runs as-is —
      * only the final socket wait is lifted off the calling thread. The
@@ -66,5 +77,13 @@ public interface RpcHttpClient extends AutoCloseable {
     default java.util.concurrent.CompletableFuture<RpcResponse> callAsync(
         String serviceId, RpcRequest request, java.time.Duration deadline) {
         return callAsync(serviceId, request);
+    }
+
+    /** As {@link #callAsync(String, RpcRequest, java.time.Duration)} with a
+     *  per-call total-attempt cap; {@code 0} means the client default. */
+    default java.util.concurrent.CompletableFuture<RpcResponse> callAsync(
+        String serviceId, RpcRequest request, java.time.Duration deadline,
+        int maxAttempts) {
+        return callAsync(serviceId, request, deadline);
     }
 }

@@ -147,6 +147,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Per-method RPC bounds** (`freeway-cloud`): `@RemotePolicy(timeoutMillis,
+  maxAttempts)` on a client method or interface overrides the factory timeout
+  and caps total attempts (`0` inherits, `1` disables retry). `RemoteProxyFactory`
+  reads it reflectively and passes it through `RemoteCaller` → `RpcHttpClient` →
+  `ResiliencePolicy`; replay of ambiguous outcomes still requires `@Idempotent`.
 - **Zone-aware default load balancing** (`freeway-cloud`): with
   `freeway.cloud.discovery.local-zone` set and `zone` metadata on instances,
   `LoadBalancerDefault` runs weighted round-robin over local-zone candidates

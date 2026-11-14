@@ -273,11 +273,18 @@ public final class RpcHttpClientDefault implements RpcHttpClient {
 
     @Override
     public RpcResponse call(String serviceId, RpcRequest request) throws RpcException {
+        return call(serviceId, request, 0);
+    }
+
+    @Override
+    public RpcResponse call(String serviceId, RpcRequest request, int maxAttempts)
+            throws RpcException {
         // Registered while it runs, for the same reason as the async path:
         // shutdown must see this call and give it a chance to finish.
         java.util.concurrent.CompletableFuture<RpcResponse> token = enter(serviceId);
         try {
-            RpcResponse response = orchestrate(serviceId, request, false, 0L);
+            RpcResponse response = orchestrate(
+                serviceId, request, false, 0L, null, maxAttempts);
             token.complete(response);
             return response;
         } catch (RuntimeException e) {
@@ -314,6 +321,13 @@ public final class RpcHttpClientDefault implements RpcHttpClient {
     @Override
     public java.util.concurrent.CompletableFuture<RpcResponse> callAsync(
         String serviceId, RpcRequest request, java.time.Duration deadline) {
+        return callAsync(serviceId, request, deadline, 0);
+    }
+
+    @Override
+    public java.util.concurrent.CompletableFuture<RpcResponse> callAsync(
+        String serviceId, RpcRequest request, java.time.Duration deadline,
+        int maxAttempts) {
         requireUsable(serviceId);
         long deadlineNanos = deadline == null || deadline.isZero() || deadline.isNegative()
             ? 0L
@@ -345,9 +359,10 @@ public final class RpcHttpClientDefault implements RpcHttpClient {
             state.worker(Thread.currentThread());
             try {
                 future.complete(ctx == null
-                    ? orchestrate(serviceId, request, true, deadlineNanos, state)
+                    ? orchestrate(serviceId, request, true, deadlineNanos, state, maxAttempts)
                     : InvocationContext.runWith(ctx,
-                        () -> orchestrate(serviceId, request, true, deadlineNanos, state)));
+                        () -> orchestrate(serviceId, request, true, deadlineNanos, state,
+                            maxAttempts)));
             } catch (Throwable failure) {
                 future.completeExceptionally(failure);
             } finally {
@@ -427,17 +442,17 @@ public final class RpcHttpClientDefault implements RpcHttpClient {
      */
     private RpcResponse orchestrate(
         String serviceId, RpcRequest request, boolean async, long deadlineNanos) {
-        return orchestrate(serviceId, request, async, deadlineNanos, null);
+        return orchestrate(serviceId, request, async, deadlineNanos, null, 0);
     }
 
     private RpcResponse orchestrate(
         String serviceId, RpcRequest request, boolean async, long deadlineNanos,
-        CallState state) {
+        CallState state, int maxAttempts) {
         CircuitBreaker breaker = breakerFor(serviceId);
         RateLimiter rateLimiter = rateLimiterFor(serviceId);
         long callStart = System.nanoTime();
         return policy.run(serviceId, deadlineNanos, breaker, rateLimiter,
-            request.idempotent(),
+            request.idempotent(), maxAttempts,
             () -> attempt(serviceId, request, async, deadlineNanos, callStart, state));
     }
 

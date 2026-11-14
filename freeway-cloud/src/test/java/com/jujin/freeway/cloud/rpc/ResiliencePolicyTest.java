@@ -173,6 +173,23 @@ class ResiliencePolicyTest {
             "the first call drains the bucket and is denied once; the next call is denied immediately");
     }
 
+    @Test
+    void perCallAttemptCapCapsTheRetryer() {
+        FakeBreaker breaker = FakeBreaker.closed();
+        ResiliencePolicy policy = policy(new FakeRetryer(10, 0));
+        AtomicInteger attempts = new AtomicInteger();
+
+        RpcException failure = assertThrows(RpcException.class,
+            () -> policy.run("svc", 0, breaker, FakeLimiter.unlimited(), true, 2, () -> {
+                attempts.incrementAndGet();
+                throw connectFailure();
+            }));
+
+        assertTrue(failure.retryable());
+        assertEquals(2, attempts.get(),
+            "maxAttempts=2 means the initial attempt plus one retry, even if the Retryer allows more");
+    }
+
     // ==================== idempotency gate ====================
 
     @Test

@@ -150,6 +150,25 @@ binder.bind(UserApi.class).to(container -> RemoteProxyFactory
     .build(UserApi.class));
 ```
 
+**Per-method bounds.** A client method (or the whole interface) may carry
+`@RemotePolicy`:
+
+```java
+public interface ReportApi {
+    @RemotePolicy(timeoutMillis = 30_000)                  // heavy read
+    Report generate(ReportRequest request);
+
+    @RemotePolicy(timeoutMillis = 2_000, maxAttempts = 1)  // write: never replay
+    void publish(Report report);
+}
+```
+
+`timeoutMillis` is the end-to-end deadline for all attempts (`0` inherits the
+factory timeout); `maxAttempts` is total attempts including the first (`0`
+inherits the client Retryer, `1` disables retry). Replay of ambiguous outcomes
+still requires `@Idempotent`; the annotation selects bounds only, not a second
+set of thresholds.
+
 **Provider — declaring an export**:
 
 ```java

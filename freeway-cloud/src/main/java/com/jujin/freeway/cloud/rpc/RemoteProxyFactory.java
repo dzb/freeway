@@ -39,7 +39,11 @@ import java.util.Objects;
  * <p>Ambiguous transport outcomes (timeout, mid-flight I/O, 5xx) are replayed
  * only for operations the interface marks {@link Idempotent} — on the method
  * or on the whole interface. Unmarked operations fail after the first
- * ambiguous outcome, because the remote handler may already have applied it.</p>
+ * ambiguous outcome, because the remote handler may already have applied it.
+ * A method (or interface) may additionally carry {@link RemotePolicy} to
+ * override the factory timeout and cap total attempts; the annotation selects
+ * bounds only, while the client's Retryer/budget/breaker thresholds stay
+ * shared.</p>
  */
 public final class RemoteProxyFactory {
 
@@ -114,10 +118,27 @@ public final class RemoteProxyFactory {
         // no wire change.
         boolean idempotent = method.isAnnotationPresent(Idempotent.class)
             || method.getDeclaringClass().isAnnotationPresent(Idempotent.class);
+        // Per-method bounds, same lookup order: method, then interface.
+        RemotePolicy policy = method.getAnnotation(RemotePolicy.class);
+        if (policy == null) {
+            policy = method.getDeclaringClass().getAnnotation(RemotePolicy.class);
+        }
+        Duration callTimeout = timeout;
+        int maxAttempts = 0;
+        if (policy != null) {
+            if (policy.timeoutMillis() < 0 || policy.maxAttempts() < 0) {
+                throw new IllegalArgumentException(
+                    "@RemotePolicy on " + method + " must not use negative values");
+            }
+            if (policy.timeoutMillis() > 0) {
+                callTimeout = Duration.ofMillis(policy.timeoutMillis());
+            }
+            maxAttempts = policy.maxAttempts();
+        }
         // Failures keep their type: transport failures arrive as RpcException,
         // business failures as RemoteInvocationException.
         return remote.invoke(serviceId, mapping, method.getName(), asList(args),
-            method.getReturnType(), timeout, idempotent);
+            method.getReturnType(), callTimeout, idempotent, maxAttempts);
     }
 
     private static List<Object> asList(Object[] args) {
