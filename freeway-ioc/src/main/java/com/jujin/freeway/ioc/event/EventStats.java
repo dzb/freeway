@@ -19,9 +19,9 @@ final class EventStats {
     EventStats(Metrics metrics) {
         this.published = new Tally(metrics.counter("eventbus.published"));
         this.delivered = new Tally(metrics.counter("eventbus.delivered"));
-        this.subscriberFailures = new Tally(metrics.counter("eventbus.subscriber_failures"));
-        this.deadEvents = new Tally(metrics.counter("eventbus.dead_events"));
-        this.streamDrops = new Tally(metrics.counter("eventbus.stream_drops"));
+        this.subscriberFailures = new Tally(metrics.counter("eventbus.subscriber.failures"));
+        this.deadEvents = new Tally(metrics.counter("eventbus.dead.events"));
+        this.streamDrops = new Tally(metrics.counter("eventbus.stream.drops"));
     }
 
     void published() {

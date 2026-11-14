@@ -1,0 +1,58 @@
+# Metrics Reference
+
+Freeway exposes metrics through the `Metrics` SPI (`counter`, `timer`,
+`gauge`). The default registry renders Prometheus text at `GET /metrics`; a
+backend can replace the SPI without changing the names below.
+
+## Naming Grammar
+
+- **Dot-separated lowercase segments**: `freeway.http.requests.total`,
+  `cloud.rpc.duration`. Segments start with a letter and may contain digits
+  (`responses.4xx`); no underscores, hyphens or uppercase.
+- **Namespace first**: `freeway.http.*` for the HTTP engine, `eventbus.*` for
+  the in-process bus, `cloud.*` for cloud capabilities.
+- **Names are static**: a metric name never carries a service id, route path,
+  URL, node id or other unbounded value. Per-request/per-instance breakdowns
+  belong in a backend's label model, not in the name.
+- **One rendered series per name**: dots and hyphens both render as
+  underscores in Prometheus exposition, so `a.b` and `a-b` would collide. The
+  default registry rejects such a collision at registration.
+- **Timers record duration**: the exposition exposes a count and a seconds
+  total (`_count`, `_seconds_total`); the Java side records nanoseconds.
+
+## Catalog
+
+| Name | Type | Unit | Meaning |
+|---|---|---|---|
+| `freeway.http.connections.total` | counter | connections | Accepted TCP connections |
+| `freeway.http.connections.rejected` | counter | connections | Connections refused at the configured limit |
+| `freeway.http.connections.active` | gauge | connections | Open connections right now |
+| `freeway.http.requests.total` | counter | requests | Parsed HTTP requests |
+| `freeway.http.requests.active` | gauge | requests | Requests currently being handled |
+| `freeway.http.requests.duration` | timer | seconds | Request handling duration |
+| `freeway.http.responses.4xx` | counter | responses | Responses with a 4xx status |
+| `freeway.http.responses.5xx` | counter | responses | Responses with a 5xx status |
+| `freeway.http.h2.connections` | counter | connections | HTTP/2 connections established |
+| `freeway.http.websocket.connections` | counter | connections | WebSocket upgrades accepted |
+| `freeway.http.sendfile.transfers` | counter | transfers | Static-file transfers served |
+| `eventbus.published` | counter | events | Events published on the in-process bus |
+| `eventbus.delivered` | counter | deliveries | Subscriber deliveries completed |
+| `eventbus.subscriber.failures` | counter | failures | Subscriber callbacks that threw |
+| `eventbus.dead.events` | counter | events | Events with no matching subscriber |
+| `eventbus.stream.drops` | counter | events | Stream events dropped under backpressure |
+| `cloud.rpc.calls` | counter | calls | Logical RPC calls started |
+| `cloud.rpc.failures` | counter | failures | Logical RPC calls that failed |
+| `cloud.rpc.duration` | timer | seconds | Logical RPC call duration (all attempts) |
+| `cloud.event.published` | gauge | events | Events published through the mesh bus |
+| `cloud.event.frames.queued` | gauge | frames | Outbound frames waiting to send |
+| `cloud.event.frames.dropped` | gauge | frames | Outbound frames dropped |
+| `cloud.event.send.failures` | gauge | failures | Outbound frame send failures |
+| `cloud.event.inbound.delivered` | gauge | events | Inbound events delivered to subscribers |
+| `cloud.event.dropped.legacy` | gauge | events | Events dropped for a legacy frame |
+| `cloud.event.dropped.no.subscriber` | gauge | events | Events dropped with no subscriber |
+| `cloud.event.peers` | gauge | peers | Connected mesh peers |
+
+The defaults are intentionally coarse: one global series per fact. Adding a
+route-, method-, status- or peer-labelled series is a backend/label decision,
+not a name change; keep labels bounded (status class and route *pattern* are
+bounded, raw paths and service ids are not).

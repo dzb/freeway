@@ -33,3 +33,5 @@ repository-level [`README`](../README.md) covers the project itself and
 - Framework comparisons and engineering evaluations are **not** part of this
   normative set; they live under [`demo/reference/`](../demo/reference/) and are
   provided for context only.
+- [Metrics reference](reference/metrics.md) — metric names, types and cardinality rules.
+- [Failure taxonomy](reference/failures.md) — public exceptions and their retry/outcome/HTTP mapping.

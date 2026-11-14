@@ -413,4 +413,6 @@ tests and say so in their names and javadoc.
 - [docs/developer-guide.md](docs/developer-guide.md) — comprehensive usage
   guide for all modules.
 - [docs/configuration.md](docs/configuration.md) — every config key, by module.
+- [docs/reference/metrics.md](docs/reference/metrics.md) — metric names, types and cardinality rules.
+- [docs/reference/failures.md](docs/reference/failures.md) — public exceptions, retry/outcome classification and HTTP mapping.
 - [docs/](docs/) — config samples, DB usage, feature summaries.

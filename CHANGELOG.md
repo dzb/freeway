@@ -147,6 +147,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Metric API names use one dot grammar** (`freeway-commons` / `freeway-ioc` /
+  `freeway-cloud`): names such as `cloud.event.frames_queued` became
+  `cloud.event.frames.queued`, and the `eventbus.*` names follow the same rule.
+  The Prometheus exposition is unchanged — dots and underscores both render as
+  `_` — so dashboards keep working; the Java-side API names now match the
+  documented catalog (`docs/reference/metrics.md`), pinned by
+  `MetricCatalogTest`.
+- **Failure taxonomy is a documented contract** (`docs/reference/failures.md`):
+  every public exception, its retry/outcome classification, and its HTTP boundary
+  in one table; `FailureCatalogTest` keeps the table and the source in sync.
+- **HTTP/1 parser has a deterministic robustness baseline** (`freeway-http`):
+  arbitrary and mutated byte streams must parse or fail with `IOException`, never
+  hang or throw unchecked; `Http1xParserRobustnessTest` runs 2 400 seeded cases.
 - **Async RPC cancellation is end-to-end** (`freeway-cloud`): cancelling the
   future returned by `RpcHttpClient.callAsync` now interrupts the retry loop
   (backoff included) and asks the in-flight send to cancel; previously only the
@@ -1471,7 +1484,7 @@ with the content; the compiler is the migration path):
   post-close rejection).
 - `EventBusStats.streamDrops` counting (a trailing record component on
   `EventBus.EventBusStats`, see the migration table) and the matching Metrics
-  counter `eventbus.stream_drops`: stream-overflow drops used to land only in
+  counter `eventbus.stream.drops`: stream-overflow drops used to land only in
   logs, invisible to operations via `stats()` as "the channel went mute"
   (`overflowDropsAreCountedNotSwallowedSilently` pins it).
 

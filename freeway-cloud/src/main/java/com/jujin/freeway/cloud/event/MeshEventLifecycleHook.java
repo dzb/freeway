@@ -178,12 +178,12 @@ final class MeshEventLifecycleHook implements RuntimeHook {
         }
         MeshEventBus bus = container.get(MeshEventBus.class);
         metrics.gauge("cloud.event.published", () -> bus.stats().published());
-        metrics.gauge("cloud.event.frames_queued", () -> bus.stats().framesQueued());
-        metrics.gauge("cloud.event.frames_dropped", () -> bus.stats().framesDropped());
-        metrics.gauge("cloud.event.send_failures", () -> bus.stats().sendFailures());
-        metrics.gauge("cloud.event.inbound_delivered", () -> bus.stats().inboundDelivered());
-        metrics.gauge("cloud.event.dropped_legacy", () -> bus.stats().droppedLegacy());
-        metrics.gauge("cloud.event.dropped_no_subscriber",
+        metrics.gauge("cloud.event.frames.queued", () -> bus.stats().framesQueued());
+        metrics.gauge("cloud.event.frames.dropped", () -> bus.stats().framesDropped());
+        metrics.gauge("cloud.event.send.failures", () -> bus.stats().sendFailures());
+        metrics.gauge("cloud.event.inbound.delivered", () -> bus.stats().inboundDelivered());
+        metrics.gauge("cloud.event.dropped.legacy", () -> bus.stats().droppedLegacy());
+        metrics.gauge("cloud.event.dropped.no.subscriber",
             () -> bus.stats().droppedNoSubscriber());
         metrics.gauge("cloud.event.peers", () -> hub.connections().size());
     }
