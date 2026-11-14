@@ -25,6 +25,12 @@ surfaces later as a `NoSuchMethodError` in a downstream module. Third-party
 adapters (Undertow/Jetty engines, HikariCP, Kafka) live in
 [freeway-ext](https://github.com/dzb/freeway-ext): `mvn install` the core first.
 
+CI (GitHub Actions) runs four gates: `verify` (source/javadoc JARs, tests; GPG
+signing is skipped because it belongs to the release step), the demos profile,
+the docs consistency tests, and a cross-repository job that installs this
+snapshot and clean-builds `freeway-ext` against it. Dependabot updates SLF4J,
+JUnit and the Actions versions weekly; dependency review gates pull requests.
+
 ## Module Map
 
 | Module | Purpose | Module dependencies |

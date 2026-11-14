@@ -1,13 +1,23 @@
-name: build
+name: CI
 
 on:
   push:
   pull_request:
+  workflow_dispatch:
+
+# One run per ref: a force-push or a new PR commit cancels the superseded run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   core:
     name: core (JDK 25)
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -15,12 +25,23 @@ jobs:
           distribution: temurin
           java-version: '25'
           cache: maven
+      # verify builds the source and javadoc JARs too (doclint is off in the
+      # POM). Signing belongs to the release step; a CI run has no key, so
+      # gpg must be skipped or every push would fail at verify.
       - name: Build and test
-        run: mvn -B -ntp verify
+        run: mvn -B -ntp verify -Dgpg.skip=true
+      - name: Upload test reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: '**/target/surefire-reports/**'
+          if-no-files-found: ignore
 
   consumers:
     name: in-repo consumers (demos)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -32,11 +53,34 @@ jobs:
       # path" only holds while something compiles against the API, and until
       # this job existed nothing did.
       - name: Build core and demos
-        run: mvn -B -ntp -Pdemos verify
+        run: mvn -B -ntp -Pdemos verify -Dgpg.skip=true
+
+  ext:
+    name: ext adapters against this core
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+      # The adapters pin 2.0.0-SNAPSHOT, and a core change is only verified by
+      # a clean build there (see freeway-ext/AGENTS.md). Installing this tree
+      # first makes that check run against the change under review instead of
+      # whatever snapshot Central happens to hold.
+      - name: Install core snapshot
+        run: mvn -B -ntp -DskipTests -Dgpg.skip=true install
+      - name: Check out adapters
+        run: git clone --depth 1 https://github.com/dzb/freeway-ext.git freeway-ext
+      - name: Build and test adapters
+        run: mvn -B -ntp -f freeway-ext/pom.xml clean test
 
   docs:
     name: docs consistency
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -53,3 +97,16 @@ jobs:
           mvn -B -ntp -pl freeway-boot -am test
           -Dtest=ConfigDocsConsistencyTest,DocsLayoutConsistencyTest
           -Dsurefire.failIfNoSpecifiedTests=false
+
+  dependency-review:
+    name: dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high

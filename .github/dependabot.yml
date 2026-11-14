@@ -1,0 +1,33 @@
+version: 2
+updates:
+  # SLF4J and JUnit are the only third-party runtime/test dependencies; the
+  # root POM owns their versions.
+  - package-ecosystem: maven
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: "Asia/Shanghai"
+    open-pull-requests-limit: 10
+    versioning-strategy: increase
+    commit-message:
+      prefix: "deps"
+    ignore:
+      - dependency-name: "org.slf4j:slf4j-api"
+        versions:
+          - "2.1.0-alpha1"
+      - dependency-name: "*"
+        versions:
+          - "*-SNAPSHOT"
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: "Asia/Shanghai"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci"
