@@ -1,76 +1,76 @@
-# freeway-cloud 开发指南
+# freeway-cloud Development Guide
 
-本文是 `freeway-cloud` 的开发方法总览：一个应用如何从单机走向云原生，注册发现、远程调用、
-事件网格分别怎么用、怎么部署、边界在哪。设计取舍见
-[cloud design](../design/cloud.md)，全部配置键见
-[configuration.md](../configuration.md)。
+This document is an overview of how to develop with `freeway-cloud`: how an application moves from single-node to cloud-native, how registry and discovery, remote invocation,
+and the event mesh are each used and deployed, and where the boundaries are. For design trade-offs see
+[cloud design](../design/cloud.md); for all configuration keys see
+[configuration.md](../configuration.md).
 
-核心承诺只有一句：**单机和云原生是同一套代码的两种放置方式**。业务代码不写注册、不写寻址、
-不写重试；"有邻居"这件事由组合根（放置哪些模块、配哪些键）表达。
+The core promise is one sentence: **single-node and cloud-native are two placements of the same code**. Business code writes no registration, no addressing,
+and no retries; "having neighbors" is expressed by the composition root (which modules are placed, which keys are configured).
 
-## 模块与组合
+## Modules and Composition
 
-`CloudModule` 是云能力 bundle：用 `@SubModule` 声明 8 个标准模块——上下文传播、密钥、
-**服务注册与发现**、远程调用、可观测、弹性、健康、对象存储。放置 bundle 即全部安装；
-每个子模块也是普通模块，**要子集就直接放子集**，没有排除清单：
+`CloudModule` is the cloud capability bundle: it declares 8 standard modules with `@SubModule` — context propagation, secrets,
+**service registry and discovery**, remote invocation, observability, resilience, health, and object storage. Placing the bundle installs everything;
+each submodule is also an ordinary module, so **for a subset, place the subset directly** — there is no exclusion list:
 
 ```java
 FreewayApp.run(
     new OrderModule(),
-    CloudModule.class);                                // 整个 bundle
+    CloudModule.class);                                // the whole bundle
 
 FreewayApp.run(
     new OrderModule(),
-    new RpcModule());                             // 只要远程调用
+    new RpcModule());                             // just remote invocation
 ```
 
-`EventMeshModule` 刻意**不在** bundle 里：它会打开自己的网络监听并主动拨号，所以由应用
-显式放置、显式进入（`@Inject MeshEventBus`、订阅贡献）。
+`EventMeshModule` is deliberately **not** in the bundle: it opens its own network listener and dials out, so the application
+places it explicitly and enters it explicitly (`@Inject MeshEventBus`, subscription contributions).
 
-应用接触这些模块的方式只有三层：
+These modules are reached through exactly three layers:
 
-| 层 | 应用写什么 | 覆盖什么 |
+| Layer | What the application writes | What it covers |
 |------|-----------------------------|--------------|
-| **环境层** | 什么都不写，装模块即得 | 实例自动注册（心跳续约、停机注销）、`GET /health/live`、`/health/ready`、`/metrics`，每个出站调用自带指标/追踪/弹性/上下文传播 |
-| **声明层** | 数据贡献：`binder.bind(Handlers.class)` + `contribute(RpcExport.class)`、`contribute(MeshSubscription.class)`（网格）、`contribute(CloudHealthContributor.class)` | 本服务对外提供什么 |
-| **消费层** | `@Inject ServiceDiscovery` / `ObjectStorage` / `SecretStore` / `Metrics` / `Tracer`，及 `binder.bind(Api.class).to(...)` | 本服务从别人那里用什么 |
+| **Environment layer** | Nothing — install the modules and it is there | Automatic instance registration (heartbeat renewal, deregistration on shutdown), `GET /health/live`, `/health/ready`, `/metrics`; every outbound call carries metrics/tracing/resilience/context propagation |
+| **Declaration layer** | Data contributions: `binder.bind(Handlers.class)` + `contribute(RpcExport.class)`, `contribute(MeshSubscription.class)` (mesh), `contribute(CloudHealthContributor.class)` | What this service provides to others |
+| **Consumption layer** | `@Inject ServiceDiscovery` / `ObjectStorage` / `SecretStore` / `Metrics` / `Tracer`, plus `binder.bind(Api.class).to(...)` | What this service uses from others |
 
-## 服务注册与发现
+## Service Registry and Discovery
 
-同一 seam（`ServiceRegistry` / `ServiceDiscovery`），三种后端，切换 = 换模块 + 换键，
-业务代码零改动：
+The same seam (`ServiceRegistry` / `ServiceDiscovery`), three backends; switching = changing the module + changing the keys,
+with zero changes to business code:
 
-| 后端 | 放置 | 基础设施 |
+| Backend | Placement | Infrastructure |
 |---|---|---|
-| 进程内（默认） | `CloudModule`（或 `DiscoveryModule`） | 无——单实例 / 固定拓扑 |
-| **freeway 注册节点** | `CloudModule` + `FleetRegistryModule` | 自部署的注册节点（1~N 个 freeway 应用） |
-| Consul | `CloudModule` + ext `ConsulModule` | Consul 集群 |
+| In-process (default) | `CloudModule` (or `DiscoveryModule`) | None — single instance / fixed topology |
+| **freeway registry node** | `CloudModule` + `FleetRegistryModule` | Self-deployed registry nodes (1–N freeway applications) |
+| Consul | `CloudModule` + ext `ConsulModule` | Consul cluster |
 
-### 部署注册节点（freeway 原生）
+### Deploying Registry Nodes (freeway native)
 
-节点就是一个普通 freeway 应用，装配即全部：
+A node is just an ordinary freeway application; assembly is all there is:
 
 ```java
 public static void main(String[] args) {
     FreewayApp.run(Launch.of(args),
-        new HttpModule(),              // HTTP 面：注册/续约/注销/发现/就绪/索引六条路由
-        new DiscoveryModule(),    // 实例表（RegistryStore）
-        new RegistryServerModule());   // 把实例表发布成 HTTP 面
+        new HttpModule(),              // HTTP face: six routes — register/renew/deregister/discover/ready/index
+        new DiscoveryModule(),    // instance table (RegistryStore)
+        new RegistryServerModule());   // publishes the instance table as the HTTP face
 }
 ```
 
 ```properties
 freeway.http.server.port=8060
-freeway.cloud.registry.token=s3cret      # 出了本机必设：读写都要这个头
+freeway.cloud.registry.token=s3cret      # required off-machine: both reads and writes need this header
 ```
 
-**每个业务服务**（注册方 = 调用方 = 监听方）：
+**Every business service** (registrar = caller = listener):
 
 ```java
 FreewayApp.run(Launch.of(args),
     new HttpModule(),
     new CloudModule(),
-    new FleetRegistryModule());    // 把节点舰队绑定为本进程的注册与发现
+    new FleetRegistryModule());    // binds the node fleet as this process's registry and discovery
 ```
 
 ```properties
@@ -79,151 +79,151 @@ freeway.cloud.registry.token=s3cret
 freeway.cloud.registry.service-id=order-service
 ```
 
-**自动发生的事**（业务代码零注册逻辑）：
+**What happens automatically** (zero registration logic in business code):
 
-| 时机 | 自动发生 |
+| Timing | What happens automatically |
 |---|---|
-| 启动 | 解析身份（service-id + host:port）→ POST 注册到**每个**节点；单个节点失败记录告警、其余节点继续服务，**所有**节点都拒收才启动失败 |
-| 每 10 秒 | 心跳扇出；某节点 404（它重启过）→ 用本进程注册过的实例**就地重灌**该节点 |
-| 每 `discovery-feed-ms` | 拉一次同服务实例列表，整份喂给事件网格——新实例自动拨通，离开的自动断开 |
-| 调用别人 | `RemoteProxyFactory` 按发现结果 + 加权轮询选实例 |
-| `GET /health/ready` | 报真实注册状态：已注册 / 排空中 / 连续心跳失败 |
-| 停机 | 先从全部节点注销（drain 窗口）再关进程 |
+| Startup | Resolve identity (service-id + host:port) → POST registration to **every** node; a single node failure logs a warning and the others keep serving; startup fails only when **all** nodes reject it |
+| Every 10 seconds | Heartbeat fan-out; a node returning 404 (it was restarted) → **refill it in place** with the instances this process has registered |
+| Every `discovery-feed-ms` | Pull the same-service instance list once and feed the whole snapshot to the event mesh — new instances are dialed automatically, departed ones are disconnected automatically |
+| Calling others | `RemoteProxyFactory` selects an instance from discovery results + weighted round-robin |
+| `GET /health/ready` | Reports real registration state: registered / draining / consecutive heartbeat failures |
+| Shutdown | Deregister from all nodes first (drain window), then close the process |
 
-**发现结果的复用**：`ServiceDiscovery` 的实现在内部缓存答案（Eureka/Ribbon/Spring Cloud LB
-都是同一形状；K8s informer 这类推送式不需要 TTL）。默认
-`freeway.cloud.registry.cache-ttl=5s`（半个心跳，远在 30s 驱逐窗口内），可按服务覆盖
-（`…cache-ttl.checkout=1s`，`0` = 该服务不缓存）。后端失败时，窗口内继续用最旧的答案
-（grace = max(10×ttl, 30s)），超出窗口才抛。
+**Reuse of discovery results**: `ServiceDiscovery` implementations cache answers internally (Eureka/Ribbon/Spring Cloud LB
+are all the same shape; push-style ones such as the K8s informer need no TTL). The default is
+`freeway.cloud.registry.cache-ttl=5s` (half a heartbeat, well within the 30s eviction window), overridable per service
+(`…cache-ttl.checkout=1s`, `0` = do not cache that service). When the backend fails, the oldest answer keeps being used within the window
+(grace = max(10×ttl, 30s)); only beyond the window does it throw.
 
-**政策**（框架提供的默认手段，不是强制）：走网络的发现实现用 `CachingServiceDiscovery.around(delegate, ttl, metrics)`
-包一层——fleet 就是这么做的；进程内 store **不包**（查表本身已是 0 成本，缓存只会让它变慢）；
-自带推送新鲜度的适配器（K8s informer）也不包，把 `TtlPolicy` 答成 `0`。换句话说：**缓存的发现实现是
-框架给的默认能力，套不套由后端决定**。
+**Policy** (a default the framework provides, not a mandate): a discovery implementation that goes over the network is wrapped with `CachingServiceDiscovery.around(delegate, ttl, metrics)`
+— that is what the fleet does; the in-process store is **not wrapped** (a table lookup already costs 0, and caching would only make it slower);
+adapters that bring their own push freshness (the K8s informer) are not wrapped either — they answer `TtlPolicy` with `0`. In other words: **a caching discovery implementation is
+a default the framework provides; whether to wrap is the backend's decision**.
 
-**协议与凭证轮转**：注册面有协议版本——客户端每个请求带 `X-Registry-Proto`，不兼容时节点答
-`426`（并附带支持的版本），节点永远接受更旧的协议；`GET /registry` 在无凭证时可读，自述协议、
-路由与认证方式。凭证轮转不需要停节点：把当前 `token` 的值填进
-`freeway.cloud.registry.token-previous`、新值写进 `token` 即可两个并存，然后滚动切换
-写入方，最后清空旧值键——密钥按请求解析，配置热重载即生效。
+**Protocol and credential rotation**: the registry face has a protocol version — every client request carries `X-Registry-Proto`, and when incompatible the node answers
+`426` (with the versions it supports); a node always accepts older protocols. `GET /registry` is readable without credentials and describes the protocol,
+routes, and authentication method. Credential rotation needs no node downtime: put the current `token` value into
+`freeway.cloud.registry.token-previous` and the new value into `token` so both coexist, then roll the
+writers over, and finally clear the old-value key — secrets are resolved per request, so a config hot reload takes effect immediately.
 
-**就绪门（readiness）**：注册发生在应用能服务之前，所以带 `CloudHealthContributor` 的进程会先以
-"未就绪"注册（`ServiceHealth.starting()`：在注册表里、不在发现结果里），等**所有**贡献者通过后才翻成
-就绪——慢启动的连接池/迁移不再吃它处理不了的流量。没有贡献者的应用**注册即就绪**（保持旧行为：
-不给不存在信号的应用加等待）。翻转是即时的（`POST …/instances/{id}/ready`），同时也随下一次心跳
-携带，所以老节点只是延迟一拍，不会分叉。
+**Readiness gate**: registration happens before the application can serve, so a process with `CloudHealthContributor`s registers as
+"not ready" first (`ServiceHealth.starting()`: in the registry, not in discovery results), and flips to
+ready only after **all** contributors pass — a slow-starting connection pool/migration no longer takes traffic it cannot handle. An application with no contributors is **ready on registration** (preserving the old behavior:
+no wait added to an application that exposes no signal). The flip is immediate (`POST …/instances/{id}/ready`) and is also carried on the next heartbeat,
+so old nodes lag by one beat instead of diverging.
 
-**节点的运维语义**（v1 的明确选择）：无持久化——表是可重建状态，节点重启后表为空，每个实例
-的下一次心跳收到 404 会**就地把自己重新注册到该节点**，一个心跳周期内恢复满员；无共识复制——
-HA 靠客户端扇出（写全部节点、读并集），任一节点存活即整队可用，节点之间互不相识、没有主从。
-容量按轮询模型估算：每实例每 10s 一次心跳 + 每 feed 间隔一次发现查询。
+**Operational semantics of nodes** (an explicit v1 choice): no persistence — the table is reconstructible state; after a node restart the table is empty, and each instance's
+next heartbeat gets a 404 and **re-registers itself with that node in place**, restoring full membership within one heartbeat period; no consensus replication —
+HA relies on client fan-out (write all nodes, read the union), so any surviving node keeps the whole fleet usable; nodes do not know each other and there is no leader/follower.
+Capacity is estimated on a polling model: one heartbeat per instance every 10s plus one discovery query per feed interval.
 
 ### Consul
 
-ext 的 `freeway-cloud-consul`：同一 seam，`renew` 自愈、`drainWindow()`、`BackendTypeGuard`
-告警全部由 core 驱动，适配器只实现传输。Nacos / K8s endpoints 按同一模式接。
+ext's `freeway-cloud-consul`: the same seam; `renew` self-healing, `drainWindow()`, and the `BackendTypeGuard`
+warning are all driven by core, and the adapter implements only the transport. Nacos / K8s endpoints plug in the same way.
 
-## 远程调用
+## Remote Invocation
 
-跨进程方法调用：提供方声明哪些 mapping 可被外部调用，消费方把类型化客户端绑到该 mapping。
-分发走 `RpcHttpClient`，因此发现、负载均衡、重试、熔断、上下文传播全部生效。
+Cross-process method invocation: the provider declares which mappings can be called externally, and the consumer binds a typed client to that mapping.
+Dispatch goes through `RpcHttpClient`, so discovery, load balancing, retries, circuit breaking, and context propagation all apply.
 
-**同一个接口服务两种形态**——业务代码永远 `@Inject UserApi`，实现是本地还是 HTTP 之后，
-只是组合根的决定：
+**The same interface serves in two forms** — business code always does `@Inject UserApi`; whether the implementation is local or over HTTP is, after all,
+only a decision of the composition root:
 
 ```java
-// 单体：本地实现
+// monolith: local implementation
 binder.bind(UserApi.class).to(UserApiImpl.class);
 
-// 拆分：类型化远程客户端
+// split: typed remote client
 binder.bind(UserApi.class).to(container -> RemoteProxyFactory
     .of(container.get(RemoteCaller.class))
-    .withServiceId("user-service")      // 提供方的发现 id
-    .withMapping("user")                // 提供方导出的 call-topic 前缀
+    .withServiceId("user-service")      // the provider's discovery id
+    .withMapping("user")                // the call-topic prefix the provider exports
     .build(UserApi.class));
 ```
 
-**提供方——声明导出**：
+**Provider — declaring an export**:
 
 ```java
-binder.bind(UserHandlers.class);                                   // 容器管理
+binder.bind(UserHandlers.class);                                   // container-managed
 binder.contribute(RpcExport.class)
-    .add(RpcExport.of("user", UserHandlers.class));               // 整个导出声明
+    .add(RpcExport.of("user", UserHandlers.class));               // the whole export declaration
 ```
 
-导出是**声明**而非装配：框架从容器解析 handler，只服务一条通配路由
-`POST /rpc/{mapping}/{method}`。未声明的 mapping 在进入任何 handler 之前就被拒绝；重复导出
-同一 mapping、导出未 bind 的类型、handler 含重载方法——三类装配错误**启动即失败**，而不是
-日后 404。
+An export is a **declaration**, not an assembly: the framework resolves the handler from the container and serves exactly one wildcard route
+`POST /rpc/{mapping}/{method}`. An undeclared mapping is rejected before it reaches any handler; exporting the
+same mapping twice, exporting a type that is not bound, a handler with overloaded methods — these three assembly errors **fail at startup** instead of
+becoming a 404 later.
 
-**消费方——直调或类型化客户端**：
+**Consumer — direct call or typed client**:
 
 ```java
 @Inject RemoteCaller caller;
 
-// 1. 直调
+// 1. direct call
 Greeting g = caller.invoke("user-service", "user", "greet", List.of("bob"), Greeting.class);
 
-// 2. 类型化客户端（组合根绑定一次）；这里也能给单次调用设预算
+// 2. typed client (bound once in the composition root); a per-call budget is set here too
 UserApi api = RemoteProxyFactory.of(caller)
     .withServiceId("user-service").withMapping("user")
-    .withTimeout(Duration.ofSeconds(5))          // 端到端，含重试
+    .withTimeout(Duration.ofSeconds(5))          // end-to-end, including retries
     .build(UserApi.class);
 ```
 
-**错误模型——两类失败两种直觉**：
+**Error model — two kinds of failure, two intuitions**:
 
-| 失败 | 抛出 | 可重放？ |
+| Failure | Thrown | Replayable? |
 |---------|-----------|---------|
-| 连接拒绝 / 连接超时 | `RpcException`，`retryable()==true`、`outcomeUnknown()==false` | 是——请求没离开本进程 |
-| 超时、中途 I/O、5xx | `RpcException`，`retryable()==true`、`outcomeUnknown()==true` | **仅幂等操作**——对端可能已生效 |
-| 远端 handler 抛异常 | `RpcException`（4xx），cause 为 `RemoteInvocationException` | **否**——确定性失败 |
+| Connection refused / connect timeout | `RpcException`, `retryable()==true`, `outcomeUnknown()==false` | Yes — the request never left this process |
+| Timeout, mid-flight I/O, 5xx | `RpcException`, `retryable()==true`, `outcomeUnknown()==true` | **Idempotent operations only** — the peer may already have applied it |
+| Remote handler throws | `RpcException` (4xx), cause is `RemoteInvocationException` | **No** — deterministic failure |
 
-重试前要过两道门：失败类别 + 幂等性。`RpcHttpClient` 按动词推导幂等（GET/PUT/DELETE 等
-重放，POST/PATCH 不），可用 `RpcRequest.withIdempotent(true)` 覆盖；远程调用走 POST，所以
-在消费接口的方法或整个接口上标 `@Idempotent` 声明可安全重放。远端异常只按类名 + 消息重建，
-不反射还原原始类型。跨进程调用**不在任何本地事务内**——提交后的副作用放 EventBus（Defer
-缓冲），不放 RPC。
+A retry must pass two gates: failure category + idempotency. `RpcHttpClient` derives idempotency from the verb (GET/PUT/DELETE are
+replayable, POST/PATCH are not), overridable with `RpcRequest.withIdempotent(true)`; remote invocation uses POST, so
+mark `@Idempotent` on a method of the consuming interface or on the whole interface to declare it safe to replay. Remote exceptions are rebuilt from class name + message only,
+and the original type is not restored reflectively. A cross-process call is **not inside any local transaction** — post-commit side effects go to the EventBus (Defer
+buffering), not to RPC.
 
-## 事件网格
+## Event Mesh
 
-云原生广播面：以 CloudEvents 1.0 帧在 WebSocket 网格上发布与接收——**显式**。进程内
-`EventBus` 保持进程内；装载事件模块不改变任何本地发布行为。
+The cloud-native broadcast plane: publish and receive CloudEvents 1.0 frames over a WebSocket mesh — **explicitly**. The in-process
+`EventBus` stays in-process; loading the event module changes no local publishing behavior.
 
-配置（`freeway.cloud.event.*`）——presence 驱动的激活：
+Configuration (`freeway.cloud.event.*`) — presence-driven activation:
 
 ```properties
-# 静态 peers：非空即激活网格——不需要 enabled
+# static peers: a non-empty list activates the mesh — no enabled needed
 freeway.cloud.event.peers=10.0.0.11:8080,10.0.0.12:8080
-# freeway.cloud.event.enabled=true            # discovery-fed mesh：无静态 peers
-# freeway.cloud.event.discovery-feed-ms=10000 # 按间隔向已绑定的发现查同伴（整份替换）
-# freeway.cloud.event.enabled=false           # 总闸——连已配置的 peers 也压制
-freeway.cloud.event.token=mesh-secret         # 空 = 无对等认证（有告警）；生产必配
+# freeway.cloud.event.enabled=true            # discovery-fed mesh: no static peers
+# freeway.cloud.event.discovery-feed-ms=10000 # interval-based peer lookup from the bound discovery (whole replacement)
+# freeway.cloud.event.enabled=false           # master switch — suppresses even configured peers
+freeway.cloud.event.token=mesh-secret         # empty = no peer authentication (with a warning); required in production
 ```
 
-- `peers`——要拨的节点；非空列表**本身就是激活**。端点挂在既有 HTTP 服务的 `/cloud/event`
-  上；IPv6 字面量带方括号或裸写均可。
-- `discovery-feed-ms`——用发现后端喂网格：按间隔向绑定的 `ServiceDiscovery` 查询本服务实例，
-  整份交给网格（本节点排除）：出现的实例被拨通，离开的被断开并停止重拨，**一次查询失败保留
-  原集合**。静态 `peers` 与发现集合是并集，空轮询不取消静态列表；设了键却没有 discovery 可问
-  = 启动失败并点名。
-- `token`——hello 帧里的共享密钥，常量时间比较；不一致以 WS `1008` 断开。多节点生产必配，
-  经 `FREEWAY_CLOUD_EVENT_TOKEN` 注入，轮换走滚动重启。
+- `peers` — the nodes to dial; a non-empty list **is itself the activation**. The endpoint hangs off the existing HTTP service at `/cloud/event`;
+  IPv6 literals work with or without brackets.
+- `discovery-feed-ms` — feed the mesh from the discovery backend: at each interval, query the bound `ServiceDiscovery` for this service's instances,
+  hand the whole snapshot to the mesh (this node excluded): instances that appear are dialed, ones that leave are disconnected and stop being redialed, and **a failed query keeps the
+  previous set**. Static `peers` and the discovery set are a union, so an empty poll does not cancel the static list; setting the key with no discovery to ask
+  = startup failure naming the key.
+- `token` — the shared secret in the hello frame, compared in constant time; a mismatch closes with WS `1008`. Required for multi-node production,
+  injected via `FREEWAY_CLOUD_EVENT_TOKEN`, rotated by rolling restart.
 
-**兴趣不是配置**：订阅贡献同时驱动 hello 的拉取前缀、入站门禁和投递——一处声明三处生效。
+**Interest is not configuration**: a subscription contribution drives the hello pull prefixes, the inbound gate, and delivery at once — one declaration, effective in three places.
 
-**发布跨边界——按名字**：路由键是调用点选择的 topic 字符串，Java 类名不上线：
+**Publishing across the boundary — by name**: the routing key is a topic string chosen at the call site; Java class names never go on the wire:
 
 ```java
 @Inject MeshEventBus mesh;
 
 mesh.publish("order.created", new OrderCreated("order-42"));
-mesh.publish("metrics.tick", report, "tenant-7");   // 可选 subject（顺序提示）
+mesh.publish("metrics.tick", report, "tenant-7");   // optional subject (ordering hint)
 ```
 
-`publish` 是 Defer 感知的：事务内缓冲到提交才出境，回滚即弃——未提交的事实不出 JVM。
+`publish` is Defer-aware: inside a transaction it buffers until commit and only then leaves the process; a rollback discards it — an uncommitted fact never leaves the JVM.
 
-**接收声明类型——声明即白名单**：
+**Receiving declared types — a declaration is the whitelist**:
 
 ```java
 binder.contribute(MeshSubscription.class)
@@ -231,76 +231,76 @@ binder.contribute(MeshSubscription.class)
           MeshSubscription.of("order.", OrderCreated.class, this::handle));
 ```
 
-topic 匹配不上任何订阅的帧**不反序列化即弃**——未声明的类不会被实例化。刻意没有运行时
-subscribe：对端在握手时看不见的兴趣，是无法被兑现的兴趣。
+A frame whose topic matches no subscription is **dropped without deserialization** — undeclared classes are never instantiated. There is deliberately no runtime
+subscribe: an interest the peer cannot see during the handshake is an interest that cannot be honored.
 
-**本地与远程刻意镜像**：两个平面互不喂——远程事实不会自动变成本地事实。需要时在 handler
-里镜像：`MeshSubscription.of("order.", OrderCreated.class, event -> bus.publish(event))`。
+**Local and remote deliberately mirror each other**: the two planes do not feed each other — a remote fact does not automatically become a local fact. When needed, mirror it in the handler
+with: `MeshSubscription.of("order.", OrderCreated.class, event -> bus.publish(event))`.
 
-**谁收到什么**：只看节点自己声明的订阅前缀，没有第二个过滤器。每节点部署清单：模块放置 +
-（peers 或 `enabled=true`）+ 订阅声明 + `token`——缺任何一项都是静默分区而非错误；
-`stats().droppedNoSubscriber()` 与 `framesQueued()` / `framesDropped()` 让发送侧事后可观测。
+**Who receives what**: only the subscription prefixes a node itself declares; there is no second filter. Per-node deployment checklist: module placement +
+(peers or `enabled=true`) + subscription declarations + `token` — missing any one is a silent partition rather than an error;
+`stats().droppedNoSubscriber()` and `framesQueued()` / `framesDropped()` make it observable after the fact on the sending side.
 
-**半开连接**：设 `freeway.cloud.event.keepalive-ms` 后，mesh 每拍向 peer 发 WebSocket ping；同一时刻
-只保留一个在途探测，pong 的预算按 `max(3 × 间隔, 1 s)` 派生，耗尽才关连接，交给既有重连（出站）
-与注销（入站）路径。抓的是"TCP 还活着、对端已经不读"——NAT/LB 静默丢连接正是这种形状，靠发送
-失败要等到下一次发布才发现；1 s 下限则保证一次 JVM 停顿或调度延迟不会把健康链路误判为半开。
-默认关：活性探测是流量，已用 TCP keepalive 或 service mesh 的部署可以不为第二个意见付费。
+**Half-open connections**: with `freeway.cloud.event.keepalive-ms` set, the mesh sends a WebSocket ping to each peer every beat; at any moment
+only one probe is in flight, the pong budget is derived as `max(3 × interval, 1 s)`, and the connection is closed only when it is exhausted, handing off to the existing reconnect (outbound)
+and deregistration (inbound) paths. What this catches is "TCP is still alive, the peer no longer reads" — a NAT/LB silently dropping a connection is exactly this shape, and relying on a send
+failure would only discover it at the next publish; the 1 s floor keeps a JVM pause or scheduling delay from misjudging a healthy link as half-open.
+Off by default: liveness probing is traffic, and deployments already using TCP keepalive or a service mesh need not pay for a second opinion.
 
-**投递语义**：at-most-once、实时。发布时离线的 peer 错过该事件（无重放队列）——需要持久、
-按键有序的投递用 Kafka 平面（`freeway-mq-kafka`）。入站帧可挂拦截器
-（`contribute(MeshInterceptor.class)`）；抛异常的 handler 被隔离并计数；网格从设计上
-无重投，历史 class 通道帧解析后按原因丢弃并计入 `stats().droppedLegacy()`。
+**Delivery semantics**: at-most-once, real time. A peer that is offline at publish time misses the event (no replay queue) — for durable,
+per-key ordered delivery use the Kafka plane (`freeway-mq-kafka`). Inbound frames can carry interceptors
+(`contribute(MeshInterceptor.class)`); a throwing handler is isolated and counted; the mesh has
+no redelivery by design, and legacy class-channel frames are parsed and then dropped with a reason, counted in `stats().droppedLegacy()`.
 
-## 健康与就绪
+## Health and Readiness
 
-`contribute(CloudHealthContributor.class)` 为自己的依赖加就绪检查。内置注册检查报的是心跳
-**验证过**的状态——已注册 / 排空中 / 连续心跳失败——不是常量；`/health/live` 与
-`/health/ready` 由框架服务。外部后端适配器可以**追加**自己的连通性检查，不替换核心的注册
-状态检查。
+`contribute(CloudHealthContributor.class)` adds a readiness check for your own dependencies. The built-in registration check reports the state the heartbeat has
+**verified** — registered / draining / consecutive heartbeat failures — not a constant; `/health/live` and
+`/health/ready` are served by the framework. An external backend adapter may **append** its own connectivity check; it does not replace the core registration
+state check.
 
-## 可观测、弹性、密钥、存储、上下文
+## Observability, Resilience, Secrets, Storage, Context
 
-| 能力 | 应用侧 | 键 / 备注 |
+| Capability | Application side | Keys / notes |
 |------------|------------------|--------------|
-| 负载均衡 | 默认加权轮询；`.primary()` 换策略 | `ServiceInstance.weight()/zone()/version()/isCanary()` 是策略的输入 |
-| 可观测 | `@Inject Metrics`（计数/计时/仪表）、`@Inject Tracer`（`start(name)`）、`@Inject MetricsSnapshot`；每个请求运行在服务端 span 里，日志带 `traceId`；探针与 `/metrics` 不追踪 | `GET /metrics` |
-| 弹性 | 默认即绑定且 RPC 客户端使用；`@Inject Retryer` / `CircuitBreaker` / `RateLimiter`，或 `.primary()` 替换 | `freeway.cloud.rpc.resilience=auto\|off` 与细分键 |
-| 上下文传播 | `InvocationContext.current()` 读 baggage/principal/trace；零接线 | 入站过滤器 + 出站头注入 |
-| 密钥 | `@Inject SecretStore`；密钥也可被符号解析（`@Symbol("db.password")`）。文件按 size/mtime 变化重读（不重启轮换） | `freeway.cloud.secret.*`（仅系统属性） |
-| 对象存储 | `@Inject ObjectStorage`；`ObjectStoredEvent` / `ObjectDeletedEvent` 发到总线 | `freeway.cloud.storage.*` |
+| Load balancing | Weighted round-robin by default; `.primary()` swaps the strategy | `ServiceInstance.weight()/zone()/version()/isCanary()` are the strategy's inputs |
+| Observability | `@Inject Metrics` (counters/timers/gauges), `@Inject Tracer` (`start(name)`), `@Inject MetricsSnapshot`; every request runs in a server-side span and logs carry `traceId`; probes and `/metrics` are not traced | `GET /metrics` |
+| Resilience | Bound by default and used by RPC clients; `@Inject Retryer` / `CircuitBreaker` / `RateLimiter`, or replace with `.primary()` | `freeway.cloud.rpc.resilience=auto\|off` and the per-capability keys |
+| Context propagation | `InvocationContext.current()` reads baggage/principal/trace; zero wiring | inbound filter + outbound header injection |
+| Secrets | `@Inject SecretStore`; secrets can also be resolved as symbols (`@Symbol("db.password")`). Files are re-read when size/mtime changes (rotation without restart) | `freeway.cloud.secret.*` (system properties only) |
+| Object storage | `@Inject ObjectStorage`; `ObjectStoredEvent` / `ObjectDeletedEvent` are published to the event bus | `freeway.cloud.storage.*` |
 
-每种能力都有进程内默认（本地注册表、env/文件密钥、文件系统存储、内置指标注册表）——**单节点
-部署不需要任何后端**；外部后端以适配器到达，绑 `.primary()` 即接管。
+Every capability has an in-process default (local registry, env/file secrets, filesystem storage, built-in metrics registry) — **a single-node
+deployment needs no backend at all**; an external backend arrives as an adapter, and binding it with `.primary()` takes over.
 
-**`freeway.cloud.*.type` 声明意图，不选择实现。** 框架从不按类名加载（无扫描、无配置反射），
-选择器是绑定：适配器以 `.primary()` 绑定角色，内置默认让位。`type` 键是给人与适配器看的
-声明；声明了外部后端却没有适配器接管时，本地实现启动告警一次（`BackendTypeGuard`），不让
-声明看起来像已生效。
+**`freeway.cloud.*.type` declares intent; it does not choose an implementation.** The framework never loads by class name (no scanning, no config reflection);
+the selector is the binding: an adapter binds the role with `.primary()`, and the built-in default steps aside. The `type` key is a declaration for humans and adapters;
+when an external backend is declared but no adapter takes over, the local implementation warns once at startup (`BackendTypeGuard`), so the
+declaration does not look like it took effect.
 
-## 出站 TLS 的在线轮换
+## Online Rotation of Outbound TLS
 
-默认情况下 `TransportSecurity` 的 `SSLContext` 解析一次，换 keystore/truststore 需重启；设
-`freeway.cloud.rpc.tls.reload-interval` 后，KeyManager/TrustManager 每次握手委托给**可轮换材料**
-（size/mtime + 节流，读失败保留旧材料），下一次握手即生效——**不重建客户端**，因为 JDK
-`HttpClient` 在构建时就捕获了 context。入站侧是另一个机制（引擎每次握手读当前 context，
-`freeway.http.ssl.reload-interval`），两侧合起来才是完整的证书轮换。
+By default `TransportSecurity`'s `SSLContext` is resolved once, and changing keystore/truststore requires a restart; with
+`freeway.cloud.rpc.tls.reload-interval` set, KeyManager/TrustManager delegate to **rotatable material** on every handshake
+(size/mtime + throttling, keeping the old material on read failure), effective at the next handshake — **without rebuilding the client**, because the JDK
+`HttpClient` captures the context at construction. The inbound side is a different mechanism (the engine reads the current context on every handshake,
+`freeway.http.ssl.reload-interval`); only both sides together make complete certificate rotation.
 
-## 键的读取时机与停机顺序
+## When Keys Are Read, and Shutdown Order
 
-**Cloud 键在拥有它的组件被构建时读取一次。** 热更新改的是符号链此后解析到的值，不是已构建
-客户端捕获的值——改 `freeway.cloud.rpc.request-timeout` 要重启生效（传给
-`RemoteCaller`/`RemoteProxyFactory` 的单次调用值是例外；密钥文件按 size/mtime 变化重读）。
-只在真正需要"活值"的地方按使用点读取。
+**Cloud keys are read once, when the component that owns them is constructed.** A hot update changes the value the symbol chain resolves from then on, not the value an already-constructed
+client captured — changing `freeway.cloud.rpc.request-timeout` takes effect only after a restart (per-call values passed to
+`RemoteCaller`/`RemoteProxyFactory` are the exception; secret files are re-read on size/mtime change).
+Read at the point of use only where a "live value" is genuinely needed.
 
-**停机是有序的，且刻意如此。** 注册 hook 先于 HTTP 服务器停止：置 readiness 为 `draining`、
-先注销，再等 `freeway.cloud.registry.shutdown-drain`（默认 `auto`，由注册表后端回答自己的
-传播窗口——进程内答 0，适配器答自己的数），然后服务器才停止接收。在途的出站调用有
-`freeway.cloud.rpc.shutdown-grace`（默认 `5s`）收尾；事件网格 peer 收到 `1001 going away`
-关闭帧而非 RST。
+**Shutdown is ordered, deliberately so.** The registration hook stops before the HTTP server: set readiness to `draining`,
+deregister first, then wait for `freeway.cloud.registry.shutdown-drain` (default `auto`, with the registry backend answering its own
+propagation window — the in-process one answers 0, an adapter answers its own number), and only then does the server stop accepting. In-flight outbound calls have
+`freeway.cloud.rpc.shutdown-grace` (default `5s`) to finish; event mesh peers receive a `1001 going away`
+close frame rather than an RST.
 
-## 相关文档
+## Related Documentation
 
-- 设计取舍与边界：[cloud design](../design/cloud.md)
-- 全部配置键：[configuration.md](../configuration.md)
-- 三方适配器（Consul、Kafka 平面等）：[freeway-ext](https://github.com/dzb/freeway-ext)
+- Design trade-offs and boundaries: [cloud design](../design/cloud.md)
+- All configuration keys: [configuration.md](../configuration.md)
+- Third-party adapters (Consul, Kafka plane, etc.): [freeway-ext](https://github.com/dzb/freeway-ext)

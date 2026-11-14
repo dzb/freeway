@@ -1,132 +1,132 @@
-# 移植适配评估：solon-flow → freeway-flow
+# Porting adaptation assessment: solon-flow → freeway-flow
 
-> 评估时间：2026-06-26  
-> 评估对象：将 solon-flow 核心编排引擎提取并适配到 freeway 框架
+> Assessment date: 2026-06-26  
+> Assessment subject: extracting the solon-flow core orchestration engine and adapting it to the freeway framework
 
-## 一、源模块分析：solon-flow
+## I. Source module analysis: solon-flow
 
-### 模块架构
+### Module architecture
 
-solon-flow 是一个基于 Solon 框架的通用图编排引擎，支持工作流、审批流、规则引擎等场景。
+solon-flow is a general-purpose graph orchestration engine based on the Solon framework, supporting scenarios such as workflows, approval flows, and rule engines.
 
 ```
 solon-flow/
-├── solon-flow/              ← 核心引擎（本次移植源）
-├── solon-flow-workflow/     ← 审批流层（不移植）
-├── solon-flow-projects/     ← 表达式适配器（不移植）
-├── solon-flow-designer/     ← 可视化设计器（不移植）
-└── solon-flow-dataflow/     ← DataFlow 模块（未构建）
+├── solon-flow/              ← Core engine (source of this port)
+├── solon-flow-workflow/     ← Approval flow layer (not ported)
+├── solon-flow-projects/     ← Expression adapters (not ported)
+├── solon-flow-designer/     ← Visual designer (not ported)
+└── solon-flow-dataflow/     ← DataFlow module (not built)
 ```
 
-### 核心模型
+### Core model
 
-| 类 | 职责 |
+| Class | Responsibility |
 |---|---|
-| `Graph` | 图容器：id/title/driver/metas/nodes/links/start |
-| `Node` | 节点：id/title/type/when/task/nextLinks/prevLinks |
-| `Link` | 有向边：prevId/nextId/title/priority/when |
-| `NodeType` | 7 种类型：START(1)/END(2)/ACTIVITY(11)/EXCLUSIVE(21)/INCLUSIVE(31)/PARALLEL(32)/LOOP(33) |
+| `Graph` | Graph container: id/title/driver/metas/nodes/links/start |
+| `Node` | Node: id/title/type/when/task/nextLinks/prevLinks |
+| `Link` | Directed link: prevId/nextId/title/priority/when |
+| `NodeType` | 7 types: START(1)/END(2)/ACTIVITY(11)/EXCLUSIVE(21)/INCLUSIVE(31)/PARALLEL(32)/LOOP(33) |
 
-**设计原则**：Spec（可变 Builder）→ 运行时对象（不可变）。GraphSpec/NodeSpec/LinkSpec 负责解析和构建，Graph/Node/Link 是不可变运行时模型。
+**Design principle**: Spec (mutable Builder) → runtime objects (immutable). GraphSpec/NodeSpec/LinkSpec handle parsing and construction; Graph/Node/Link are immutable runtime models.
 
-### 执行引擎
+### Execution engine
 
-`FlowEngineDefault.node_run()` 是核心分发器：
+`FlowEngineDefault.node_run()` is the core dispatcher:
 
 ```
-node_run() 按 NodeType 分发：
-  START     → 触发生命周期 → 沿所有 nextLink 流出
-  END       → 触发生命周期 → 终止
-  ACTIVITY  → 执行 task → 沿所有 nextLink 流出
-  EXCLUSIVE → 找第一个条件为真的 link → 只走那条分支
-  INCLUSIVE → 找所有条件为真的 link → 全部走（带 fan-in 计数）
-  PARALLEL  → 等待所有入边到齐 → 所有出边并发走（可选线程池）
-  LOOP      → 遍历 $for/$in 指向的集合，每次迭代走一遍
+node_run() dispatches by NodeType:
+  START     → trigger lifecycle → flow out along all nextLink
+  END       → trigger lifecycle → terminate
+  ACTIVITY  → execute task → flow out along all nextLink
+  EXCLUSIVE → find the first link whose condition is true → take only that branch
+  INCLUSIVE → find all links whose condition is true → take all (with fan-in counting)
+  PARALLEL  → wait for all incoming links to arrive → all outgoing links proceed concurrently (thread pool optional)
+  LOOP      → iterate the collection pointed to by $for/$in, walking once per iteration
 ```
 
-## 二、外部依赖分析
+## II. External dependency analysis
 
-solon-flow 核心引擎（solon-flow 模块）的外部依赖：
+External dependencies of the solon-flow core engine (the solon-flow module):
 
-| 依赖 | 用途 | 是否必须 |
+| Dependency | Purpose | Required? |
 |---|---|---|
-| `org.noear:solon` | Solon 框架（Utils, IoC, 注解） | 工具类可替换 |
-| `org.noear:solon-expression` | SnelParser 表达式解析 | 需替代 |
-| `org.noear:solon-aot` | AOT/native-image 支持 | 非必须（provided scope） |
-| `org.yaml:snakeyaml` | YAML 图定义解析 | 可砍（JSON only） |
-| `org.noear:snack4` | JSON 序列化（ONode） | 需替代 |
-| `org.noear:dami2` | 事件总线（DamiBus） | 需替代 |
-| `org.noear:liquor-eval` | 脚本执行（Scripts.eval） | 需替代 |
-| `org.slf4j:slf4j-api` | 日志接口 | freeway 已有 |
+| `org.noear:solon` | Solon framework (Utils, IoC, annotations) | Utility classes can be replaced |
+| `org.noear:solon-expression` | SnelParser expression parsing | Needs replacement |
+| `org.noear:solon-aot` | AOT/native-image support | Not required (provided scope) |
+| `org.yaml:snakeyaml` | YAML graph definition parsing | Can be cut (JSON only) |
+| `org.noear:snack4` | JSON serialization (ONode) | Needs replacement |
+| `org.noear:dami2` | Event bus (DamiBus) | Needs replacement |
+| `org.noear:liquor-eval` | Script execution (Scripts.eval) | Needs replacement |
+| `org.slf4j:slf4j-api` | Logging interface | Already in freeway |
 
-其中**必须替换的**有 5 个（snakeyaml 可砍，solon-aot 可砍，slf4j 已有）。
+Among them, **5 must be replaced** (snakeyaml can be cut, solon-aot can be cut, slf4j already exists).
 
-## 三、目标环境分析：freeway
+## III. Target environment analysis: freeway
 
-### 框架特点
+### Framework characteristics
 
-- JDK 25+，使用 ScopedValue、Record、Virtual Thread
-- **core 模块零外部依赖**（freeway-commons 仅依赖 slf4j）
-- compose-first，显式 ModuleEx 注册，无 classpath 扫描
+- JDK 25+, using ScopedValue, Record, Virtual Thread
+- **core modules have zero external dependencies** (freeway-commons depends only on slf4j)
+- compose-first, explicit ModuleEx registration, no classpath scanning
 
-### 可用的内置能力
+### Available built-in capabilities
 
-| 能力 | 位置 | 用途 |
+| Capability | Location | Purpose |
 |---|---|---|
-| JSON 解析/序列化 | freeway-commons `JsonUtils`/`JsonObject`/`JsonArray` | 替代 snack4 |
-| IoC 容器 | freeway-ioc `Container`/`Binder` | 替代 Solon IoC |
-| 类型转换 | freeway-commons `Coercer` | 类型安全 |
-| Bean 内省 | freeway-commons `BeanIntrospector` | 反射工具 |
-| AOP | freeway-ioc `Advisor`/`MethodAdvice` | 方法级拦截（不能替代 FlowInterceptor） |
-| EventBus | freeway-ioc `EventBus` | 应用级 pub/sub（对 FlowContext 过重） |
-| Module 系统 | freeway-ioc `ModuleEx` | 模块注册入口 |
+| JSON parsing/serialization | freeway-commons `JsonUtils`/`JsonObject`/`JsonArray` | Replaces snack4 |
+| IoC container | freeway-ioc `Container`/`Binder` | Replaces Solon IoC |
+| Type conversion | freeway-commons `Coercer` | Type safety |
+| Bean introspection | freeway-commons `BeanIntrospector` | Reflection utility |
+| AOP | freeway-ioc `Advisor`/`MethodAdvice` | Method-level interception (cannot replace FlowInterceptor) |
+| EventBus | freeway-ioc `EventBus` | Application-level pub/sub (too heavy for FlowContext) |
+| Module system | freeway-ioc `ModuleEx` | Module registration entry |
 
-### 缺失的能力
+### Missing capabilities
 
-| 能力 | 说明 |
+| Capability | Description |
 |---|---|
-| 表达式求值 | freeway 完全没有表达式/脚本引擎 |
-| 流程级拦截器链 | freeway AOP 是方法级的，不能感知流程节点生命周期 |
-| 执行级事件总线 | freeway EventBus 是应用级单例，不适合执行级作用域 |
+| Expression evaluation | freeway has no expression/script engine at all |
+| Flow-level interceptor chain | freeway AOP is method-level and cannot observe flow node lifecycles |
+| Execution-level event bus | freeway EventBus is an application-level singleton, unsuitable for execution-level scope |
 
-## 四、依赖替换方案
+## IV. Dependency replacement plan
 
-| solon-flow 依赖 | 用途 | freeway 替代 | 策略 |
+| solon-flow dependency | Purpose | freeway replacement | Strategy |
 |---|---|---|---|
-| `snakeyaml` | YAML 解析 | — | **砍掉**，仅支持 JSON |
-| `snack4` (ONode) | JSON 序列化 | `freeway-commons` JsonObject/JsonArray/JsonUtils | **替换** |
-| `dami2` (DamiBus) | 事件总线 | `FlowEventBus`（自写 ~90 行） | **自写** |
-| `liquor-eval` (Scripts) | 脚本求值 | — | **砍掉**，task 仅支持 @bean/#graph/$meta |
-| `solon-expression` (SnelParser) | 条件表达式 | `ExprEvaluator`（自写 ~280 行） | **自写** |
-| `solon.Utils` | 字符串判空 | `str == null \|\| str.isEmpty()` | **内联** |
-| `solon.Assert` | 断言 | `Objects.requireNonNull` | **替换** |
-| `solon.lang.*` | 注解 | — | **移除** |
-| `solon.RankEntity` | 拦截器排序 | `RankedInterceptor` record | **自写** |
+| `snakeyaml` | YAML parsing | — | **Cut**, JSON only |
+| `snack4` (ONode) | JSON serialization | `freeway-commons` JsonObject/JsonArray/JsonUtils | **Replace** |
+| `dami2` (DamiBus) | Event bus | `FlowEventBus` (self-written, ~90 lines) | **Self-written** |
+| `liquor-eval` (Scripts) | Script evaluation | — | **Cut**, task only supports @bean/#graph/$meta |
+| `solon-expression` (SnelParser) | Condition expressions | `ExprEvaluator` (self-written, ~280 lines) | **Self-written** |
+| `solon.Utils` | String null/empty check | `str == null \|\| str.isEmpty()` | **Inline** |
+| `solon.Assert` | Assertions | `Objects.requireNonNull` | **Replace** |
+| `solon.lang.*` | Annotations | — | **Remove** |
+| `solon.RankEntity` | Interceptor ordering | `RankedInterceptor` record | **Self-written** |
 
-## 五、可行性结论
+## V. Feasibility conclusion
 
-### ✅ 完全可行
+### ✅ Fully feasible
 
-1. **核心引擎是纯图遍历算法**——FlowEngineDefault 约 400 行的 `node_run()` 及其子方法不依赖任何外部库，可直接迁移
-2. **自写代码量可控**——ExprEvaluator（280行）+ FlowEventBus（90行）+ RankedInterceptor record（10行），总计约 380 行新代码
-3. **JSON 适配简单**——freeway 的 JsonObject/JsonArray API 与 snack4 的 ONode 高度相似，fromDom 改写约 50 处调用点
-4. **PlantUML 导出零依赖**——纯 StringBuilder 拼接 PlantUML 文本格式，完整保留
+1. **The core engine is a pure graph traversal algorithm** — FlowEngineDefault's roughly 400-line `node_run()` and its sub-methods depend on no external library and can be migrated directly
+2. **The amount of self-written code is manageable** — ExprEvaluator (280 lines) + FlowEventBus (90 lines) + RankedInterceptor record (10 lines), about 380 lines of new code in total
+3. **JSON adaptation is simple** — freeway's JsonObject/JsonArray API is highly similar to snack4's ONode; rewriting fromDom involves about 50 call sites
+4. **PlantUML export has zero dependencies** — pure StringBuilder concatenation of the PlantUML text format, retained in full
 
-### 风险点
+### Risk points
 
-| 风险 | 等级 | 缓解 |
+| Risk | Level | Mitigation |
 |---|---|---|
-| ExprEvaluator 边界情况 | 低 | 14 个断言覆盖 + 标准递归下降模式 |
-| JsonObject 构造函数 package-private | 低 | 使用 `JsonUtils.object()` 工厂方法 |
-| freeway.Container vs flow.Container 命名冲突 | 低 | 全限定名或重命名 |
-| PARALLEL 节点线程安全 | 低 | CountDownLatch + AtomicReference，与 solon-flow 一致 |
+| ExprEvaluator edge cases | Low | 14 assertions + standard recursive-descent pattern |
+| JsonObject constructor package-private | Low | Use the `JsonUtils.object()` factory method |
+| freeway.Container vs flow.Container naming conflict | Low | Fully qualified names or renaming |
+| PARALLEL node thread safety | Low | CountDownLatch + AtomicReference, consistent with solon-flow |
 
-### 最终依赖
+### Final dependencies
 
 ```xml
-<dependency>com.jujin8.freeway:freeway-commons</dependency>   <!-- JSON + 工具 -->
-<dependency>com.jujin8.freeway:freeway-ioc</dependency>        <!-- IoC 容器 -->
-<dependency>org.slf4j:slf4j-api</dependency>                   <!-- 日志（已有） -->
+<dependency>com.jujin8.freeway:freeway-commons</dependency>   <!-- JSON + utilities -->
+<dependency>com.jujin8.freeway:freeway-ioc</dependency>        <!-- IoC container -->
+<dependency>org.slf4j:slf4j-api</dependency>                   <!-- Logging (already present) -->
 ```
 
-**零新增三方依赖。**
+**Zero new third-party dependencies.**

@@ -1,151 +1,150 @@
-# HTTP / WebSocket 组合化重构方案
+# HTTP / WebSocket Compositional Refactoring Plan
 
-> **状态：已实施并通过审计修正（2026-11-12）。** 第 14 节记录已确定的
-> 决策，第 15 节记录第一轮验收，第 16 节记录审计后的提交/framing/契约修正；
-> 本文同时是这次重构的基线。
+> **Status: implemented and revised through audit (2026-11-12).** Section 14 records the settled
+> decisions, Section 15 records the first acceptance round, and Section 16 records the post-audit
+> commit/framing/contract revisions; this document is also the baseline for this refactoring.
 >
-> 目标仓库：`freeway`（core）与 `freeway-ext`。基线：core
-> `378b2d13`，工作区干净。
+> Target repositories: `freeway` (core) and `freeway-ext`. Baseline: core
+> `378b2d13`, working tree clean.
 >
-> 相关约定：`AGENTS.md` 的 “Extending versus composing”、
-> `docs/architecture.md` 的 HTTP seam、`freeway-ext/AGENTS.md` 的
-> “Core first, adapter second”。
+> Related conventions: "Extending versus composing" in `AGENTS.md`, the HTTP seam in
+> `docs/architecture.md`, and "Core first, adapter second" in `freeway-ext/AGENTS.md`.
 
-## 1. 目标
+## 1. Goals
 
-消除框架类型之间的实现继承，让 Freeway 的 HTTP / WebSocket 扩展点只剩
-**接口契约**：
+Eliminate implementation inheritance between framework types, leaving Freeway's HTTP / WebSocket extension points with nothing but
+**interface contracts**:
 
-- `HttpExchange`、`HttpRequest`、`HttpResponse`、`ExchangeMeta`、
-  `RequestView`、`WebSocketSession` 继续是应用看到的接口，接口之间的
-  `extends` 保留（契约组合，不是实现继承）。
-- 新增 `HttpTransport` / `WebSocketTransport` 两个 SPI，引擎适配器只
-  `implements` 它们。
-- 共享策略集中到 final 的 `HttpExchangeSupport` /
-  `WebSocketSessionSupport`，由引擎**组合**，而不是被引擎继承。
-- 删除 `AbstractHttpContext`、`AbstractWebSocketSession` 以及所有
-  `extends` 它们的类。
-- `freeway-ext` 的 Undertow、Jetty HTTP/WS 适配器全部接入新 SPI，
-  testkit 契约与 benchmark 同步迁移。
+- `HttpExchange`, `HttpRequest`, `HttpResponse`, `ExchangeMeta`,
+  `RequestView`, and `WebSocketSession` remain the interfaces applications see; `extends` between
+  interfaces is kept (contract composition, not implementation inheritance).
+- Add two SPIs, `HttpTransport` / `WebSocketTransport`; engine adapters only
+  `implements` them.
+- Gather shared policy into the final `HttpExchangeSupport` /
+  `WebSocketSessionSupport`, which engines **compose** instead of inheriting from.
+- Delete `AbstractHttpContext`, `AbstractWebSocketSession`, and every class that
+  `extends` them.
+- Connect all Undertow and Jetty HTTP/WS adapters in `freeway-ext` to the new SPI, and
+  migrate the testkit contracts and benchmarks along with them.
 
-这不是一次“为了少几行代码”的重构。收益是结构性的：
+This is not a refactoring "to save a few lines of code". The payoff is structural:
 
-1. `AGENTS.md` 里 “implementation shared with third-party adapters”
-   这个 `extends` 例外不再需要存在；
-2. “每请求复位”从一个必须遵守的约定，变成对象生命周期本身；
-3. 三个引擎的状态码/头校验、`Date`、`Content-Length`、gzip 决策、
-   body 上限从“三份恰好一致”变成“结构上同一份”。
+1. The `extends` exception "implementation shared with third-party adapters" in
+   `AGENTS.md` no longer needs to exist;
+2. "Reset per request" goes from a convention that must be obeyed to the object lifecycle itself;
+3. The three engines' status code/header validation, `Date`, `Content-Length`, gzip decision,
+   and body limit go from "three copies that happen to agree" to "structurally one copy".
 
-## 2. 边界：哪些 `extends` 保留
+## 2. Boundaries: Which `extends` Are Kept
 
-| 类别 | 处理 | 例子 |
+| Category | Handling | Examples |
 |---|---|---|
-| 框架类型之间的 `class extends` | **全部删除** | `AbstractHttpContext`、`AbstractWebSocketSession` 及其子类 |
-| 契约之间的 `interface extends` | **保留** | `HttpExchange extends ExchangeMeta, HttpRequest, HttpResponse` |
-| JDK / 语言强制 | **保留** | `RuntimeException`、`InputStream`、`OutputStream`、`X509ExtendedKeyManager`、`AutoCloseable` |
-| 包内封闭的协议层次 | **sealed interface + 组合** | `engine.http2.Http2Frame` 与各帧类型；不可见、不跨模块、无第三方实现者 |
-| 回调 / 监听器接口 | **保留** | `WebSocketListener`、`Session.Listener` 等 |
+| `class extends` between framework types | **Delete all** | `AbstractHttpContext`, `AbstractWebSocketSession` and their subclasses |
+| `interface extends` between contracts | **Keep** | `HttpExchange extends ExchangeMeta, HttpRequest, HttpResponse` |
+| JDK / language mandated | **Keep** | `RuntimeException`, `InputStream`, `OutputStream`, `X509ExtendedKeyManager`, `AutoCloseable` |
+| Protocol hierarchies closed within a package | **sealed interface + composition** | `engine.http2.Http2Frame` and the frame types; not visible, not cross-module, no third-party implementors |
+| Callback / listener interfaces | **Keep** | `WebSocketListener`, `Session.Listener`, etc. |
 
-验收命令（在 core 与 ext 根目录分别执行）：
+Acceptance commands (run in the core and ext root directories respectively):
 
 ```bash
-# 1. 不再有框架类型被继承
+# 1. No framework type is subclassed anymore
 rg "extends (AbstractHttpContext|AbstractWebSocketSession)" \
    freeway-core freeway-ext
 
-# 2. 两个基类及其名字彻底消失
+# 2. The two base classes and their names are gone entirely
 rg "AbstractHttpContext|AbstractWebSocketSession" \
    freeway-core freeway-ext
 
-# 3. 适配器只实现 SPI
+# 3. Adapters implement only the SPI
 rg "class .* (implements|extends)" \
    freeway-ext/freeway-http-undertow/src/main/java \
    freeway-ext/freeway-http-jetty/src/main/java
 ```
 
-第 1、2 条必须为空。第 3 条允许 JDK/第三方基类（例如 Jetty 的
-`Session.Listener`、Undertow 的 `AbstractReceiveListener`），但**不允许
-再出现任何 core 的框架类型**。
+Items 1 and 2 must be empty. Item 3 allows JDK/third-party base classes (for example Jetty's
+`Session.Listener` and Undertow's `AbstractReceiveListener`), but **no core framework type may
+appear again**.
 
-## 3. 现状审计
+## 3. Current-State Audit
 
-### 3.1 core 的继承点
+### 3.1 Inheritance points in core
 
-`freeway-http/src/main/java` 中框架实现继承只有两处：
+In `freeway-http/src/main/java`, framework implementation inheritance exists in only two places:
 
-| 类型 | 行数 | 职责 |
+| Type | Lines | Responsibility |
 |---|---:|---|
-| `http/AbstractHttpContext.java` | 357 | 元数据、path vars、body 限流、状态码/头校验、JSON/类型转换、`Date`、Vary、send 简写、SSE 头 |
-| `http/websocket/AbstractWebSocketSession.java` | 175 | 升级请求的元数据快照 + 帧操作空壳 |
+| `http/AbstractHttpContext.java` | 357 | Metadata, path vars, body limiting, status code/header validation, JSON/type conversion, `Date`, Vary, send shorthands, SSE headers |
+| `http/websocket/AbstractWebSocketSession.java` | 175 | Metadata snapshot of the upgrade request + frame-operation shell |
 
-其余 `extends` 都是 JDK（`InputStream`/`OutputStream`、
-`RuntimeException`）或接口契约组合；HTTP/2 帧族已改为
-`engine.http2.Http2Frame` sealed interface + 组合。
+All other `extends` are JDK types (`InputStream`/`OutputStream`,
+`RuntimeException`) or interface contract composition; the HTTP/2 frame family has already been changed to
+the `engine.http2.Http2Frame` sealed interface + composition.
 
-### 3.2 ext 的继承点
+### 3.2 Inheritance points in ext
 
-| 类型 | 继承 | 说明 |
+| Type | Inheritance | Notes |
 |---|---|---|
-| `UndertowHttpExchange` | `AbstractHttpContext` | 池化在 `ThreadLocal` 中，`reset()` 复位 |
-| `JettyHttpExchange` | `AbstractHttpContext` | 同上 |
-| `UndertowWebSocketSession` | `AbstractWebSocketSession` | 帧操作委托 Undertow |
-| `JettyWebSocketSession` | `AbstractWebSocketSession` | 帧操作委托 Jetty |
+| `UndertowHttpExchange` | `AbstractHttpContext` | Pooled in a `ThreadLocal`, reset by `reset()` |
+| `JettyHttpExchange` | `AbstractHttpContext` | Same as above |
+| `UndertowWebSocketSession` | `AbstractWebSocketSession` | Frame operations delegate to Undertow |
+| `JettyWebSocketSession` | `AbstractWebSocketSession` | Frame operations delegate to Jetty |
 
-benchmark 没有继承框架类型，但 `freeway-benchmark` 的三个类直接
-`new HttpContextImpl(...)` 并调用包私有的 `reset(...)`；这是 core 内部
-类型在 ext 的唯一穿透点，重构时必须一起迁移。
+The benchmarks do not inherit framework types, but three classes in `freeway-benchmark` directly
+`new HttpContextImpl(...)` and call the package-private `reset(...)`; this is the only penetration
+point of a core internal type into ext, and it must be migrated together with the refactoring.
 
-### 3.3 具体耦合点
+### 3.3 Concrete coupling points
 
-- `HttpResponseWriter` / `Http1xResponseWriter` / `Http2ResponseWriter`
-  的方法参数是具体类型 `HttpContextImpl`，并从它读取状态、头、method、
-  keep-alive。
-- `HttpSession.echoRequestId(HttpContextImpl)` 以具体类型为参数。
-- `JettyHttpEngine` 调用包私有的 `ctx.responded()`。
-- `Http1xSession` 连接级复用一个 `HttpContextImpl`，每请求
-  `reset(...)`；`reset` 里承担 `resetExchangeMeta()`、
-  `resetMaxBodySize()`、`responseHeaders.clear()`、
-  `pathVariables.clear()`。
-- `UndertowHttpEngine` / `JettyHttpEngine` 各自用 `ThreadLocal` 池化
-  `HttpExchange`，`dispatch` 先 `reset` 再设置 compression。
-- `UndertowHttpExchange.body()` 把 Undertow 的 `RequestTooBigException`
-  翻译成 `BodyTooLargeException`；翻译点当前和 HTTP 逻辑混在一起。
-- `WebSocketReadLoop` 的参数是具体的 `WebSocketSessionImpl`，读循环依赖
-  `markOpen/markClosed/writeFrame/closeCode/closeReason`。
-- `AbstractWebSocketSession.closeReason(String)` 的 123 字节截断只有
-  adapter 使用；内建引擎的 `WebSocketSessionImpl.close` 对超长 reason
-  直接抛异常。这是一个已存在的引擎分歧。
+- The method parameters of `HttpResponseWriter` / `Http1xResponseWriter` / `Http2ResponseWriter`
+  are of the concrete type `HttpContextImpl`, and they read status, headers, method, and
+  keep-alive from it.
+- `HttpSession.echoRequestId(HttpContextImpl)` takes the concrete type as a parameter.
+- `JettyHttpEngine` calls the package-private `ctx.responded()`.
+- `Http1xSession` reuses one `HttpContextImpl` per connection and calls
+  `reset(...)` per request; `reset` is responsible for `resetExchangeMeta()`,
+  `resetMaxBodySize()`, `responseHeaders.clear()`, and
+  `pathVariables.clear()`.
+- `UndertowHttpEngine` / `JettyHttpEngine` each pool `HttpExchange` via `ThreadLocal`,
+  and `dispatch` calls `reset` first and then sets compression.
+- `UndertowHttpExchange.body()` translates Undertow's `RequestTooBigException`
+  into `BodyTooLargeException`; the translation point is currently mixed in with the HTTP logic.
+- `WebSocketReadLoop`'s parameter is the concrete `WebSocketSessionImpl`, and the read loop depends on
+  `markOpen/markClosed/writeFrame/closeCode/closeReason`.
+- The 123-byte truncation in `AbstractWebSocketSession.closeReason(String)` is used only by
+  adapters; the built-in engine's `WebSocketSessionImpl.close` throws
+  directly for an over-long reason. This is an existing engine divergence.
 
-## 4. 目标结构
+## 4. Target Structure
 
 ### 4.1 HTTP
 
 ```
-                应用 / 框架组件（filter、route、staticfiles、error）
-                              │ 只依赖
+                 Application / framework components (filter, route, staticfiles, error)
+                              │ depends only on
                               ▼
                         HttpExchange  (interface)
                               ▲ implements
                               │
-                  HttpExchangeSupport  (final，唯一共享实现)
-                  ├─ ExchangeMetaImpl          元数据
-                  ├─ pathVariables             路由变量快照
-                  ├─ bodyLimit + body cache    请求体限流/缓存
-                  ├─ status + responseHeaders  响应状态
-                  ├─ Date / Content-Length / Vary / gzip 决策
-                  └─ JSON / coercion / send 简写
-                              │ 只调用机制
+                  HttpExchangeSupport  (final, the only shared implementation)
+                  ├─ ExchangeMetaImpl          metadata
+                  ├─ pathVariables             routing-variable snapshot
+                  ├─ bodyLimit + body cache    request body limiting/caching
+                  ├─ status + responseHeaders  response status
+                  ├─ Date / Content-Length / Vary / gzip decision
+                  └─ JSON / coercion / send shorthands
+                              │ calls only mechanisms
                               ▼
                      HttpTransport  (public SPI)
                     ▲          ▲                ▲
                     │          │                │
         HttpTransportImpl   UndertowHttpTransport  JettyHttpTransport
-        （内建引擎）        （freeway-ext）          （freeway-ext）
+        (built-in engine)   (freeway-ext)          (freeway-ext)
 ```
 
-`HttpExchangeSupport` 是 final 的**策略对象**：它不提供任何覆写点，也不
-被任何类型继承。引擎的 `HttpTransport` 实现只负责“读请求”和“把
-`ResponseHead` + body 写到线上”。
+`HttpExchangeSupport` is a final **policy object**: it offers no override points and is not
+inherited by any type. An engine's `HttpTransport` implementation is responsible only for "reading the request" and
+"writing `ResponseHead` + body onto the wire".
 
 ### 4.2 WebSocket
 
@@ -153,103 +152,103 @@ benchmark 没有继承框架类型，但 `freeway-benchmark` 的三个类直接
 WebSocketSession (interface)
       ▲ implements
 WebSocketSessionSupport (final)
-      │ 元数据 + close reason 截断 + 帧委托
+      │ metadata + close reason truncation + frame delegation
       ▼
 WebSocketTransport (public SPI)
       ▲
-      ├─ WebSocketConnection      （内建引擎：帧/连接状态）
+      ├─ WebSocketConnection      (built-in engine: frame/connection state)
       ├─ UndertowWebSocketTransport
       └─ JettyWebSocketTransport
 ```
 
-### 4.3 生命周期
+### 4.3 Lifecycle
 
-- `HttpExchangeSupport`：**每个 HTTP 请求新建**，请求结束即丢弃。
-- `WebSocketSessionSupport`：**每个升级连接新建**。
-- `HttpTransport`：**每请求新建**，SPI 不暴露 `reset`：
-  - 内建 HTTP/1：每请求一个（连接级的 socket / parser 仍在 session）；
-  - 内建 HTTP/2：每 stream 一个；
-  - Undertow / Jetty：每请求一个。
-- 不再有 `resetExchangeMeta()`、`resetMaxBodySize()`、
-  `HttpContextImpl.reset(...)`、adapter 的 `ThreadLocal` context 池。
-- `ExchangeMetaImpl.reset()` 在 core 中失去唯一调用者，一并删除
-  （`ExchangeMetaImpl` 是 engine-internal `XImpl`，无兼容承诺）。
-- 决定的依据是第 7.3 节的 JMH 证据：每请求 transport + support
-  比池化多约 64 ns/op，远小于连接、解析和 handler 的固定成本；
-  换来的是复位义务和状态串扰失败模式的彻底消失。
+- `HttpExchangeSupport`: **created anew for each HTTP request**, discarded when the request ends.
+- `WebSocketSessionSupport`: **created anew for each upgraded connection**.
+- `HttpTransport`: **created anew per request**; the SPI exposes no `reset`:
+  - Built-in HTTP/1: one per request (the connection-level socket / parser stays in the session);
+  - Built-in HTTP/2: one per stream;
+  - Undertow / Jetty: one per request.
+- No more `resetExchangeMeta()`, `resetMaxBodySize()`,
+  `HttpContextImpl.reset(...)`, or adapter `ThreadLocal` context pools.
+- `ExchangeMetaImpl.reset()` loses its only caller in core and is deleted along with it
+  (`ExchangeMetaImpl` is an engine-internal `XImpl`, with no compatibility promise).
+- The decision rests on the JMH evidence in Section 7.3: per-request transport + support
+  costs about 64 ns/op more than pooling, far below the fixed cost of connection, parsing, and handler;
+  what it buys is the complete disappearance of the reset obligation and the state-crosstalk failure mode.
 
-## 5. 职责矩阵
+## 5. Responsibility Matrix
 
-| 职责 | 归属 | 说明 |
+| Responsibility | Owner | Notes |
 |---|---|---|
-| `correlationId` / `startTime` / principal / attributes | Support | 组合 `ExchangeMetaImpl` |
-| `pathVariables`、`setPathVars` 整体替换语义 | Support | 每请求新 map，不泄漏 |
-| `maxBodySize` + 校验 + `bodyLimit()` | Support | 每请求初值即构造参数，无复位 |
-| `LimitedInputStream` 包装、`body()` 缓存、`bodyText`、`bodyAsJson` | Support | 所有引擎跑同一个 limiter |
-| 状态码校验（100..599） | Support | 内建引擎已有，适配器补齐 |
-| header name/value 校验 | Support 调用 `internal.HttpHeaders` | RFC 7230 token + ISO-8859-1 |
-| `committed` 守卫、重复 output 忽略 | Support | 统一语义 |
-| `Date` 补齐（应用已设置则不覆盖） | Support | 三引擎行为一致 |
-| `Content-Length` 计算/剔除 | Support | 框架权威；204/205/304 删除 |
-| gzip **决策**（状态、min-size、Accept-Encoding、Content-Type） | Support | `ResponseFraming` 仍为单一规则源 |
-| `Vary: Accept-Encoding` 合并 | Support | 只有实际压缩时添加 |
-| `output(String/Json)`、`send/sendJson`、`addVary`、SSE 头 | Support | 原基类逻辑 |
-| 请求读取：method/path/query/headers/body stream/TLS/remote | Transport | 引擎原生 |
-| 响应落地：状态行/头/body/文件/SSE | Transport | 引擎原生 |
-| HTTP/1.1 framing（CL / chunked / Connection） | Transport（writer） | 由 `ResponseHead` 推导 |
-| HTTP/2 头过滤（connection 等）、DATA/END_STREAM/RST | Transport（writer） | 协议细节 |
-| gzip **执行**（压缩字节/流） | Transport | 决策在 Support，执行在 Transport |
-| 原生 body 上限翻译（Undertow `RequestTooBigException`） | Transport | 进入框架前统一成 `BodyTooLargeException` |
+| `correlationId` / `startTime` / principal / attributes | Support | Composes `ExchangeMetaImpl` |
+| `pathVariables`, whole-replacement semantics of `setPathVars` | Support | New map per request, no leakage |
+| `maxBodySize` + validation + `bodyLimit()` | Support | Per-request initial value is the constructor argument, no reset |
+| `LimitedInputStream` wrapping, `body()` cache, `bodyText`, `bodyAsJson` | Support | All engines run the same limiter |
+| Status code validation (100..599) | Support | Built-in engine already had it; adapters brought to parity |
+| header name/value validation | Support calls `internal.HttpHeaders` | RFC 7230 token + ISO-8859-1 |
+| `committed` guard, ignoring repeated output | Support | Unified semantics |
+| `Date` fill-in (not overridden if the application already set it) | Support | Same behavior across all three engines |
+| `Content-Length` computation/removal | Support | Framework authority; removed for 204/205/304 |
+| gzip **decision** (status, min-size, Accept-Encoding, Content-Type) | Support | `ResponseFraming` remains the single rule source |
+| `Vary: Accept-Encoding` merging | Support | Added only when compression actually happens |
+| `output(String/Json)`, `send/sendJson`, `addVary`, SSE headers | Support | Logic from the former base class |
+| Request reads: method/path/query/headers/body stream/TLS/remote | Transport | Engine-native |
+| Response landing: status line/headers/body/file/SSE | Transport | Engine-native |
+| HTTP/1.1 framing (CL / chunked / Connection) | Transport (writer) | Derived from `ResponseHead` |
+| HTTP/2 header filtering (connection, etc.), DATA/END_STREAM/RST | Transport (writer) | Protocol details |
+| gzip **execution** (compressing bytes/streams) | Transport | Decision in Support, execution in Transport |
+| Native body limit translation (Undertow `RequestTooBigException`) | Transport | Unified into `BodyTooLargeException` before entering the framework |
 
-## 6. API 设计
+## 6. API Design
 
 ### 6.1 `HttpTransport`
 
-位置：`com.jujin.freeway.http.HttpTransport`（public SPI）。
+Location: `com.jujin.freeway.http.HttpTransport` (public SPI).
 
 ```java
 public interface HttpTransport extends RequestHead {
 
-    // -- 请求机制 --
-    // method/path/queryParams/headers 继承自 RequestHead。
+    // -- request mechanisms --
+    // method/path/queryParams/headers are inherited from RequestHead.
 
-    /** 传输层分帧后的原始请求体；每个请求至多调用一次。 */
+    /** Raw request body after transport-layer framing; called at most once per request. */
     InputStream framedBodyStream() throws IOException;
 
     boolean isSecure();
-    SSLSession sslSession();          // 可为 null
+    SSLSession sslSession();          // may be null
     String remoteAddress();
 
-    // -- 响应机制 --
-    /** 唯一的响应执行入口；head 已是最终 wire head，body 只执行一次。 */
+    // -- response mechanisms --
+    /** The single response execution entry point; head is already the final wire head, body is executed once. */
     void writeResponse(ResponsePlan plan) throws IOException;
 
-    /** 写 SSE 头并返回 emitter；head 不含 Content-Length。 */
+    /** Write SSE headers and return the emitter; head carries no Content-Length. */
     SseEmitter openSse(ResponseHead head) throws IOException;
 }
 ```
 
-契约要点：
+Contract highlights:
 
-- `writeResponse(ResponsePlan)` 是唯一响应执行入口；body 是 sealed 的
-  `Bytes`/`Stream`/`File`/`Channel`/`Empty`，transport 不再有四套 body 方法。
-- 编码只有一处：head 的 `Content-Encoding`；gzip 由 transport 执行，不再由
-  support 和 transport 各做一次。
-- HEAD/204/205/304 不读取 body source；transport 只写 head。支持层在长度已知
-  且未压缩时给出 `Content-Length`，buffering adapter（Jetty/Undertow）可在 head
-  缺失时为 HEAD 物化一次以保持与 GET 相同的长度，内置流式 transport 则保持
-  无 CL 的 chunked 语义。
-- `framedBodyStream()` 返回的是**未限流**的传输流；`HttpExchangeSupport` 负责
-  套 `LimitedInputStream`。适配器自己的原生上限（Undertow
-  `MAX_ENTITY_SIZE`）在 `framedBodyStream()` 返回的流里翻译成
-  `BodyTooLargeException`。
-- method/path/queryParams/headers 来自 `RequestHead`；`RequestViewSupport` 统一
-  处理大小写不敏感的 header 查找与 path var 快照。
-- `sslSession()` 允许 `null`，但 `HttpRequest` 的 TLS/body 方法不再提供默认值。
+- `writeResponse(ResponsePlan)` is the single response execution entry point; body is a sealed
+  `Bytes`/`Stream`/`File`/`Channel`/`Empty`, so the transport no longer has four sets of body methods.
+- Encoding exists in exactly one place: the head's `Content-Encoding`; gzip is executed by the transport, not done once each by
+  support and transport.
+- HEAD/204/205/304 do not read the body source; the transport writes only the head. The support layer supplies `Content-Length`
+  when the length is known and uncompressed; a buffering adapter (Jetty/Undertow) may materialize once for HEAD when the head
+  lacks it, to keep the same length as GET, while the built-in streaming transport keeps
+  chunked semantics with no CL.
+- `framedBodyStream()` returns an **unlimited** transport stream; `HttpExchangeSupport` is responsible for
+  wrapping it in `LimitedInputStream`. An adapter's own native limit (Undertow
+  `MAX_ENTITY_SIZE`) is translated into `BodyTooLargeException` inside the stream returned by
+  `framedBodyStream()`.
+- method/path/queryParams/headers come from `RequestHead`; `RequestViewSupport` uniformly
+  handles case-insensitive header lookup and the path var snapshot.
+- `sslSession()` may be `null`, but `HttpRequest`'s TLS/body methods no longer provide defaults.
 
 ### 6.2 `ResponseHead`
 
-位置：`com.jujin.freeway.http.ResponseHead`（public immutable value）。
+Location: `com.jujin.freeway.http.ResponseHead` (public immutable value).
 
 ```java
 public record ResponseHead(int status, boolean headRequest, List<Header> headers) {
@@ -265,34 +264,34 @@ public record ResponseHead(int status, boolean headRequest, List<Header> headers
         headers = List.copyOf(headers);
     }
 
-    /** 204 / 205 / 304 不允许 body。 */
+    /** 204 / 205 / 304 do not allow a body. */
     public boolean allowsBody();
 
-    /** 线上是否允许 body 字节：allowsBody && !headRequest。 */
+    /** Whether body bytes are allowed on the wire: allowsBody && !headRequest. */
     public boolean sendsBodyBytes();
 
-    public boolean hasHeader(String name);       // 大小写不敏感
-    public String header(String name);           // 首个值
+    public boolean hasHeader(String name);       // case-insensitive
+    public String header(String name);           // first value
     public List<String> headers(String name);
     public ResponseHead withHeader(String name, String value);
     public ResponseHead withoutHeader(String name);
 }
 ```
 
-设计决定：
+Design decisions:
 
-- **`Content-Length` 只存在于 `headers` 里，不设第二个 `contentLength`
-  字段。** 一个事实只有一个存放处，避免“头里一个值、字段里另一个值”。
-- **head 只携带 `headRequest`，不携带完整 `method`。** writer 唯一需要
-  的方法是 HEAD 判定；把 method 放进 head 会让 head 携带一个 writer
-  永远不用、却可能与“是否抑制 body”不一致的事实。`headRequest` 就是
-  那个最小事实，且不可能与 `sendsBodyBytes()` 的语义冲突。
-- `ResponseHead` 是提交点的不可变快照；提交后 handler 再改 header
-  不会影响已写出的响应。
+- **`Content-Length` exists only in `headers`; there is no second `contentLength`
+  field.** One fact has one home, avoiding "one value in the header, another in the field".
+- **The head carries only `headRequest`, not the full `method`.** The only method the writer needs
+  is the HEAD determination; putting method into the head would make the head carry a fact the writer
+  never uses and that could disagree with "whether to suppress the body". `headRequest` is
+  that minimal fact, and it cannot conflict with the semantics of `sendsBodyBytes()`.
+- `ResponseHead` is the immutable snapshot at the commit point; headers changed by a handler
+  after commit do not affect the already-written response.
 
 ### 6.3 `HttpExchangeSupport`
 
-位置：`com.jujin.freeway.http.HttpExchangeSupport`（public final）。
+Location: `com.jujin.freeway.http.HttpExchangeSupport` (public final).
 
 ```java
 public final class HttpExchangeSupport implements HttpExchange {
@@ -305,38 +304,38 @@ public final class HttpExchangeSupport implements HttpExchange {
             HttpServerConfig.CompressionConfig compression,
             String correlationId) { ... }
 
-    /** 引擎/测试读取响应头（Connection、X-Request-Id 等）。 */
+    /** Engine/tests read a response header (Connection, X-Request-Id, etc.). */
     public String responseHeader(String name);
 
-    /** 当前请求生效的 body 上限。 */
+    /** The body limit in effect for the current request. */
     public long bodyLimit();
 }
 ```
 
-行为约定：
+Behavioral contract:
 
-- `maxBodySize` 是构造参数，`setMaxBodySize` 只改当前请求的值；
-  没有 base/reset 这一对概念。
-- body 读取延迟创建
-  `new LimitedInputStream(transport.framedBodyStream(), this::bodyLimit)`，
-  因此 filter 在请求中途提高上限仍然立即生效。
-- `setStatus` 校验 `100..599`；`setHeader` / `addHeader` 校验
-  RFC 7230 token 与 ISO-8859-1；`committed == true` 后 header/status
-  写入是 no-op，重复 `output` 忽略。
-- `body(byte[])`：确保 `Date`；gzip 决策；设置
-  `Content-Length`（压缩后长度）；bodyless 状态删除 CL；构造 head；
-  调 `transport.writeResponse(head, body)`。
-- `body(InputStream, long)`：已知长度且不压缩时设置 CL；
-  gzip 或未知长度时删除 CL；调 transport 的流路径。
-- `file(...)`：已知长度且不压缩时设置 CL；gzip 删除 CL；
-  调 transport 的文件路径。
-- `sse()`：设置 `Content-Type: text/event-stream`、
-  `Cache-Control: no-cache`、`Date`，删除 CL，**不写
-  `Connection`**；由 HTTP/1 transport 写 `Connection: close`。
-- `pathVars()` 返回不可变副本；`setPathVars` 整体替换。
-- `responseHeader(name)` 是 public：`Http1xSession`、
-  `JettyHttpEngine`、testkit 需要读取，而 `HttpResponse` 接口不暴露
-  “读响应头”。
+- `maxBodySize` is a constructor parameter; `setMaxBodySize` changes only the current request's value;
+  the base/reset pair of concepts does not exist.
+- Body reading lazily creates
+  `new LimitedInputStream(transport.framedBodyStream(), this::bodyLimit)`,
+  so a filter raising the limit mid-request still takes effect immediately.
+- `setStatus` validates `100..599`; `setHeader` / `addHeader` validate
+  the RFC 7230 token and ISO-8859-1; after `committed == true`, header/status
+  writes are no-ops and repeated `output` is ignored.
+- `body(byte[])`: ensure `Date`; gzip decision; set
+  `Content-Length` (the post-compression length); remove CL for bodyless statuses; build the head;
+  call `transport.writeResponse(head, body)`.
+- `body(InputStream, long)`: set CL when the length is known and not compressed;
+  remove CL when gzipping or the length is unknown; call the transport's stream path.
+- `file(...)`: set CL when the length is known and not compressed; remove CL when gzipping;
+  call the transport's file path.
+- `sse()`: set `Content-Type: text/event-stream`,
+  `Cache-Control: no-cache`, `Date`, remove CL, and **write no
+  `Connection`**; the HTTP/1 transport writes `Connection: close`.
+- `pathVars()` returns an immutable copy; `setPathVars` replaces wholesale.
+- `responseHeader(name)` is public: `Http1xSession`,
+  `JettyHttpEngine`, and the testkit need to read it, whereas the `HttpResponse` interface does not expose
+  "read a response header".
 
 ### 6.4 WebSocket SPI
 
@@ -348,7 +347,7 @@ public interface WebSocketTransport {
     void sendBinary(byte[] data) throws IOException;
     void ping(byte[] data) throws IOException;
 
-    /** reason 已由 Support 截断到 123 字节以内。 */
+    /** reason has already been truncated to at most 123 bytes by Support. */
     void close(int code, String reason) throws IOException;
     void flush() throws IOException;
 
@@ -373,212 +372,211 @@ public final class WebSocketSessionSupport implements WebSocketSession {
 }
 ```
 
-- 元数据快照逻辑从 `AbstractWebSocketSession` 原样迁入。
-- `close(int, String)` 在 Support 中做 123 字节 UTF-8 截断，再委托
-  transport。内建引擎原来“超长直接抛异常”、adapter 原来“截断”的分歧
-  就此统一为截断。
-- `sendTextBatch` 在 Support 中委托 `transport.sendTextBatch`，保留内建
-  引擎的单次 flush 优化；adapter 用默认实现即可。
-- 内建引擎把 `WebSocketSessionImpl` 拆成：
-  - `WebSocketConnection implements WebSocketTransport`：帧写、open/
-    close 状态、closeCode/closeReason、read loop 内部方法；
-  - `WebSocketSessionSupport`：交给 `WebSocketEndpoint.open(...)`。
-- `WebSocketReadLoop` 改为接收 `WebSocketConnection`，不再接收
-  `WebSocketSessionImpl`；`WebSocketUpgrade` 创建
-  `connection + support`，把 support 交给 endpoint。
+- The metadata snapshot logic moves over from `AbstractWebSocketSession` unchanged.
+- `close(int, String)` performs the 123-byte UTF-8 truncation in Support and then delegates to
+  the transport. The former divergence — the built-in engine "throws directly on over-long" while the adapter "truncates" —
+  is thus unified as truncation.
+- `sendTextBatch` delegates to `transport.sendTextBatch` in Support, keeping the built-in
+  engine's single-flush optimization; adapters can use the default implementation.
+- The built-in engine splits `WebSocketSessionImpl` into:
+  - `WebSocketConnection implements WebSocketTransport`: frame writes, open/
+    close state, closeCode/closeReason, read loop internal methods;
+  - `WebSocketSessionSupport`: handed to `WebSocketEndpoint.open(...)`.
+- `WebSocketReadLoop` now receives `WebSocketConnection` instead of
+  `WebSocketSessionImpl`; `WebSocketUpgrade` creates
+  `connection + support` and hands the support to the endpoint.
 
-### 6.5 可见性与包位置
+### 6.5 Visibility and Package Location
 
-| 类型 | 位置 | 可见性 | 理由 |
+| Type | Location | Visibility | Rationale |
 |---|---|---|---|
-| `HttpTransport` | `http` | public | ext adapter 实现 |
-| `ResponseHead` | `http` | public | SPI 签名 |
-| `HttpExchangeSupport` | `http` | public final | ext adapter 构造 |
-| `WebSocketTransport` | `http.websocket` | public | ext adapter 实现 |
-| `WebSocketSessionSupport` | `http.websocket` | public final | ext adapter 构造 |
-| `HttpTransportImpl` | `http.engine` | public final | benchmark 跨 jar 使用；`XImpl` 命名 |
-| `HeaderStore` | `http.internal` | public（方法 public） | Support 与 writer 共用 |
-| `ResponseFraming` | `http.internal` | public | Support 与 writer 共用 |
-| `Http1xResponseWriter` | `http.engine` | package-private | 内建引擎协议细节 |
-| `Http2ResponseWriter` | `http.engine.http2` | public（现状） | HTTP/2 包外组装 |
-| `WebSocketConnection` | `http.engine.ws` | public（现状） | `WebSocketUpgrade` 同包使用，沿用 |
+| `HttpTransport` | `http` | public | Implemented by ext adapters |
+| `ResponseHead` | `http` | public | SPI signature |
+| `HttpExchangeSupport` | `http` | public final | Constructed by ext adapters |
+| `WebSocketTransport` | `http.websocket` | public | Implemented by ext adapters |
+| `WebSocketSessionSupport` | `http.websocket` | public final | Constructed by ext adapters |
+| `HttpTransportImpl` | `http.engine` | public final | Used by benchmarks across jars; `XImpl` naming |
+| `HeaderStore` | `http.internal` | public (public methods) | Shared by Support and writers |
+| `ResponseFraming` | `http.internal` | public | Shared by Support and writers |
+| `Http1xResponseWriter` | `http.engine` | package-private | Built-in engine protocol detail |
+| `Http2ResponseWriter` | `http.engine.http2` | public (current state) | Assembled outside the HTTP/2 package |
+| `WebSocketConnection` | `http.engine.ws` | public (current state) | Used by `WebSocketUpgrade` in the same package; retained |
 
-`HeaderStore` 从 `engine` 移到 `internal` 的原因：`HttpExchangeSupport` 在
-`com.jujin.freeway.http`，不能访问 `engine` 的包私有类型。`internal`
-是仓库既定的“无稳定性承诺”位置，public 只是为了让兄弟包组装。
+Why `HeaderStore` moves from `engine` to `internal`: `HttpExchangeSupport` lives in
+`com.jujin.freeway.http` and cannot access `engine`'s package-private types. `internal`
+is the repository's established "no stability promise" location; public is only so that sibling packages can assemble it.
 
-## 7. 生命周期成本评估
+## 7. Lifecycle Cost Assessment
 
-### 7.1 微基准
+### 7.1 Microbenchmark
 
-临时程序：`LifecycleCost.java`（不在仓库内），比较两种形态：
+Throwaway program: `LifecycleCost.java` (not in the repository), comparing two shapes:
 
-- **pooled**：复用 `SupportLike`，每请求执行 `meta.reset()`、
-  `responseHeaders.clear()`、path vars 清空、`status/committed/body`
-  字段复位、`maxBodySize` 复位；
-- **alloc**：每请求 `new SupportLike(...)`，构造 `ExchangeMetaImpl`、
-  `HeaderStore`、`Map.copyOf(pathVars)`；
-- **built-in reset**：当前 `HttpContextImpl.reset(...)` 的完整成本，
-  包含请求头拷贝、query 解析、`new RequestBody`。
+- **pooled**: reuse `SupportLike`, and per request perform `meta.reset()`,
+  `responseHeaders.clear()`, path vars clearing, `status/committed/body`
+  field resets, and `maxBodySize` reset;
+- **alloc**: per request `new SupportLike(...)`, constructing `ExchangeMetaImpl`,
+  `HeaderStore`, and `Map.copyOf(pathVars)`;
+- **built-in reset**: the full cost of the current `HttpContextImpl.reset(...)`,
+  including request header copying, query parsing, and `new RequestBody`.
 
-JDK 25，`-Xms/-Xmx` 默认，7 轮取最小值，每轮 5,000,000 次；
-用静态 `Object[]` sink 阻止逃逸分析消除分配。三次运行结果：
+JDK 25, default `-Xms/-Xmx`, 7 rounds taking the minimum, 5,000,000 iterations per round;
+a static `Object[]` sink prevents escape analysis from eliminating the allocation. Results of three runs:
 
-| 路径 | 第一次 | 第二次 | 第三次 |
+| Path | First | Second | Third |
 |---|---:|---:|---:|
 | pooled support-state reset | 42.8 ns/op | 40.8 ns/op | 41.4 ns/op |
 | per-request support alloc | 51.3 ns/op | 50.1 ns/op | 50.2 ns/op |
 | built-in full reset | 349.4 ns/op | 351.5 ns/op | 355.6 ns/op |
-| **delta（alloc - reset）** | **8.4 ns/op** | **9.3 ns/op** | **8.8 ns/op** |
+| **delta (alloc - reset)** | **8.4 ns/op** | **9.3 ns/op** | **8.8 ns/op** |
 
-### 7.2 解读
+### 7.2 Interpretation
 
-- 每请求新建 support 相对“池化 + 复位”多约 **9 ns/op**，约占当前
-  完整 context reset 成本（约 350 ns）的 **2.5%**。
-- 这 9 ns 包含 `HttpExchangeSupport` 对象、`ExchangeMetaImpl`、
-  `HeaderStore` 和 path-vars 快照的分配；`ExchangeMetaImpl` 里的
-  `Instant.now()` 与 correlation id 生成在两种形态下都要付。
-- transport 每请求新建是同一量级的另一个小对象；相比删除
-  `ThreadLocal` 池、`reset` 和池化状态泄漏风险，这个成本值得付。
+- Creating support per request costs about **9 ns/op** more than "pooling + reset", about **2.5%**
+  of the current full context reset cost (about 350 ns).
+- Those 9 ns include the allocations of the `HttpExchangeSupport` object, `ExchangeMetaImpl`,
+  `HeaderStore`, and the path-vars snapshot; `Instant.now()` inside `ExchangeMetaImpl`
+  and correlation id generation are paid in both shapes.
+- Creating the transport per request is another small object of the same order; compared with deleting
+  the `ThreadLocal` pool, `reset`, and the pooled-state leakage risk, the cost is worth paying.
 
-**JMH 复测**（`freeway-benchmark`，JDK 25，3 s × 5 fork，完整 exchange
-路径，`-prof gc`）：
+**JMH re-measurement** (`freeway-benchmark`, JDK 25, 3 s × 5 forks, full exchange
+path, `-prof gc`):
 
-| 形态 | ns/op | B/op |
+| Shape | ns/op | B/op |
 |---|---:|---:|
-| pooled（复用 transport + support） | 503.703 | 5360 |
-| per-request（每请求新建 transport + support） | 555.304 | 5544 |
-| **delta** | **+51.6（约 +10%）** | **+184** |
+| pooled (reused transport + support) | 503.703 | 5360 |
+| per-request (new transport + support per request) | 555.304 | 5544 |
+| **delta** | **+51.6 (about +10%)** | **+184** |
 
-无 `-prof gc` 的独立运行给出 498.560 ± 39.860 与
-562.292 ± 45.928 ns/op，差值约 64 ns/op，与上表在误差范围内一致。
-GC 时间每 3 s iteration 都是 21 ms，没有可测差异；多出的 184 B/op
-是 support、`ExchangeMetaImpl`、`HeaderStore` 和快照对象的全部成本。
+A separate run without `-prof gc` gives 498.560 ± 39.860 and
+562.292 ± 45.928 ns/op, a difference of about 64 ns/op, consistent with the table within error.
+GC time is 21 ms per 3 s iteration with no measurable difference; the extra 184 B/op
+is the entire cost of the support, `ExchangeMetaImpl`, `HeaderStore`, and snapshot objects.
 
-按 100k req/s 估算，64 ns/op ≈ 6.4 ms CPU/秒（单核不到 1%）；
-按 1M req/s 估算 ≈ 64 ms/秒（单核约 6%）。这是最坏情况的上界，
-因为 JMH 的单次 exchange 没有真实 handler、body 读取或下游调用。
+At an estimated 100k req/s, 64 ns/op ≈ 6.4 ms CPU/second (under 1% of a single core);
+at 1M req/s ≈ 64 ms/second (about 6% of a single core). This is a worst-case upper bound,
+because a JMH single exchange has no real handler, body read, or downstream call.
 
-### 7.3 决定
+### 7.3 Decision
 
-**采用每请求新建 support + 每请求 transport**。不保留任何
-`reset()`：
+**Adopt a new support per request + a new transport per request**. No `reset()` is kept:
 
-- 不存在“忘记复位”的失败模式；
-- `maxBodySize`、principal、attributes、path vars、响应头、状态码
-  全部随对象丢弃；
-- `ContextContract` 里“跨请求不串状态”的断言从“测试保证”变成
-  “形状保证”，测试仍然保留，作为接口契约；
-- 端到端多付约 64 ns/op（约 10%），其中 pure support-state 差约
-  9 ns，其余是 transport/support 相关分配与更大的对象图；池化把这
-  一切换回复位义务，交易不成立。
+- The "forgot to reset" failure mode does not exist;
+- `maxBodySize`, principal, attributes, path vars, response headers, and status code
+  are all discarded with the object;
+- The "no state crossover across requests" assertion in `ContextContract` changes from "guaranteed by tests" to
+  "guaranteed by shape"; the tests are still kept, as an interface contract;
+- End to end it costs about 64 ns/op extra (about 10%), of which the pure support-state difference is about
+  9 ns and the rest is transport/support-related allocation and a larger object graph; pooling would trade all of that
+  back for a reset obligation, so the trade does not hold.
 
-## 8. 行为变化（必须写进 CHANGELOG）
+## 8. Behavior Changes (Must Go into the CHANGELOG)
 
-1. **响应策略收敛**：状态码范围校验、header 校验、`Date`、CL、gzip
-   决策、Vary 现在只有 `HttpExchangeSupport` 一份。Undertow / Jetty
-   会开始对非法状态码抛 `IllegalArgumentException`，并统一补 `Date`
-   （需在 adapter 契约测试里确认容器不会重复添加）。
-2. **`Content-Length` 框架权威**：`body(byte[])` 用实际字节数
-   （gzip 后用压缩后长度）覆盖 handler 设置的值；`body(InputStream,
-   len)` 用 `len`，`len < 0` 时删除；`file` 用 `length`；
-   204/205/304 一律删除。三个引擎不再“有的覆盖、有的保留”。
-3. **每请求 support / transport**：`reset` 不再存在；
-   `HttpContextImpl.reset` 的 principal/attributes/limit/响应头复位
-   义务消失。依赖 `reset` 的测试（`keepAliveReset*`）删除或改为
-   “新建即空”。
-4. **SSE 的 `Connection`**：共享层不再写 `Connection: keep-alive`。
-   HTTP/1 writer 为 SSE 写 `Connection: close`；Undertow / Jetty 交给
-   容器；HTTP/2 过滤 `Connection`。
-5. **Undertow 原生上限翻译位置**：`RequestTooBigException` →
-   `BodyTooLargeException` 移入 `UndertowHttpTransport.framedBodyStream()`，
-   413 语义不变。
-6. **gzip 文件路径**：决策在 Support，执行在 Transport；内建引擎保留
-   sendfile（仅未压缩、body 允许、长度 ≥ 64 KiB），adapter 走缓冲。
-7. **WebSocket close reason**：统一截断到 123 字节；内建引擎不再对
-   超长 reason 抛 `IllegalArgumentException`。
-8. **`HttpContextImpl` 不再是 handler 看到的类型**：handler 仍然只看到
-   `HttpExchange`；内建引擎类型改名 `HttpTransportImpl`，ext/benchmark
-   的编译错误就是迁移路径。
+1. **Response policy convergence**: status code range validation, header validation, `Date`, CL, gzip
+   decision, and Vary now exist in only one copy, `HttpExchangeSupport`. Undertow / Jetty
+   will start throwing `IllegalArgumentException` for illegal status codes, and will fill in `Date` uniformly
+   (the adapter contract tests must confirm that the container does not add it a second time).
+2. **Framework authority over `Content-Length`**: `body(byte[])` overwrites the value set by the handler with the actual byte count
+   (the post-compression length when gzipping); `body(InputStream,
+   len)` uses `len`, removing it when `len < 0`; `file` uses `length`;
+   204/205/304 always remove it. The three engines no longer "some overwrite, some keep".
+3. **Per-request support / transport**: `reset` no longer exists;
+   the principal/attributes/limit/response-header reset obligations of `HttpContextImpl.reset`
+   are gone. Tests that depend on `reset` (`keepAliveReset*`) are deleted or changed to
+   "newly created means empty".
+4. **SSE's `Connection`**: the shared layer no longer writes `Connection: keep-alive`.
+   The HTTP/1 writer writes `Connection: close` for SSE; Undertow / Jetty leave it to
+   the container; HTTP/2 filters `Connection`.
+5. **Undertow native limit translation location**: `RequestTooBigException` →
+   `BodyTooLargeException` moves into `UndertowHttpTransport.framedBodyStream()`;
+   413 semantics are unchanged.
+6. **gzip file path**: decision in Support, execution in Transport; the built-in engine keeps
+   sendfile (only when uncompressed, body allowed, length ≥ 64 KiB), adapters use buffering.
+7. **WebSocket close reason**: uniformly truncated to 123 bytes; the built-in engine no longer throws
+   `IllegalArgumentException` for an over-long reason.
+8. **`HttpContextImpl` is no longer the type handlers see**: handlers still see only
+   `HttpExchange`; the built-in engine type is renamed `HttpTransportImpl`, and the ext/benchmark
+   compile errors are the migration path.
 
-## 9. 逐文件改动清单
+## 9. File-by-File Change List
 
-### 9.1 core 新增
+### 9.1 New in core
 
-| 文件 | 内容 |
+| File | Content |
 |---|---|
-| `freeway-http/src/main/java/com/jujin/freeway/http/HttpTransport.java` | 6.1 的 SPI |
-| `freeway-http/src/main/java/com/jujin/freeway/http/ResponseHead.java` | 6.2 的不可变快照 |
-| `freeway-http/src/main/java/com/jujin/freeway/http/HttpExchangeSupport.java` | 6.3 的唯一策略实现（约 350 行） |
-| `freeway-http/src/main/java/com/jujin/freeway/http/websocket/WebSocketTransport.java` | 6.4 的帧 SPI |
-| `freeway-http/src/main/java/com/jujin/freeway/http/websocket/WebSocketSessionSupport.java` | 6.4 的会话快照 + 委托 |
-| `freeway-http/src/main/java/com/jujin/freeway/http/internal/HeaderStore.java` | 从 `engine` 迁入，方法改 public |
-| `freeway-http/src/main/java/com/jujin/freeway/http/internal/ResponseFraming.java` | 从 `engine` 迁入 |
+| `freeway-http/src/main/java/com/jujin/freeway/http/HttpTransport.java` | The SPI from 6.1 |
+| `freeway-http/src/main/java/com/jujin/freeway/http/ResponseHead.java` | The immutable snapshot from 6.2 |
+| `freeway-http/src/main/java/com/jujin/freeway/http/HttpExchangeSupport.java` | The single policy implementation from 6.3 (about 350 lines) |
+| `freeway-http/src/main/java/com/jujin/freeway/http/websocket/WebSocketTransport.java` | The frame SPI from 6.4 |
+| `freeway-http/src/main/java/com/jujin/freeway/http/websocket/WebSocketSessionSupport.java` | The session snapshot + delegation from 6.4 |
+| `freeway-http/src/main/java/com/jujin/freeway/http/internal/HeaderStore.java` | Moved in from `engine`, methods made public |
+| `freeway-http/src/main/java/com/jujin/freeway/http/internal/ResponseFraming.java` | Moved in from `engine` |
 
-### 9.2 core 改写
+### 9.2 Rewritten in core
 
-| 文件 | 改动 |
+| File | Change |
 |---|---|
-| `engine/HttpContextImpl.java` → `engine/HttpTransportImpl.java` | `implements HttpTransport`；去掉 codec/coercer/limit/status/headers/responded/compression；只保留请求读取、`RequestBody`、`rawOut`、`keepAlive`、`writer`、`fileSender`、TLS/remote；新增 `drainRequestBody(long)`、`syncKeepAliveFromResponse(String)`、`isKeepAlive()` |
-| `engine/HttpResponseWriter.java` | 参数改为 `(ResponseHead head, boolean keepAlive)` / `(ResponseHead head, byte[]...)`；删除对 `HttpContextImpl` 的引用 |
-| `engine/Http1xResponseWriter.java` | 从 head 读状态/头；`writeHead` 一次写完状态行、所有头、framing（CL / chunked / Connection）；`writeBody` 只写 body；`end` 写 terminal chunk；`openSse` 复用 `writeHead(head, false)` + `ChunkedOutputStream` |
-| `engine/http2/Http2ResponseWriter.java` | 从 head 读状态/头；保留 forbidden-header 过滤、`Set-Cookie` 多值、bodyless CL 剔除 |
-| `engine/Http1xSession.java` | 每请求 `new HttpTransportImpl(...)`；`new HttpExchangeSupport(...)`；body drain 用 `transport.drainRequestBody(support.bodyLimit())`；`HttpSession.echoRequestId(support)` |
-| `engine/Http2Session.java` | 每 stream `new HttpTransportImpl(...)` + `new HttpExchangeSupport(...)`；不再先构造再 `reset` |
+| `engine/HttpContextImpl.java` → `engine/HttpTransportImpl.java` | `implements HttpTransport`; drops codec/coercer/limit/status/headers/responded/compression; keeps only request reading, `RequestBody`, `rawOut`, `keepAlive`, `writer`, `fileSender`, TLS/remote; adds `drainRequestBody(long)`, `syncKeepAliveFromResponse(String)`, `isKeepAlive()` |
+| `engine/HttpResponseWriter.java` | Parameters changed to `(ResponseHead head, boolean keepAlive)` / `(ResponseHead head, byte[]...)`; references to `HttpContextImpl` removed |
+| `engine/Http1xResponseWriter.java` | Reads status/headers from the head; `writeHead` writes the status line, all headers, and framing (CL / chunked / Connection) in one pass; `writeBody` writes only the body; `end` writes the terminal chunk; `openSse` reuses `writeHead(head, false)` + `ChunkedOutputStream` |
+| `engine/http2/Http2ResponseWriter.java` | Reads status/headers from the head; keeps forbidden-header filtering, multi-value `Set-Cookie`, and bodyless CL removal |
+| `engine/Http1xSession.java` | Per request `new HttpTransportImpl(...)`; `new HttpExchangeSupport(...)`; body drain uses `transport.drainRequestBody(support.bodyLimit())`; `HttpSession.echoRequestId(support)` |
+| `engine/Http2Session.java` | Per stream `new HttpTransportImpl(...)` + `new HttpExchangeSupport(...)`; no longer construct first and then `reset` |
 | `engine/HttpSession.java` | `echoRequestId(HttpExchange)` |
-| `engine/RequestBody.java` | 去掉 limit/cached 所有权；保留 chunked/fixed framing；`drain(long limit)`；`stream()` 返回未限流 framed 流 |
-| `engine/ws/WebSocketSessionImpl.java` → `engine/ws/WebSocketConnection.java` | 只保留帧/连接状态；实现 `WebSocketTransport` |
-| `engine/ws/WebSocketReadLoop.java` | 参数 `WebSocketSessionImpl` → `WebSocketConnection` |
-| `engine/WebSocketUpgrade.java` | 创建 `WebSocketConnection` + `WebSocketSessionSupport`；endpoint 收到 support；read loop 收到 connection |
-| `ExchangeMetaImpl.java` | 删除 `reset()`（唯一调用者消失） |
-| `engine/package-info.java`、`HttpExchange.java`、`HttpEngine.java`、`internal/HttpHeaders.java` | 文档/注释同步；`setMaxBodySize` 的 reset 义务删除；header 校验方法移入 `HttpHeaders` |
+| `engine/RequestBody.java` | Removes limit/cached ownership; keeps chunked/fixed framing; `drain(long limit)`; `stream()` returns an unlimited framed stream |
+| `engine/ws/WebSocketSessionImpl.java` → `engine/ws/WebSocketConnection.java` | Keeps only frame/connection state; implements `WebSocketTransport` |
+| `engine/ws/WebSocketReadLoop.java` | Parameter `WebSocketSessionImpl` → `WebSocketConnection` |
+| `engine/WebSocketUpgrade.java` | Creates `WebSocketConnection` + `WebSocketSessionSupport`; the endpoint receives the support; the read loop receives the connection |
+| `ExchangeMetaImpl.java` | Deletes `reset()` (its only caller is gone) |
+| `engine/package-info.java`, `HttpExchange.java`, `HttpEngine.java`, `internal/HttpHeaders.java` | Docs/comments synchronized; the reset obligation of `setMaxBodySize` removed; header validation methods moved into `HttpHeaders` |
 
-### 9.3 core 删除
+### 9.3 Deleted from core
 
-| 文件 | 原因 |
+| File | Reason |
 |---|---|
-| `http/AbstractHttpContext.java` | 被 `HttpExchangeSupport` 取代 |
-| `http/websocket/AbstractWebSocketSession.java` | 被 `WebSocketSessionSupport` 取代 |
-| `engine/Headers.java` | 迁入 `internal` 并改名 `HeaderStore` |
-| `engine/ResponseFraming.java` | 迁入 `internal` |
+| `http/AbstractHttpContext.java` | Replaced by `HttpExchangeSupport` |
+| `http/websocket/AbstractWebSocketSession.java` | Replaced by `WebSocketSessionSupport` |
+| `engine/Headers.java` | Moved into `internal` and renamed `HeaderStore` |
+| `engine/ResponseFraming.java` | Moved into `internal` |
 
-### 9.4 core 测试
+### 9.4 core tests
 
-| 文件 | 改动 |
+| File | Change |
 |---|---|
-| `StubHttpExchange.java` → `TestExchange.java` | 组合 `TestTransport` + 真实 `HttpExchangeSupport`；保留 `new TestExchange(...)`、`requestHeader/requestBody/queryParam` builder、`status()/responseBody()/responseHeader()` 访问器；内部不再 `extends` 任何框架类型 |
-| `HttpExchangeTest.java` | `StubHttpExchange` → `TestExchange`；header 校验改为 `HttpHeaders.requireValidName/requireValidValue`；删除 `exchangeMetaResetClearsPerRequestState`（`reset` 删除），新增“新 support 初始状态为空” |
-| `HttpContextImplTest.java` → `HttpExchangeSupportTest.java` + `Http1xTransportTest.java` | 策略测试用 `TestTransport` 记录 `ResponseHead/body`；wire 测试用 `ByteArrayOutputStream` 驱动 `Http1xResponseWriter`/`HttpTransportImpl`；`keepAliveReset*` 三项删除（生命周期变了） |
-| `Http2ResponseWriterTest.java` | 直接构造 `ResponseHead`，不再构造 context |
-| `BodyLimitParityTest.java` | 改用 `TestExchange`，注释改为“共享 support + 单一 `LimitedInputStream`” |
-| 其余 9 个引用 `StubHttpExchange` 的测试 | `StubHttpExchange` → `TestExchange`（约 80 处机械替换）；如果 `TestExchange` 实现 `HttpExchange` 委托，调用形态基本不变 |
-| `websocket/AbstractWebSocketSessionTest.java` → `WebSocketSessionSupportTest.java` | 快照不可变、close reason 截断、帧委托、`sendTextBatch` 委托 |
-| 新增 `HttpExchangeSupportTest` | 状态码校验、头校验、Vary、415、body 限制与动态提高、204/304 CL、gzip 决策、HEAD、重复 output、Date |
-| 新增 `Http1xTransportTest` | chunked、known-length、HEAD、204/304、gzip 流式、长度不匹配、sendfile、SSE、`Connection` |
+| `StubHttpExchange.java` → `TestExchange.java` | Composes `TestTransport` + the real `HttpExchangeSupport`; keeps `new TestExchange(...)`, the `requestHeader/requestBody/queryParam` builders, and the `status()/responseBody()/responseHeader()` accessors; internally no longer `extends` any framework type |
+| `HttpExchangeTest.java` | `StubHttpExchange` → `TestExchange`; header validation switched to `HttpHeaders.requireValidName/requireValidValue`; `exchangeMetaResetClearsPerRequestState` deleted (`reset` is gone), and "a new support starts with empty state" added |
+| `HttpContextImplTest.java` → `HttpExchangeSupportTest.java` + `Http1xTransportTest.java` | Policy tests record `ResponseHead/body` with `TestTransport`; wire tests drive `Http1xResponseWriter`/`HttpTransportImpl` with a `ByteArrayOutputStream`; the three `keepAliveReset*` cases are deleted (the lifecycle changed) |
+| `Http2ResponseWriterTest.java` | Constructs `ResponseHead` directly instead of constructing a context |
+| `BodyLimitParityTest.java` | Switched to `TestExchange`; comments changed to "shared support + a single `LimitedInputStream`" |
+| The other 9 tests referencing `StubHttpExchange` | `StubHttpExchange` → `TestExchange` (about 80 mechanical replacements); if `TestExchange` implements `HttpExchange` by delegation, call shapes stay basically unchanged |
+| `websocket/AbstractWebSocketSessionTest.java` → `WebSocketSessionSupportTest.java` | Immutable snapshot, close reason truncation, frame delegation, `sendTextBatch` delegation |
+| New `HttpExchangeSupportTest` | Status code validation, header validation, Vary, 415, body limits and dynamic raising, 204/304 CL, gzip decision, HEAD, repeated output, Date |
+| New `Http1xTransportTest` | chunked, known-length, HEAD, 204/304, streaming gzip, length mismatch, sendfile, SSE, `Connection` |
 
-`TestExchange` 的实现决定（方案 A）：
+Implementation decision for `TestExchange` (Option A):
 
-- `TestExchange implements HttpExchange`，所有 `HttpExchange/HttpRequest/
-  HttpResponse` 方法都委托给内部的真实 `HttpExchangeSupport`，请求/响应
-  机制由 `TestTransport` 提供。它仍然是**组合**（字段 + 委托），不是
-  继承；约 80 处调用点保持 `ctx.status()` 形态，评审重点放在断言是否
-  经过真实 support。
-- `TestTransport` 记录提交的 `ResponseHead` 与 body，并提供可配置的
-  请求快照（method/path/query/headers/body stream/TLS/remote）。
-- 不再有第二个“假的 context”实现绕过共享策略；测试断言的必须是真实
-  `HttpExchangeSupport` 的行为。
+- `TestExchange implements HttpExchange`, delegating all `HttpExchange/HttpRequest/
+  HttpResponse` methods to the real internal `HttpExchangeSupport`, with request/response
+  mechanisms provided by `TestTransport`. It is still **composition** (fields + delegation), not
+  inheritance; about 80 call sites keep the `ctx.status()` shape, and review focuses on whether the assertions
+  go through the real support.
+- `TestTransport` records the submitted `ResponseHead` and body, and provides a configurable
+  request snapshot (method/path/query/headers/body stream/TLS/remote).
+- There is no second "fake context" implementation that bypasses the shared policy; tests must assert the behavior of
+  the real `HttpExchangeSupport`.
 
-### 9.5 ext HTTP 适配器
+### 9.5 ext HTTP adapters
 
-| 文件 | 改动 |
+| File | Change |
 |---|---|
-| `UndertowHttpExchange.java` → `UndertowHttpTransport.java` | `implements HttpTransport`；只保留 Undertow 的 method/path/query/headers/body stream/TLS/remote、`writeResponse`、`writeResponseFile`、`openSse`；`RequestTooBigException` 翻译进 `framedBodyStream()`；删除 `reset`、`compression`、`responseStatus`、`responded`、`cachedBody`、`responseHeaders` |
-| `UndertowHttpEngine.java` | dispatch 里 `new UndertowHttpTransport(exchange)` + `new HttpExchangeSupport(...)`；删除 `ThreadLocal` pool、`reset`、`setCompression`；`setHeader("X-Request-Id")` 走 support；handler 异常用 `ctx.isCommitted()` |
-| `JettyHttpExchange.java` → `JettyHttpTransport.java` | 同上；`writeResponse` 用 request/response/callback；`openSse` 保留现有输出流 |
-| `JettyHttpEngine.java` | 同上；`ctx.responded()` → `ctx.isCommitted()`；删除 pool/reset |
-| `freeway-http-adapter-testkit/ContextContract.java` | 注释从 `AbstractHttpContext.readBody` 改为 `HttpExchangeSupport` + `LimitedInputStream`；断言不变 |
+| `UndertowHttpExchange.java` → `UndertowHttpTransport.java` | `implements HttpTransport`; keeps only Undertow's method/path/query/headers/body stream/TLS/remote, `writeResponse`, `writeResponseFile`, `openSse`; `RequestTooBigException` translated inside `framedBodyStream()`; removes `reset`, `compression`, `responseStatus`, `responded`, `cachedBody`, `responseHeaders` |
+| `UndertowHttpEngine.java` | In dispatch, `new UndertowHttpTransport(exchange)` + `new HttpExchangeSupport(...)`; removes the `ThreadLocal` pool, `reset`, `setCompression`; `setHeader("X-Request-Id")` goes through support; handler exceptions use `ctx.isCommitted()` |
+| `JettyHttpExchange.java` → `JettyHttpTransport.java` | Same as above; `writeResponse` uses request/response/callback; `openSse` keeps the current output stream |
+| `JettyHttpEngine.java` | Same as above; `ctx.responded()` → `ctx.isCommitted()`; pool/reset removed |
+| `freeway-http-adapter-testkit/ContextContract.java` | Comments changed from `AbstractHttpContext.readBody` to `HttpExchangeSupport` + `LimitedInputStream`; assertions unchanged |
 
-适配器的 `writeResponse(ResponseHead head, byte[] body)`：
+The adapter's `writeResponse(ResponseHead head, byte[] body)`:
 
 ```java
 exchange.setStatusCode(head.status());
@@ -599,36 +597,36 @@ if (head.sendsBodyBytes() && body.length > 0) {
 }
 ```
 
-（Jetty 版对应 `response.setStatus` / `response.getHeaders().add` /
-`response.write(true, ByteBuffer.wrap(body), callback)`；无 body 时
-`callback.succeeded()`。`Content-Length` 同样从 header 循环中排除，
-再单独写入，避免重复。）
+(The Jetty version corresponds to `response.setStatus` / `response.getHeaders().add` /
+`response.write(true, ByteBuffer.wrap(body), callback)`; when there is no body,
+`callback.succeeded()`. `Content-Length` is likewise excluded from the header loop
+and written separately, to avoid duplication.)
 
-### 9.6 ext WebSocket 适配器
+### 9.6 ext WebSocket adapters
 
-| 文件 | 改动 |
+| File | Change |
 |---|---|
-| `UndertowWebSocketSession.java` → `UndertowWebSocketTransport.java` | `implements WebSocketTransport`；保留 channel、maxMessageSize、sendLock、localCloseRequested、listener；`open(WebSocketListener, WebSocketSession)` 启动 receive listener 并 `onOpen(session)` |
-| `UndertowHttpEngine.handleWebSocket` | 创建 transport + `WebSocketSessionSupport`；endpoint 收到 support |
-| `JettyWebSocketSession.java` → `JettyWebSocketTransport.java` | `implements WebSocketTransport`；保留 session、sendLock、localCloseRequested；`open(WebSocketListener, WebSocketSession)` |
-| `JettyWebSocketBridge.java` | 持有 support + transport；`onWebSocketOpen` 创建两者；close/错误走 support；`localCloseRequested` 走 transport |
-| `WebSocketUpgradeContract` | 断言不变；新增一条 close reason 截断用例（若现有契约未覆盖） |
+| `UndertowWebSocketSession.java` → `UndertowWebSocketTransport.java` | `implements WebSocketTransport`; keeps channel, maxMessageSize, sendLock, localCloseRequested, listener; `open(WebSocketListener, WebSocketSession)` starts the receive listener and calls `onOpen(session)` |
+| `UndertowHttpEngine.handleWebSocket` | Creates the transport + `WebSocketSessionSupport`; the endpoint receives the support |
+| `JettyWebSocketSession.java` → `JettyWebSocketTransport.java` | `implements WebSocketTransport`; keeps session, sendLock, localCloseRequested; `open(WebSocketListener, WebSocketSession)` |
+| `JettyWebSocketBridge.java` | Holds support + transport; `onWebSocketOpen` creates both; close/errors go through support; `localCloseRequested` goes through the transport |
+| `WebSocketUpgradeContract` | Assertions unchanged; one close reason truncation case added (if not already covered by the existing contract) |
 
-### 9.7 ext testkit / benchmark / 文档
+### 9.7 ext testkit / benchmark / docs
 
-| 文件 | 改动 |
+| File | Change |
 |---|---|
-| `freeway-benchmark/.../FilterChainBenchmark.java` | `HttpContextImpl` → `HttpTransportImpl` + `HttpExchangeSupport`；每个 op 构造（或 fixture 的 `newExchange()`），不再调用包私有 `reset` |
-| `freeway-benchmark/.../HttpExchangeLookupBenchmark.java` | 同上；setup 构造一次，`@Benchmark` 只读查询（构造放 setup 不影响查找成本） |
-| `freeway-benchmark/.../HttpExchangeOutputBenchmark.java` | 同上；输出路径每次构造新 support，避免 `committed` 状态复用 |
-| `freeway-core/AGENTS.md` | 删除 “implementation shared with third-party adapters” 例外；适配器回归条目改为 `HttpExchangeSupport` + `LimitedInputStream` |
-| `freeway-core/docs/architecture.md` | HTTP seam 图：`HttpExchangeSupport` + `HttpTransport`；说明 adapter 接入方式 |
-| `freeway-core/docs/developer-guide.md` | Engine 列表：`HttpContextImpl` → `HttpTransportImpl` + `HttpExchangeSupport`；`WebSocketSessionImpl` → `WebSocketConnection` + `WebSocketSessionSupport` |
-| `freeway-core/skills/freeway-dev/references/http.md` | 自定义引擎接入说明（SPI 方法、Support 构造、不要再继承） |
-| `freeway-core/CHANGELOG.md` | 破坏性改动表：两个基类删除、SPI 名称、reset 义务消失、行为变化 1–8 |
-| `freeway-ext/CHANGELOG.md` | 两个 adapter 的迁移、benchmark 同步 |
+| `freeway-benchmark/.../FilterChainBenchmark.java` | `HttpContextImpl` → `HttpTransportImpl` + `HttpExchangeSupport`; construct per op (or the fixture's `newExchange()`), no longer calling the package-private `reset` |
+| `freeway-benchmark/.../HttpExchangeLookupBenchmark.java` | Same as above; construct once in setup, and `@Benchmark` only performs read lookups (constructing in setup does not affect lookup cost) |
+| `freeway-benchmark/.../HttpExchangeOutputBenchmark.java` | Same as above; the output path constructs a new support each time, avoiding reuse of `committed` state |
+| `freeway-core/AGENTS.md` | Removes the "implementation shared with third-party adapters" exception; the adapter regression entry is changed to `HttpExchangeSupport` + `LimitedInputStream` |
+| `freeway-core/docs/architecture.md` | HTTP seam diagram: `HttpExchangeSupport` + `HttpTransport`; explains how adapters plug in |
+| `freeway-core/docs/developer-guide.md` | Engine list: `HttpContextImpl` → `HttpTransportImpl` + `HttpExchangeSupport`; `WebSocketSessionImpl` → `WebSocketConnection` + `WebSocketSessionSupport` |
+| `freeway-core/skills/freeway-dev/references/http.md` | Custom engine integration notes (SPI methods, Support construction, no more inheritance) |
+| `freeway-core/CHANGELOG.md` | Breaking-change table: the two base classes deleted, SPI names, the reset obligation gone, behavior changes 1–8 |
+| `freeway-ext/CHANGELOG.md` | Migration of the two adapters, benchmark synchronization |
 
-## 10. 测试计划
+## 10. Test Plan
 
 ### 10.1 core
 
@@ -637,19 +635,13 @@ mvn -pl freeway-http -am test
 mvn test
 ```
 
-新增/迁移的重点：
+Focus of additions/migrations:
 
-- `HttpExchangeSupportTest`：纯策略，`TestTransport` 记录调用；断言
-  `ResponseHead` 的 status/headers、CL 规则、gzip 决策、Date、415、
-  413、Vary、HEAD、重复 output。
-- `Http1xTransportTest`：真实字节流；chunked/CL/Connection、HEAD、
-  204/304、流式 gzip、长度不匹配、sendfile、SSE。
-- `Http2ResponseWriterTest`：直接 `ResponseHead`；forbidden headers、
-  `Set-Cookie` 多值、bodyless CL。
-- `BodyLimitParityTest`：`TestExchange` 的 body 路径与
-  `LimitedInputStream` 仍然逐字节一致；动态提高上限仍然生效。
-- `WebSocketSessionSupportTest`：快照不可变、close reason 截断、
-  `sendTextBatch` 委托。
+- `HttpExchangeSupportTest`: pure policy, `TestTransport` records calls; asserts the `ResponseHead`'s status/headers, CL rules, gzip decision, Date, 415, 413, Vary, HEAD, repeated output.
+- `Http1xTransportTest`: real byte streams; chunked/CL/Connection, HEAD, 204/304, streaming gzip, length mismatch, sendfile, SSE.
+- `Http2ResponseWriterTest`: `ResponseHead` directly; forbidden headers, multi-value `Set-Cookie`, bodyless CL.
+- `BodyLimitParityTest`: the body path of `TestExchange` and `LimitedInputStream` remain byte-for-byte identical; dynamically raising the limit still takes effect.
+- `WebSocketSessionSupportTest`: immutable snapshot, close reason truncation, `sendTextBatch` delegation.
 
 ### 10.2 ext
 
@@ -660,277 +652,277 @@ mvn -o clean test
 mvn -o spotless:check
 ```
 
-必须全绿：
+Must all be green:
 
-- `ContextContract`（TLS、跨请求不串状态、413、204 CL）
+- `ContextContract` (TLS, no state crossover across requests, 413, 204 CL)
 - `CompressionContract`
 - `HeaderBudgetContract`
 - `RemoteRpcContract`
 - `WebSocketUpgradeContract`
-- `freeway-benchmark` 至少 `mvn -o -pl freeway-benchmark -am test-compile`
+- `freeway-benchmark`, at least `mvn -o -pl freeway-benchmark -am test-compile`
 
-### 10.3 反向验证（按仓库惯例）
+### 10.3 Negative verification (per repository convention)
 
-- 去掉 `HttpExchangeSupport` 的 `LimitedInputStream` → 413 / parity
-  测试必须红。
-- 去掉 bodyless 的 CL 剔除 → 204/304 测试必须红。
-- 去掉 `Http2ResponseWriter` 的 forbidden-header 过滤 →
-  `Http2ResponseWriterTest` 必须红。
-- 去掉 `WebSocketSessionSupport.close` 的截断 → close reason 测试
-  必须红。
-- 把 `Http1xResponseWriter` 的 chunked 推导改错 → streaming 测试必须红。
+- Remove `HttpExchangeSupport`'s `LimitedInputStream` → the 413 / parity
+  tests must go red.
+- Remove bodyless CL removal → the 204/304 tests must go red.
+- Remove `Http2ResponseWriter`'s forbidden-header filtering →
+  `Http2ResponseWriterTest` must go red.
+- Remove the truncation in `WebSocketSessionSupport.close` → the close reason test
+  must go red.
+- Break `Http1xResponseWriter`'s chunked derivation → the streaming tests must go red.
 
-### 10.4 构建顺序（避免旧 `target/` 掩盖 ABI）
+### 10.4 Build order (to avoid a stale `target/` masking ABI)
 
-core 改完后 `mvn -DskipTests install`，再到 ext 做
-`mvn -o clean test`。ext 的增量编译在 core ABI 变化时可能复用旧
-class，`clean` 是唯一证明。
+After changing core, run `mvn -DskipTests install`, then in ext run
+`mvn -o clean test`. ext's incremental compilation may reuse old
+classes when the core ABI changes; `clean` is the only proof.
 
-## 11. 实施顺序与提交
+## 11. Implementation Order and Commits
 
-### Core（3 个提交）
+### Core (3 commits)
 
-1. **加骨架，不切引擎**
-   - 新增 `HttpTransport`、`ResponseHead`、`HttpExchangeSupport`、
-     `WebSocketTransport`、`WebSocketSessionSupport`；
-   - `HeaderStore` / `ResponseFraming` 迁入 `internal`；
-   - 新增 `HttpExchangeSupportTest` 等单元测试；
-   - `mvn -pl freeway-http -am test` 绿。
-2. **切换内建引擎**
-   - `HttpContextImpl` → `HttpTransportImpl`；
-   - writers / sessions / WebSocket 改造；
-   - 删除两个基类与 `ExchangeMetaImpl.reset`；
-   - 迁移 `StubHttpExchange` 与测试；
-   - `mvn test` 绿。
-3. **文档与 CHANGELOG**
-   - AGENTS / ARCHITECTURE / DEVELOPER-GUIDE / skill / CHANGELOG；
-   - `mvn test` 绿。
+1. **Add the skeleton, do not switch engines**
+   - Add `HttpTransport`, `ResponseHead`, `HttpExchangeSupport`,
+     `WebSocketTransport`, `WebSocketSessionSupport`;
+   - Move `HeaderStore` / `ResponseFraming` into `internal`;
+   - Add `HttpExchangeSupportTest` and other unit tests;
+   - `mvn -pl freeway-http -am test` green.
+2. **Switch the built-in engine**
+   - `HttpContextImpl` → `HttpTransportImpl`;
+   - Rework writers / sessions / WebSocket;
+   - Delete the two base classes and `ExchangeMetaImpl.reset`;
+   - Migrate `StubHttpExchange` and the tests;
+   - `mvn test` green.
+3. **Docs and CHANGELOG**
+   - AGENTS / ARCHITECTURE / DEVELOPER-GUIDE / skill / CHANGELOG;
+   - `mvn test` green.
 
-### Ext（3 个提交）
+### Ext (3 commits)
 
-4. **HTTP 适配器**
-   - Undertow/Jetty transport + engine dispatch；
-   - testkit 注释；
-   - `mvn -o clean test` + `spotless:check` 绿。
-5. **WebSocket 适配器**
-   - 两个 WS transport + bridge/engine 接线；
-   - `mvn -o clean test` 绿。
+4. **HTTP adapters**
+   - Undertow/Jetty transport + engine dispatch;
+   - testkit comments;
+   - `mvn -o clean test` + `spotless:check` green.
+5. **WebSocket adapters**
+   - The two WS transports + bridge/engine wiring;
+   - `mvn -o clean test` green.
 6. **benchmark + ext CHANGELOG**
-   - 三个 benchmark 文件；
-   - `mvn -o -pl freeway-benchmark -am test-compile` 绿。
+   - The three benchmark files;
+   - `mvn -o -pl freeway-benchmark -am test-compile` green.
 
-每个提交都要求对应构建绿；core 先 `install`，ext 必须 `clean`。
+Every commit requires its corresponding build to be green; core `install`s first, ext must `clean`.
 
-## 12. 风险与对策
+## 12. Risks and Mitigations
 
-| 风险 | 位置 | 对策 |
+| Risk | Location | Mitigation |
 |---|---|---|
-| 提交语义变化（status/headers/committed 所有权） | Support + 三个 transport | 已关闭：`HttpTransport.isCommitted()` 是唯一事实；提交前失败回滚，提交后失败按传输失败处理 |
-| keep-alive 与 body drain | `RequestBody` / `Http1xSession` | `drain(limit)` 保持“超限不重用”；`BodyLimitParityTest` |
-| Jetty callback 完成判断 | `JettyHttpTransport` / `JettyHttpEngine` | `isCommitted()` 替代包私有 `responded()`；无 body 时 `callback.succeeded()` |
-| Undertow 异步 sender 与 SSE | `UndertowHttpTransport` | 保留现有 `SseOutputStream` 与回调，只改状态/头来源 |
-| Date 重复 | adapter 容器 | 已关闭：Jetty 关闭自动 Date；`ContextContract` 断言只有一个 `Date` |
-| HEAD 的 CL | 三个 writer | 已关闭：已知长度保留 CL；未知长度由缓冲 transport 物化后补实际 CL，流式 transport 用 chunked/无 CL；adapters 不补 0 |
-| gzip 流式长度 | 内建 writer / adapter 默认 | gzip 时 head 无 CL；HTTP/1 chunked，HTTP/2 无 CL；默认缓冲路径补压缩后 CL |
-| WebSocket 读循环与 session 解耦 | `WebSocketConnection` / `WebSocketReadLoop` | 先改内建 WS，再改 adapter；`WebSocketUpgradeContract` |
-| close reason 行为变化 | `WebSocketSessionSupport` | 统一截断；新增契约用例 |
-| benchmark 不再有包私有 `reset` | ext benchmark | 每 op 构造新 support；benchmark 本身就是每请求生命周期的真实成本 |
-| `TestExchange` 委托方法多 | core tests | 只改测试代码；用生成/机械委托，评审重点看断言是否经过真实 support |
+| Commit semantics change (status/headers/committed ownership) | Support + the three transports | Closed: `HttpTransport.isCommitted()` is the single fact; failures before commit roll back, failures after commit are handled as transport failures |
+| keep-alive and body drain | `RequestBody` / `Http1xSession` | `drain(limit)` keeps "over-limit means no reuse"; `BodyLimitParityTest` |
+| Jetty callback completion determination | `JettyHttpTransport` / `JettyHttpEngine` | `isCommitted()` replaces the package-private `responded()`; `callback.succeeded()` when there is no body |
+| Undertow async sender and SSE | `UndertowHttpTransport` | Keeps the existing `SseOutputStream` and callbacks; only the status/header source changes |
+| Duplicate Date | adapter containers | Closed: Jetty's automatic Date is disabled; `ContextContract` asserts there is exactly one `Date` |
+| HEAD's CL | the three writers | Closed: a known length keeps CL; an unknown length gets the actual CL filled in by the buffering transport after materialization, while the streaming transport uses chunked/no CL; adapters do not add 0 |
+| gzip streaming length | built-in writer / adapter default | With gzip the head has no CL; HTTP/1 chunked, HTTP/2 no CL; the default buffering path fills in the post-compression CL |
+| Decoupling the WebSocket read loop from the session | `WebSocketConnection` / `WebSocketReadLoop` | Change built-in WS first, then the adapters; `WebSocketUpgradeContract` |
+| close reason behavior change | `WebSocketSessionSupport` | Truncate uniformly; add a contract case |
+| No more package-private `reset` in benchmarks | ext benchmarks | Construct a new support per op; the benchmark itself is the true cost of the per-request lifecycle |
+| `TestExchange` has many delegating methods | core tests | Only test code changes; use generated/mechanical delegation, and review focuses on whether assertions go through the real support |
 
-## 13. 工作量估算
+## 13. Effort Estimate
 
-| 部分 | 文件数 | 预计改动 |
+| Part | Files | Estimated change |
 |---|---:|---:|
-| core 新增/改写 | ~20 | 1200–1500 行 |
-| core 测试迁移 | ~15 | 400–600 行 |
-| ext HTTP adapter | 4 | 500–650 行 |
-| ext WS adapter | 4 | 250–350 行 |
-| benchmark | 3 | 150–250 行 |
-| 文档 / CHANGELOG | 7 | 200–300 行 |
+| core additions/rewrites | ~20 | 1200–1500 lines |
+| core test migration | ~15 | 400–600 lines |
+| ext HTTP adapters | 4 | 500–650 lines |
+| ext WS adapters | 4 | 250–350 lines |
+| benchmark | 3 | 150–250 lines |
+| docs / CHANGELOG | 7 | 200–300 lines |
 
-净代码量大致持平或略降；**adapter 类会明显缩小**，因为
-gzip/状态/头/body 限制/JSON 全部上移到 Support。真正的收益不是行数：
+Net code volume is roughly flat or slightly lower; **adapter classes will shrink noticeably**, because
+gzip/status/header/body limit/JSON all move up into Support. The real payoff is not line count:
 
-- `extends` 例外从 AGENTS 中消失；
-- “每请求复位”变成不存在的失败模式；
-- 三个引擎的 413 / gzip / Date / CL / header 校验从“三份恰好一致”
-  变成“结构上同一份”；
-- 第三方引擎只需要实现一个窄接口，不再需要理解或继承 core 基类。
+- The `extends` exception disappears from AGENTS;
+- "Reset per request" becomes a failure mode that does not exist;
+- The three engines' 413 / gzip / Date / CL / header validation go from "three copies that happen to agree"
+  to "structurally one copy";
+- Third-party engines only need to implement one narrow interface, and no longer need to understand or inherit the core base classes.
 
-## 14. 已确定的决策
+## 14. Settled Decisions
 
-1. **SPI 命名**：采用 `HttpTransport` / `WebSocketTransport` /
-   `HttpExchangeSupport` / `WebSocketSessionSupport`。内建 HTTP context
-   改名 `HttpTransportImpl`（`XImpl`：engine-internal，无替换点）。
-2. **`ResponseHead` 形状**：`record ResponseHead(int status,
-   boolean headRequest, List<Header> headers)`；`Content-Length` 只在
-   `headers` 中；`allowsBody()` / `sendsBodyBytes()` 由状态和
-   `headRequest` 推导。不携带完整 `method`。
-3. **transport 生命周期**：每请求 transport + 每请求 support。依据是
-   第 7 节的 JMH 数据：端到端多约 64 ns/op（约 10%），换来删除
-   `reset`/`ThreadLocal` 池和状态串扰失败模式。
-4. **`TestExchange` 形态**：方案 A——实现 `HttpExchange` 并委托真实
-   `HttpExchangeSupport`，内部组合 `TestTransport`。
-5. **实施粒度**：core 与 ext 在同一轮完成，core 先 `install`，ext
-   必须 `clean` 构建；不留“适配器稍后迁移”的尾巴。
+1. **SPI naming**: adopt `HttpTransport` / `WebSocketTransport` /
+   `HttpExchangeSupport` / `WebSocketSessionSupport`. The built-in HTTP context
+   is renamed `HttpTransportImpl` (`XImpl`: engine-internal, no substitution point).
+2. **`ResponseHead` shape**: `record ResponseHead(int status,
+   boolean headRequest, List<Header> headers)`; `Content-Length` is only in
+   `headers`; `allowsBody()` / `sendsBodyBytes()` are derived from the status and
+   `headRequest`. It does not carry the full `method`.
+3. **transport lifecycle**: per-request transport + per-request support. The basis is
+   the JMH data in Section 7: about 64 ns/op more end to end (about 10%), in exchange for deleting
+   `reset`/`ThreadLocal` pools and the state-crosstalk failure mode.
+4. **`TestExchange` shape**: Option A — implement `HttpExchange` and delegate to the real
+   `HttpExchangeSupport`, composing `TestTransport` internally.
+5. **Implementation granularity**: core and ext are completed in the same round; core `install`s first, and ext
+   must be built with `clean`; no "adapters migrate later" tail is left behind.
 
-## 15. 第一轮实施与验收记录（2026-11-12）
+## 15. First-Round Implementation and Acceptance Record (2026-11-12)
 
-按第 11 节的顺序完成，六个部分（core 骨架/切换引擎/文档、ext
-HTTP/WS/benchmark）全部落地；第一轮提交为 core 3 个 + ext 2 个。
+Completed in the order of Section 11; all six parts (core skeleton/switching engines/docs, ext
+HTTP/WS/benchmark) landed; the first round was 3 core commits + 2 ext commits.
 
-**构建与测试**
+**Build and tests**
 
-| 步骤 | 结果 |
+| Step | Result |
 |---|---|
-| core `mvn -pl freeway-http -am test` | 504 绿 |
-| core `mvn test`（全模块） | 418 / 320 / 125 / 504 / 531 / 128 / 359 全绿 |
-| core `mvn -DskipTests -Dgpg.skip=true install` | 成功（本机无 gpg，跳过签名） |
-| ext `mvn clean test`（clean 是唯一 ABI 证明） | 212 绿（Kafka 5 + Consul 2 项按环境变量跳过） |
-| ext `mvn spotless:check` | 通过 |
+| core `mvn -pl freeway-http -am test` | 504 green |
+| core `mvn test` (all modules) | 418 / 320 / 125 / 504 / 531 / 128 / 359 all green |
+| core `mvn -DskipTests -Dgpg.skip=true install` | Success (no gpg on this machine, signing skipped) |
+| ext `mvn clean test` (clean is the only ABI proof) | 212 green (Kafka 5 + Consul 2 skipped per environment variables) |
+| ext `mvn spotless:check` | Passed |
 
-跑过的契约：`ContextContract`、`CompressionContract`、
-`HeaderBudgetContract`、`RemoteRpcContract`、`WebSocketUpgradeContract`
-在 Undertow 与 Jetty 上各自继承并通过，另有 TLS/HTTP2/dispatch-io/
-transport-limits 探针全绿。
+Contracts run: `ContextContract`, `CompressionContract`,
+`HeaderBudgetContract`, `RemoteRpcContract`, `WebSocketUpgradeContract`
+each inherited and passed on both Undertow and Jetty; in addition the TLS/HTTP2/dispatch-io/
+transport-limits probes were all green.
 
-**反向验证（第 10.3 节，逐项破坏→红→还原）**
+**Negative verification (Section 10.3, break → red → restore, item by item)**
 
-| 破坏 | 结果 |
+| Break | Result |
 |---|---|
-| `HttpExchangeSupport` 去掉 `LimitedInputStream` 包装 | `BodyLimitParityTest` 3 红 + `HttpExchangeSupportBodyLimitTest` 5 红 |
-| `body(byte[])` 对 bodyless 状态不再删 `Content-Length` | `HttpExchangeSupportTest` 2 红 |
-| `Http2ResponseWriter` 去掉 forbidden-header 过滤 | `Http2ResponseWriterTest` 2 红 |
-| `WebSocketSessionSupport.close` 不截断 reason | `WebSocketSessionSupportTest` 1 红 |
-| `Http1xResponseWriter` 的 chunked 推导写死为 false | `Http1xTransportTest` 3 红 |
+| `HttpExchangeSupport` loses the `LimitedInputStream` wrapping | `BodyLimitParityTest` 3 red + `HttpExchangeSupportBodyLimitTest` 5 red |
+| `body(byte[])` no longer removes `Content-Length` for bodyless statuses | `HttpExchangeSupportTest` 2 red |
+| `Http2ResponseWriter` loses forbidden-header filtering | `Http2ResponseWriterTest` 2 red |
+| `WebSocketSessionSupport.close` does not truncate the reason | `WebSocketSessionSupportTest` 1 red |
+| `Http1xResponseWriter`'s chunked derivation is hard-coded to false | `Http1xTransportTest` 3 red |
 
-还原后 core/ext 全量测试再次全绿，代码中无残留的破坏标记。
+After restoring, the full core/ext test suites were green again, with no leftover break markers in the code.
 
-**实施中的三处方案修正**（方案本身没预见、由测试逼出来的）：
+**Three plan corrections made during implementation** (unforeseen by the plan, forced out by tests):
 
-1. **`Content-Length` 框架权威与静态文件 HEAD 的冲突**：
-   `body(byte[])` 现在用实际提交字节数覆盖 handler 设置的值，而
-   `StaticResourceMount` 的 HEAD 分支曾“设 `Content-Length` 头 +
-   `output(new byte[0])`”——会被覆盖成 0。改为把长度交给
-   `output(nullInputStream(), length)`（未知长度传 -1），并让
-   **transport 在 `sendsBodyBytes()==false` 时不读响应源**（SPI 默认
-   实现、内建 transport、`TestTransport` 三处一致）：HEAD 不再打开文件，
-   60 MB 文件的 HEAD 只读元数据。
-2. **drain 的限额必须扣掉已读字节**：support 的 limiter 与
-   `RequestBody.drain(limit)` 是两个读取点，drain 用“整段限额”会允许
-   handler 读到上限后再多读。`RequestBody` 现在用计数流记录已消费字节，
-   drain 的额度是 `limit - consumed`。
-3. **handler 异常的落点**：Undertow/Jetty 原来用容器的 wire 状态
-   （`isResponseStarted`/`isCommitted`）判断能否写 500；新形状下
-   “已提交但还没起线上字节”（如 204）会被误判。改为先看
-   `ctx.isCommitted()`：已提交就不再碰响应，未提交才写 500。
+1. **The conflict between framework authority over `Content-Length` and static-file HEAD**:
+   `body(byte[])` now overwrites the handler-set value with the actual submitted byte count, while
+   `StaticResourceMount`'s HEAD branch used to "set the `Content-Length` header +
+   `output(new byte[0])`" — which would be overwritten to 0. Changed to hand the length to
+   `output(nullInputStream(), length)` (passing -1 for an unknown length), and to make
+   **the transport not read the response source when `sendsBodyBytes()==false`** (the SPI default
+   implementation, the built-in transport, and `TestTransport` all agree): HEAD no longer opens the file,
+   and the HEAD of a 60 MB file only reads metadata.
+2. **The drain limit must subtract bytes already read**: support's limiter and
+   `RequestBody.drain(limit)` are two read points; using the "whole-segment limit" for drain would let a
+   handler read more after reaching the limit. `RequestBody` now uses a counting stream to record consumed bytes,
+   and the drain allowance is `limit - consumed`.
+3. **Where handler exceptions land**: Undertow/Jetty used to use the container's wire state
+   (`isResponseStarted`/`isCommitted`) to decide whether a 500 could be written; under the new shape
+   "committed but no wire bytes yet" (such as 204) would be misjudged. Changed to check
+   `ctx.isCommitted()` first: once committed, leave the response alone; only write 500 when uncommitted.
 
-**第一轮记录的两个未做项**：
+**Two outstanding items recorded after the first round**:
 
-- `WebSocketUpgradeContract` 第一轮只覆盖握手（101），没有 close reason 用例。
-  截断现在只存在于 `WebSocketSessionSupport.close` 一处，两个适配器的
-  transport 收到的已经是截断后的值（不再各自实现、也不再有
-  “内建抛异常 / 适配器截断”的分歧），由
-  `WebSocketSessionSupportTest` 的 4 个用例钉住。**审计修正已补上端到端
-  用例**：`handlerFailureClosesWithATruncatedReason` 由两个适配器共同继承。
-- 第一轮实施已提交为 core 3 个 + ext 2 个提交；本轮审计修正尚未提交，
-  工作区保持可审状态。
+- In the first round `WebSocketUpgradeContract` covered only the handshake (101) and had no close reason case.
+  Truncation now exists in exactly one place, `WebSocketSessionSupport.close`, and the transports of the two adapters
+  already receive the truncated value (each no longer implements it separately, and the
+  "built-in throws / adapter truncates" divergence is gone), pinned by
+  the 4 cases of `WebSocketSessionSupportTest`. **The audit revision has added the end-to-end
+  case**: `handlerFailureClosesWithATruncatedReason`, inherited by both adapters.
+- The first round was committed as 3 core + 2 ext commits; this round's audit revisions are not yet committed,
+  and the working tree is kept in a reviewable state.
 
-## 16. 审计修正（2026-11-12）
+## 16. Audit Revisions (2026-11-12)
 
-第一轮验收后的逐项审计发现测试绿并未覆盖 seam 的边界。本轮修正如下：
+The item-by-item audit after the first acceptance round found that green tests did not cover the seam's boundaries. This round's revisions are as follows:
 
-### 16.1 提交事实归 transport
+### 16.1 Commit fact belongs to the transport
 
-`HttpTransport.isCommitted()` 是唯一提交事实：transport 在写出第一个
-head 字节前翻转它，`HttpExchangeSupport.isCommitted()` 只读取这个事实，
-不再自己先置 `committed`。提交前失败的输出会丢弃已准备的 status/headers
-并重抛，`HttpServer` 因此能写 500；提交后的失败按传输失败处理。
-缺文件/文件打开失败、提交前的流读取失败不再断连或挂起。回归：
-`HttpExchangeSupportTest.fileOpenFailureLeavesTheExchangeRetryable`、
-`ContextContract.missingFileBecomesAServerErrorInsteadOfAnEmptyResponse`。
+`HttpTransport.isCommitted()` is the single commit fact: the transport flips it before writing the first
+head byte, and `HttpExchangeSupport.isCommitted()` only reads this fact, no longer
+setting `committed` itself first. Output that fails before commit discards the prepared status/headers
+and rethrows, so `HttpServer` can write a 500; a failure after commit is handled as a transport failure.
+A missing file/file-open failure and a stream read failure before commit no longer drop the connection or hang. Regressions:
+`HttpExchangeSupportTest.fileOpenFailureLeavesTheExchangeRetryable`,
+`ContextContract.missingFileBecomesAServerErrorInsteadOfAnEmptyResponse`.
 
-### 16.2 framing 归 transport
+### 16.2 Framing belongs to the transport
 
-默认（缓冲）transport 对物化后的 body 补上实际 `Content-Length`，包括
-HEAD；流式 transport 保留无 CL 的 chunked 语义。HTTP/1.1 适配器只在响应
-仍无 CL（如 SSE）时补 `Transfer-Encoding: chunked`，HTTP/2 不补，并过滤
-`Connection`/Keep-Alive/Upgrade/TE 等连接级字段。support 统一过滤 handler
-设置的 `Transfer-Encoding`。这样 HEAD 与 GET 的未知长度响应头一致，也消除了
-容器补 `Content-Length: 0` 的缺陷。回归：
-`ContextContract.unknownLengthBodiesFrameHeadAndGetTheSameWay`、
-`handlerCannotInjectTransferEncoding`、
-`CompressionContract.compressesLargeStreamingResponse`。
+The default (buffering) transport fills in the actual `Content-Length` for the materialized body, including
+HEAD; the streaming transport keeps chunked semantics with no CL. The HTTP/1.1 adapter adds
+`Transfer-Encoding: chunked` only when the response still has no CL (such as SSE); HTTP/2 adds nothing, and filters
+connection-level fields such as `Connection`/Keep-Alive/Upgrade/TE. support uniformly filters the handler-set
+`Transfer-Encoding`. This makes the unknown-length response headers for HEAD and GET consistent, and also eliminates
+the defect where a container adds `Content-Length: 0`. Regressions:
+`ContextContract.unknownLengthBodiesFrameHeadAndGetTheSameWay`,
+`handlerCannotInjectTransferEncoding`,
+`CompressionContract.compressesLargeStreamingResponse`.
 
-### 16.3 适配器契约
+### 16.3 Adapter contracts
 
-- Jetty 关闭自动 Date（`HttpConfiguration.setSendDateHeader(false)`），
-  `ContextContract.responsesCarryExactlyOneDateHeader` 覆盖。
-- Undertow/Jetty 的内部 WebSocket 错误关闭改走
-  `WebSocketSessionSupport.close`，不再绕过 123 字节截断；
-  `handlerFailureClosesWithATruncatedReason` 覆盖。
-- `HttpExchangeSupport.setStatus` 在提交后是 no-op，与 header 一致。
+- Jetty's automatic Date is disabled (`HttpConfiguration.setSendDateHeader(false)`),
+  covered by `ContextContract.responsesCarryExactlyOneDateHeader`.
+- Internal WebSocket error closes in Undertow/Jetty go through
+  `WebSocketSessionSupport.close`, no longer bypassing the 123-byte truncation;
+  covered by `handlerFailureClosesWithATruncatedReason`.
+- `HttpExchangeSupport.setStatus` is a no-op after commit, consistent with headers.
 
-### 16.4 命名与清理
+### 16.4 Naming and cleanup
 
-- 响应生命周期统一用 **committed**：`HttpTransport.isCommitted()`、
-  `HttpResponse.isCommitted()`、`HttpExchangeSupport.isCommitted()`，回滚辅助方法为
-  `resetIfUncommitted()`；`HttpResponse.isCommitted()` 是抽象方法，不再用默认 false
-  兜底。`HttpExchangeSupport` 的私有 `head()` 改为 `responseHead()`，避免与 HTTP HEAD
-  混淆。迁移表中旧的 `responded()`/`responded` 字段只是历史代码名，不代表当前 API。
-- HTTP/2 stream 的 `headersSent`/`isResponseCommitted()` 统一为
-  `committed`/`isCommitted()`；H2 transport 的 `isCommitted()` 直接读取该 stream
-  事实，不再持有第二份提交判断。
-- 所有响应修改方法保持链式返回：`addVary` 也返回 `HttpResponse`。
-- `HttpTransport.bodyStream()` 改为 `framedBodyStream()`，与 handler 侧
-  `HttpRequest.bodyStream()`（已限流/缓存）区分；transport 返回的是未限流的
-  protocol-framed 流。
-- `HttpResponse` 不再提供会静默破坏长度/gzip 语义的 body 默认实现：
-  `body(InputStream, long)` 与两个 `file` 都是抽象契约，由
-  `HttpExchangeSupport`（或自定义实现）负责。`allowsResponseBody()` 统一为
-  `allowsBody()`；204/205/304 的规则集中到 `HttpStatus.allowsBody(int)`，
-  `HttpResponse` 和 `ResponseHead` 都委托它。
-- `http.internal.Headers` → `HeaderStore`，与 `HttpHeaders` 的语法助手
-  区分。
-- 删除 `HttpResponse.suppressBodyBytes` / `ResponseFraming.suppressBodyBytes`
-  的重复规则（生产已使用 `ResponseHead.sendsBodyBytes`），以及无调用者的
-  `HeaderStore.setValueIfPresent/getAll`、`ExchangeMetaImpl.setCorrelationId`。
-- `WebSocketReadLoop.readLoop` 去掉未使用的 `OutputStream` 参数。
-- 同步 `HttpExchange`、`FreewayHttpEngineTest`、`BodyLimitParityTest` 中
-  仍描述 “reset/reuse” 的旧生命周期文字。
-- `HttpResponseWriter` 的实际形状是 writer 构造时持有 keepAlive，方法只接收
-  `ResponseHead`（不是第 9.2 节写的 `(head, keepAlive)` 参数）；每响应一个
-  writer，keepAlive 是 writer 的生命周期事实。
+- The response lifecycle uniformly uses **committed**: `HttpTransport.isCommitted()`,
+  `HttpResponse.isCommitted()`, `HttpExchangeSupport.isCommitted()`, with the rollback helper
+  `resetIfUncommitted()`; `HttpResponse.isCommitted()` is abstract and no longer falls back
+  to a default false. `HttpExchangeSupport`'s private `head()` becomes `responseHead()`, to avoid confusion
+  with HTTP HEAD. The old `responded()`/`responded` field in the migration table is only a historical code name and does not represent the current API.
+- The HTTP/2 stream's `headersSent`/`isResponseCommitted()` are unified as
+  `committed`/`isCommitted()`; the H2 transport's `isCommitted()` reads that stream's
+  fact directly and no longer holds a second commit determination.
+- All response modification methods keep chained returns: `addVary` also returns `HttpResponse`.
+- `HttpTransport.bodyStream()` becomes `framedBodyStream()`, to distinguish it from the handler-side
+  `HttpRequest.bodyStream()` (already limited/cached); the transport returns an unlimited
+  protocol-framed stream.
+- `HttpResponse` no longer provides body default implementations that would silently break length/gzip semantics:
+  `body(InputStream, long)` and both `file` methods are abstract contracts, handled by
+  `HttpExchangeSupport` (or a custom implementation). `allowsResponseBody()` is unified as
+  `allowsBody()`; the 204/205/304 rule is centralized in `HttpStatus.allowsBody(int)`, and
+  both `HttpResponse` and `ResponseHead` delegate to it.
+- `http.internal.Headers` → `HeaderStore`, distinguished from the
+  syntax helper `HttpHeaders`.
+- Remove the duplicate rule in `HttpResponse.suppressBodyBytes` / `ResponseFraming.suppressBodyBytes`
+  (production already uses `ResponseHead.sendsBodyBytes`), as well as the caller-less
+  `HeaderStore.setValueIfPresent/getAll` and `ExchangeMetaImpl.setCorrelationId`.
+- `WebSocketReadLoop.readLoop` loses its unused `OutputStream` parameter.
+- Synchronize old lifecycle wording that still describes "reset/reuse" in `HttpExchange`,
+  `FreewayHttpEngineTest`, and `BodyLimitParityTest`.
+- `HttpResponseWriter`'s actual shape is that the writer holds keepAlive when constructed, and methods receive only
+  `ResponseHead` (not the `(head, keepAlive)` parameter written in Section 9.2); one
+  writer per response, and keepAlive is a lifecycle fact of the writer.
 
-### 16.5 修正后验证
+### 16.5 Verification after the revisions
 
-| 步骤 | 结果 |
+| Step | Result |
 |---|---|
-| core `mvn test`（全模块） | 418 / 327 / 125 / 521 / 538 / 128 / 361 全绿 |
-| core `mvn -pl freeway-http -am test` | 521 绿 |
-| ext `mvn -o clean test` | 228 绿（51 / 47 / 51 / 17 / 21 / 41；7 项跳过） |
-| ext `mvn -o spotless:check` | 通过 |
+| core `mvn test` (all modules) | 418 / 327 / 125 / 521 / 538 / 128 / 361 all green |
+| core `mvn -pl freeway-http -am test` | 521 green |
+| ext `mvn -o clean test` | 228 green (51 / 47 / 51 / 17 / 21 / 41; 7 skipped) |
+| ext `mvn -o spotless:check` | Passed |
 
-新增的契约用例：`ContextContract` 的 Date、未知长度 HEAD、handler TE、缺文件 500；
-`CompressionContract` 的流式 gzip（缓冲 transport 的 CL 与压缩长度一致）；`WebSocketUpgradeContract` 的错误 close reason；
-两个适配器的 HTTP/2 契约（单个 Date、hop-by-hop 字段过滤、未知长度 HEAD/GET 的 CL 一致）；
-`ContextContract` 的文件响应 GET/HEAD framing；core 的 `HttpExchangeSupportTest` 回滚/状态 guard/TE、
-`Http1xTransportTest` 长度不匹配/
-205/HEAD、`HttpTransportImplTest` committed 标志、`HttpServerStandaloneTest` 缺文件 500。
+New contract cases: Date, unknown-length HEAD, handler TE, and missing-file 500 in `ContextContract`;
+streaming gzip in `CompressionContract` (the buffering transport's CL matches the compressed length); the error close reason in `WebSocketUpgradeContract`;
+the two adapters' HTTP/2 contracts (a single Date, hop-by-hop field filtering, consistent CL for unknown-length HEAD/GET);
+`ContextContract`'s GET/HEAD framing for file responses; in core, `HttpExchangeSupportTest`'s rollback/status guard/TE,
+`Http1xTransportTest`'s length mismatch/
+205/HEAD, `HttpTransportImplTest`'s committed flag, and `HttpServerStandaloneTest`'s missing-file 500.
 
-## 17. HTTP/2 帧族的组合化（2026-11-13）
+## 17. Compositional Refactoring of the HTTP/2 Frame Family (2026-11-13)
 
-`BaseFrame` 抽象类已删除，改为包内 sealed `Http2Frame` 接口：
+The `BaseFrame` abstract class has been deleted and replaced by a package-private sealed `Http2Frame` interface:
 
-- 每个帧实现 `Http2Frame`，并**组合**一个 `FrameHeader` 字段；
-- `Http2Frame` 提供 `header()`、`writeTo()` 和默认 `encode()`；
-- `FrameSerializer`、`Http2Connection`、`Http2Stream` 都返回/接收
-  `Http2Frame`；
-- 分派改为 sealed pattern switch，生产路径不再有
-  `(SettingsFrame) frame` 这类强制转换；
-- 所有帧类型在 `permits` 中显式列出，新增帧类型时编译器会强制补分派。
+- Each frame implements `Http2Frame` and **composes** a `FrameHeader` field;
+- `Http2Frame` provides `header()`, `writeTo()`, and a default `encode()`;
+- `FrameSerializer`, `Http2Connection`, and `Http2Stream` all return/accept
+  `Http2Frame`;
+- Dispatch is now a sealed pattern switch, and the production path no longer has
+  casts like `(SettingsFrame) frame`;
+- All frame types are listed explicitly in `permits`, so the compiler forces dispatch to be updated when a frame type is added.
 
-这是设计品味/类型安全的改动，**不是性能优化**。pattern switch 仍会做类型判别，
-sealed 只提供编译期穷尽性；接口 `header()` 的多实现还可能让调用点从单态变成
-megamorphic。性能验证应单独做 JMH/端到端基准；真正可优化的是 `encode()` 的
-`ByteArrayOutputStream`、入站 payload 复制和 HPACK/IO，而不是去掉 cast。
+This is a change of design taste/type safety, **not a performance optimization**. The pattern switch still performs type discrimination,
+and sealed only provides compile-time exhaustiveness; multiple implementations of the interface's `header()` may also turn a call site from monomorphic into
+megamorphic. Performance verification should be done separately with JMH/end-to-end benchmarks; what can genuinely be optimized is `encode()`'s
+`ByteArrayOutputStream`, inbound payload copying, and HPACK/IO, not removing the cast.

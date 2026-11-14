@@ -1,88 +1,88 @@
-# Java 四框架横向对比报告（2026 年 9 月）
+# Java Four-Framework Side-by-Side Comparison Report (September 2026)
 
-> 本文回答"**该选谁**"——工程维度的选型评估（概念密度、仪式感、引擎、性能、生态、Agent
-> 友好性）。**设计哲学的深度评论**（抽象结构、减法意识、语言现代化、决策透明度，对比对象
-> 为 Spring/Solon/Freeway）见 [freeway-framework-design-comparison.md](framework-design-comparison.md)。
+> This document answers "**which one should I choose**" — the engineering-dimension selection assessment (concept density, ceremony, engine, performance, ecosystem, Agent
+> friendliness). For the **in-depth commentary on design philosophy** (abstract structure, subtraction mindset, language modernization, decision transparency; compared against
+> Spring/Solon/Freeway), see [freeway-framework-design-comparison.md](framework-design-comparison.md).
 
-**对比对象**：Spring Boot 4.x / Quarkus 3.x / Micronaut 4.x-5.x / Freeway 1.5.x
+**Comparison subjects**: Spring Boot 4.x / Quarkus 3.x / Micronaut 4.x-5.x / Freeway 1.5.x
 
-**评估标准**：心智负担、概念数量、仪式感消除、复杂性真实去向、所见即所得程度
+**Evaluation criteria**: mental overhead, concept count, elimination of ceremony, where complexity actually goes, degree of WYSIWYG
 
 ---
 
-## 一、设计哲学
+## 1. Design Philosophy
 
 | | Spring Boot | Quarkus | Micronaut | Freeway |
 |---|---|---|---|---|
-| **核心理念** | 约定优于配置，运行时灵活性 | 构建时处理，容器优先 | 编译时 DI，零运行时反射 | 显式组合，零黑盒 |
-| **复杂性去向** | 留在运行时 | 搬到构建时 | 搬到编译时（代码生成） | **不存在** |
-| **DI 时机** | 运行时（反射 + AOP 代理） | 构建时（ARC 容器） | 编译时（注解处理器） | 运行时（反射注入；JDK 代理仅 when needed） |
-| **类path扫描** | 有 | 无 | 无 | 无 |
-| **代码生成** | 无 | 有（构建时） | 有（编译时） | 无 |
-| **字节码增强** | 有（AOP 代理） | 有（构建时解析） | 有（编译时生成） | 无（仅 JDK 代理） |
-| **零外部依赖（核心）** | 否 | 否 | 否 | **是**（commons + ioc 只有 SLF4J） |
-| **基线 Java** | Java 17（4.x） | Java 21（Quarkus 4 起） | Java 17（4.x）/ Java 25（5.x） | **Java 25** |
+| **Core philosophy** | Convention over configuration, runtime flexibility | Build-time processing, container first | Compile-time DI, zero runtime reflection | Explicit composition, zero black boxes |
+| **Where complexity goes** | Stays at runtime | Moved to build time | Moved to compile time (code generation) | **Does not exist** |
+| **DI timing** | Runtime (reflection + AOP proxies) | Build time (ARC container) | Compile time (annotation processor) | Runtime (reflection injection; JDK proxies only when needed) |
+| **Classpath scanning** | Yes | No | No | No |
+| **Code generation** | No | Yes (build time) | Yes (compile time) | No |
+| **Bytecode enhancement** | Yes (AOP proxies) | Yes (build-time resolution) | Yes (compile-time generation) | No (JDK proxies only) |
+| **Zero external dependencies (core)** | No | No | No | **Yes** (commons + ioc only SLF4J) |
+| **Baseline Java** | Java 17 (4.x) | Java 21 (since Quarkus 4) | Java 17 (4.x) / Java 25 (5.x) | **Java 25** |
 
 ---
 
-## 二、核心概念数量
+## 2. Number of Core Concepts
 
-### 做一个 REST + DB + Auth 的服务，需要了解什么
+### What you need to know to build a REST + DB + Auth service
 
-**Spring Boot（40+ 概念）**
-
-```
-IoC 容器（ApplicationContext, BeanFactory, Bean 生命周期, 作用域, 条件注入, Auto-Configuration）
-+ 依赖注入（@Autowired, @Qualifier, @Primary, 构造器/字段注入）
-+ HTTP（@RestController, @RequestMapping, RestTemplate/WebClient/HttpServiceClient）
-+ 数据（JPA/Hibernate, Spring Data Repository 继承体系, @Transactional 7 参数）
-+ 安全（SecurityFilterChain, AuthenticationManager, UserDetailsService, @PreAuthorize）
-+ 配置（application.yml, Profile, @ConfigurationProperties, @Value）
-+ 启动（@SpringBootApplication = 3 注解组合）
-+ 其他（@EnableScheduling, @EventListener, Actuator, @Valid）
-```
-
-**Quarkus（15-18 概念）**
+**Spring Boot (40+ concepts)**
 
 ```
-DI（@Inject, @ApplicationScoped, 构造器注入）
-+ HTTP（@Path, @GET, @QueryParam）
-+ 数据（Hibernate ORM with Panache, @Transactional）
-+ 安全（@RolesAllowed, SecurityIdentity）
-+ 配置（application.properties, Profiles）
-+ 开发（quarkus:dev 热重载, Dev Services）
-+ 扩展模型（quarkus add/remove extension）
-+ 响应式（Mutiny Uni/Multi）
+IoC container (ApplicationContext, BeanFactory, Bean lifecycle, scope, conditional injection, Auto-Configuration)
++ Dependency injection (@Autowired, @Qualifier, @Primary, constructor/field injection)
++ HTTP (@RestController, @RequestMapping, RestTemplate/WebClient/HttpServiceClient)
++ Data (JPA/Hibernate, Spring Data Repository inheritance hierarchy, @Transactional 7 parameters)
++ Security (SecurityFilterChain, AuthenticationManager, UserDetailsService, @PreAuthorize)
++ Configuration (application.yml, Profile, @ConfigurationProperties, @Value)
++ Startup (@SpringBootApplication = 3 annotations combined)
++ Other (@EnableScheduling, @EventListener, Actuator, @Valid)
 ```
 
-**Micronaut（12-15 概念）**
+**Quarkus (15-18 concepts)**
 
 ```
-DI（@Singleton, @Controller, @Inject, 编译时解析）
-+ HTTP（@Get, @Post, @PathVariable, @QueryValue）
-+ 数据（Micronaut Data Repository, @Transactional）
-+ 安全（@Secured, AuthenticationProvider）
-+ 配置（application.yml, @ConfigurationProperties）
-+ AOT（编译时优化，自动）
+DI (@Inject, @ApplicationScoped, constructor injection)
++ HTTP (@Path, @GET, @QueryParam)
++ Data (Hibernate ORM with Panache, @Transactional)
++ Security (@RolesAllowed, SecurityIdentity)
++ Configuration (application.properties, Profiles)
++ Development (quarkus:dev hot reload, Dev Services)
++ Extension model (quarkus add/remove extension)
++ Reactive (Mutiny Uni/Multi)
 ```
 
-**Freeway（10-12 概念）**
+**Micronaut (12-15 concepts)**
 
 ```
-ModuleEx（bind 方法）
-+ Container（get 方法）
-+ Binder（bind / contribute DSL）
-+ Route（Route.get / Route.post）
-+ RuntimeHook（start / stop）
-+ Scope（SINGLETON / PROTOTYPE / BOUNDARY）
-+ @Inject / @Symbol（2 个注解）
-+ Database / Orm（直接使用）
-+ HttpFilter（一个接口，doFilter + order）
+DI (@Singleton, @Controller, @Inject, compile-time resolution)
++ HTTP (@Get, @Post, @PathVariable, @QueryValue)
++ Data (Micronaut Data Repository, @Transactional)
++ Security (@Secured, AuthenticationProvider)
++ Configuration (application.yml, @ConfigurationProperties)
++ AOT (compile-time optimization, automatic)
+```
+
+**Freeway (10-12 concepts)**
+
+```
+ModuleEx (bind method)
++ Container (get method)
++ Binder (bind / contribute DSL)
++ Route (Route.get / Route.post)
++ RuntimeHook (start / stop)
++ Scope (SINGLETON / PROTOTYPE / BOUNDARY)
++ @Inject / @Symbol (2 annotations)
++ Database / Orm (used directly)
++ HttpFilter (one interface, doFilter + order)
 + EventBus / EventSubscriber
 + FreewayApp.run(Launch.of(args), modules...)
 ```
 
-| 框架 | 核心概念数 |
+| Framework | Core concept count |
 |------|-----------|
 | Spring Boot | 40+ |
 | Quarkus | 15-18 |
@@ -91,594 +91,594 @@ ModuleEx（bind 方法）
 
 ---
 
-## 三、消除"脱裤子放屁"的教条
+## 3. Eliminating the "pointless ceremony" dogma
 
-### 3.1 启动类
+### 3.1 Startup class
 
-| 框架 | 写法 | 复杂度 |
+| Framework | Form | Complexity |
 |------|------|--------|
-| Spring Boot | `@SpringBootApplication`（= `@SpringBootConfiguration` + `@EnableAutoConfiguration` + `@ComponentScan`） | 3 个注解组合，背后扫描整个 classpath |
-| Quarkus | `@QuarkusMain`（可选） | 低 |
-| Micronaut | 无特殊注解 | 低 |
-| **Freeway** | `FreewayApp.run(Launch.of(args), new AppModule())` | **一个方法调用，模块显式传入** |
+| Spring Boot | `@SpringBootApplication` (= `@SpringBootConfiguration` + `@EnableAutoConfiguration` + `@ComponentScan`) | 3 annotations combined; scans the entire classpath behind the scenes |
+| Quarkus | `@QuarkusMain` (optional) | Low |
+| Micronaut | No special annotation | Low |
+| **Freeway** | `FreewayApp.run(Launch.of(args), new AppModule())` | **One method call, modules passed explicitly** |
 
-### 3.2 注册一个 REST 端点
+### 3.2 Registering a REST endpoint
 
-| 框架 | 写法 | 概念数 |
+| Framework | Form | Concept count |
 |------|------|--------|
-| Spring Boot | `@RestController` + `@RequestMapping("/api")` + `@GetMapping("/{id}")` + `@PathVariable` | 4 个注解 |
-| Quarkus | `@Path("/api")` + `@GET` + `@PathParam` | 3 个注解 |
-| Micronaut | `@Controller("/api")` + `@Get("/{id}")` + `@PathVariable` | 3 个注解 |
-| **Freeway** | `Route.get("/api/{id}", handler)` | **1 个方法调用** |
+| Spring Boot | `@RestController` + `@RequestMapping("/api")` + `@GetMapping("/{id}")` + `@PathVariable` | 4 annotations |
+| Quarkus | `@Path("/api")` + `@GET` + `@PathParam` | 3 annotations |
+| Micronaut | `@Controller("/api")` + `@Get("/{id}")` + `@PathVariable` | 3 annotations |
+| **Freeway** | `Route.get("/api/{id}", handler)` | **1 method call** |
 
-### 3.3 数据库事务
+### 3.3 Database transactions
 
-| 框架 | 写法 | 参数 |
+| Framework | Form | Parameters |
 |------|------|------|
-| Spring Boot | `@Transactional(propagation=REQUIRED, isolation=DEFAULT, readOnly=false, rollbackFor=Exception.class, noRollbackFor=..., timeout=..., transactionManager=...)` | 7 个参数 |
-| Quarkus | `@Transactional` | 0 参数（默认值够用） |
-| Micronaut | `@Transactional` | 0 参数 |
-| **Freeway** | `db.transaction(() -> { ... })` | **0 参数，一个 lambda** |
+| Spring Boot | `@Transactional(propagation=REQUIRED, isolation=DEFAULT, readOnly=false, rollbackFor=Exception.class, noRollbackFor=..., timeout=..., transactionManager=...)` | 7 parameters |
+| Quarkus | `@Transactional` | 0 parameters (defaults suffice) |
+| Micronaut | `@Transactional` | 0 parameters |
+| **Freeway** | `db.transaction(() -> { ... })` | **0 parameters, one lambda** |
 
-### 3.4 数据访问
+### 3.4 Data access
 
-| 框架 | 方式 | 概念数 |
+| Framework | Approach | Concept count |
 |------|------|--------|
-| Spring Boot | JPA/Hibernate + Spring Data Repository（继承 CrudRepository / PagingAndSortingRepository / JpaRepository） | 3+ 个接口选择 |
-| Quarkus | Hibernate ORM with Panache（Active Record，直接操作实体） | 1 种方式 |
-| Micronaut | Micronaut Data（Repository 模式，编译时生成） | 1 种方式 |
-| **Freeway** | `Orm.of(db)` + 直接 CRUD | **1 种方式，无继承** |
+| Spring Boot | JPA/Hibernate + Spring Data Repository (inherit CrudRepository / PagingAndSortingRepository / JpaRepository) | 3+ interfaces to choose from |
+| Quarkus | Hibernate ORM with Panache (Active Record, operate on entities directly) | 1 approach |
+| Micronaut | Micronaut Data (Repository pattern, compile-time generation) | 1 approach |
+| **Freeway** | `Orm.of(db)` + direct CRUD | **1 approach, no inheritance** |
 
-### 3.5 HTTP 客户端
+### 3.5 HTTP clients
 
-| 框架 | 选项 | 选择成本 |
+| Framework | Options | Selection cost |
 |------|------|----------|
-| Spring Boot | RestTemplate（同步旧）/ WebClient（响应式新）/ HttpServiceClient（4.0 接口式） | 高——3 个并存，选哪个？ |
-| Quarkus | REST Client（1 个） | 低 |
-| Micronaut | HttpClient（1 个） | 低 |
-| **Freeway** | 内置引擎，无外部客户端选择 | **无选择成本** |
+| Spring Boot | RestTemplate (synchronous, old) / WebClient (reactive, new) / HttpServiceClient (4.0 interface-style) | High — 3 coexist, which one to choose? |
+| Quarkus | REST Client (1) | Low |
+| Micronaut | HttpClient (1) | Low |
+| **Freeway** | Built-in engine, no external client choice | **No selection cost** |
 
-### 3.6 安全
+### 3.6 Security
 
-| 框架 | 方式 | 概念数 |
+| Framework | Approach | Concept count |
 |------|------|--------|
 | Spring Boot | SecurityFilterChain + AuthenticationManager + UserDetailsService + SecurityContext + @PreAuthorize + OAuth2/OIDC | 10+ |
 | Quarkus | @RolesAllowed + SecurityIdentity | 2-3 |
 | Micronaut | @Secured + AuthenticationProvider | 2-3 |
-| **Freeway** | `HttpFilter` 一个接口，直接检查 `ctx.header("Authorization")` | **1** |
+| **Freeway** | `HttpFilter`, one interface, check `ctx.header("Authorization")` directly | **1** |
 
-### 3.7 切面/AOP
+### 3.7 Aspects/AOP
 
-| 框架 | 方式 | 概念数 |
+| Framework | Approach | Concept count |
 |------|------|--------|
-| Spring Boot | @Aspect + @Before/@After/@Around + Pointcut 表达式 + JoinPoint + BeanPostProcessor | 5+ |
-| Quarkus | @Interceptor（构建时解析） | 2-3 |
-| Micronaut | @Interceptor（编译时生成） | 2-3 |
-| **Freeway** | `.advise(advisor -> advisor.wrap(...))` 在 binding 上 | **1** |
+| Spring Boot | @Aspect + @Before/@After/@Around + Pointcut expressions + JoinPoint + BeanPostProcessor | 5+ |
+| Quarkus | @Interceptor (build-time resolution) | 2-3 |
+| Micronaut | @Interceptor (compile-time generation) | 2-3 |
+| **Freeway** | `.advise(advisor -> advisor.wrap(...))` on a binding | **1** |
 
-### 3.8 功能启用
+### 3.8 Feature enablement
 
-| 框架 | 方式 |
+| Framework | Approach |
 |------|------|
-| Spring Boot | `@EnableScheduling` + `@EnableAsync` + `@EnableCaching` + `@EnableWebSocket` + `@EnableJpaRepositories` + `@EnableTransactionManagement`（每个 Enable 背后一堆自动配置） |
-| Quarkus | `quarkus add extension xxx`（显式扩展） |
-| Micronaut | 依赖即功能（加 starter 就有） |
-| **Freeway** | **加模块**：`new HttpModule()`, `new DbModule()`, `new KafkaModule()` |
+| Spring Boot | `@EnableScheduling` + `@EnableAsync` + `@EnableCaching` + `@EnableWebSocket` + `@EnableJpaRepositories` + `@EnableTransactionManagement` (a pile of auto-configuration behind each Enable) |
+| Quarkus | `quarkus add extension xxx` (explicit extension) |
+| Micronaut | Dependency is the feature (add a starter and it's there) |
+| **Freeway** | **Add a module**: `new HttpModule()`, `new DbModule()`, `new KafkaModule()` |
 
 ---
 
-## 四、复杂性真实去向
+## 4. Where Complexity Actually Goes
 
 | | Spring Boot | Quarkus | Micronaut | Freeway |
 |---|---|---|---|---|
-| **运行时** | 高（代理、AOP、自动配置） | 低 | 低 | **低** |
-| **构建时** | 低 | 中（ARC 容器） | 低 | **无** |
-| **编译时** | 低 | 低 | 高（代码生成） | **无** |
-| **你看得到吗** | 部分（黑盒多） | 部分 | 不可见（生成的代码） | **完全可见** |
-| **调试时能处理吗** | 能，但要理解框架内部 | 能，但有学习曲线 | 难（调试生成的代码） | **能，就是你写的代码** |
-| **有隐藏的复杂性吗** | 有（Auto-Configuration 黑盒） | 有（构建时处理） | 有（编译时代码生成） | **无** |
+| **Runtime** | High (proxies, AOP, auto-configuration) | Low | Low | **Low** |
+| **Build time** | Low | Medium (ARC container) | Low | **None** |
+| **Compile time** | Low | Low | High (code generation) | **None** |
+| **Can you see it** | Partially (many black boxes) | Partially | Invisible (generated code) | **Fully visible** |
+| **Can you handle it while debugging** | Yes, but you must understand framework internals | Yes, but with a learning curve | Hard (debugging generated code) | **Yes — it's the code you wrote** |
+| **Any hidden complexity** | Yes (Auto-Configuration black box) | Yes (build-time processing) | Yes (compile-time code generation) | **None** |
 
 ---
 
-## 五、HTTP 引擎架构
+## 5. HTTP Engine Architecture
 
-### 5.1 引擎对比
+### 5.1 Engine comparison
 
 | | Spring Boot | Quarkus | Micronaut | Freeway |
 |---|---|---|---|---|
-| **HTTP 引擎** | Tomcat/Jetty/Undertow（可替换） | Vert.x/Netty | Netty | **自研 FreewayHttpEngine** |
-| **I/O 模型** | NIO（Servlet 容器） | NIO（Vert.x） | NIO（Netty） | **同步阻塞 I/O + 虚拟线程** |
-| **HTTP/2** | 取决于容器 | Vert.x 原生 | Netty 原生 | **内置**（h2c + h2） |
-| **WebSocket** | 取决于容器 | Vert.x 原生 | Netty 原生 | **内置** |
-| **HTTPS** | 取决于容器 | Vert.x 原生 | Netty 原生 | **内置** |
-| **线程模型** | 每请求一线程（或 NIO 事件循环） | 事件循环 + Worker | 事件循环 + Worker | **每连接一个虚拟线程** |
-| **外部依赖** | 需要 Servlet 容器 JAR | 需要 Vert.x/Netty JAR | 需要 Netty JAR | **零外部依赖** |
+| **HTTP engine** | Tomcat/Jetty/Undertow (replaceable) | Vert.x/Netty | Netty | **In-house FreewayHttpEngine** |
+| **I/O model** | NIO (Servlet container) | NIO (Vert.x) | NIO (Netty) | **Synchronous blocking I/O + virtual threads** |
+| **HTTP/2** | Depends on the container | Native to Vert.x | Native to Netty | **Built in** (h2c + h2) |
+| **WebSocket** | Depends on the container | Native to Vert.x | Native to Netty | **Built in** |
+| **HTTPS** | Depends on the container | Native to Vert.x | Native to Netty | **Built in** |
+| **Thread model** | One thread per request (or NIO event loop) | Event loop + Worker | Event loop + Worker | **One virtual thread per connection** |
+| **External dependencies** | Requires a Servlet container JAR | Requires Vert.x/Netty JAR | Requires Netty JAR | **Zero external dependencies** |
 
-### 5.2 引擎可替换性
+### 5.2 Engine replaceability
 
-Freeway 的 HTTP 引擎遵循与其他组件相同的 `.primary()` 模式：
+Freeway's HTTP engine follows the same `.primary()` pattern as the other components:
 
 ```java
-// 默认 — FreewayHttpEngine（内置）
+// Default — FreewayHttpEngine (built in)
 FreewayApp.run(Launch.of(args), new AppModule(), new HttpModule());
 
-// 替换为 Undertow — 加模块即可，无需配置
+// Replace with Undertow — just add the module, no configuration needed
 FreewayApp.run(Launch.of(args), new AppModule(), new HttpModule(), new UndertowModule());
 
-// 替换为 Jetty
+// Replace with Jetty
 FreewayApp.run(Launch.of(args), new AppModule(), new HttpModule(), new JettyModule());
 ```
 
-| 引擎 | 来源 | I/O 模型 |
+| Engine | Source | I/O model |
 |------|------|----------|
-| `FreewayHttpEngine` | 内置（默认） | 同步阻塞 + 虚拟线程 |
+| `FreewayHttpEngine` | Built in (default) | Synchronous blocking + virtual threads |
 | `UndertowEngine` | freeway-ext | XNIO |
 | `JettyEngine` | freeway-ext | Jetty 12 |
 
-替换方式：扩展模块绑定 `HttpEngine` 时加 `.primary()`，容器自动选择。不需要改任何应用代码，不需要配置文件。
+How to replace: the extension module adds `.primary()` when binding `HttpEngine`, and the container selects it automatically. No application code changes and no configuration file are needed.
 
-### 5.3 性能表现
+### 5.3 Performance
 
-内置的 `FreewayHttpEngine` 在性能测试中表现最好。这验证了一个核心假设：
+The built-in `FreewayHttpEngine` performed best in performance tests. This validates a core hypothesis:
 
-**简单代码 + 强大运行时 > 复杂代码 + 复杂运行时**
+**Simple code + a powerful runtime > complex code + a complex runtime**
 
-| 对比 | FreewayHttpEngine | Undertow/Jetty/Netty |
+| Comparison | FreewayHttpEngine | Undertow/Jetty/Netty |
 |------|-------------------|----------------------|
-| **代码复杂度** | 低（同步阻塞，直接读写 socket） | 高（NIO 事件循环、ChannelHandler、ByteBuf） |
-| **概念数量** | 少（ServerSocketChannel, SocketChannel, virtual thread） | 多（Selector, SelectionKey, EventLoop, ByteBuf, ChannelPipeline） |
-| **性能** | **最好** | 好 |
-| **调试难度** | 低（线程 dump 直接看阻塞点） | 高（分析事件循环、Channel 状态、ByteBuf 引用计数） |
+| **Code complexity** | Low (synchronous blocking, reads and writes the socket directly) | High (NIO event loop, ChannelHandler, ByteBuf) |
+| **Concept count** | Few (ServerSocketChannel, SocketChannel, virtual thread) | Many (Selector, SelectionKey, EventLoop, ByteBuf, ChannelPipeline) |
+| **Performance** | **Best** | Good |
+| **Debugging difficulty** | Low (a thread dump shows the blocking point directly) | High (analyze event loop, channel state, ByteBuf reference counts) |
 
-### 5.4 为什么简单的方法反而更快
+### 5.4 Why the simple approach is actually faster
 
-1. **虚拟线程的本质**：JVM 在 `ScopedValue` 和虚拟线程上做了深度优化，同步阻塞的代码在虚拟线程上实际上是"非阻塞"的——JVM 会自动挂起和恢复虚拟线程，不占用平台线程。
+1. **The nature of virtual threads**: the JVM is deeply optimized for `ScopedValue` and virtual threads; synchronous blocking code is effectively "non-blocking" on virtual threads — the JVM suspends and resumes virtual threads automatically, without occupying platform threads.
 
-2. **JIT 优化友好**：同步阻塞的代码路径更简单，JIT 编译器更容易内联、优化、向量化。NIO 的事件循环、回调链、ByteBuf 引用计数增加了 JIT 优化的难度。
+2. **JIT-friendly**: the synchronous blocking code path is simpler, so the JIT compiler can inline, optimize and vectorize more easily. NIO's event loops, callback chains and ByteBuf reference counts make JIT optimization harder.
 
-3. **内存效率**：不需要 Netty 的 ByteBuf 池、不需要 NIO 的 SelectionKey 数组、不需要 EventLoop 的任务队列。一个虚拟线程就是一个简单的栈帧。
+3. **Memory efficiency**: no Netty ByteBuf pool, no NIO SelectionKey array, no EventLoop task queue. One virtual thread is one simple stack frame.
 
-4. **调试简单**：出了问题，看线程 dump 就知道阻塞在哪。NIO 的问题要分析事件循环状态、Channel 状态、ByteBuf 引用计数。
+4. **Simple debugging**: when something goes wrong, a thread dump shows where it blocks. NIO problems require analyzing event loop state, channel state and ByteBuf reference counts.
 
-### 5.5 与 Go 的哲学一致性
+### 5.5 Philosophical alignment with Go
 
-| Go 的实践 | Freeway 的对应 |
+| Go practice | Freeway equivalent |
 |-----------|---------------|
-| 同步阻塞 I/O + goroutine | 同步阻塞 I/O + 虚拟线程 |
-| 不用 NIO/epoll | 不用 Netty/Vert.x |
-| 简单代码，运行时处理并发 | 简单代码，JVM 处理并发 |
-| 性能不差，甚至更好 | 中等裸吞吐（约为 native 引擎 60–80%），WS 与自家 adapter 对比领先 |
+| Synchronous blocking I/O + goroutine | Synchronous blocking I/O + virtual threads |
+| No NIO/epoll | No Netty/Vert.x |
+| Simple code, the runtime handles concurrency | Simple code, the JVM handles concurrency |
+| Performance is not bad, even better | Moderate raw throughput (about 60–80% of native engines), leading on WS versus its own adapter |
 
-**复杂性不是免费的**——NIO/Netty 的复杂性带来了概念成本，但在虚拟线程时代，这些复杂性不再带来性能收益。Freeway 选择不付这个成本，结果是代码更简单；裸吞吐落后于 native 引擎（见 §八），这是为简单付的已知代价。
+**Complexity is not free** — the complexity of NIO/Netty brings conceptual cost, but in the age of virtual threads that complexity no longer buys performance. Freeway chooses not to pay that cost, and the result is simpler code; raw throughput lags behind native engines (see §8), a known price paid for simplicity.
 
 ---
 
-## 六、模块组合机制
+## 6. Module Composition Mechanism
 
 | | Spring Boot | Quarkus | Micronaut | Freeway |
 |---|---|---|---|---|
-| **组合方式** | 注解扫描 + Auto-Configuration | Extension 模型 | 依赖即功能 | **ModuleEx 显式组合** |
-| **可见性** | 隐式（黑盒） | 半显式（扩展注册） | 半隐式（编译时处理） | **完全显式** |
-| **冲突检测** | 运行时可能冲突 | 构建时检测 | 编译时检测 | **启动时显式报告** |
-| **组合结构** | 无 | 无 | 无 | **有——显式模块列表，启动时验证** |
+| **Composition method** | Annotation scanning + Auto-Configuration | Extension model | Dependency is the feature | **Explicit ModuleEx composition** |
+| **Visibility** | Implicit (black box) | Semi-explicit (extension registration) | Semi-implicit (compile-time processing) | **Fully explicit** |
+| **Conflict detection** | Possible conflicts at runtime | Detected at build time | Detected at compile time | **Reported explicitly at startup** |
+| **Composition structure** | None | None | None | **Yes — an explicit module list, validated at startup** |
 
-> 注：Freeway 的"完全显式"有一个已披露的例外——`FreewayApp.run(...)` 默认通过
-> ServiceLoader SPI 加载 `META-INF/services` 声明的额外模块（`autoDiscovery(false)`
-> 关闭）。绑定本身从不扫描，每个绑定都写在可读的 `bind(Binder)` 里。
+> Note: there is one disclosed exception to Freeway's "fully explicit" — `FreewayApp.run(...)` by default loads additional modules declared in
+> `META-INF/services` via the ServiceLoader SPI (disabled by `autoDiscovery(false)`).
+> Binding itself never scans; every binding is written in a readable `bind(Binder)`.
 
-### Freeway 的模块组合机制
+### Freeway's module composition mechanism
 
 ```java
-// 模块组合是入口处的一份显式列表
+// Module composition is an explicit list at the entry point
 FreewayApp.run(
     new OrderModule(),
-    CloudModule.class);                 // bundle 自动展开子模块
+    CloudModule.class);                 // bundle automatically expands submodules
 
-// 组装时验证：
-// - 同一实例放两次 → 折叠
-// - 同一类两次声明 → 报错（带两条路径）
-// - 循环依赖 → 拒绝
-// - 未知 hook id → 启动失败
+// Validated during assembly:
+// - the same instance placed twice → folded
+// - the same class declared twice → error (with both paths)
+// - circular dependency → rejected
+// - unknown hook id → startup failure
 ```
 
-这是其他三个框架没有的——**组合是数据，不是代码**。启动日志打印完整组合结构，看到的就是实际加载的。
+This is something the other three frameworks lack — **composition is data, not code**. The startup log prints the complete composition structure, so what you see is what is actually loaded.
 
 ---
 
-## 七、配置机制
+## 7. Configuration Mechanism
 
 | | Spring Boot | Quarkus | Micronaut | Freeway |
 |---|---|---|---|---|
-| **配置来源** | application.yml + Profile + @Value + @ConfigurationProperties | application.properties + Profile | application.yml + @ConfigurationProperties | **SymbolSource 级联** |
-| **优先级** | 复杂（多层覆盖） | 中等 | 中等 | **显式声明的 tier** |
-| **热重载** | Spring DevTools（有限） | quarkus:dev（优秀） | 一般 | **WatchService 文件级热重载** |
-| **环境变量映射** | spring.config.import | %prod Profile | 直接映射 | **FREEWAY_* → freeway.*（可配前缀）** |
-| **CLI 参数** | --key=value | --key=value | --key=value | **--key=value，键按字面量解析（框架键写全称）** |
+| **Configuration sources** | application.yml + Profile + @Value + @ConfigurationProperties | application.properties + Profile | application.yml + @ConfigurationProperties | **SymbolSource cascade** |
+| **Priority** | Complex (multi-layer overrides) | Medium | Medium | **Explicitly declared tiers** |
+| **Hot reload** | Spring DevTools (limited) | quarkus:dev (excellent) | So-so | **WatchService file-level hot reload** |
+| **Environment variable mapping** | spring.config.import | %prod Profile | Direct mapping | **FREEWAY_* → freeway.* (configurable prefix)** |
+| **CLI arguments** | --key=value | --key=value | --key=value | **--key=value, keys parsed literally (framework keys written in full)** |
 
-### Freeway 的配置级联（5 个显式 tier）
+### Freeway's configuration cascade (5 explicit tiers)
 
 ```
 order  tier
- 0     CLI args（--key=value, -Dkey=value）
- 5     JVM system properties（-Dkey=value）
-10     环境变量（FREEWAY_* → freeway.*）
-15     模块贡献的 source（如云密钥）
-20     配置文件（application.properties → .json → profile 变体 → 文件系统覆盖）
+ 0     CLI args (--key=value, -Dkey=value)
+ 5     JVM system properties (-Dkey=value)
+10     environment variables (FREEWAY_* → freeway.*)
+15     module-contributed sources (e.g. cloud secrets)
+20     configuration files (application.properties → .json → profile variants → filesystem overrides)
 ```
 
-每个 tier 是一个 SymbolProvider，order 声明优先级。没有隐式的覆盖规则，没有"谁赢"的猜测。
+Each tier is a SymbolProvider, and order declares priority. There are no implicit override rules, no guessing about "who wins".
 
 ---
 
-## 八、运行时性能
+## 8. Runtime Performance
 
-| 指标 | Spring Boot 4 | Quarkus 3.x | Micronaut 4.x/5.x | Freeway 1.5.x |
+| Metric | Spring Boot 4 | Quarkus 3.x | Micronaut 4.x/5.x | Freeway 1.5.x |
 |------|---------------|-------------|-------------------|-------------|
-| **JVM 启动** | 2,400–3,200ms | 500–900ms | 600–1,000ms | 77ms（框架口径，中位，单空模块；7 模块 HTTP 应用同口径 ~65ms） |
-| **Native 启动** | 70–120ms | 12–25ms | 25–50ms | 未投入（无 native 构建，无从测起） |
-| **空闲内存（Native）** | 50–75MB | 35–60MB | 18–58MB | 未投入 |
-| **吞吐量（JVM）** | ~18k req/s | ~16k req/s | ~14k req/s | ping ~376k / json ~437k（内置引擎，同机后 5 轮中位；去 pipeline 的 freeway-native ping 第 6、json 第 7，紧咬 jetty-native；native 系前五，adapter 系垫底） |
-| **GraalVM Native** | 需要配置反射 hint | 自动（大多数） | 最可靠（零反射） | 未投入：DI/JSON/ORM 皆运行时反射，需 reachability metadata，未配置未验证 |
+| **JVM startup** | 2,400–3,200ms | 500–900ms | 600–1,000ms | 77ms (framework-measured, median, single empty module; a 7-module HTTP app on the same basis ~65ms) |
+| **Native startup** | 70–120ms | 12–25ms | 25–50ms | Not pursued (no native build, so nothing to measure) |
+| **Idle memory (Native)** | 50–75MB | 35–60MB | 18–58MB | Not pursued |
+| **Throughput (JVM)** | ~18k req/s | ~16k req/s | ~14k req/s | ping ~376k / json ~437k (built-in engine, median of the last 5 rounds on the same machine; pipeline-free freeway-native 6th in ping and 7th in json, close behind jetty-native; the native family holds the top five, the adapter family the bottom) |
+| **GraalVM Native** | Requires configuring reflection hints | Automatic (most cases) | Most reliable (zero reflection) | Not pursued: DI/JSON/ORM all use runtime reflection and need reachability metadata; not configured or verified |
 
-Freeway 一栏有实测出处：ext 仓 `docs/benchmark-1.5.6-SNAPSHOT.md`（环境锁 + JMH 全表 + 黑盒中位； worktree 基准，非干净 commit）。
+The Freeway column has a measured source: `docs/benchmark-1.5.6-SNAPSHOT.md` in the ext repository (environment lock + full JMH table + black-box median; worktree baseline, not a clean commit).
 
-### Freeway 的性能特征
+### Freeway's performance characteristics
 
-- 核心模块零外部依赖 → native 下没有第三方依赖问题；但 DI/JSON/ORM 都在
-  运行时反射，GraalVM 下需要 reachability metadata——该工作目前未投入，
-  任何"编译应最简单"的说法都未经验证
-- 同步阻塞 I/O + 虚拟线程 → 代码简单，JIT 优化友好；但同机实测裸吞吐落后于
-  native 引擎（undertow/jetty/robaho ~450–565k vs 内置 ~375–400k），内置引擎排
-  中游（jdk-native 与自家 adapter 之上；WS 与 undertow 系并列，噪声线内）——"性能最好" 的说法已随数撤回，
-  JSON 路径的 30% 短轮差距证实为瞬态税（稳态 6%），见 §八
-- HTTP/2 内置 → 无容器切换成本
-- 连接池内置 → 无 HikariCP 依赖
-- 内置 HTTP 引擎性能测试表现最好
+- Core modules have zero external dependencies → no third-party dependency issues under native; but DI/JSON/ORM all use
+  runtime reflection, which needs reachability metadata under GraalVM — that work has not been undertaken,
+  and any claim that "native compilation should be easiest" is unverified
+- Synchronous blocking I/O + virtual threads → simple code, JIT-friendly; but same-machine raw throughput trails the
+  native engines (undertow/jetty/robaho ~450–565k vs built-in ~375–400k), and the built-in engine sits
+  mid-table (above jdk-native and its own adapter; on WS it ties the undertow family, within the noise line) — the "best performance" claim has been withdrawn along with the numbers;
+  the 30% gap in short JSON runs proved to be a transient tax (6% at steady state), see §8
+- HTTP/2 built in → no container switching cost
+- Connection pooling built in → no HikariCP dependency
+- The built-in HTTP engine performs best in performance tests
 
 ---
 
-## 九、生态与适用场景
+## 9. Ecosystem and Suitable Scenarios
 
 | | Spring Boot | Quarkus | Micronaut | Freeway |
 |---|---|---|---|---|
-| **生态规模** | 最大 | 中等（增长快） | 较小 | **最小（新框架）** |
-| **人才池** | 最大 | 中等 | 较小 | **最小** |
-| **学习曲线** | 低（团队最熟悉） | 中 | 中高 | **低（概念少）** |
-| **商业支持** | VMware | Red Hat | Oracle Cloud | **无** |
-| **AI 集成** | Spring AI（原生） | LangChain4j（深度） | 有限 | **无** |
-| **适合场景** | 大型企业系统、长期运行高吞吐 | Kubernetes 原生、Serverless | Serverless、边缘计算 | **微服务、API、需要简洁的团队** |
-| **不适合场景** | 启动时间敏感、内存受限 | 生态需求广 | 大型企业系统 | **需要深度生态集成** |
+| **Ecosystem size** | Largest | Medium (growing fast) | Smaller | **Smallest (new framework)** |
+| **Talent pool** | Largest | Medium | Smaller | **Smallest** |
+| **Learning curve** | Low (most familiar to teams) | Medium | Medium-high | **Low (few concepts)** |
+| **Commercial support** | VMware | Red Hat | Oracle Cloud | **None** |
+| **AI integration** | Spring AI (native) | LangChain4j (deep) | Limited | **None** |
+| **Good fit** | Large enterprise systems, long-running high-throughput workloads | Kubernetes-native, Serverless | Serverless, edge computing | **Microservices, APIs, teams that want simplicity** |
+| **Poor fit** | Startup-time sensitive, memory constrained | Broad ecosystem needs | Large enterprise systems | **Deep ecosystem integration requirements** |
 
 ---
 
-## 十、总结
+## 10. Summary
 
-### 按不同维度
+### By dimension
 
-| 维度 | 最优者 | 原因 |
+| Dimension | Best | Reason |
 |------|--------|------|
-| **概念最少** | Freeway（10-12） | 核心概念最少，没有选型困境 |
-| **消除仪式感最彻底** | Freeway | 没有 @EnableXxx、没有 Auto-Configuration、没有类path扫描 |
-| **复杂性真正不存在** | Freeway | 不是隐藏，是真的没有 |
-| **所见即所得** | Freeway | 没有代码生成、没有字节码增强、没有黑盒 |
-| **开发体验** | Quarkus | dev mode 热重载最成熟 |
-| **生态最广** | Spring Boot | Spring Cloud/Security/AI 的深度集成 |
-| **Native 最可靠** | Micronaut | 零反射，编译时 DI |
-| **Kubernetes 最优** | Quarkus | 构建时启动，最低内存 |
-| **HTTP 引擎最简** | Freeway | 同步阻塞 + 虚拟线程，零 NIO 复杂性（裸吞吐约为 native 系 60–80%，见 §八） |
-| **模块组合最透明** | Freeway | 显式模块列表，启动日志打印完整组合结构 |
-| **配置级联最清晰** | Freeway | 5 个显式 tier，order 声明优先级 |
+| **Fewest concepts** | Freeway (10-12) | Fewest core concepts, no choice paralysis |
+| **Most thorough elimination of ceremony** | Freeway | No @EnableXxx, no Auto-Configuration, no classpath scanning |
+| **Complexity genuinely absent** | Freeway | Not hidden — genuinely absent |
+| **WYSIWYG** | Freeway | No code generation, no bytecode enhancement, no black boxes |
+| **Developer experience** | Quarkus | dev mode hot reload is the most mature |
+| **Broadest ecosystem** | Spring Boot | Deep integration of Spring Cloud/Security/AI |
+| **Most reliable native** | Micronaut | Zero reflection, compile-time DI |
+| **Best on Kubernetes** | Quarkus | Build-time startup, lowest memory |
+| **Simplest HTTP engine** | Freeway | Synchronous blocking + virtual threads, zero NIO complexity (raw throughput about 60–80% of the native family, see §8) |
+| **Most transparent module composition** | Freeway | Explicit module list, startup log prints the complete composition structure |
+| **Clearest configuration cascade** | Freeway | 5 explicit tiers, order declares priority |
 
-### 一句话总结
+### One-sentence summary
 
-- **Spring Boot**：生态最强，复杂性最多。适合"我需要 Spring 全家桶"的场景。
-- **Quarkus**：Kubernetes 最优，开发体验最好。适合"我要在 K8s 上跑"的场景。
-- **Micronaut**：Native 最可靠，概念较少。适合"我要 serverless"的场景。
-- **Freeway**：概念最少，复杂性最透明。适合"我要简洁、我要理解我写的东西"的场景。
+- **Spring Boot**: strongest ecosystem, most complexity. Fits "I need the whole Spring family" scenarios.
+- **Quarkus**: best on Kubernetes, best developer experience. Fits "I want to run on K8s" scenarios.
+- **Micronaut**: most reliable native, fewer concepts. Fits "I want serverless" scenarios.
+- **Freeway**: fewest concepts, most transparent complexity. Fits "I want simplicity, I want to understand what I write" scenarios.
 
-### Freeway 的核心主张
+### Freeway's core proposition
 
-**简约不是"看起来简单"，是"真的没有那些东西"。**
+**Simplicity is not "looking simple" — it is "genuinely not having those things".**
 
-- 不是把复杂性从运行时搬到编译时（Micronaut）
-- 不是把复杂性搬到构建时（Quarkus）
-- 不是把复杂性留在运行时但让你用注解掩盖（Spring）
-- 而是**根本不引入那些复杂性**
+- Not moving complexity from runtime to compile time (Micronaut)
+- Not moving complexity to build time (Quarkus)
+- Not leaving complexity at runtime but letting you hide it behind annotations (Spring)
+- But **not introducing that complexity at all**
 
-这跟 Go 的哲学一致：**用更少的概念做到同样的事，消除不必要的仪式感，让复杂性真正不存在。**
+This aligns with Go's philosophy: **do the same thing with fewer concepts, eliminate unnecessary ceremony, make complexity genuinely absent.**
 
-在 JDK 25+ 的虚拟线程时代，"简单"不再是性能的妥协。Freeway 的内置 HTTP 引擎（同步阻塞 + 虚拟线程）性能测试表现最好，证明了简单代码 + 强大运行时 > 复杂代码 + 复杂运行时。
+In the JDK 25+ virtual-thread era, "simple" is no longer a performance compromise. Freeway's built-in HTTP engine (synchronous blocking + virtual threads) performs best in performance tests, proving that simple code + a powerful runtime > complex code + a complex runtime.
 
 ---
 
-## 十一、Agentic 时代：Agent 友好性评估
+## 11. The Agentic Era: Agent-Friendliness Assessment
 
-在 AI Coding Agent（opencode、Cursor、Copilot）成为开发主力的 2026 年，框架的"Agent 友好性"是全新的评估维度。
+In 2026, as AI coding agents (opencode, Cursor, Copilot) become primary development tools, a framework's "Agent friendliness" is a brand-new evaluation dimension.
 
-### 11.1 Agent 工作时的核心约束
+### 11.1 Core constraints on agents at work
 
-| 约束 | 含义 |
+| Constraint | Meaning |
 |------|------|
-| **上下文窗口有限** | 一次能"看到"的代码和概念有上限 |
-| **模式匹配驱动** | 通过学习代码模式来生成代码 |
-| **无法运行时调试** | 只能读代码和错误信息，不能 attach debugger |
-| **依赖文档质量** | 依赖文档和注释来理解框架行为 |
-| **错误诊断靠推理** | 需要从错误信息推断问题所在 |
+| **Limited context window** | There is an upper bound on the code and concepts it can "see" at once |
+| **Pattern-matching driven** | Generates code by learning code patterns |
+| **Cannot debug at runtime** | Can only read code and error messages; cannot attach a debugger |
+| **Depends on documentation quality** | Relies on documentation and comments to understand framework behavior |
+| **Diagnosis by inference** | Must infer the problem from error messages |
 
-**Agent 友好性的核心**：用最少的概念、最可预测的模式、最清晰的反馈，让 Agent 能正确生成和修改代码。
+**The core of Agent friendliness**: the fewest concepts, the most predictable patterns and the clearest feedback, so an agent can correctly generate and modify code.
 
-### 11.2 评估维度
+### 11.2 Evaluation dimensions
 
-| 维度 | 含义 | 权重 |
+| Dimension | Meaning | Weight |
 |------|------|------|
-| **概念密度** | Agent 需要记住多少概念才能正确写代码 | 高 |
-| **模式一致性** | 同一类事情是否有多种写法（选哪个？） | 高 |
-| **黑盒深度** | Agent 能否从代码推断运行时行为 | 高 |
-| **错误可诊断性** | 错误信息能否让 Agent 自己修复问题 | 中 |
-| **配置可预测性** | Agent 能否一次配对，不需要试错 | 中 |
-| **代码自解释性** | 代码本身是否告诉 Agent 它在做什么 | 低 |
+| **Concept density** | How many concepts an agent must remember to write code correctly | High |
+| **Pattern consistency** | Whether one kind of thing has multiple forms (which to choose?) | High |
+| **Black-box depth** | Whether an agent can infer runtime behavior from the code | High |
+| **Error diagnosability** | Whether error messages let the agent fix the problem itself | Medium |
+| **Configuration predictability** | Whether the agent can get it right the first time without trial and error | Medium |
+| **Code self-explanatoriness** | Whether the code itself tells the agent what it does | Low |
 
-### 11.3 逐框架评估
+### 11.3 Framework-by-framework assessment
 
-#### Spring Boot：Agent 最不友好（3/10）
+#### Spring Boot: least Agent-friendly (3/10)
 
-**概念密度过高**
+**Concept density too high**
 
-Agent 要正确生成一个 REST + DB 的服务，需要同时 hold 住：
+To correctly generate a REST + DB service, an agent must hold all of this at once:
 
 ```
-@SpringBootApplication（3 个注解的组合）
+@SpringBootApplication (combination of 3 annotations)
 + @RestController vs @Controller + @ResponseBody
 + JpaRepository vs CrudRepository vs PagingAndSortingRepository
-+ @Transactional 的 7 个参数
++ @Transactional's 7 parameters
 + RestTemplate vs WebClient vs HttpServiceClient
-+ application.yml 的多层覆盖规则
-+ Profile 机制
-+ @EnableXxx 系列
++ application.yml's multi-layer override rules
++ Profile mechanism
++ @EnableXxx family
 ```
 
-**40+ 概念在上下文窗口里是巨大的负担。**
+**40+ concepts are a huge burden on a context window.**
 
-**模式不一致**
+**Inconsistent patterns**
 
 ```java
-// 同一个事情，三种写法
-@RestController                    // 写法 1
-@Controller @ResponseBody          // 写法 2（历史包袱）
-@RequestMapping + @GetMapping      // 写法 3
+// The same thing, three ways to write it
+@RestController                    // Form 1
+@Controller @ResponseBody          // Form 2 (legacy baggage)
+@RequestMapping + @GetMapping      // Form 3
 
-// HTTP 客户端，三个选择
-RestTemplate                       // 旧
-WebClient                          // 新（响应式）
-HttpServiceClient                  // 最新（4.0）
+// HTTP client, three choices
+RestTemplate                       // Old
+WebClient                          // New (reactive)
+HttpServiceClient                  // Newest (4.0)
 ```
 
-Agent 需要判断"用哪个"，这需要对框架演化史有了解。
+The agent must decide "which one to use", which requires knowing the framework's evolution history.
 
-**黑盒太深**
+**Black box too deep**
 
 ```java
-// Auto-Configuration 黑盒
-spring-boot-starter-data-jpa 到底配了什么？
-// Agent 不知道，需要查源码或文档
-// 出问题了，Agent 不知道是自己的问题还是自动配置的问题
+// Auto-Configuration black box
+spring-boot-starter-data-jpa: what exactly does it configure?
+// The agent doesn't know; it must consult source or documentation
+// When something breaks, the agent can't tell whether it's its own problem or auto-configuration's
 ```
 
-**错误信息难诊断**
+**Error messages hard to diagnose**
 
 ```
 NoSuchBeanDefinitionException: No qualifying bean of type 'UserService' available
-// Agent 需要理解：这是 Bean 没注册？扫描没扫到？条件注解不满足？
+// The agent must figure out: was the bean not registered? Did scanning miss it? Was a conditional annotation not satisfied?
 ```
 
-#### Quarkus：Agent 较友好（6/10）
+#### Quarkus: fairly Agent-friendly (6/10)
 
-**概念密度中等**
+**Medium concept density**
 
-15-18 个核心概念，Agent 可以 hold 住。
+15-18 core concepts, manageable for an agent.
 
-**模式较一致**
+**Fairly consistent patterns**
 
 ```java
-// REST 端点：一种写法
+// REST endpoint: one form
 @Path("/api")
 @GET
 @QueryParam
 
-// 数据访问：一种写法
+// Data access: one form
 Hibernate ORM with Panache
 
-// 功能启用：一种方式
+// Feature enablement: one way
 quarkus add extension xxx
 ```
 
-**黑盒较浅**
+**Shallower black box**
 
-构建时处理是显式的——Agent 知道扩展做了什么，因为扩展是显式注册的。
+Build-time processing is explicit — the agent knows what an extension does because extensions are explicitly registered.
 
-**但有坑**
+**But there are pitfalls**
 
 ```java
-// Mutiny 响应式：即使不需要响应式，也可能被引入
+// Mutiny reactive: may be pulled in even when you don't need reactive
 Uni<String> result = service.findById(id).onItem().transform(u -> u.name());
-// Agent 需要理解 Uni/Multi 概念，即使业务逻辑是同步的
+// The agent must understand Uni/Multi concepts even when the business logic is synchronous
 ```
 
-**错误信息较好**
+**Better error messages**
 
-Quarkus 的错误信息通常会告诉 Agent 哪个扩展缺失、哪个配置错了。
+Quarkus error messages usually tell the agent which extension is missing or which configuration is wrong.
 
-#### Micronaut：Agent 中等友好（5/10）
+#### Micronaut: moderately Agent-friendly (5/10)
 
-**概念密度较低**
+**Lower concept density**
 
-12-15 个核心概念，Agent 可以 hold 住。
+12-15 core concepts, manageable for an agent.
 
-**模式一致**
+**Consistent patterns**
 
 ```java
-// 一种写法
+// One form
 @Get("/{id}")
 @Post
 @Inject
 ```
 
-**但有黑盒**
+**But there is a black box**
 
 ```java
-// 编译时生成的代码是黑盒
-// Agent 写了：
+// The code generated at compile time is a black box
+// The agent wrote:
 @Singleton
 public class UserService {
     @Inject
     private UserRepository repo;
 }
 
-// 编译时生成了什么？Agent 不知道
-// 出问题了，Agent 要调试生成的代码
+// What was generated at compile time? The agent doesn't know
+// When something breaks, the agent must debug generated code
 ```
 
-**错误信息有时指向生成的代码**
+**Error messages sometimes point at generated code**
 
 ```
-// 错误可能指向 Micronaut$UserService$Definition.class
-// Agent 不知道这个类在哪，因为它没写过
+// The error may point at Micronaut$UserService$Definition.class
+// The agent doesn't know where this class is because it never wrote it
 ```
 
-#### Freeway：Agent 最友好（9/10）
+#### Freeway: most Agent-friendly (9/10)
 
-**概念密度最低**
+**Lowest concept density**
 
-10-12 个核心概念，Agent 可以轻松 hold 住。
+10-12 core concepts, easy for an agent to hold.
 
 ```java
-// Agent 需要记住的全部核心概念：
+// All the core concepts the agent needs to remember:
 // ModuleEx, Container, Binder, Route, RuntimeHook, Scope
 // @Inject, @Symbol
 // Database, Orm, HttpFilter, EventBus
-// 就这些。
+// That's it.
 ```
 
-**模式完全一致**
+**Fully consistent patterns**
 
 ```java
-// REST 端点：一种写法
+// REST endpoint: one form
 Route.get("/api/{id}", handler)
 
-// 数据访问：一种写法
+// Data access: one form
 Orm.of(db).findById(User.class, 1L)
 
-// 事务：一种写法
+// Transactions: one form
 db.transaction(() -> { ... })
 
-// 功能启用：一种方式
+// Feature enablement: one way
 new HttpModule(), new DbModule()
 ```
 
-**零黑盒**
+**Zero black boxes**
 
 ```java
-// Agent 写了：
+// The agent wrote:
 binder.bind(UserService.class).to(UserServiceImpl.class);
-// Agent 完全知道运行时会发生什么：
-// - 容器会创建 UserServiceImpl 实例
-// - 注入所有构造器参数
-// - 注册为 UserService 类型的单例
+// The agent knows exactly what will happen at runtime:
+// - The container creates a UserServiceImpl instance
+// - It injects all constructor parameters
+// - It registers it as a singleton of type UserService
 
-// 没有 Auto-Configuration 黑盒
-// 没有类path扫描
-// 没有代码生成
-// 所见即所得
+// No Auto-Configuration black box
+// No classpath scanning
+// No code generation
+// What you see is what you get
 ```
 
-**错误信息直接指向问题**
+**Error messages point straight at the problem**
 
 ```
-// 没有 NoSuchBeanDefinitionException
-// 错误直接告诉你：
+// No NoSuchBeanDefinitionException
+// The error tells you directly:
 // "Module X declares binding for type Y, but no implementation is bound"
-// Agent 可以直接修复：添加 binder.bind(Y.class).to(Z.class);
+// The agent can fix it directly: add binder.bind(Y.class).to(Z.class);
 ```
 
-**配置可预测**
+**Predictable configuration**
 
 ```java
-// Agent 知道：5 个 tier，order 声明优先级
-// 没有"谁赢"的猜测
-// CLI > 系统属性 > 环境变量 > 模块贡献 > 配置文件
+// The agent knows: 5 tiers, order declares priority
+// No guessing about "who wins"
+// CLI > system properties > environment variables > module contributions > configuration files
 ```
 
-**代码自解释**
+**Self-explanatory code**
 
 ```java
-// Agent 读到这段代码，完全理解它在做什么：
+// Reading this code, the agent fully understands what it does:
 FreewayApp.run(Launch.of(args), new AppModule(), new HttpModule(), new DbModule());
-// 启动应用，加载 AppModule 和 DbModule
+// Starts the application, loading AppModule and DbModule
 
-// 没有隐藏行为
-// 没有"这个注解背后自动做了什么"
+// No hidden behavior
+// No "what does this annotation do automatically behind the scenes"
 ```
 
-### 11.4 Agent 生成代码的正确率模拟
+### 11.4 Simulated correctness rate of Agent-generated code
 
-假设给 Agent 一个任务："创建一个 REST 服务，GET /api/users/{id}，查询数据库返回用户"
+Suppose an agent is given the task: "Create a REST service, GET /api/users/{id}, query the database and return the user"
 
-| 框架 | Agent 需要知道 | 一次生成正确的概率 |
+| Framework | What the agent needs to know | Probability of getting it right on the first try |
 |------|---------------|-------------------|
-| Spring Boot | @RestController, @RequestMapping, @GetMapping, @PathVariable, @SpringBootApplication, application.yml 配置 | **60%** |
-| Quarkus | @Path, @GET, @PathParam, 扩展注册 | **75%** |
-| Micronaut | @Controller, @Get, @PathVariable, 编译时依赖 | **70%** |
+| Spring Boot | @RestController, @RequestMapping, @GetMapping, @PathVariable, @SpringBootApplication, application.yml configuration | **60%** |
+| Quarkus | @Path, @GET, @PathParam, extension registration | **75%** |
+| Micronaut | @Controller, @Get, @PathVariable, compile-time dependencies | **70%** |
 | **Freeway** | Route.get, handler class, ModuleEx | **90%** |
 
-### 11.5 Agent 调试能力模拟
+### 11.5 Simulated Agent debugging capability
 
-假设 Agent 生成的代码报错了，Agent 能自己修复吗？
+Suppose the agent-generated code throws an error — can the agent fix it itself?
 
-| 框架 | 典型错误 | Agent 能修复吗 |
+| Framework | Typical error | Can the agent fix it |
 |------|---------|---------------|
-| Spring Boot | `NoSuchBeanDefinitionException: No qualifying bean of type 'UserService'` | **难**——需要判断是扫描问题、条件注解问题、还是 Bean 名称问题 |
-| Quarkus | `SRCHD0001: Unknown dependency for class UserService` | **较易**——通常缺少扩展或绑定 |
-| Micronaut | `BeanDefinitionNotFoundException: No bean definition found for type UserRepository` | **中等**——可能是编译时处理问题 |
-| **Freeway** | `Binding not found: UserService → UserServiceImpl not bound` | **易**——直接告诉你缺什么绑定 |
+| Spring Boot | `NoSuchBeanDefinitionException: No qualifying bean of type 'UserService'` | **Hard** — must determine whether it's a scanning issue, a conditional-annotation issue, or a bean-name issue |
+| Quarkus | `SRCHD0001: Unknown dependency for class UserService` | **Fairly easy** — usually a missing extension or binding |
+| Micronaut | `BeanDefinitionNotFoundException: No bean definition found for type UserRepository` | **Medium** — possibly a compile-time processing issue |
+| **Freeway** | `Binding not found: UserService → UserServiceImpl not bound` | **Easy** — it tells you directly which binding is missing |
 
-### 11.6 Agent 上下文窗口效率
+### 11.6 Agent context-window efficiency
 
-假设 Agent 的上下文窗口是 8K tokens，需要同时 hold 住框架概念 + 用户代码 + 错误信息。
+Assume the agent's context window is 8K tokens and it must hold framework concepts + user code + error messages at once.
 
-| 框架 | 框架概念占用 | 剩余给用户代码 | 效率 |
+| Framework | Framework concept usage | Remaining for user code | Efficiency |
 |------|-------------|---------------|------|
-| Spring Boot | ~3000 tokens | ~5000 tokens | **低** |
-| Quarkus | ~1500 tokens | ~6500 tokens | **中** |
-| Micronaut | ~1200 tokens | ~6800 tokens | **中高** |
-| **Freeway** | ~800 tokens | ~7200 tokens | **高** |
+| Spring Boot | ~3000 tokens | ~5000 tokens | **Low** |
+| Quarkus | ~1500 tokens | ~6500 tokens | **Medium** |
+| Micronaut | ~1200 tokens | ~6800 tokens | **Medium-high** |
+| **Freeway** | ~800 tokens | ~7200 tokens | **High** |
 
-**Freeway 给 Agent 留下了最多的上下文空间来处理用户代码。**
+**Freeway leaves the agent the most context space for handling user code.**
 
-### 11.7 Agent 学习曲线
+### 11.7 Agent learning curve
 
-| 框架 | Agent 需要学习多少模式才能正确生成代码 |
+| Framework | How many patterns the agent must learn to generate code correctly |
 |------|---------------------------------------|
-| Spring Boot | 10+ 种模式（REST、Data、Security、Config、Profile...） |
-| Quarkus | 6-8 种模式 |
-| Micronaut | 5-6 种模式 |
-| **Freeway** | **4-5 种模式**（Module、Route、Database、Filter、Config） |
+| Spring Boot | 10+ patterns (REST, Data, Security, Config, Profile...) |
+| Quarkus | 6-8 patterns |
+| Micronaut | 5-6 patterns |
+| **Freeway** | **4-5 patterns** (Module, Route, Database, Filter, Config) |
 
-### 11.8 总结
+### 11.8 Summary
 
-| 维度 | Spring Boot | Quarkus | Micronaut | Freeway |
+| Dimension | Spring Boot | Quarkus | Micronaut | Freeway |
 |------|-------------|---------|-----------|---------|
-| **概念密度** | 40+ | 15-18 | 12-15 | **10-12** |
-| **模式一致性** | 低（多种写法） | 中 | 中高 | **高（一种写法）** |
-| **黑盒深度** | 深（Auto-Config） | 中（构建时处理） | 中（编译时生成） | **浅（零黑盒）** |
-| **错误可诊断性** | 低 | 中 | 中 | **高** |
-| **配置可预测性** | 低 | 中 | 中 | **高** |
-| **代码自解释性** | 低 | 中 | 中 | **高** |
-| **Agent 友好性评分** | **3/10** | **6/10** | **5/10** | **9/10** |
+| **Concept density** | 40+ | 15-18 | 12-15 | **10-12** |
+| **Pattern consistency** | Low (multiple forms) | Medium | Medium-high | **High (one form)** |
+| **Black-box depth** | Deep (Auto-Config) | Medium (build-time processing) | Medium (compile-time generation) | **Shallow (zero black boxes)** |
+| **Error diagnosability** | Low | Medium | Medium | **High** |
+| **Configuration predictability** | Low | Medium | Medium | **High** |
+| **Code self-explanatoriness** | Low | Medium | Medium | **High** |
+| **Agent-friendliness score** | **3/10** | **6/10** | **5/10** | **9/10** |
 
-**在 agentic 时代，Freeway 的设计哲学——用更少的概念、消除不必要复杂性、所见即所得——恰好是 Agent 最需要的。** Agent 不需要"懂框架演化史"，不需要"猜 Auto-Configuration 做了什么"，不需要"调试生成的代码"。它只需要理解 10 个核心概念，就能正确生成和修改代码。
+**In the agentic era, Freeway's design philosophy — fewer concepts, elimination of unnecessary complexity, WYSIWYG — is exactly what agents need most.** Agents don't need to "know framework evolution history", "guess what Auto-Configuration did", or "debug generated code". They only need to understand 10 core concepts to correctly generate and modify code.
 
-**这不是巧合——Freeway 的设计哲学（简约、透明、显式）与 Agent 的工作方式（模式匹配、上下文有限、无法运行时调试）天然契合。**
+**This is no coincidence — Freeway's design philosophy (simple, transparent, explicit) naturally fits how agents work (pattern matching, limited context, no runtime debugging).**
 
 ---
 
-*报告生成时间：2026 年 9 月 20 日*
+*Report generated: September 20, 2026*

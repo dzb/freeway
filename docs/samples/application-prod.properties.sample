@@ -91,7 +91,7 @@ freeway.http.cors.allow-credentials=false
 # Scenario: PostgreSQL for production relational database.
 # Credentials set via env vars: FREEWAY_DB_URL, FREEWAY_DB_USERNAME, FREEWAY_DB_PASSWORD
 freeway.db.url=jdbc:postgresql://localhost:5432/mydb
-# 必填：改成你的数据库用户名（留空会启动失败）
+# Required: set your database user (startup fails when empty)
 freeway.db.username=postgres
 freeway.db.password=
 

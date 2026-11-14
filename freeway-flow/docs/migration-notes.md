@@ -1,99 +1,99 @@
-# freeway-flow 迁移改动说明
+# freeway-flow migration change notes
 
-> **历史文档**：v1/v2 时代方案记录，现行规格见 [graph-v3.md](graph-v3.md)。
+> **Historical document**: plan record from the v1/v2 era; see [graph-v3.md](graph-v3.md) for the current specification.
 >
-> 说明对象：`freeway-flow`
+> Subject: `freeway-flow`
 >
-> 背景：该模块的 **v1 定义格式 (`GraphSpec`)** 由 `solon-flow` 移植到 Freeway 架构下。本文记录移植后的实际改动和兼容策略。
+> Background: the module's **v1 definition format (`GraphSpec`)** was ported from `solon-flow` to the Freeway architecture. This document records the actual changes and compatibility strategy after the port.
 >
-> **v2 格式** 为 Freeway 原生设计，不来自 solon-flow——由 `GraphSpec` 以
-> `version=2` 标记承载（早期类名 `GraphSpec2` 自 1.3.6 起并入 `GraphSpec`）——见 [graph-v2.md](graph-v2.md)。
+> The **v2 format** is a Freeway-native design, not from solon-flow — carried by `GraphSpec` under the
+> `version=2` marker (the early class name `GraphSpec2` was merged into `GraphSpec` starting with 1.3.6) — see [graph-v2.md](graph-v2.md).
 
-## 1. 迁移目标
+## 1. Migration goals
 
-`freeway-flow` 的目标不是重写一套新的流程引擎，而是在 Freeway 里保留原有图编排语义，同时把依赖方式、运行边界和扩展接入方式改成 Freeway 风格。
+The goal of `freeway-flow` is not to rewrite a new flow engine, but to retain the original graph orchestration semantics in Freeway while changing the dependency approach, runtime boundaries, and extension access to follow the Freeway style.
 
-核心原则：
+Core principles:
 
-1. 保留存量图定义可继续运行。
-2. 运行态和模型态分离。
-3. 不引入额外框架依赖。
-4. 所有接入点显式化，不做 classpath 扫描。
+1. Existing graph definitions remain runnable.
+2. Runtime state and model state are separated.
+3. No additional framework dependencies are introduced.
+4. All integration points are explicit, with no classpath scanning.
 
-## 2. 已完成的迁移改动
+## 2. Completed migration changes
 
 ### 2.1 `FlowModule`
 
-- 从 Solon 式的组件发现方式，改成 Freeway IoC 的显式模块绑定。
-- 通过 `ModuleEx` / `Binder` 注册 `FlowEngine`。
-- 通过 `IocContainerAdapter` 把 Freeway 容器映射到 flow 侧的组件解析接口。
-- 保留 `TaskComponent` 的类型化注册，方便迁移后的任务处理器继续直接接入。
+- Changed from Solon-style component discovery to explicit module binding in Freeway IoC.
+- Register `FlowEngine` through `ModuleEx` / `Binder`.
+- Map the Freeway container to the flow-side component resolution interface through `IocContainerAdapter`.
+- Retain typed registration of `TaskComponent`, so migrated task handlers can continue to integrate directly.
 
 ### 2.2 `FlowEngineDefault`
 
-- 保留节点遍历、条件分支、子图调用和拦截器链。
-- 驱动器解析改为按 graph 的 `driver` 名称显式查找。
-- 默认驱动器仍作为兜底，不依赖容器扫描。
-- 暂停、终止、回退等控制位保留为执行期状态，不写入图模型。
+- Retain node traversal, conditional branches, subgraph calls, and the interceptor chain.
+- Driver resolution changed to explicit lookup by the graph's `driver` name.
+- The default driver still serves as a fallback and does not rely on container scanning.
+- Control bits such as pause, stop, and rollback remain execution-time state and are not written into the graph model.
 
 ### 2.3 `FlowContextImpl`
 
-- 上下文收敛为单次 flow 执行期对象。
-- `exchanger`、`eventBus`、`trace` 只作为运行态数据存在。
-- 序列化时排除 `context` 自引用。
-- `trace` 兼容对象格式和旧字符串格式，便于平滑加载历史数据。
+- The context converges into a per-flow-execution object.
+- `exchanger`, `eventBus`, and `trace` exist only as runtime data.
+- The `context` self-reference is excluded during serialization.
+- `trace` is compatible with the object format and the old string format, so historical data loads smoothly.
 
 ### 2.4 `FlowEventBus`
 
-- 从全局 `DamiBus` 语义迁移为绑定在 `FlowContext` 上的本地 pub/sub。
-- 订阅回调异常只隔离在当前订阅者，不影响同 topic 的其他订阅者。
-- 作用域限定在单次 flow 执行内，不再承担应用级事件总线职责。
+- Migrated from global `DamiBus` semantics to a local pub/sub bound to `FlowContext`.
+- A subscription callback exception is isolated to the current subscriber only and does not affect other subscribers on the same topic.
+- The scope is limited to a single flow execution and no longer carries application-level event bus responsibilities.
 
 ### 2.5 `GraphSpec`
 
-> **本节已作废（1.5.2）**：v1 图定义连同 legacy 字段兼容一并删除。以下描述的是 v1→v2 过渡期的
-> 历史策略，不再是现状；现状是 `version=2` 唯一门禁（`GraphSpec.fromText`），v1 文档直接报错。
+> **This section is obsolete (1.5.2)**: the v1 graph definition, along with legacy field compatibility, was deleted. The following describes the historical strategy of the v1→v2 transition period
+> and is no longer the current state; the current state is the sole `version=2` gate (`GraphSpec.fromText`), and v1 documents report errors directly.
 
-- ~~保留 legacy 字段兼容：`layout` / `nodes`、`when` / `condition`、`link` 的多种形态。~~
-- 序列化输出统一收敛到当前的 `nodes` + `links` 结构。
-- ~~解析时保留 start 节点推断能力，确保旧图可继续运行。~~（entry 必须显式声明）
+- ~~Retain legacy field compatibility: `layout` / `nodes`, `when` / `condition`, multiple forms of `link`.~~
+- Serialization output converges uniformly to the current `nodes` + `links` structure.
+- ~~Retain start-node inference during parsing, ensuring old graphs can continue to run.~~ (entry must be explicitly declared)
 
 ### 2.6 `FlowExchanger`
 
-- 把子图调用共享的执行态、上下文和步数计数器集中到运行期对象里。
-- `reverting`、`stopped`、`interrupted` 只表示执行过程中的控制信号。
-- `copy()` 只用于子图跳转场景下复用执行态。
+- Centralize the execution state, context, and step counter shared by subgraph calls into the runtime object.
+- `reverting`, `stopped`, and `interrupted` represent only control signals during execution.
+- `copy()` is used only to reuse execution state in subgraph jump scenarios.
 
 ### 2.7 `NodeType`
 
-- 未知类型仍回退到 `ACTIVITY`。
-- 这个兜底是为了兼容存量图和缺省图定义。
-- 新图建议显式声明类型。
+- Unknown types still fall back to `ACTIVITY`.
+- This fallback exists to be compatible with existing graphs and default graph definitions.
+- New graphs are advised to declare types explicitly.
 
-## 3. 今天补充的说明性改动
+## 3. Explanatory changes added today
 
-今天做的内容不是功能逻辑变更，而是把迁移声明补到代码里，避免只写抽象描述：
+Today's work is not a functional logic change; it adds the migration declarations to the code so that the work does not stop at abstract descriptions:
 
-1. 在 `FlowContextImpl` 的类注释里补充了运行态边界、序列化兼容和自引用排除的说明。
-2. 在 `FlowEventBus` 的类注释里补充了从全局总线迁移到上下文内本地事件总线的原因。
-3. 在 `FlowEngineDefault` 的类注释里补充了执行态收敛、驱动器显式查找和控制位归属说明。
-4. 在 `FlowModule` 的类注释里补充了 Freeway IoC 显式绑定和容器适配的原因。
-5. 在 `GraphSpec` 的类注释里补充了 legacy 字段兼容和输出结构统一的原因。
-6. 在 `FlowExchanger` 的类注释里补充了执行态集中管理和 `copy()` 语义。
-7. 在 `NodeType` 的类注释里补充了未知类型回退策略的原因。
+1. Added notes on runtime boundaries, serialization compatibility, and self-reference exclusion to the `FlowContextImpl` class comment.
+2. Added to the `FlowEventBus` class comment the reason for migrating from a global bus to a context-local event bus.
+3. Added to the `FlowEngineDefault` class comment notes on runtime state convergence, explicit driver lookup, and control-bit ownership.
+4. Added to the `FlowModule` class comment the reasons for Freeway IoC explicit binding and container adaptation.
+5. Added to the `GraphSpec` class comment the reasons for legacy field compatibility and unified output structure.
+6. Added to the `FlowExchanger` class comment notes on centralized execution-state management and `copy()` semantics.
+7. Added to the `NodeType` class comment the reason for the unknown-type fallback strategy.
 
-这些说明的目的，是让移植痕迹在代码里可见，后续看源码的人能直接理解为什么这么改，而不是只看到结果。
+The purpose of these notes is to make the porting traces visible in the code, so that later readers of the source can directly understand why the change was made rather than seeing only the result.
 
-## 4. 兼容边界
+## 4. Compatibility boundary
 
-- 兼容旧图，不代表旧写法是推荐写法。
-- 运行态对象不应被当成稳定协议的一部分。
-- 本地事件总线只服务单次 flow 执行，不替代应用级事件系统。
-- 兜底回退策略只用于迁移期，后续新图应尽量显式声明。
+- Being compatible with old graphs does not mean the old spelling is the recommended spelling.
+- Runtime objects should not be treated as part of a stable protocol.
+- The local event bus serves only a single flow execution and does not replace the application-level event system.
+- The fallback strategy is only for the migration period; future new graphs should declare things explicitly wherever possible.
 
-## 5. 备注
+## 5. Notes
 
-如果后续再做一次结构优化，建议继续沿着这两个方向收敛：
+If another structural optimization is done later, it is recommended to continue converging along these two directions:
 
-1. 进一步压缩运行态和模型态之间的交叉引用。
-2. 把旧格式兼容逻辑尽量局部化，避免兼容分支散落到多个类里。
+1. Further compress cross-references between runtime state and model state.
+2. Localize old-format compatibility logic as much as possible, so compatibility branches do not scatter across multiple classes.

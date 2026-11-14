@@ -1,138 +1,138 @@
-# 移植适配方案：solon-flow → freeway-flow
+# Porting adaptation plan: solon-flow → freeway-flow
 
-> **历史文档**：v1/v2 时代方案记录，现行规格见 [graph-v3.md](graph-v3.md)。
+> **Historical document**: plan record from the v1/v2 era; see [graph-v3.md](graph-v3.md) for the current specification.
 >
-> 方案制定：2026-06-26  
-> 实施完成：2026-06-26  
-> 源基线：solon-flow 4.0.2
+> Plan drafted: 2026-06-26  
+> Implementation completed: 2026-06-26  
+> Source baseline: solon-flow 4.0.2
 
 ---
 
-## 方案概述
+## Plan overview
 
-从 solon-flow 提取核心图编排引擎（Graph → Node → Link 模型 + FlowEngine 执行引擎 + PlantUML 导出），适配为 freeway 的 `freeway-flow` 模块。
+Extract the core graph orchestration engine from solon-flow (Graph → Node → Link model + FlowEngine execution engine + PlantUML export) and adapt it into freeway's `freeway-flow` module.
 
-**目标：零新增三方依赖**。仅依赖 freeway-commons + freeway-ioc + slf4j（均已在 freeway 框架中）。
+**Goal: zero new third-party dependencies**. It depends only on freeway-commons + freeway-ioc + slf4j (all already in the freeway framework).
 
-## 模块结构设计
+## Module structure design
 
 ```
 freeway-flow/
 ├── pom.xml
 ├── README.md
 ├── docs/
-│   ├── assessment.md      ← 移植评估
-│   └── plan.md             ← 本文件
+│   ├── assessment.md      ← Porting assessment
+│   └── plan.md             ← This file
 └── src/
     ├── main/java/com/jujin/freeway/flow/
-    │   ├── package-info.java           ← 包级说明（源项目信息）
+    │   ├── package-info.java           ← Package-level notes (source project information)
     │   │
-    │   ├── [模型层 — 不可变运行时]
-    │   │   ├── NodeType.java           枚举：7 种节点类型
-    │   │   ├── Graph.java              图容器 + toPlantuml 导出
-    │   │   ├── Node.java               节点
-    │   │   ├── Link.java               有向边
-    │   │   ├── TaskDesc.java           任务描述符
-    │   │   ├── ConditionDesc.java      条件描述符
-    │   │   ├── FlowTrace.java          执行痕迹
-    │   │   └── NodeRecord.java         节点访问记录
+    │   ├── [Model layer — immutable runtime]
+    │   │   ├── NodeType.java           enum: 7 node types
+    │   │   ├── Graph.java              graph container + toPlantuml export
+    │   │   ├── Node.java               node
+    │   │   ├── Link.java               directed link
+    │   │   ├── TaskDesc.java           task descriptor
+    │   │   ├── ConditionDesc.java      condition descriptor
+    │   │   ├── FlowTrace.java          execution trace
+    │   │   └── NodeRecord.java         node visit record
     │   │
-    │   ├── [模型层 — Builder/Spec]
-    │   │   ├── GraphSpec.java          图定义 + JSON fromDom 解析
-    │   │   ├── NodeSpec.java           节点定义
-    │   │   └── LinkSpec.java           连接定义
+    │   ├── [Model layer — Builder/Spec]
+    │   │   ├── GraphSpec.java          graph definition + JSON fromDom parsing
+    │   │   ├── NodeSpec.java           node definition
+    │   │   └── LinkSpec.java           link definition
     │   │
-    │   ├── [引擎层]
-    │   │   ├── FlowEngine.java          引擎接口 + eval 重载
-    │   │   └── FlowEngineDefault.java      核心执行引擎（7种节点类型遍历）
+    │   ├── [Engine layer]
+    │   │   ├── FlowEngine.java          engine interface + eval overloads
+    │   │   └── FlowEngineDefault.java       core execution engine (traversal of 7 node types)
     │   │
-    │   ├── [运行时层]
-    │   │   ├── FlowExchanger.java       执行交换器（内部状态）
-    │   │   ├── FlowContext.java         上下文接口
-    │   │   ├── FlowContextImpl.java     上下文实现
-    │   │   ├── Temporary.java           网关临时状态（栈/计数器）
-    │   │   └── FlowOptions.java         执行选项（含拦截器列表）
+    │   ├── [Runtime layer]
+    │   │   ├── FlowExchanger.java       execution exchanger (internal state)
+    │   │   ├── FlowContext.java         context interface
+    │   │   ├── FlowContextImpl.java     context implementation
+    │   │   ├── Temporary.java           gateway temporary state (stack/counters)
+    │   │   └── FlowOptions.java         execution options (including interceptor list)
     │   │
-    │   ├── [驱动器层]
-    │   │   ├── FlowDriver.java          驱动器接口
-    │   │   ├── SimpleFlowDriver.java    默认驱动器（@bean/#graph/$meta 解析）
-    │   │   ├── Container.java           组件容器接口
-    │   │   ├── TaskComponent.java       任务组件 @FunctionalInterface
-    │   │   ├── ConditionComponent.java  条件组件 @FunctionalInterface
-    │   │   └── NamedTaskComponent.java  命名任务组件
+    │   ├── [Driver layer]
+    │   │   ├── FlowDriver.java          driver interface
+    │   │   ├── SimpleFlowDriver.java    default driver (@bean/#graph/$meta resolution)
+    │   │   ├── Container.java           component container interface
+    │   │   ├── TaskComponent.java       task component @FunctionalInterface
+    │   │   ├── ConditionComponent.java  condition component @FunctionalInterface
+    │   │   └── NamedTaskComponent.java  named task component
     │   │
-    │   ├── [扩展层]
-    │   │   ├── ExprEvaluator.java       极简条件表达式求值器（递归下降）
-    │   │   ├── Stepper.java             数字范围迭代器（Loop 节点用）
-    │   │   ├── FlowEventBus.java        执行级事件总线（topic pub/sub）
-    │   │   ├── FlowInterceptor.java     流拦截器接口
-    │   │   └── FlowInvocation.java      拦截器责任链
+    │   ├── [Extension layer]
+    │   │   ├── ExprEvaluator.java       minimal condition expression evaluator (recursive descent)
+    │   │   ├── Stepper.java             numeric range iterator (used by LOOP nodes)
+    │   │   ├── FlowEventBus.java        execution-level event bus (topic pub/sub)
+    │   │   ├── FlowInterceptor.java     flow interceptor interface
+    │   │   └── FlowInvocation.java      interceptor responsibility chain
     │   │
-    │   ├── [PlantUML 导出]
-    │   │   ├── PlantumlOptions.java      输出选项
-    │   │   ├── PlantumlDisplayContext.java  显示上下文
-    │   │   └── PlantumlDisplayResult.java   显示结果
+    │   ├── [PlantUML export]
+    │   │   ├── PlantumlOptions.java      output options
+    │   │   ├── PlantumlDisplayContext.java  display context
+    │   │   └── PlantumlDisplayResult.java   display result
     │   │
-    │   ├── [异常]
-    │   │   └── FlowException.java        流异常
+    │   ├── [Exceptions]
+    │   │   └── FlowException.java        flow exception
     │   │
-    │   └── [Freeway 集成]
-    │       └── FlowModule.java           ModuleEx 入口
+    │   └── [Freeway integration]
+    │       └── FlowModule.java           ModuleEx entry
     │
     └── test/java/com/jujin/freeway/flow/
-        └── FlowEngineTest.java           12 个测试用例
+        └── FlowEngineTest.java           12 test cases
 ```
 
-**最终规模：35 个 Java 文件（含 package-info），12 个测试用例。**
+**Final size: 35 Java files (including package-info), 12 test cases.**
 
-## 实现步骤
+## Implementation steps
 
-### 第 1 步：创建模块骨架
+### Step 1: Create the module skeleton
 
-- 创建 `freeway-flow/` 目录结构
-- 编写 `pom.xml`（依赖 freeway-commons + freeway-ioc + slf4j + junit）
-- 在父 POM 中注册模块 + dependencyManagement
+- Create the `freeway-flow/` directory structure
+- Write `pom.xml` (dependencies freeway-commons + freeway-ioc + slf4j + junit)
+- Register the module + dependencyManagement in the parent POM
 
-### 第 2 步：迁移基础类（零内部依赖）
+### Step 2: Migrate base classes (zero internal dependencies)
 
-直接复制 solon-flow 源文件，改 package + 去注解：
+Copy solon-flow source files directly, change the package + remove annotations:
 
-| 文件 | 改动 |
+| File | Change |
 |---|---|
 | `NodeType.java` | `org.noear.solon.flow` → `com.jujin.freeway.flow` |
-| `FlowException.java` | 同上 |
-| `Container.java` | 同上 |
-| `TaskComponent.java` | 去 `@Preview`/`@FunctionalInterface`（保留语义） |
-| `ConditionComponent.java` | 同上 |
-| `NamedTaskComponent.java` | 同上 |
-| `Stepper.java` | 同上（零外部依赖） |
-| `PlantumlOptions.java` | 同上 |
-| `PlantumlDisplayResult.java` | 同上 |
-| `PlantumlDisplayContext.java` | 同上 |
-| `NodeRecord.java` | 去 `@ONodeAttr` 注解 |
-| `Temporary.java` | 同上（零外部依赖，纯 JDK） |
+| `FlowException.java` | Same as above |
+| `Container.java` | Same as above |
+| `TaskComponent.java` | Remove `@Preview`/`@FunctionalInterface` (keep semantics) |
+| `ConditionComponent.java` | Same as above |
+| `NamedTaskComponent.java` | Same as above |
+| `Stepper.java` | Same as above (zero external dependencies) |
+| `PlantumlOptions.java` | Same as above |
+| `PlantumlDisplayResult.java` | Same as above |
+| `PlantumlDisplayContext.java` | Same as above |
+| `NodeRecord.java` | Remove the `@ONodeAttr` annotation |
+| `Temporary.java` | Same as above (zero external dependencies, pure JDK) |
 
-### 第 3 步：新增自写类
+### Step 3: Add newly written classes
 
-| 文件 | 说明 |
+| File | Description |
 |---|---|
-| `ExprEvaluator.java` | ~280 行递归下降表达式解析器，支持 `>`/`<`/`==`/`!=`/`>=`/`<=`/`&&`/`\|\|`/`!`/括号/变量路径 |
-| `FlowEventBus.java` | ~90 行 topic pub/sub，`ConcurrentHashMap` + `CopyOnWriteArrayList` |
+| `ExprEvaluator.java` | ~280-line recursive-descent expression parser, supports `>`/`<`/`==`/`!=`/`>=`/`<=`/`&&`/`\|\|`/`!`/parentheses/variable paths |
+| `FlowEventBus.java` | ~90-line topic pub/sub, `ConcurrentHashMap` + `CopyOnWriteArrayList` |
 
-### 第 4 步：迁移 Spec/模型类（需改写）
+### Step 4: Migrate Spec/model classes (need rewriting)
 
-**LinkSpec.java** / **NodeSpec.java** — 纯 Java，仅需替换 `Utils.isEmpty()` → 内联判空。
+**LinkSpec.java** / **NodeSpec.java** — pure Java; only needs `Utils.isEmpty()` replaced → inline null/empty check.
 
-**ConditionDesc.java** / **TaskDesc.java** — 同上。
+**ConditionDesc.java** / **TaskDesc.java** — same as above.
 
-**Link.java** / **Node.java** — 去掉 `transient final`（迁移到非序列化场景），`Utils.isEmpty()` → 内联。
+**Link.java** / **Node.java** — remove `transient final` (migrated to a non-serialized scenario), `Utils.isEmpty()` → inline.
 
-**Graph.java** — 核心改动：
-- `toJson()` / `toMap()` / `toYaml()` → 去掉 snakeyaml，`ONode.serialize` → `JsonUtils.stringify`
-- `toPlantuml()` 及其辅助方法 — 完整保留，仅替换 `Utils.isEmpty()`
+**Graph.java** — core changes:
+- `toJson()` / `toMap()` / `toYaml()` → remove snakeyaml, `ONode.serialize` → `JsonUtils.stringify`
+- `toPlantuml()` and its helper methods — retained in full, with only `Utils.isEmpty()` replaced
 
-**GraphSpec.java** — 核心改写（~80 行）：
-- `fromDom(ONode dom)` → `fromDom(JsonObject dom)`，API 映射：
+**GraphSpec.java** — core rewrite (~80 lines):
+- `fromDom(ONode dom)` → `fromDom(JsonObject dom)`, API mapping:
 
 | snack4 API | freeway API |
 |---|---|
@@ -145,98 +145,98 @@ freeway-flow/
 | `linkNode.isValue()` | `linkNode instanceof String\|Number\|Boolean` |
 | `new ONode(OPTIONS).asObject()` | `JsonUtils.object()` |
 
-### 第 5 步：迁移上下文字段
+### Step 5: Migrate context fields
 
-**FlowTrace.java** — 纯 Java，零外部依赖，完整迁移。
+**FlowTrace.java** — pure Java, zero external dependencies, migrated completely.
 
-**FlowContext.java / FlowContextImpl.java** — 核心改动：
-- 去 `DamiBus` → `FlowEventBus`（自写）
-- 去 `NonSerializable` 标记接口
-- `toJson()`/`fromJson()` 中 `ONode` → `JsonObject`/`JsonUtils`
-- 去弃用方法 `vars()`/`serVars()`
+**FlowContext.java / FlowContextImpl.java** — core changes:
+- Remove `DamiBus` in favor of `FlowEventBus` (self-written)
+- Remove the `NonSerializable` marker interface
+- In `toJson()`/`fromJson()`, `ONode` → `JsonObject`/`JsonUtils`
+- Remove deprecated methods `vars()`/`serVars()`
 
-### 第 6 步：迁移驱动器
+### Step 6: Migrate the driver
 
-**FlowDriver.java** — 接口迁移，去 `@Preview`/`@NonSerializable`。
+**FlowDriver.java** — interface migration, remove `@Preview`/`@NonSerializable`.
 
-**SimpleFlowDriver.java** — 核心改动：
-- 去掉 `AbstractFlowDriver` 基类（内联其逻辑）
-- 去掉 `tryAsScriptTask()` 分支 — 不再支持任意脚本执行
-- 条件求值交给 `ExprEvaluator`
+**SimpleFlowDriver.java** — core changes:
+- Remove the `AbstractFlowDriver` base class (inline its logic)
+- Remove the `tryAsScriptTask()` branch — arbitrary script execution is no longer supported
+- Condition evaluation is delegated to `ExprEvaluator`
 
-### 第 7 步：迁移引擎核心
+### Step 7: Migrate the engine core
 
-**FlowEngine.java** — 接口迁移，去 `ResourceUtil`（通配符加载），去 `@Preview`。
+**FlowEngine.java** — interface migration, remove `ResourceUtil` (wildcard loading), remove `@Preview`.
 
-**FlowEngineDefault.java**（原 FlowEngineDefault）— 核心迁移：
-- 所有内部方法从 `(exchanger, node, startNode)` 签名为 `(exchanger, options, node, startNode)` 以传递 options（包含拦截器列表）
-- `eval()` 中用 `FlowInvocation` 包装
-- `onNodeStart`/`onNodeEnd` 中通知所有拦截器
-- 去 `RankEntity` → `FlowOptions.RankedInterceptor` record
+**FlowEngineDefault.java** (formerly FlowEngineDefault) — core migration:
+- All internal methods change from the `(exchanger, node, startNode)` signature to `(exchanger, options, node, startNode)` to pass options (including the interceptor list)
+- `eval()` is wrapped with `FlowInvocation`
+- `onNodeStart`/`onNodeEnd` notify all interceptors
+- Replace `RankEntity` with the `FlowOptions.RankedInterceptor` record
 
-### 第 8 步：迁移拦截器和事件总线
+### Step 8: Migrate the interceptors and event bus
 
-> 注：原方案第 5 步计划「砍掉拦截器链」，实际情况是用户在实施过程中要求保留。以下为实际执行内容。
+> Note: step 5 of the original plan called for "cutting the interceptor chain", but in practice the user asked to keep it during implementation. The following is what was actually executed.
 
-**FlowInterceptor.java** — 接口迁移，3 个方法（interceptFlow / onNodeStart / onNodeEnd），去 `@Preview`。
+**FlowInterceptor.java** — interface migration, 3 methods (interceptFlow / onNodeStart / onNodeEnd), remove `@Preview`.
 
-**FlowInvocation.java** — 责任链迁移：
-- 去 `RankEntity`，改用 `FlowOptions.RankedInterceptor` record
-- `(index, target)` → `(interceptor, index)` record 实现 `Comparable`
+**FlowInvocation.java** — responsibility chain migration:
+- Remove `RankEntity` and use the `FlowOptions.RankedInterceptor` record instead
+- `(index, target)` → `(interceptor, index)` record implements `Comparable`
 
-**FlowOptions.java** — 原为拦截器列表的空壳，现实现：
-- `RankedInterceptor` record（替代 solon 的 `RankEntity`）
-- `interceptorAdd` / `interceptorList` 管理
+**FlowOptions.java** — originally an empty shell for the interceptor list, now implements:
+- `RankedInterceptor` record (replaces solon's `RankEntity`)
+- `interceptorAdd` / `interceptorList` management
 
-### 第 9 步：Freeway 集成
+### Step 9: Freeway integration
 
-**FlowModule.java**：
-- 实现 `ModuleEx`，注册 `FlowEngine` 为单例
-- 内置 `IocContainerAdapter`：将 freeway `Container` 适配为 flow `Container`
-- 全限定名处理 `Container` 命名冲突
+**FlowModule.java**:
+- Implements `ModuleEx` and registers `FlowEngine` as a singleton
+- Built-in `IocContainerAdapter`: adapts the freeway `Container` to the flow `Container`
+- Fully qualified names handle the `Container` naming conflict
 
-### 第 10 步：测试
+### Step 10: Testing
 
-编写 `FlowEngineTest.java`，覆盖：
+Write `FlowEngineTest.java`, covering:
 
-| # | 测试 | 验证点 |
+| # | Test | Verification point |
 |---|---|---|
-| 1 | testLinearFlow | START→ACTIVITY→END 线型流程 |
-| 2 | testExclusiveGateway | 排他网关 + 条件分支 |
-| 3 | testGraphFromJson | JSON 定义解析 + 执行 |
-| 4 | testExprEvaluator | 表达式求值器 14 个断言 |
-| 5 | testPlantuml | PlantUML 导出格式验证 |
-| 6 | testSubGraph | #graphId 子图调用 |
-| 7 | testStop | ctx.stop() 流程停止 |
-| 8 | testEventBus | FlowEventBus 独立 pub/sub |
-| 9 | testEventBusInFlow | EventBus 在 Flow 内部使用 |
-| 10 | testInterceptorChain | 拦截器顺序 + 节点回调 |
-| 11 | testInterceptorStopFlow | 拦截器阻止流程执行 |
-| 12 | testMultipleInterceptors | 多拦截器嵌套顺序 |
+| 1 | testLinearFlow | START→ACTIVITY→END linear flow |
+| 2 | testExclusiveGateway | Exclusive gateway + conditional branches |
+| 3 | testGraphFromJson | JSON definition parsing + execution |
+| 4 | testExprEvaluator | Expression evaluator 14 assertions |
+| 5 | testPlantuml | PlantUML export format verification |
+| 6 | testSubGraph | #graphId subgraph call |
+| 7 | testStop | ctx.stop() stops the flow |
+| 8 | testEventBus | FlowEventBus standalone pub/sub |
+| 9 | testEventBusInFlow | EventBus used inside Flow |
+| 10 | testInterceptorChain | Interceptor order + node callbacks |
+| 11 | testInterceptorStopFlow | Interceptor prevents flow execution |
+| 12 | testMultipleInterceptors | Nested ordering of multiple interceptors |
 
-## 与原始方案的差异
+## Differences from the original plan
 
-实施过程中根据用户反馈做了以下调整（均在原方案基础上**增加**，不影响兼容性）：
+During implementation, the following adjustments were made based on user feedback (all are **additions** to the original plan and do not affect compatibility):
 
-| 原方案 | 实际执行 | 原因 |
+| Original plan | Actual execution | Reason |
 |---|---|---|
-| 砍掉 EventBus | 保留，自写 `FlowEventBus`（~90行） | 用户要求，零依赖可行 |
-| 砍掉拦截器链 | 完整保留 `FlowInterceptor` + `FlowInvocation` | 用户要求，零依赖可行 |
-| 单次评估通过 | 分两轮评估：EventBus → 拦截器链 | 用户逐步确认 |
-| 只做 README | 增加 `package-info.java` + `docs/` 目录 | 用户要求留存完整文档 |
+| Cut the EventBus | Kept; self-written `FlowEventBus` (~90 lines) | User request; feasible with zero dependencies |
+| Cut the interceptor chain | Fully kept `FlowInterceptor` + `FlowInvocation` | User request; feasible with zero dependencies |
+| Single evaluation round | Two evaluation rounds: EventBus → interceptor chain | User confirmed step by step |
+| README only | Added `package-info.java` + `docs/` directory | User requested retaining complete documentation |
 
-## 验证结果
+## Verification results
 
 ```
 [INFO] Tests run: 12, Failures: 0, Errors: 0, Skipped: 0
 [INFO] BUILD SUCCESS
 ```
 
-## 原始版权
+## Original copyright
 
 ```
-原始代码版权 (c) 2017-2025 noear.org and authors
+Original code copyright (c) 2017-2025 noear.org and authors
 Licensed under the Apache License, Version 2.0
 
-移植适配至 freeway 框架，保留原始许可证条款。
+Ported and adapted to the freeway framework, retaining the original license terms.
 ```

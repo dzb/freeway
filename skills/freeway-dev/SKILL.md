@@ -1,13 +1,12 @@
 ---
 name: freeway-dev
-description: 基于 Freeway 框架构建 Java 应用。当用户提到 Freeway、module、ModuleEx、SubModule、FreewayApp、IoC 容器、DbModule、HttpModule、AppRuntime、路由、ORM、EventBus、Defer、ScopedCache、HealthCheck、HealthFilter、PooledConnection、PostgresDialect、SchemaEntity、freeway-ext、CloudModule、ServiceDiscovery、FleetRegistryModule、RemoteCaller、RemoteProxyFactory、RpcExport、MeshEventBus、event mesh、service discovery、microservices 等框架相关术语时触发。涵盖模块编写、依赖注入、HTTP API、数据库操作、事务、事件总线、类型转换、延迟执行、验证、连接池、数据库方言、Schema 迁移等所有方面。同时也适用于回答 Freeway API 用法、项目结构、最佳实践和代码生成类问题。
+description: Build Java applications on the Freeway framework. Trigger it when the user mentions Freeway, module, ModuleEx, SubModule, FreewayApp, IoC container, DbModule, HttpModule, AppRuntime, routing, ORM, EventBus, Defer, ScopedCache, HealthCheck, HealthFilter, PooledConnection, PostgresDialect, SchemaEntity, freeway-ext, CloudModule, ServiceDiscovery, FleetRegistryModule, RemoteCaller, RemoteProxyFactory, RpcExport, MeshEventBus, event mesh, service discovery, microservices, or any framework-related term. Covers module authoring, dependency injection, HTTP APIs, database access, transactions, event buses, type coercion, deferred execution, validation, connection pools, SQL dialects, schema migrations, and more. Also applies to questions about Freeway API usage, project structure, best practices, and code generation.
 ---
 
 # Freeway Development Skill
 
 Freeway is a JDK 25+ Java framework built around compose-first modules, explicit wiring, and minimal ceremony.
 
-> 中文版全文见 [SKILL.zh.md](SKILL.zh.md)。
 
 ## Use This Skill For
 
@@ -57,7 +56,7 @@ Scope primitives: `Defer` and `ScopedCache` share one `ScopeSession`. Use `Defer
 - `FreewayApp.run(String[] args, ModuleEx...)` - full application startup; accepts module instances
 - `FreewayApp.create(ModuleEx...)` - builder for advanced startup control; compose modules explicitly
 - `Database.create(...)` - standalone database construction without IoC (`Database.create(config)` or `Database.create(Database.Wiring.defaults(config).withX(...))`)
-- `Freeway.create(new HttpModule(), …)` - 无 boot 起 HTTP 服务；`HttpModule` 是 `HttpServer` 的唯一装配者
+- `Freeway.create(new HttpModule(), …)` - start an HTTP server without boot; `HttpModule` is the only assembler of `HttpServer`
 
 ## Preferred Output Style
 

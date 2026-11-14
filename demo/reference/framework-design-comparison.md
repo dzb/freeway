@@ -1,15 +1,15 @@
-# Freeway / Solon / Spring 设计对比
+# Freeway / Solon / Spring Design Comparison
 
-> 排除了"功能全不全"、"生态大不大"、"用的人多不多"——只谈设计本身。
+> Setting aside "are the features complete", "is the ecosystem big", "are there many users" — this is only about the design itself.
 >
-> 本文回答"**设计得怎么样**"，是长青的设计评论。工程维度的选型评估（含 Quarkus/Micronaut、
-> 引擎与性能、Agent 友好性）见 [framework comparison](framework-comparison.md)。
+> This document answers "**how well is it designed**"; it is an evergreen design commentary. For the engineering-dimension selection assessment (including Quarkus/Micronaut,
+> engine and performance, Agent friendliness), see [framework comparison](framework-comparison.md).
 
 ---
 
-## 一、核心抽象数量对比
+## 1. Comparing the Number of Core Abstractions
 
-一个框架的核心抽象数量，是设计者克制力的直接度量。核心抽象是指：**你理解这个框架前必须搞懂的类型**。
+The number of core abstractions in a framework is a direct measure of the designer's restraint. A core abstraction means: **a type you must understand before you can understand the framework**.
 
 ### Spring
 
@@ -20,7 +20,7 @@ BeanFactory → BeanDefinition → BeanPostProcessor → ApplicationContext
 → ProxyFactory → Pointcut → Advisor → Joinpoint
 ```
 
-粗算：**14-16 个核心抽象**，呈**垂直堆叠**的抽象结构——每一层都是前一层的消费者。
+Roughly: **14-16 core abstractions**, in a **vertically stacked** structure — each layer consumes the one below it.
 
 ### Solon
 
@@ -28,7 +28,7 @@ BeanFactory → BeanDefinition → BeanPostProcessor → ApplicationContext
 SolonApp → AppContext → Plugin → EventBus → SolonProps → Router → MethodWrap
 ```
 
-粗算：**7 个核心抽象**，抽象层级更扁平——`AppContext` 同时是 IoC 容器和应用上下文，不做分层，每个抽象的功能密度更高。
+Roughly: **7 core abstractions**, with a flatter hierarchy — `AppContext` is both the IoC container and the application context, with no layering, so each abstraction has higher functional density.
 
 ### Freeway
 
@@ -36,60 +36,60 @@ SolonApp → AppContext → Plugin → EventBus → SolonProps → Router → Me
 Container → Binder → ModuleEx → Defer → Extension<T> → RuntimeHook
 ```
 
-粗算：**6 个核心抽象**，且**没有层级依赖**——Container 不依赖 Defer，Defer 不依赖 ModuleEx，完全扁平。
+Roughly: **6 core abstractions**, with **no hierarchical dependencies** — Container does not depend on Defer, Defer does not depend on ModuleEx; completely flat.
 
 ---
 
-## 二、设计语言的"减法意识"
+## 2. The "Subtraction Mindset" of the Design Language
 
-设计美学的一个关键指标：**设计者有没有勇气删掉自己写过的代码**。
+A key indicator of design aesthetics: **whether the designer has the courage to delete code they have written**.
 
-### Spring：做加法，偶尔重构
+### Spring: addition, occasional refactoring
 
-倾向于"新增替代方案而不是删除旧的"。API 表面有大量"新旧并存"的痕迹：
+It tends to "add a replacement rather than delete the old one". The API surface shows many traces of "old and new coexisting":
 
-- XML 配置 + 注解配置 + Java Config 长期并存
-- `FactoryBean` 的 `&` 前缀从未被标记为 deprecated
-- `ApplicationContext` 的接口膨胀从未被清理
-- `@Configuration` 类中的 `@Bean` 和 `@Component` 类中的 `@Bean` 行为不同，但两者都保留
+- XML configuration + annotation configuration + Java Config coexisting for a long time
+- The `&` prefix of `FactoryBean` has never been marked as deprecated
+- The interface bloat of `ApplicationContext` has never been cleaned up
+- `@Bean` in `@Configuration` classes and `@Bean` in `@Component` classes behave differently, but both are kept
 
-这不是设计缺陷——而是**向后兼容的优先级高于设计一致性**的工程选择。
+This is not a design flaw — it is an engineering choice where **backward compatibility outranks design consistency**.
 
-### Solon：审慎的加法
+### Solon: cautious addition
 
-核心抽象相对稳定，没有 Spring 那种历史负担（没有 XML 时代），所以 API 表面更干净。`AppContext` 从诞生起就承担了多重职责，这个设计从未被挑战过；`EventBus` 一直是一个静态类，未被重构为接口。
+The core abstractions are relatively stable, without Spring's historical burden (no XML era), so the API surface is cleaner. `AppContext` has carried multiple responsibilities since its inception, and this design has never been challenged; `EventBus` has always been a static class and has not been refactored into an interface.
 
-可以概括为"**从一开始就做对了，所以不需要删除**"——但更可能的情况是它还未经历 Spring 那样长达 20 年的使用压力测试。
+It can be summarized as "**done right from the start, so nothing needs deleting**" — but more likely it has not yet gone through 20 years of production pressure testing like Spring.
 
-### Freeway：减法作为第一原则
+### Freeway: subtraction as the first principle
 
-这是 Freeway 与另外两者最显著的**文化差异**。CHANGELOG 中多个版本都有 "Removed" 章节。被删除的包括：
+This is the most striking **cultural difference** between Freeway and the other two. Several versions in the CHANGELOG have a "Removed" section. Deleted items include:
 
-- `inject()` — 因为鼓励 `new X() + container.inject(x)` 的反模式
-- `Extension.Key` — 因为"没用，`Class<?>` 就够了"
-- `@Named` — 被 `@Inject("id")` 取代
-- `Module2`（更名为 `ModuleEx`）— 因为和 `java.lang.Module` 冲突
-- Strict mode — 因为 `System.setProperty` 作为副作用通道
-- `logging.properties` — 被 `freeway-logging.properties` 取代
-- Extension 适配器模块、benchmark 模块 — 移到外部仓库
-- `Route.handlerType` 字段 — 因为 4 字段版本的约束不变量散布在多个消费者中
+- `inject()` — because it encouraged the anti-pattern `new X() + container.inject(x)`
+- `Extension.Key` — because "it was unused; `Class<?>` is enough"
+- `@Named` — replaced by `@Inject("id")`
+- `Module2` (renamed to `ModuleEx`) — because it conflicted with `java.lang.Module`
+- Strict mode — because `System.setProperty` served as a side-effect channel
+- `logging.properties` — replaced by `freeway-logging.properties`
+- Extension adapter module, benchmark module — moved to an external repository
+- `Route.handlerType` field — because the 4-field version's constraint invariants were scattered across multiple consumers
 
-Route 从 4 字段变为 3 字段是一个典型案例：发现设计瑕疵 → 不打补丁 → 重新审视抽象 → 引入 `ResolvableHandler` 包装器 → 删除冗余字段。**这不是"修 bug"，这是设计迭代**。
+Route going from 4 fields to 3 is a typical case: spot a design flaw → don't patch it → re-examine the abstraction → introduce the `ResolvableHandler` wrapper → delete the redundant field. **This is not "fixing a bug", it is design iteration**.
 
-`AGENTS.md` 的仓库约定把这条写成了规则：
+The repository conventions in `AGENTS.md` state this as a rule:
 
 > **No compatibility shims**: a renamed key, a replaced API shape or a superseded
 > mechanism is deleted, not kept alongside its replacement.
 
-**判断**：在"删除的勇气"这个维度上，Freeway 远高于 Solon，Solon 远高于 Spring。这使 Freeway 的 API 表面比它的代码年龄看起来更新。
+**Verdict**: on the dimension of "courage to delete", Freeway is far above Solon, and Solon far above Spring. This makes Freeway's API surface look newer than the age of its code.
 
 ---
 
-## 三、显式性 vs 隐式性
+## 3. Explicitness vs Implicitness
 
-### Spring：隐式的王国
+### Spring: kingdom of the implicit
 
-"约定优于配置"也带来了最大的设计代价——**隐式行为的局部推理丧失**：
+"Convention over configuration" also brings the biggest design cost — **loss of local reasoning about implicit behavior**:
 
 ```java
 @Service
@@ -98,54 +98,54 @@ public class OrderService {
 }
 ```
 
-你无法在这个类中理解 `PaymentService` 何时、如何、从哪里被注入。需要完整的类路径扫描上下文才能推理这个类的行为。再比如：
+You cannot understand from this class when, how, or from where `PaymentService` is injected. You need the full classpath-scanning context to reason about this class's behavior. Another example:
 
 ```java
 @SpringBootApplication
 public class App { }
 ```
 
-这一行背后要评估上百个自动配置类的条件。需要通过 `/actuator/conditions` 端点来"事后取证"。**故障模式与直觉无关**。
+Behind this one line, the conditions of hundreds of auto-configuration classes must be evaluated. The `/actuator/conditions` endpoint is needed for "post-mortem forensics". **The failure mode has nothing to do with intuition**.
 
-### Solon：有控制的隐式
+### Solon: controlled implicitness
 
-注解驱动，所以也有隐式行为，但**范围更可控**：
+Annotation-driven, so there is implicit behavior too, but **the scope is more controllable**:
 
-- 类路径扫描的范围更明确（SolonApp 的包扫描约定）
-- 插件通过 `META-INF/solon/*.properties` 注册，路径集中且规则简单
-- 自动配置机制不如 Spring Boot 复杂，条件评估范围有限
-- 生命周期事件的时序是预定义的，订阅者按可预期的顺序触发
+- The classpath scanning scope is clearer (SolonApp's package-scanning convention)
+- Plugins are registered through `META-INF/solon/*.properties`; the path is centralized and the rules are simple
+- The auto-configuration mechanism is less complex than Spring Boot's; the scope of condition evaluation is limited
+- Lifecycle event ordering is predefined; subscribers fire in a predictable order
 
-没有完全解决"局部推理丧失"的问题（`@Inject` 的注入来源仍然不在调用点），但隐式行为的**覆盖范围**和**嵌套深度**都低于 Spring。
+It does not fully solve the "loss of local reasoning" problem (`@Inject` still does not show its injection source at the call site), but implicit behavior's **coverage** and **nesting depth** are both lower than Spring's.
 
-### Freeway：所有关系都在 binder 中
+### Freeway: all relationships live in the binder
 
-设计语言天生是显式的：
+The design language is explicit by nature:
 
 ```java
 FreewayApp.create(new HttpModule(), new DbModule(), new MyModule())
     .start();
 ```
 
-- 所有模块在这里列出 → 你知道有哪些组件
-- 所有绑定在 `Module.bind(Binder)` 中声明 → 你看到就有，没看到就没有
-- 所有扩展通过 `binder.contribute(Class).add(...)` 贡献 → 贡献点和排序规则在一起
-- 所有配置通过配置级联加载 → 环境变量、properties 文件、CLI 参数的优先级是已知的
+- All modules are listed here → you know which components exist
+- All bindings are declared in `Module.bind(Binder)` → if you see it, it exists; if you don't, it doesn't
+- All extensions are contributed through `binder.contribute(Class).add(...)` → the contribution point and its ordering rules sit together
+- All configuration is loaded through the configuration cascade → the priority of environment variables, properties files and CLI arguments is known
 
-唯一例外是已披露的 SPI：`FreewayApp.run(...)` 默认还会加载 `META-INF/services`
-声明的模块（`autoDiscovery(false)` 关闭）。绑定仍从不扫描。
+The only exception is the disclosed SPI: `FreewayApp.run(...)` by default also loads modules declared in `META-INF/services`
+(disabled by `autoDiscovery(false)`). Binding still never scans.
 
-你能够**通过读一个文件**来理解整个应用的结构。恢复了"局部推理"的能力。
+You can **understand the structure of the entire application by reading one file**. The ability to "reason locally" is restored.
 
-代价是：你需要写这个文件。**这正是显式性的价格**。
+The cost: you have to write that file. **This is exactly the price of explicitness**.
 
-**判断**：三个框架在"显式-隐式"光谱上分布在三个不同的位置。Freeway 的选择（完全显式）在现代框架中是极度稀缺的——几乎所有的框架都选择了注解驱动的隐式路径。Freeway 走了反方向。
+**Verdict**: the three frameworks sit at three different points on the "explicit-implicit" spectrum. Freeway's choice (fully explicit) is extremely rare among modern frameworks — almost all frameworks have chosen the annotation-driven implicit path. Freeway went the other way.
 
 ---
 
-## 四、模块边界设计的差异
+## 4. Differences in Module Boundary Design
 
-### Spring：模块边界是包名
+### Spring: module boundaries are package names
 
 ```java
 org.springframework.beans
@@ -154,9 +154,9 @@ org.springframework.transaction
 org.springframework.aop
 ```
 
-模块边界是**命名空间级别**的，**没有强制边界**——`BeanPostProcessor` 和 `ApplicationContext` 可以互相引用，尽管在语义上属于不同层。Spring Boot 的自动配置排序通过 `@AutoConfigureAfter`/`@AutoConfigureBefore` 注解建立——运行时"软约束"，缺乏编译期保证。
+Module boundaries are **namespace-level**, with **no enforced boundary** — `BeanPostProcessor` and `ApplicationContext` can reference each other even though they belong to different layers semantically. Spring Boot's auto-configuration ordering is established through `@AutoConfigureAfter`/`@AutoConfigureBefore` annotations — runtime "soft constraints" with no compile-time guarantee.
 
-### Solon：模块边界是 Plugin
+### Solon: module boundaries are Plugin
 
 ```java
 public interface Plugin {
@@ -166,53 +166,53 @@ public interface Plugin {
 }
 ```
 
-模块边界是一个**显式的契约**——`Plugin` 接口。`Plugin.start()` 接收 `AppContext` 但不接收 `SolonApp`，插件不能控制应用程序的整体生命周期，只能操作容器。这是一个**有限权力**的设计决策。
+The module boundary is an **explicit contract** — the `Plugin` interface. `Plugin.start()` receives `AppContext` but not `SolonApp`; a plugin cannot control the application's overall lifecycle, only operate the container. This is a **limited-power** design decision.
 
-### Freeway：模块边界是架构分界线
+### Freeway: module boundaries are architectural dividing lines
 
-模块边界不止是 `ModuleEx` 接口，而是一个**跨模块的分层约定**：
+The module boundary is more than the `ModuleEx` interface; it is a **cross-module layering convention**:
 
 ```
 freeway-http/
 └── src/main/java/com/jujin/freeway/http/
-    ├── route/Route.java        ← record，零容器依赖
-    ├── route/RouteHandler.java ← @FunctionalInterface，零容器依赖
-    ├── route/RouteIndex.java   ← 纯 trie 数据结构，零容器依赖
-    ├── HttpPipeline.java       ← record，处理声明（HttpServer.create 是唯一推导）
-    └── HttpModule.java         ← 唯一的容器感知点（同模块，不同职责——概念边界不以 artifact 为界）
+    ├── route/Route.java        ← record, zero container dependency
+    ├── route/RouteHandler.java ← @FunctionalInterface, zero container dependency
+    ├── route/RouteIndex.java   ← pure trie data structure, zero container dependency
+    ├── HttpPipeline.java       ← record, handler declaration (HttpServer.create is the sole derivation)
+    └── HttpModule.java         ← the only container-aware point (same module, different responsibility — conceptual boundaries are not artifact boundaries)
 ```
 
-`RouteIndex` 不知道 `Container`，`DatabaseImpl` 不知道 `Container`。IoC 属于 Module，不属于核心实现。这是一个**架构上的分层策略，不是接口约定，而是设计文化**。
+`RouteIndex` does not know about `Container`; `DatabaseImpl` does not know about `Container`. IoC belongs to the Module, not to the core implementation. This is an **architectural layering strategy — not an interface convention but a design culture**.
 
-这意味着：
+This means:
 
-- core 代码可以独立测试（不需要容器）
-- core 代码可以被其他框架复用（没有框架锁）
-- Module 是唯一的"框架意识"入口
-- 如果不用 IoC，可以直接 `HttpServer.create(engine, config, pipeline)` 零容器装配，与容器路径共用同一个派生点
+- core code can be tested independently (no container needed)
+- core code can be reused by other frameworks (no framework lock-in)
+- Module is the only entry point with framework awareness
+- if you don't use IoC, you can assemble directly with `HttpServer.create(engine, config, pipeline)` with zero container, sharing the same derivation point as the container path
 
-**判断**：Spring 的模块边界是命名空间（弱），Solon 的模块边界是 Plugin 接口（中），Freeway 的模块边界是**跨模块的分层契约**（强）。
+**Verdict**: Spring's module boundary is the namespace (weak), Solon's is the Plugin interface (medium), and Freeway's is a **cross-module layering contract** (strong).
 
 ---
 
-## 五、现代 Java 语言特性的利用
+## 5. Use of Modern Java Language Features
 
-这是 Freeway 和另外两者拉开代差的地方。
+This is where Freeway opens a generational gap with the other two.
 
-### Spring：语言保守主义
+### Spring: language conservatism
 
-核心抽象诞生于 Java 1.3-1.5 时代。直到今天：
+The core abstractions date from the Java 1.3-1.5 era. Even today:
 
-- `BeanPostProcessor` 签名还是 `Object postProcessBeforeInitialization(Object bean, String beanName)`——不是泛型的
-- 配置属性仍使用字符串字面量（`"classpath:..."`、`"${...}"`）
-- 启动流程固定编排在一个 `refresh()` 模板方法里——十余个生命周期步骤、顺序硬编码
-- 核心运行时抽象没有充分利用 JDK 17 的 sealed class、pattern matching、record
+- The `BeanPostProcessor` signature is still `Object postProcessBeforeInitialization(Object bean, String beanName)` — not generic
+- Configuration attributes still use string literals (`"classpath:..."`, `"${...}"`)
+- The startup flow is rigidly orchestrated in one `refresh()` template method — a dozen-plus lifecycle steps with hardcoded order
+- The core runtime abstractions do not make full use of JDK 17's sealed classes, pattern matching, and records
 
-设计语言**定格在了 Java 5-8 的时代**。
+The design language is **frozen in the Java 5-8 era**.
 
-### Solon：务实的中等现代化
+### Solon: pragmatic, moderate modernization
 
-充分使用了注解、函数式接口、lambda。API 风格与 JDK 8 同步：
+It makes full use of annotations, functional interfaces and lambdas. The API style is in sync with JDK 8:
 
 ```java
 Solon.start(MyApp.class, args, app -> {
@@ -220,101 +220,101 @@ Solon.start(MyApp.class, args, app -> {
 });
 ```
 
-但不使用 record、sealed class、ScopedValue。设计语言是 **JDK 8-11 水平的现代化**。
+But it does not use records, sealed classes or ScopedValue. Its design language is **modernized at the JDK 8-11 level**.
 
-### Freeway：将 JDK 25 作为设计基础
+### Freeway: JDK 25 as the design foundation
 
-每个核心抽象都使用了 Java 25 的能力：
+Every core abstraction uses Java 25 capabilities:
 
-- **ScopedValue**：作为 Defer、事务作用域、线程作用域的基础——替代了 ThreadLocal
-- **Record**：`Route`、`RouteGroup`、`HttpPipeline` 都是 record——声明即定义
-- **@FunctionalInterface**：`RouteHandler`、`HttpFilter`、`ModuleEx` 都是函数式接口
-- **Pattern matching / 虚拟线程**：`instanceof` 绑定与 switch 箭头分发常态化（全仓 230+ 处），
-  每连接一个虚拟线程承载 HTTP 引擎。`sealed class` 未用于类型层次——现代化是选择性的，
-  不是特性堆砌
+- **ScopedValue**: the foundation for Defer, transaction scope and thread scope — replacing ThreadLocal
+- **Record**: `Route`, `RouteGroup` and `HttpPipeline` are all records — declaration is definition
+- **@FunctionalInterface**: `RouteHandler`, `HttpFilter` and `ModuleEx` are all functional interfaces
+- **Pattern matching / virtual threads**: `instanceof` binding and switch arrow dispatch are standard (230+ places across the repository),
+  one virtual thread per connection carries the HTTP engine. `sealed class` is not used for type hierarchies — modernization is selective,
+  not feature stacking
 
-ScopedValue 从根本上改变了一种编程模型：
+ScopedValue fundamentally changes a programming model:
 
-- ThreadLocal 的泄漏风险 → 零泄漏（ScopedValue 不可逃逸）
-- ThreadLocal 的继承问题 → 零问题（ScopedValue 自动被子线程继承）
-- ThreadLocal 的手动清理 → 零需要（作用域结束自动释放）
+- ThreadLocal's leak risk → zero leaks (ScopedValue cannot escape)
+- ThreadLocal's inheritance problem → zero problems (ScopedValue is automatically inherited by child threads)
+- ThreadLocal's manual cleanup → zero need (released automatically when the scope ends)
 
-事务作用域、Defer 延迟执行、请求级 Scope 是"白送的"——不需要 ThreadLocal 的清理逻辑，不需要 InheritableThreadLocal 的传递约定，不需要在 finally 中手动 remove。
+Transaction scope, Defer delayed execution, and request-level Scope come "free" — no ThreadLocal cleanup logic, no InheritableThreadLocal propagation conventions, no manual remove in finally.
 
-**判断**：Spring 的设计语言定型于 Java 5-8，Solon 定型于 JDK 8-11，Freeway 的设计语言与 JDK 25 共生。Spring 的选择是让 2000 万开发者都能用，Freeway 的选择是"与最新 JDK 一起进化，不接受历史的包袱"。
-
----
-
-## 六、设计决策的透明度（框架的"诚实度"）
-
-框架是否公开承认 trade-off，还是把框架包装成"完全正确"的样子。
-
-### Spring：很少文档化 trade-off
-
-官方参考文档长达 1000+ 页，但大部分是 API 参考和配置说明，很少讨论**设计权衡**。例如 `@Configuration` 和 `@Component` 中 `@Bean` 方法行为不同的问题——文档只是告诉你"应该在 `@Configuration` 类中声明 `@Bean` 方法"，但没有讨论**为什么两者行为不同**（CGLIB 代理 vs 无代理），以及**为什么保留这个差异**（向后兼容 vs 设计一致性）。
-
-### Solon：适量的设计说明
-
-DeepWiki 文档覆盖了架构说明和 API 参考，但 "Design Decision" 类的内容分散各处，没有集中记录 trade-off。
-
-### Freeway：决策的 why 跟着变更走
-
-Freeway 没有一份集中的"设计决策"文件——why 写在变更记录本身：
-
-- **CHANGELOG 的 Removed / 迁移条目自带删除理由**：`CorsFilter.Builder` 被删，因为
-  "重述策略默认值的对象是同一个答案的第二个持有者"；`internal.HttpModuleConfig` 被删，
-  因为它是"键的第二份所有者——13 个 server 旋钮的默认逐个重述"；
-- **复杂模块有自己的决策文档**：`docs/design/flow.md` 逐条记录
-  （如 "Striped Lock for Singleton Concurrency"：`ConcurrentHashMap.computeIfAbsent`
-  在递归场景抛 "Recursive update"，所以选择可重入的锁）；
-- **版本发布说明承载当时的权衡**：`docs/releases/release-notes-*.md` 逐版记录引入与取舍的背景
-  （如 1.5.0 讨论 `.primary()` 绑定、构造器选择与配置激活的分工）。
-
-每个决策都对应一个**真实的问题场景**（不是抽象的可能性），然后给出**具体的权衡分析**。
-
-**判断**：这不是文档数量的差异，而是**设计文化**的差异。Freeway 把"记录权衡"视为设计的组成部分，而非事后的文档工作。这反映了对框架使用者的尊重——不把使用者当作"只需要知道怎么用"的人。
+**Verdict**: Spring's design language settled in Java 5-8, Solon's in JDK 8-11, and Freeway's design language co-evolves with JDK 25. Spring chose to be usable by 20 million developers; Freeway chose to "evolve with the latest JDK and accept no historical baggage".
 
 ---
 
-## 七、综合对比
+## 6. Transparency of Design Decisions (the Framework's "Honesty")
 
-| 维度 | Spring | Solon | Freeway |
+Whether the framework openly admits trade-offs, or packages itself as "completely correct".
+
+### Spring: trade-offs rarely documented
+
+The official reference documentation runs 1000+ pages, but most of it is API reference and configuration description, and it rarely discusses **design trade-offs**. For example, on the issue of `@Bean` methods behaving differently in `@Configuration` and `@Component`: the documentation only tells you "you should declare `@Bean` methods in `@Configuration` classes", but does not discuss **why the two behave differently** (CGLIB proxy vs no proxy) or **why this difference is kept** (backward compatibility vs design consistency).
+
+### Solon: a measured amount of design explanation
+
+The DeepWiki documentation covers architecture explanation and API reference, but "Design Decision" content is scattered, with no centralized record of trade-offs.
+
+### Freeway: the why of a decision travels with the change
+
+Freeway has no centralized "design decisions" document — the why is written in the change records themselves:
+
+- **CHANGELOG's Removed / migration entries carry their own deletion rationale**: `CorsFilter.Builder` was deleted because
+  "an object that restates policy defaults is a second holder of the same answer"; `internal.HttpModuleConfig` was deleted
+  because it was "a second owner of keys — restating the defaults of 13 server knobs one by one";
+- **Complex modules have their own decision documents**: `docs/design/flow.md` records them one by one
+  (e.g. "Striped Lock for Singleton Concurrency": `ConcurrentHashMap.computeIfAbsent`
+  throws "Recursive update" in recursive scenarios, so a reentrant lock was chosen);
+- **Release notes carry the trade-offs of the moment**: `docs/releases/release-notes-*.md` records, version by version, the background of each introduction and trade-off
+  (e.g. 1.5.0 discusses the division of labor between `.primary()` bindings, constructor selection and config activation).
+
+Each decision corresponds to a **real problem scenario** (not an abstract possibility), followed by a **concrete trade-off analysis**.
+
+**Verdict**: this is not a difference in documentation volume but in **design culture**. Freeway treats "recording trade-offs" as part of design rather than after-the-fact documentation work. This reflects respect for framework users — not treating them as people who "only need to know how to use it".
+
+---
+
+## 7. Overall Comparison
+
+| Dimension | Spring | Solon | Freeway |
 |---|---|---|---|
-| **核心抽象数量** | 14-16，层级堆叠 | 7-8，功能密度高 | 6，完全扁平 |
-| **减法意识** | 弱（历史债重） | 中（稳定，但少删除） | 强（删除是文化） |
-| **显式性** | 隐式为主 | 适度隐式 | 完全显式 |
-| **模块边界强度** | 弱（包即模块） | 中（Plugin 约定） | 强（跨模块分层契约） |
-| **设计语言时代** | Java 5-8 | JDK 8-11 | JDK 25 |
-| **trade-off 透明度** | 低 | 中 | 高 |
-| **核心代码与框架的耦合** | 高（无处不 Spring） | 中 | 低（core 零容器依赖） |
+| **Core abstraction count** | 14-16, hierarchically stacked | 7-8, high functional density | 6, completely flat |
+| **Subtraction mindset** | Weak (heavy historical debt) | Medium (stable, but few deletions) | Strong (deletion is culture) |
+| **Explicitness** | Mostly implicit | Moderately implicit | Fully explicit |
+| **Module boundary strength** | Weak (package = module) | Medium (Plugin convention) | Strong (cross-module layering contract) |
+| **Design language era** | Java 5-8 | JDK 8-11 | JDK 25 |
+| **Trade-off transparency** | Low | Medium | High |
+| **Coupling of core code to the framework** | High (Spring everywhere) | Medium | Low (core has zero container dependency) |
 
 ---
 
-## 八、各自的独特价值主张
+## 8. Each Framework's Distinct Value Proposition
 
 ### Spring
-- **价值**：约定优于配置，极低决策成本
-- **代价**：你需要信任它的约定，并理解它背后复杂的适配层
-- **适合**：大规模团队、快速交付、生态丰富的场景
+- **Value**: convention over configuration, extremely low decision cost
+- **Cost**: you must trust its conventions and understand the complex adaptation layer behind them
+- **Good fit**: large-scale teams, rapid delivery, ecosystem-rich scenarios
 
 ### Solon
-- **价值**：比 Spring 更轻，但保留了注解驱动的开发体验
-- **代价**：生态不如 Spring，但够用
-- **适合**：需要比 Spring 更轻但不想换范式的团队
+- **Value**: lighter than Spring, while retaining the annotation-driven developer experience
+- **Cost**: less ecosystem than Spring, but sufficient
+- **Good fit**: teams that need something lighter than Spring but don't want to change paradigms
 
 ### Freeway
-- **价值**：完全透明、零魔法、你完全控制每一个绑定关系
-- **代价**：你需要显式写出所有关系（这既是代价也是价值）
-- **适合**：需要完全掌控运行时、追求极致性能、小团队或个人项目
+- **Value**: fully transparent, zero magic, you fully control every binding relationship
+- **Cost**: you must write all relationships explicitly (this is both a cost and a value)
+- **Good fit**: needs full runtime control, maximum performance, small teams or personal projects
 
 ---
 
-## 九、结语
+## 9. Conclusion
 
-三个框架服务于不同的**信任模型**：
+The three frameworks serve different **trust models**:
 
-- **Spring** 让你信任它的自动装配
-- **Solon** 让你信任它的轻量注解
-- **Freeway** 不要求你信任任何东西——每一行代码都在那里，你可以读完、理解、修改
+- **Spring** asks you to trust its auto-wiring
+- **Solon** asks you to trust its lightweight annotations
+- **Freeway** does not require you to trust anything — every line of code is right there; you can read it all, understand it, and modify it
 
-从设计语言的纯粹性和一致性来看，**Freeway 高于 Solon，Solon 高于 Spring**。但设计语言的纯粹性从来不是框架选择的首要标准——它是给懂得欣赏的人的额外奖赏。
+In terms of purity and consistency of design language, **Freeway ranks above Solon, and Solon above Spring**. But purity of design language has never been the primary criterion for choosing a framework — it is an extra reward for those who can appreciate it.

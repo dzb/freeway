@@ -1,5 +1,5 @@
 ##################################################################
-#  Freeway 配置参考
+#  Freeway configuration reference
 #  Copy to src/main/resources/application.properties
 #  or application-{profile}.properties for profile-specific values.
 #
@@ -21,10 +21,10 @@
 #    then APP_SERVER_PORT -> server.port (passthrough)
 #
 #  ========================================
-#  必填配置（启动时必须设置，否则报错）:
-#    - freeway.db.url          (JDBC 连接 URL)
-#    - freeway.db.username     (数据库用户名)
-#    - freeway.http.ssl.key-store + 证书  (生产环境 HTTPS)
+#  Required configuration (startup fails when missing):
+#    - freeway.db.url          (JDBC connection URL)
+#    - freeway.db.username     (database user)
+#    - freeway.http.ssl.key-store + certificate  (HTTPS in production)
 #  ========================================
 ##################################################################
 
@@ -56,13 +56,17 @@
 # See docs/configuration.md for JSON-style configuration.
 # com.myapp.audit.level=FINE
 
-# MDC (Mapped Diagnostic Context) — 每线程级上下文键值对，用于分布式链路追踪和请求关联。
-# 日志输出中 MDC 键值以 [key=value] 形式显示在 logger 名之后。
-# 默认不预设优先级：所有 MDC 键按字母序；要突出的键由应用自己声明。
-# 典型场景：在请求入口将 traceId/requestId 放入 MDC，后续所有日志自动携带该上下文。
+# MDC (Mapped Diagnostic Context) — a per-thread key/value context used for
+# distributed tracing and request correlation. MDC entries are rendered as
+# [key=value] after the logger name. No priority is preset: all MDC keys are
+# alphabetical, and the keys to highlight are declared by the application.
+# Typical use: put traceId/requestId into MDC at the request entry, so every
+# later record carries that context automatically.
 #
-# 注意：以下四项只在类加载期读取，只有 -D / 环境变量生效，写进任何配置文件都无效：
-#   freeway.log.mdc / freeway.log.mdc.priority / freeway.log.color / freeway.log.caller-info
+# Note: the five keys below are read at class-load time; only -D / environment
+# variables apply, and writing them in any configuration file has no effect:
+#   freeway.log.system / freeway.log.mdc / freeway.log.mdc.priority /
+#   freeway.log.color / freeway.log.caller-info
 # -Dfreeway.log.mdc=true
 # -Dfreeway.log.mdc.priority=traceId,requestId
 
@@ -183,11 +187,11 @@
 #  Database / Connection (required)
 # ================================
 
-# JDBC URL (required — no default) [必填].
+# JDBC URL (required — no default).
 # Scenario: postgresql for production, h2:mem for local dev, mysql for legacy.
 # freeway.db.url=jdbc:postgresql://localhost:5432/mydb
 
-# Username (required — no default) [必填].
+# Username (required — no default).
 # freeway.db.username=postgres
 
 # Password (default: empty). Set via env var FREEWAY_DB_PASSWORD in production.

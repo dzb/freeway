@@ -1,52 +1,52 @@
 # freeway-flow
 
-进程内图编排引擎：加载 DAG，用带条件、网关与分支隔离的语义执行。图格式为
-**Freeway 原生设计**（`version=3`，显式 entry、节点/边分离、构建期全量校验）；引擎语义由
-Freeway 自行定义，不追随上游行为。7 种节点、封闭的任务词汇表、boot 期报错的校验姿态，
-与框架其他模块同一种品味。
+An in-process graph orchestration engine: loads a DAG and executes it with semantics that include conditions, gateways, and branch isolation. The graph format is
+a **Freeway-native design** (`version=3`, explicit entry, separated nodes/links, full build-time validation); the engine semantics are
+defined by Freeway itself and do not follow upstream behavior. 7 node types, a closed task vocabulary, and a validation posture that reports errors at boot,
+in keeping with the rest of the framework.
 
-> **边界**：这是编排器，不是耐用工作流引擎——不提供跨进程持久化与断点恢复，
-> 执行是同步 in-JVM 的。
+> **Boundary**: this is an orchestrator, not a durable workflow engine — it provides no cross-process persistence or checkpoint recovery,
+> and execution is synchronous and in-JVM.
 
-## 来源与许可
+## Sources and license
 
-引擎谱系可追溯至 [opensolon/solon-flow](https://github.com/opensolon/solon-flow) 4.0.2
-（[Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0)）。保留的是节点分类与
-若干遍历不变式；图 schema、任务词汇表、执行模型（迭代前沿行走）、join/loop 语义与校验
-姿态均为 Freeway 重写。零新增三方依赖：
+The engine lineage traces back to [opensolon/solon-flow](https://github.com/opensolon/solon-flow) 4.0.2
+([Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0)). What is retained is the node taxonomy and
+several traversal invariants; the graph schema, task vocabulary, execution model (iterative frontier walk), join/loop semantics, and validation posture
+are all Freeway rewrites. Zero new third-party dependencies:
 
-| solon-flow 依赖 | 用途 | freeway-flow 替代 |
+| solon-flow dependency | Purpose | freeway-flow replacement |
 |---|---|---|
-| `snakeyaml` | YAML 图定义 | **移除** — 仅支持 JSON |
-| `snack4` (ONode) | JSON 序列化 | `freeway-commons` JsonUtils |
-| `dami2` (DamiBus) | 执行级事件总线 | `FlowEventBus`（~90 行） |
-| `liquor-eval` (Scripts) | 脚本/任务求值 | **移除** — task 仅 `@name` / `#graphId` / 内联 handler |
-| `solon-expression` (SnelParser) | 条件表达式 | `ExprEvaluator`（独立递归下降实现） |
-| `RankEntity` | 拦截器排序 | 容器扩展链（组装期定序，加载后不可变） |
+| `snakeyaml` | YAML graph definitions | **Removed** — JSON only |
+| `snack4` (ONode) | JSON serialization | `freeway-commons` JsonUtils |
+| `dami2` (DamiBus) | Execution-level event bus | `FlowEventBus` (~90 lines) |
+| `liquor-eval` (Scripts) | Script/task evaluation | **Removed** — tasks are only `@name` / `#graphId` / inline handler |
+| `solon-expression` (SnelParser) | Condition expressions | `ExprEvaluator` (standalone recursive-descent implementation) |
+| `RankEntity` | Interceptor ordering | Container extension chain (ordered at assembly time, immutable after load) |
 
-## 节点语义
+## Node semantics
 
-| 类型 | 语义 |
+| Type | Semantics |
 |---|---|
-| `START` | 入口；沿匹配的边推进 |
-| `END` | 标记图完成；未达 END 且非主动停止的运行会失败 |
-| `ACTIVITY` | 写 `data` → 跑 task → 沿匹配边 and-fan-out |
-| `EXCLUSIVE` | 择一：首个命中的 `when`，否则默认边，否则**死端报错** |
-| `INCLUSIVE` | 先 join（所有前驱分支到达各计数一次）再 run 再 fan |
-| `PARALLEL` | 先 join 再 fork；`join:"merge"`（默认）分支写隔离 + 冲突检测，`"shared"` 显式退回共享 |
-| `LOOP` | `$for`/`$in` 迭代 body（顺序、每次迭代重置体内 join 计数）；无 `$for` 即普通网关 |
+| `START` | Entry; advances along matching links |
+| `END` | Marks the graph complete; a run that does not reach END and is not deliberately stopped fails |
+| `ACTIVITY` | Writes `data` → runs task → and-fan-out along matching links |
+| `EXCLUSIVE` | Chooses one: the first matching `when`, otherwise the default link, otherwise a **dead-end error** |
+| `INCLUSIVE` | Joins first (each arriving predecessor branch counted once), then runs, then fans |
+| `PARALLEL` | Joins first, then forks; with `join:"merge"` (default), branch write isolation + conflict detection; `"shared"` explicitly falls back to sharing |
+| `LOOP` | `$for`/`$in` iterate the body (sequential, with join counts inside the body reset each iteration); without `$for` it is an ordinary gateway |
 
-## 词汇表（构建期即校验）
+## Vocabulary (validated at build time)
 
-- **task**：`@name`（容器按 id 解析 `TaskHandler`/`ConditionHandler`）、`#graphId`（子图，
-  未达 END 即在调用点报错）、内联 handler（编程式）。v1/v2 的 `$meta`、`!marker` 已删除：
-  静态值改用节点 `data` 字段，标记匹配用带 id 的 contribute + `@name`——旧写法在
-  **构建期**报错并指路。
-- **when（条件）**：`ExprEvaluator` 表达式（`> < >= <= == != && || !`、括号、`a.b.c` 路径、
-  列表下标），或 `@name` handler 引用。所有表达式在 `create()` 编译，非法表达式启动即失败。
-- **join**：仅 PARALLEL 节点的保留 meta 键，`merge`（缺省）或 `shared`。
+- **task**: `@name` (the container resolves `TaskHandler`/`ConditionHandler` by id), `#graphId` (subgraph,
+  errors at the call site if END is not reached), inline handler (programmatic). v1/v2 `$meta` and `!marker` are removed:
+  use the node `data` field for static values, and contribute with an id + `@name` for marker matching — old forms error at
+  **build time** with guidance.
+- **when (condition)**: `ExprEvaluator` expression (`> < >= <= == != && || !`, parentheses, `a.b.c` paths,
+  list indexing), or an `@name` handler reference. All expressions compile in `create()`; an invalid expression fails at startup.
+- **join**: a reserved meta key on PARALLEL nodes only, `merge` (default) or `shared`.
 
-## 快速开始（v3）
+## Quick start (v3)
 
 ```java
 String json = """
@@ -57,7 +57,7 @@ String json = """
     { "id": "s",    "type": "start" },
     { "id": "gw",   "type": "exclusive" },
     { "id": "high", "type": "activity", "task": "@handler" },
-    { "id": "low",  "type": "activity", "data": { "verdict": "存档" }, "task": "@handler" },
+    { "id": "low",  "type": "activity", "data": { "verdict": "archived" }, "task": "@handler" },
     { "id": "e",    "type": "end" }
   ],
   "links": [
@@ -69,7 +69,7 @@ String json = """
   ]
 }""";
 
-// IoC 装配：任务 = 带 id 的容器绑定，拦截器 = 贡献的扩展（加载期定链，之后不可变）
+// IoC assembly: tasks = container bindings with ids, interceptors = contributed extensions (chain fixed at load time, immutable afterward)
 App app = Freeway.create(new FlowModule(), binder -> {
     binder.contribute(TaskHandler.class).add("handler", (ctx, node) ->
         System.out.println(ctx.get("verdict")));
@@ -80,23 +80,23 @@ App app = Freeway.create(new FlowModule(), binder -> {
     });
 });
 
-Graph graph = Graph.fromText(json);      // 构建期校验：环/入口/词汇/表达式/join
+Graph graph = Graph.fromText(json);      // build-time validation: cycles/entry/vocabulary/expressions/join
 FlowContext ctx = FlowContext.of();
 ctx.put("score", 95);
 app.get(FlowEngine.class).eval(graph, ctx);
 
-// 独立使用（无容器）：只支持内联 handler 与 #子图
+// Standalone use (no container): only inline handlers and #subgraphs are supported
 FlowEngine standalone = FlowEngine.create();
 ```
 
-分支隔离：`join: "merge"`（默认）下每个 PARALLEL 分支写入线程本地缓冲，干净结束时合并；
-两个分支改同一键的同一个基值 → 合并报冲突，而不是静默择一。
+Branch isolation: under `join: "merge"` (the default), each PARALLEL branch writes to a thread-local buffer and merges on clean completion;
+if two branches change the same key from the same base value → the merge reports a conflict rather than silently choosing one.
 
-## 模块依赖
+## Module dependencies
 
-`freeway-ioc` + `freeway-commons` + slf4j-api（框架内模块，零新增三方）。
+`freeway-ioc` + `freeway-commons` + slf4j-api (in-framework modules, zero new third-party).
 
 ```
-原始代码版权 (c) 2017-2025 noear.org and authors，
-以 Apache License 2.0 授权；Freeway 重写保留原始许可条款。
+Original code copyright (c) 2017-2025 noear.org and authors,
+licensed under the Apache License 2.0; the Freeway rewrite retains the original license terms.
 ```

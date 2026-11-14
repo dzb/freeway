@@ -1,114 +1,116 @@
-# Freeway 配置参考
+# Freeway Configuration Reference
 
-> 所有配置项采用点号分隔的层级键，统一在 `freeway.*` 命名空间下。
-> 配置来源优先级（低 → 高）：`application.properties` → `application.json` → `application-{profile}.properties` → `application-{profile}.json` → **工作目录/`freeway.config.file` 覆盖文件**（同名同序，文件系统整体高于类路径基线，可热重载） → **模块贡献的源**（如 cloud secret store，`order()=15`） → 环境变量（`FREEWAY_*`，`order()=10`） → **JVM 系统属性**（主类启动前 `-Dkey=value`，键原样，`order()=5`） → CLI 参数（`--key=value`，`order()=0`）。
-> 优先级由各来源声明的 `SymbolProvider.order()` 决定（升序查找、首个命中即胜），与模块安装顺序无关。
-> 详见 [architecture.md](architecture.md) 的配置级联章节。
+> All configuration keys are dot-separated hierarchical keys, unified under the `freeway.*` namespace.
+> Configuration source precedence (low → high): `application.properties` → `application.json` → `application-{profile}.properties` → `application-{profile}.json` → **working-directory/`freeway.config.file` override files** (with the same names and order; the filesystem as a whole outranks the classpath baseline and is hot-reloadable) → **module-contributed sources** (for example a cloud secret store, `order()=15`) → environment variables (`FREEWAY_*`, `order()=10`) → **JVM system properties** (`-Dkey=value` before the main class starts, keys verbatim, `order()=5`) → CLI arguments (`--key=value`, `order()=0`).
+> Precedence is determined by each source's declared `SymbolProvider.order()` (ascending lookup, first match wins), independent of module installation order.
+> See the configuration cascade chapter of [architecture.md](architecture.md).
 
 ---
 
-## 配置分类规则
+## Configuration classification rules
 
-每个键的**档**写在下面各表里。分档不是口味问题，而是四个问题按顺序问下来的结果——**同一把尺子量所有键**，新增键时照同一顺序回答即可：
+Each key's **class** is stated in the tables below. Classification is not a matter of taste but the result of four questions asked in order — **one ruler measures every key** — and a new key need only answer them in the same order:
 
-| # | 判据 | 落到哪一档 |
+| # | Criterion | Resulting class |
 |---|------|-----------|
-| 1 | 没有合理默认、缺失即启动失败？ | **必填**（无条件）／**必填·条件**（某个特性开启时才必填） |
-| 2 | 有默认，但默认只在开发/本机成立？ | **决策** —— 部署时按环境改 |
-| 3 | 默认就是推荐姿态，只在关掉某特性时才写？ | **姿态** —— `.enabled` 家族与 presence 主键 |
-| 4 | 值是数字/时长/大小/路径，默认即框架推荐值？ | **调优** —— 不动 |
+| 1 | No reasonable default, and startup fails when it is missing? | **required** (unconditional) / **required·conditional** (required only when a feature is enabled) |
+| 2 | Has a default, but one that holds only in development/on the local machine? | **decision** — change per environment when deploying |
+| 3 | The default is the recommended posture, written only to turn a feature off? | **posture** — the `.enabled` family and presence primary keys |
+| 4 | Is the value a number/duration/size/path whose default is the framework-recommended value? | **tuning** — leave it alone |
 
-另外两类**不是"决定"**，别和上面混：
+Two further classes are **not "decisions"** — do not mix them with the above:
 
-- **声明**（`freeway.cloud.{secret,storage,discovery,registry}.type`）：只表达"我期望用哪个后端"，**不选择实现**（选择＝`.primary()` 绑定、`@Local` 标记、装哪个适配器模块）；仍用本地实现而声明非空时启动告警一次。
-- **机制**（`freeway.config.file`、`freeway.env.prefix`、`freeway.cloud.secret.file/.keys`）：配置的是配置系统本身，写进任何配置文件都无效。前两个可来自 `-D` 或 `FREEWAY_CONFIG_FILE`/`FREEWAY_ENV_PREFIX`；后两个**只认 `-D`**——它们经符号解析链读取，走一遍级联会递归。
+- **declaration** (`freeway.cloud.{secret,storage,discovery,registry}.type`): expresses only "which backend I intend to use"; it **does not select an implementation** (selection = a `.primary()` binding, an `@Local` marker, which adapter module is installed). When the local implementation is still in use and the declaration is non-empty, startup warns once.
+- **mechanism** (`freeway.config.file`, `freeway.env.prefix`, `freeway.cloud.secret.file/.keys`): these configure the configuration system itself, and writing them into any configuration file has no effect. The first two may come from `-D` or `FREEWAY_CONFIG_FILE`/`FREEWAY_ENV_PREFIX`; the latter two **honour `-D` only** — they are read through the symbol resolution chain, and going through the cascade once would recurse.
 
-**形态后缀**说明这个值是怎么来的（它决定能不能被"隐藏"）：
+A **shape suffix** describes where the value comes from (it determines whether the value can be "hidden"):
 
-| 后缀 | 含义 | 例子 |
+| Suffix | Meaning | Example |
 |------|------|------|
-| `·auto` | 值必须**推导**，写不出来 | `log.file=auto`（路径含 runtime 的 `app.name`）、`registry.service-scheme=auto`（跟随 HTTP 服务器是否启用 TLS）、`registry.service-host=auto`（POD_IP → 首个可路由本地地址）、`registry.shutdown-drain=auto`（由注册表后端回答） |
-| `·presence` | 主键一出现，整簇子键才谈得上 | `ssl.key-store`（路径即启用 HTTPS）、`event.peers`、`rpc.tls.key-store` |
-| `·哨兵` | 空/`0` = 交给平台、JDK 或运行时 | `dialect=""`（从 JDBC URL 推断）、`registry.service-port`（空＝实际监听端口）、`max-connections=0`（OS 默认） |
-| `·聚合闸` | 一个键统管一簇调优键 | `rpc.resilience=auto\|off`（`off` 时忽略全部 `retry.*`/`circuit-breaker.*`/`rate-limit.*`） |
+| `·auto` | The value must be **derived**; it cannot be written literally | `log.file=auto` (the path embeds the runtime's `app.name`), `registry.service-scheme=auto` (follows whether the HTTP server has TLS enabled), `registry.service-host=auto` (POD_IP → the first routable local address), `registry.shutdown-drain=auto` (answered by the registry backend) |
+| `·presence` | Only once the primary key appears do the cluster's sub-keys become meaningful | `ssl.key-store` (the path is what enables HTTPS), `event.peers`, `rpc.tls.key-store` |
+| `·sentinel` | Empty/`0` = defer to the platform, the JDK or the runtime | `dialect=""` (inferred from the JDBC URL), `registry.service-port` (empty = the actual listening port), `max-connections=0` (OS default) |
+| `·aggregate switch` | One key governs a whole cluster of tuning keys | `rpc.resilience=auto\|off` (when `off`, all `retry.*`/`circuit-breaker.*`/`rate-limit.*` are ignored) |
 
-**你不必读的档**：`姿态` / `调优` / `声明` / `机制` 四档的默认值就是推荐值，只有 `必填` 与 `决策` 需要按部署回答。一个不涉及 HTTPS、不面向浏览器的服务只需要其中 2 个：
+**Classes you do not need to read**: for the four classes `posture` / `tuning` / `declaration` / `mechanism`, the default is the recommended value; only `required` and `decision` need an answer per deployment. A service that does not involve HTTPS and does not face browsers needs only 2 of them:
 
-| 模块 | 必须决定的键 | 说明 |
+| Module | Keys you must decide | Notes |
 |------|-------------|------|
-| **DB** | `freeway.db.url`、`freeway.db.username` | 无默认值，启动时必检；密码走 `FREEWAY_DB_PASSWORD` |
-| **HTTP** | `freeway.http.server.host` / `.port` | 默认 `127.0.0.1:8080`；容器里通常改成 `0.0.0.0` |
-| **HTTP** | `freeway.http.ssl.key-store` + `-password` | 生产启用 HTTPS 时（keystore 路径即启用；不配即明文） |
-| **HTTP** | `freeway.http.cors.allowed-origins` | 默认 `*` 是开发姿态，部署时写真实域名 |
-| **Cloud** | `freeway.cloud.event.peers` + `.token` | 启用事件网格时两者都要（peers 非空即开关；token 全节点一致） |
-| **Cloud** | `freeway.cloud.rpc.tls.key-store` + `-password` | 出站 RPC 走 mTLS 时（路径即启用） |
-| **Cloud** | `freeway.cloud.registry.service-host` | `auto` 在容器里通常够用；多网卡主机需点名 |
-| **Cloud** | `freeway.cloud.secret.file` / `.keys` | 密钥后端自身配置，**仅 `-D` 可读**（环境变量不生效，见 §五·密钥） |
+| **DB** | `freeway.db.url`, `freeway.db.username` | No default values, checked at startup; the password comes from `FREEWAY_DB_PASSWORD` |
+| **HTTP** | `freeway.http.server.host` / `.port` | Default `127.0.0.1:8080`; in a container usually changed to `0.0.0.0` |
+| **HTTP** | `freeway.http.ssl.key-store` + `-password` | When HTTPS is enabled in production (the keystore path is what enables it; without it, plaintext) |
+| **HTTP** | `freeway.http.cors.allowed-origins` | The default `*` is a development posture; write the real domain when deploying |
+| **Cloud** | `freeway.cloud.event.peers` + `.token` | Both are needed when the event mesh is enabled (non-empty peers is the switch; the token must be identical on all nodes) |
+| **Cloud** | `freeway.cloud.rpc.tls.key-store` + `-password` | When outbound RPC uses mTLS (the path is what enables it) |
+| **Cloud** | `freeway.cloud.registry.service-host` | `auto` is usually enough in a container; a multi-NIC host must be named explicitly |
+| **Cloud** | `freeway.cloud.secret.file` / `.keys` | The secret backend's own configuration, **readable only via `-D`** (environment variables do not work; see §V · Secrets) |
 
-**为什么调优档不需要"总开关"**：每簇已经有一个键在管它，再加一个只是换种说法说"关"——`rpc.resilience` 管九个弹性键，`event.enabled` presence 管四个 `event.*-ms` 传输超时（网格不存在时它们无从谈起），`ssl.enabled` presence 管整簇 TLS，调优键自己写着"用平台默认"（`0` ＝ OS/JDK 默认，空 ＝ JDK 默认）。
+**Why the tuning class needs no "master switch"**: each cluster already has one key governing it, and adding another would only state "off" in different words — `rpc.resilience` governs the nine resilience keys, the `event.enabled` presence governs the four `event.*-ms` transport timeouts (which are meaningless when no mesh exists), the `ssl.enabled` presence governs the whole TLS cluster, and tuning keys themselves say "use the platform default" (`0` = OS/JDK default, empty = JDK default).
 
-**为什么不把调优键都改成 `auto`**：`auto` 只在**值必须推导**时才成立（带 `·auto` 后缀的共 6 个键：日志路径/格式/颜色、注册 scheme/host、停机 drain）。给一个常量默认值加 `auto`，得到的只是同一规则的第二种说法——多一个分支、多一套文档、多一处测试，换不来信息。**日志**是范本：`log.file=auto` 让 `logs/{app.name}.log` + 双滚动 + GZIP + 30 天保留整簇隐身，而 `max-size` 这类常量键保持可写、只是不进样例。
+**Why not turn every tuning key into `auto`**: `auto` holds only when the **value must be derived** (6 keys carry the `·auto` suffix: log path/format/colour, registry scheme/host, shutdown drain). Adding `auto` to a constant default yields only a second way of stating the same rule — one more branch, one more set of docs, one more test, and no information gained. **Logging** is the model: `log.file=auto` makes the whole `logs/{app.name}.log` + dual rotation + GZIP + 30-day retention cluster invisible, while constant keys such as `max-size` stay writable, merely absent from the samples.
 
-### 配置文件怎么组织
+### How configuration files are organized
 
-**默认一个文件**：`application.properties`（或 `.json`）作基线 + `application-{profile}.*` 作环境轴。理由：需要人回答的只有上表那几个键，生产样例一共也只生效 22 个；profile 已经是"按环境分区"的正交轴。
+**One file by default**: `application.properties` (or `.json`) as the baseline plus `application-{profile}.*` as the environment axis. The reason: only the few keys in the table above need a human answer, and the production sample activates just 22 in total; profile is already the orthogonal axis for "partitioning by environment".
 
-按模块拆分是**可选约定**，只在"多团队/多 ConfigMap 各自拥有配置"时才有价值——机制上不需要改任何代码，`freeway.config.file` 已支持多文件（逗号分隔、顺序即优先级、全部热重载）。拆分时三条纪律：
+Splitting by module is an **optional convention**, valuable only when "multiple teams/multiple ConfigMaps each own their configuration" — mechanically it requires no code change, since `freeway.config.file` already supports multiple files (comma-separated, order is precedence, all hot-reloaded). Three rules when splitting:
 
-1. 文件与命名空间 1:1：`config/http.properties` 只放 `freeway.http.*`；
-2. **一个键只有一个家**——同一键出现在两个覆盖文件里会告警并点名两个文件（后者胜），但不要依赖它；
-3. 顺序显式写在 `FREEWAY_CONFIG_FILE` / `-Dfreeway.config.file` 里，不靠文件名猜。
+1. Files and namespaces are 1:1: `config/http.properties` holds only `freeway.http.*`;
+2. **A key has exactly one home** — the same key appearing in two override files warns and names both files (the later one wins), but do not rely on it;
+3. Write the order explicitly in `FREEWAY_CONFIG_FILE` / `-Dfreeway.config.file`; never guess it from file names.
 
-两条边界：`freeway.config.file` 列出的额外文件**不派生 profile 变体**（模块 × profile 会让文件数翻倍，profile 增量仍应回到 `application-{profile}.*`）；框架**不自动加载**每模块的默认文件——默认值只有一个来源，就是各模块 `*ConfigKeys` 里的常量。
+Two boundaries: the extra files listed by `freeway.config.file` **do not derive profile variants** (module × profile would double the file count; profile increments still belong in `application-{profile}.*`); the framework **does not auto-load** per-module default files — defaults have exactly one source, the constants in each module's `*ConfigKeys`.
 
 ---
 
-## 模块总览
+## Module overview
 
-| 模块 | 命名空间 | 说明 |
+| Module | Namespace | Notes |
 |------|----------|------|
-| **Boot** | `freeway.profile`, `freeway.config.file`, `freeway.env.prefix` | 运行时启动与配置级联 |
-| **Commons** | `freeway.log.*`, `freeway.env.prefix` | 日志系统 |
-| **HTTP** | `freeway.http.*` | Web 服务器、路由、SSL |
-| **DB** | `freeway.db.*` | 数据库连接、池、Schema、迁移 |
-| **Cloud** | `freeway.cloud.*` | 云原生 — 发现、RPC、弹性、事件、存储、密钥 |
-| **Flow** | 无外部配置 | 工作流引擎，纯编程式配置 |
-| **IoC** | 无外部配置 | 容器、绑定、作用域，纯编程式 |
+| **Boot** | `freeway.profile`, `freeway.config.file`, `freeway.env.prefix` | Runtime startup and the configuration cascade |
+| **Commons** | `freeway.log.*`, `freeway.env.prefix` | Logging system |
+| **HTTP** | `freeway.http.*` | Web server, routing, SSL |
+| **DB** | `freeway.db.*` | Database connections, pool, schema, migrations |
+| **Cloud** | `freeway.cloud.*` | Cloud native — discovery, RPC, resilience, events, storage, secrets |
+| **Flow** | No external configuration | Workflow engine, programmatic configuration only |
+| **IoC** | No external configuration | Container, bindings, scopes; programmatic only |
 
 ---
 
-## 一、Boot — 运行时启动
+## I. Boot — Runtime Startup
 
-### 配置项
+### Configuration keys
 
-| 键 | 档 | 类型 | 默认值 | 必填 | 说明 |
+| Key | Class | Type | Default | Required | Meaning |
 |----|------|------|--------|------|------|
-| `freeway.profile` | 决策 | String | *(无)* | 否 | 激活的 Profile，支持逗号分隔多个。不设则不加载任何 profile 变体文件。开发用 `dev`，生产用 `prod` |
-| `freeway.config.file` | 机制 | String | *(空)* | 否 | 额外配置文件路径，多个逗号分隔。参与文件级热重载 |
-| `freeway.env.prefix` | 机制 | String | `FREEWAY_` | 否 | 环境变量前缀；自定义前缀时 `APP_SERVER_PORT` → `server.port`（透传） |
+| `freeway.profile` | decision | String | *(none)* | no | Active profile(s); comma-separated multiple values are supported. If unset, no profile variant files are loaded. Use `dev` in development and `prod` in production |
+| `freeway.config.file` | mechanism | String | *(empty)* | no | Extra configuration file paths, comma-separated. Participates in file-level hot reload |
+| `freeway.env.prefix` | mechanism | String | `FREEWAY_` | no | Environment variable prefix; with a custom prefix, `APP_SERVER_PORT` → `server.port` (passed through) |
 
-`freeway.config.file` 与 `freeway.env.prefix` 是 **bootstrap-only 键**：
-它们配置的就是配置系统本身，因此只能来自 `-D<键>` 或 `FREEWAY_<键>`
-（如 `FREEWAY_ENV_PREFIX`、`FREEWAY_CONFIG_FILE`）。
-写进 `application.properties`/`application.json`（类路径或工作目录）无效，作为
-CLI 参数（`--freeway.config.file=...`）同样无效——启动时会打 WARN 点名来源文件或
-"命令行参数"，不再静默忽略。`FREEWAY_` 前缀对这两个键固定不变（否则就要用被
-`env.prefix` 配置的映射去读 `env.prefix`）；`freeway.profile` 不是 bootstrap
-键，走正常级联。
+`freeway.config.file` and `freeway.env.prefix` are **bootstrap-only keys**:
+they configure the configuration system itself, so they can come only from `-D<key>` or
+`FREEWAY_<key>` (for example `FREEWAY_ENV_PREFIX`, `FREEWAY_CONFIG_FILE`).
+Writing them into `application.properties`/`application.json` (classpath or working directory) has no effect,
+and neither does passing them as CLI arguments (`--freeway.config.file=...`) — startup prints a
+WARN naming the source file or "command-line arguments" rather than silently ignoring them.
+The `FREEWAY_` prefix for these two keys is fixed (otherwise `env.prefix` would have to be
+read through the mapping configured by `env.prefix`); `freeway.profile` is not a bootstrap
+key and goes through the normal cascade.
 
-激活 profile 的只有**基础层**：类路径与工作目录的 `application.properties`/
-`application.json`、映射后的环境变量（`FREEWAY_PROFILE`）、CLI 参数
-（`--freeway.profile=dev`）。profile 变体文件里重写 `freeway.profile` 会被剥离，避免
-`profiles()` 与解析值互相矛盾；另外两个渠道只写入普通配置值、**不激活 profile**：
-`-Dfreeway.profile=dev`（JVM 系统属性）与 `freeway.config.file` 附加文件。
+Only the **baseline layer** activates a profile: classpath and working-directory
+`application.properties`/`application.json`, mapped environment variables (`FREEWAY_PROFILE`),
+and CLI arguments (`--freeway.profile=dev`). A `freeway.profile` rewritten inside a profile
+variant file is stripped, so that `profiles()` and the resolved value cannot contradict each
+other; the other two channels write ordinary configuration values only and **do not activate
+profiles**: `-Dfreeway.profile=dev` (JVM system property) and `freeway.config.file` extra files.
 
-### CLI 键规则
+### CLI key rules
 
-- 键名按**字面量**解析，不加任何前缀：`--app.name=foo` → `app.name=foo`，
-  `--mode=prod` → `mode=prod`（应用键不会被吸进框架命名空间）
-- 框架键必须写全称：`--freeway.profile=dev`、`--freeway.http.server.port=8080`
+- Key names are parsed **literally**, with no prefix added: `--app.name=foo` → `app.name=foo`,
+  `--mode=prod` → `mode=prod` (application keys are not absorbed into the framework namespace)
+- Framework keys must be written in full: `--freeway.profile=dev`, `--freeway.http.server.port=8080`
 
-### 示例
+### Example
 
 ```json
 {
@@ -266,110 +268,111 @@ Three **process-level keys** (not under `freeway.*`, but read by the framework):
 
 ---
 
-## 三、HTTP — Web 服务器
+## III. HTTP — Web Server
 
-### 配置项
+### Configuration keys
 
-**分档**（规则见开头"配置分类规则"）：决策 = `server.host`/`server.port`、
-`server.shutdown-grace`、`cors.allowed-origins`，以及启用 HTTPS/mTLS 时的
-`ssl.key-store` + `-password`、`ssl.trust-store` + `-password`；姿态 = `ssl.key-store`
-（presence）与各特性 `.enabled`（`compression`、`access-log`、`cors`、`health`）；
-其余为**调优**——默认即推荐值，`0` 表示 OS/JDK 默认或无限制，空表示 JDK 默认。
+**Classification** (rules in "Configuration classification rules" at the top): decision = `server.host`/`server.port`,
+`server.shutdown-grace`, `cors.allowed-origins`, plus `ssl.key-store` + `-password` and `ssl.trust-store` + `-password`
+when HTTPS/mTLS is enabled; posture = `ssl.key-store` (presence) and each feature's `.enabled` (`compression`,
+`access-log`, `cors`, `health`); the rest is **tuning** — the default is the recommended value, `0` means the OS/JDK
+default or no limit, and empty means the JDK default.
 
-#### 服务器
+#### Server
 
-| 键 | 档 | 类型 | 默认值 | 必填 | 说明 |
+| Key | Class | Type | Default | Required | Meaning |
 |----|------|------|--------|------|------|
-| `freeway.http.server.host` | 决策 | String | `127.0.0.1` | 否 | 绑定地址。开发 `127.0.0.1`，生产 `0.0.0.0`（由 Nginx 等反向代理转发） |
-| `freeway.http.server.port` | 决策 | Integer | `8080` | 否 | 监听端口（`0` = 系统分配） |
-| `freeway.http.server.backlog` | 调优 | Integer | `0` | 否 | Accept 队列大小（`0` = 系统默认） |
-| `freeway.http.server.shutdown-grace` | 决策 | Duration | `2s` | 否 | 关闭时等待 in-flight 请求的时间。开发 `2s`，生产 `30s`（滚动部署） |
-| `freeway.http.server.read-timeout` | 调优 | Duration | `30s` | 否 | Socket 读空闲超时（`0` = 禁用） |
-| `freeway.http.server.write-timeout` | 调优 | Duration | `30s` | 否 | 单次写操作超时（`0` = 禁用） |
-| `freeway.http.server.max-connections` | 调优 | Integer | `0` | 否 | 最大并发连接数（`0` = 不限） |
-| `freeway.http.server.receive-buffer-size` | 调优 | Integer | `0` | 否 | SO_RCVBUF（`0` = OS 默认） |
-| `freeway.http.server.send-buffer-size` | 调优 | Integer | `0` | 否 | SO_SNDBUF（`0` = OS 默认） |
-| `freeway.http.server.max-header-bytes` | 调优 | Integer | `16384` | 否 | 入站请求头上限（字节），HTTP/1.1 的头块与 HTTP/2 的头块/字段表/SETTINGS 共用同一个数；改它不会让两条协议分叉 |
+| `freeway.http.server.host` | decision | String | `127.0.0.1` | no | Bind address. `127.0.0.1` in development, `0.0.0.0` in production (forwarded by a reverse proxy such as Nginx) |
+| `freeway.http.server.port` | decision | Integer | `8080` | no | Listening port (`0` = assigned by the system) |
+| `freeway.http.server.backlog` | tuning | Integer | `0` | no | Accept queue size (`0` = system default) |
+| `freeway.http.server.shutdown-grace` | decision | Duration | `2s` | no | Time to wait for in-flight requests when closing. `2s` in development, `30s` in production (rolling deployments) |
+| `freeway.http.server.read-timeout` | tuning | Duration | `30s` | no | Socket read idle timeout (`0` = disabled) |
+| `freeway.http.server.write-timeout` | tuning | Duration | `30s` | no | Timeout for a single write operation (`0` = disabled) |
+| `freeway.http.server.max-connections` | tuning | Integer | `0` | no | Maximum number of concurrent connections (`0` = unlimited) |
+| `freeway.http.server.receive-buffer-size` | tuning | Integer | `0` | no | SO_RCVBUF (`0` = OS default) |
+| `freeway.http.server.send-buffer-size` | tuning | Integer | `0` | no | SO_SNDBUF (`0` = OS default) |
+| `freeway.http.server.max-header-bytes` | tuning | Integer | `16384` | no | Inbound request header limit (bytes); the HTTP/1.1 header block and the HTTP/2 header block/field table/SETTINGS share the same number, so changing it does not fork the two protocols |
 
-#### 压缩
+#### Compression
 
-| 键 | 档 | 类型 | 默认值 | 必填 | 说明 |
+| Key | Class | Type | Default | Required | Meaning |
 |----|------|------|--------|------|------|
-| `freeway.http.compression.enabled` | 姿态 | Boolean | `true` | 否 | 启用 gzip 响应压缩 |
-| `freeway.http.compression.min-size` | 调优 | Integer | `256` | 否 | 压缩最小响应体（字节） |
+| `freeway.http.compression.enabled` | posture | Boolean | `true` | no | Enable gzip response compression |
+| `freeway.http.compression.min-size` | tuning | Integer | `256` | no | Minimum response body size to compress (bytes) |
 
-#### 访问日志
+#### Access log
 
-| 键 | 档 | 类型 | 默认值 | 必填 | 说明 |
+| Key | Class | Type | Default | Required | Meaning |
 |----|------|------|--------|------|------|
-| `freeway.http.access-log.enabled` | 姿态 | Boolean | `false` | 否 | 启用文本访问日志（stdout 输出 method path status elapsed-ms ip ua）；每个交换一行，含 CORS 预检与健康探针。自定义目的地：关掉该键，贡献自己的 `EventSubscriber<HttpExchangeEvent>` |
+| `freeway.http.access-log.enabled` | posture | Boolean | `false` | no | Enable the text access log (stdout prints method path status elapsed-ms ip ua); one line per exchange, including CORS preflights and health probes. Custom destination: turn this key off and contribute your own `EventSubscriber<HttpExchangeEvent>` |
 
-#### 请求作用域
+#### Request scope
 
-| 键 | 档 | 类型 | 默认值 | 必填 | 说明 |
+| Key | Class | Type | Default | Required | Meaning |
 |----|------|------|--------|------|------|
-| `freeway.http.request-scope.enabled` | 姿态 | Boolean | `false` | 否 | 每个 HTTP 请求打开一个容器 value scope（`ScopeFilter`，order -40，位于 CORS/health 之后、应用 filter 之前），使 `Scope.BOUNDARY` 服务与 scoped cache 值按请求存活、请求结束清理；不向子线程传播，异步工作需 `ContextExecutor` |
+| `freeway.http.request-scope.enabled` | posture | Boolean | `false` | no | Open a container value scope per HTTP request (`ScopeFilter`, order -40, after CORS/health and before application filters), so `Scope.BOUNDARY` services and scoped cache values live per request and are cleaned up when the request ends; not propagated to child threads — asynchronous work needs `ContextExecutor` |
 
 #### CORS
 
-| 键 | 档 | 类型 | 默认值 | 必填 | 说明 |
+| Key | Class | Type | Default | Required | Meaning |
 |----|------|------|--------|------|------|
-| `freeway.http.cors.enabled` | 姿态 | Boolean | `true` | 否 | 启用 CORS 过滤 |
-| `freeway.http.cors.allowed-origins` | 决策 | List(String) | `*` | 否 | 允许的源（逗号分隔）。生产环境必须指定具体域名；`*` 与 `allow-credentials=true` 冲突，启动失败 |
-| `freeway.http.cors.allowed-methods` | 调优 | List(String) | `GET, POST, PUT, DELETE, PATCH, OPTIONS` | 否 | 允许的方法 |
-| `freeway.http.cors.allowed-headers` | 调优 | List(String) | `Content-Type, Authorization` | 否 | 允许的请求头 |
-| `freeway.http.cors.exposed-headers` | 调优 | List(String) | *(空)* | 否 | 暴露的响应头 |
-| `freeway.http.cors.max-age` | 调优 | Integer | `3600` | 否 | 预检缓存时长（秒） |
-| `freeway.http.cors.allow-credentials` | 调优 | Boolean | `false` | 否 | 允许携带凭证 |
+| `freeway.http.cors.enabled` | posture | Boolean | `true` | no | Enable CORS filtering |
+| `freeway.http.cors.allowed-origins` | decision | List(String) | `*` | no | Allowed origins (comma-separated). Production must specify concrete domains; `*` conflicts with `allow-credentials=true`, and startup fails |
+| `freeway.http.cors.allowed-methods` | tuning | List(String) | `GET, POST, PUT, DELETE, PATCH, OPTIONS` | no | Allowed methods |
+| `freeway.http.cors.allowed-headers` | tuning | List(String) | `Content-Type, Authorization` | no | Allowed request headers |
+| `freeway.http.cors.exposed-headers` | tuning | List(String) | *(empty)* | no | Exposed response headers |
+| `freeway.http.cors.max-age` | tuning | Integer | `3600` | no | Preflight cache duration (seconds) |
+| `freeway.http.cors.allow-credentials` | tuning | Boolean | `false` | no | Allow credentials |
 
-#### 健康检查
+#### Health checks
 
-| 键 | 档 | 类型 | 默认值 | 必填 | 说明 |
+| Key | Class | Type | Default | Required | Meaning |
 |----|------|------|--------|------|------|
-| `freeway.http.health.enabled` | 姿态 | Boolean | `true` | 否 | 启用健康端点 |
-| `freeway.http.health.path` | 调优 | String | `/healthz` | 否 | 健康检查路径 |
+| `freeway.http.health.enabled` | posture | Boolean | `true` | no | Enable health endpoints |
+| `freeway.http.health.path` | tuning | String | `/healthz` | no | Health check path |
 
-> cloud 探针不在上表：安装 `HealthModule` 时以固定路径贡献
-> `GET /health/live`（进程存活）与 `GET /health/ready`（依赖就绪聚合，
-> 全健康 200、否则 503），路径**不可配**；与 `/healthz`
-> （`freeway.http.health.path`）是两套端点，勿配成同一路径。详见
-> `docs/design/cloud.md` §5.6。
+> The cloud probes are not in the table above: installing `HealthModule` contributes, at fixed paths,
+> `GET /health/live` (process liveness) and `GET /health/ready` (dependency readiness aggregation;
+> 200 when everything is healthy, otherwise 503), and the paths are **not configurable**; they are
+> a separate set of endpoints from `/healthz` (`freeway.http.health.path`), so do not configure
+> them to the same path. See `docs/design/cloud.md` §5.6 for details.
 
-#### 请求体
+#### Request body
 
-| 键 | 档 | 类型 | 默认值 | 必填 | 说明 |
+| Key | Class | Type | Default | Required | Meaning |
 |----|------|------|--------|------|------|
-| `freeway.http.max-body-size` | 调优 | Long | `10485760` (10 MB) | 否 | 最大请求体大小（字节） |
+| `freeway.http.max-body-size` | tuning | Long | `10485760` (10 MB) | no | Maximum request body size (bytes) |
 
 #### SSL / HTTPS
 
-| 键 | 档 | 类型 | 默认值 | 必填 | 说明 |
+| Key | Class | Type | Default | Required | Meaning |
 |----|------|------|--------|------|------|
-| `freeway.http.ssl.key-store` | 姿态·presence | String | *(空)* | **生产是** | **presence 主键**——密钥库路径（PKCS12 或 JKS），非空即启用 HTTPS |
-| `freeway.http.ssl.enabled` | 姿态 | Boolean | *(未设)* | 否 | 显式主开关，**设了就赢**：`true` 开（此时 key-store 必填）、`false` = 总闸（连已配置的 keystore 也压制，回明文）。未设时退到 presence 规则 |
-| `freeway.http.ssl.key-store-password` | 必填·条件 | String | *(空)* | 启用 TLS 时 | 密钥库密码（代码不预检，缺失时在加载密钥库阶段报错）。键名含连字符，环境变量名也含连字符（`FREEWAY_HTTP_SSL_KEY-STORE-PASSWORD`）：用 `-D`、`env 'NAME=...'` 或容器 `-e` 注入；shell 的 `export` 不支持含 `-` 的名字 |
-| `freeway.http.ssl.key-store-type` | 调优 | String | `PKCS12` | 否 | 密钥库类型 |
-| `freeway.http.ssl.http2` | 调优 | Boolean | `true` | 否 | 通过 ALPN 启用 HTTP/2 over TLS |
-| `freeway.http.ssl.trust-store` | 决策 | String | *(空)* | 否 | 可选信任库路径（mTLS 场景） |
-| `freeway.http.ssl.trust-store-password` | 决策 | String | *(空)* | 否 | 信任库密码 |
-| `freeway.http.ssl.trust-store-type` | 调优 | String | `PKCS12` | 否 | 信任库类型 |
-| `freeway.http.ssl.client-auth` | 调优 | Boolean | `false` | 否 | 要求客户端证书（mTLS） |
-| `freeway.http.ssl.protocols` | 调优 | String | *(空)* | 否 | 逗号分隔的 TLS 协议版本 |
-| `freeway.http.ssl.ciphers` | 调优 | String | *(空)* | 否 | 逗号分隔的 TLS 密码套件 |
-| `freeway.http.ssl.sni-directory` | 调优 | String | *(空)* | 否 | SNI 每主机名密钥库目录 |
-| `freeway.http.ssl.reload-interval` | 调优 | Duration | `0` | 否 | 证书热重载间隔（文件监听即时触发、轮询兜底；`0` = 禁用热重载） |
+| `freeway.http.ssl.key-store` | posture·presence | String | *(empty)* | **yes** in production | **presence primary key** — keystore path (PKCS12 or JKS); non-empty means HTTPS is enabled |
+| `freeway.http.ssl.enabled` | posture | Boolean | *(unset)* | no | Explicit master switch; **if set, it wins**: `true` enables (in which case key-store is required), `false` = master off (suppresses even a configured keystore, back to plaintext). When unset, the presence rule applies |
+| `freeway.http.ssl.key-store-password` | required·conditional | String | *(empty)* | when TLS is enabled | Keystore password (not pre-checked in code; a missing value fails at the keystore-loading stage). The key name contains hyphens and so does the environment variable name (`FREEWAY_HTTP_SSL_KEY-STORE-PASSWORD`): inject it with `-D`, `env 'NAME=...'` or a container `-e`; the shell's `export` does not support names containing `-` |
+| `freeway.http.ssl.key-store-type` | tuning | String | `PKCS12` | no | Keystore type |
+| `freeway.http.ssl.http2` | tuning | Boolean | `true` | no | Enable HTTP/2 over TLS via ALPN |
+| `freeway.http.ssl.trust-store` | decision | String | *(empty)* | no | Optional truststore path (mTLS scenarios) |
+| `freeway.http.ssl.trust-store-password` | decision | String | *(empty)* | no | Truststore password |
+| `freeway.http.ssl.trust-store-type` | tuning | String | `PKCS12` | no | Truststore type |
+| `freeway.http.ssl.client-auth` | tuning | Boolean | `false` | no | Require client certificates (mTLS) |
+| `freeway.http.ssl.protocols` | tuning | String | *(empty)* | no | Comma-separated TLS protocol versions |
+| `freeway.http.ssl.ciphers` | tuning | String | *(empty)* | no | Comma-separated TLS cipher suites |
+| `freeway.http.ssl.sni-directory` | tuning | String | *(empty)* | no | Per-hostname keystore directory for SNI |
+| `freeway.http.ssl.reload-interval` | tuning | Duration | `0` | no | Certificate hot-reload interval (file watching triggers immediately, polling is the fallback; `0` = disable hot reload) |
 
 #### HTTP/2
 
-> 这两键归内置引擎：`HttpModule` 读取后接入 `FreewayHttpEngine.Wiring`，
-> 不再进 `HttpServerConfig`；若激活的是第三方引擎且值被调优，启动时 WARN 点名归属。
+> These two keys belong to the built-in engine: `HttpModule` reads them and wires them into `FreewayHttpEngine.Wiring`;
+> they no longer enter `HttpServerConfig`. If a third-party engine is active and the values were tuned, startup WARNs
+> and names the owner.
 
-| 键 | 档 | 类型 | 默认值 | 必填 | 说明 |
+| Key | Class | Type | Default | Required | Meaning |
 |----|------|------|--------|------|------|
-| `freeway.http.h2.reset-burst-limit` | 调优 | Integer | `200` | 否 | 入站 RST 突发熔断：窗口内未响应即取消超过此数即 GOAWAY(ENHANCE_YOUR_CALM) 并拆连接（`0` = 整个防护关闭） |
-| `freeway.http.h2.reset-window` | 调优 | Duration | `10s` | 否 | RST 突发计数的滑动窗口。**与上一行是一对**：`reset-burst-limit=0` 时本键无意义（代码直接返回），所以二者不是两个独立决定 |
+| `freeway.http.h2.reset-burst-limit` | tuning | Integer | `200` | no | Inbound RST burst circuit breaker: when more than this number of RSTs that cancel a stream without a response occur within the window, send GOAWAY(ENHANCE_YOUR_CALM) and tear down the connection (`0` = the whole guard is off) |
+| `freeway.http.h2.reset-window` | tuning | Duration | `10s` | no | Sliding window for counting RST bursts. **It is a pair with the previous row**: when `reset-burst-limit=0` this key is meaningless (the code returns immediately), so the two are not two independent decisions |
 
-### 示例
+### Example
 
 ```json
 {
@@ -429,50 +432,50 @@ Three **process-level keys** (not under `freeway.*`, but read by the framework):
 
 ---
 
-## 四、DB — 数据库
+## IV. DB — Database
 
-### 配置项
+### Configuration keys
 
-#### 连接
+#### Connection
 
-| 键 | 档 | 类型 | 默认值 | 必填 | 说明 |
+| Key | Class | Type | Default | Required | Meaning |
 |----|------|------|--------|------|------|
-| `freeway.db.url` | 必填 | String | *(无)* | **是** | JDBC 连接 URL，无默认值，启动时必检 |
-| `freeway.db.username` | 必填 | String | *(无)* | **是** | 数据库用户名，无默认值，启动时必检 |
-| `freeway.db.password` | 决策 | String | *(空)* | 否 | 数据库密码。生产环境通过环境变量 `FREEWAY_DB_PASSWORD` 注入 |
-| `freeway.db.dialect` | 调优·哨兵 | String | *(空)* | 否 | SQL 方言（`postgresql`/`mysql`/`sqlite`/`h2`）。空则从 JDBC URL 自动检测；多数据源需显式指定 |
-| `freeway.db.query-timeout` | 调优 | Duration | `15s` | 否 | 语句查询超时（`0` = 无超时）。报表类查询可调大 |
+| `freeway.db.url` | required | String | *(none)* | **yes** | JDBC connection URL; no default, checked at startup |
+| `freeway.db.username` | required | String | *(none)* | **yes** | Database username; no default, checked at startup |
+| `freeway.db.password` | decision | String | *(empty)* | no | Database password. In production inject it through the `FREEWAY_DB_PASSWORD` environment variable |
+| `freeway.db.dialect` | tuning·sentinel | String | *(empty)* | no | SQL dialect (`postgresql`/`mysql`/`sqlite`/`h2`). Empty auto-detects from the JDBC URL; multiple data sources must specify it explicitly |
+| `freeway.db.query-timeout` | tuning | Duration | `15s` | no | Statement query timeout (`0` = no timeout). Report-style queries may raise it |
 
-#### 连接池
+#### Connection pool
 
-| 键 | 档 | 类型 | 默认值 | 必填 | 说明 |
+| Key | Class | Type | Default | Required | Meaning |
 |----|------|------|--------|------|------|
-| `freeway.db.pool.max-size` | 调优 | Integer | `10` | 否 | 连接池最大连接数。开发 `4`，生产按并发量调大 |
-| `freeway.db.pool.min-idle` | 调优 | Integer | `2` | 否 | 最小空闲连接数 |
-| `freeway.db.pool.connection-timeout` | 调优 | Duration | `10s` | 否 | 从池获取连接的最大等待时间 |
-| `freeway.db.pool.max-lifetime` | 调优 | Duration | `30m` | 否 | 连接最大存活时间 |
-| `freeway.db.pool.max-idle-time` | 调优 | Duration | `10m` | 否 | 连接最大空闲时间 |
-| `freeway.db.pool.clean-interval` | 调优 | Duration | `2m` | 否 | 空闲驱逐清理周期 |
-| `freeway.db.pool.health-check-query` | 调优 | String | *(空)* | 否 | 健康检查 SQL（空则使用 JDBC `isValid()`）。`SELECT 1` 显式验证 |
-| `freeway.db.pool.health-check-timeout` | 调优 | Duration | `5s` | 否 | 健康检查查询超时 |
+| `freeway.db.pool.max-size` | tuning | Integer | `10` | no | Maximum connections in the pool. `4` in development; raise it to match concurrency in production |
+| `freeway.db.pool.min-idle` | tuning | Integer | `2` | no | Minimum idle connections |
+| `freeway.db.pool.connection-timeout` | tuning | Duration | `10s` | no | Maximum wait to acquire a connection from the pool |
+| `freeway.db.pool.max-lifetime` | tuning | Duration | `30m` | no | Maximum connection lifetime |
+| `freeway.db.pool.max-idle-time` | tuning | Duration | `10m` | no | Maximum connection idle time |
+| `freeway.db.pool.clean-interval` | tuning | Duration | `2m` | no | Idle-eviction cleanup interval |
+| `freeway.db.pool.health-check-query` | tuning | String | *(empty)* | no | Health check SQL (when empty, JDBC `isValid()` is used). `SELECT 1` validates explicitly |
+| `freeway.db.pool.health-check-timeout` | tuning | Duration | `5s` | no | Health check query timeout |
 
 #### Schema
 
-| 键 | 档 | 类型 | 默认值 | 必填 | 说明 |
+| Key | Class | Type | Default | Required | Meaning |
 |----|------|------|--------|------|------|
-| `freeway.db.schema.mode` | 姿态 | String | `auto` | 否 | Schema DDL 姿态：`auto` 启动收敛（开发零摩擦）；`validate` 跑完迁移后比对实体与库、不一致启动失败（生产）；`off` 跳过。退役 `freeway.db.schema.auto` 且值**不生效**：只设旧键时**启动失败**并指明新键与 true→auto/false→off（否则原本生产 `false` 的部署会静默落到默认 `auto`）；两者都设时新键生效、旧键值被忽略并 WARN。**在 MySQL/MariaDB 上可用**：本路径只禁止在**用户事务内**运行 DDL（那里 DDL 会隐式提交），启动期自动迁移不受此限——与 `freeway.db.migration.*` 的方言限制**不同**，见下条 |
-| `freeway.db.schema.groups` | 调优 | String | *(空)* | 否 | 逗号分隔的 Schema 组过滤。空 = 所有组 |
+| `freeway.db.schema.mode` | posture | String | `auto` | no | Schema DDL posture: `auto` converges at startup (zero friction in development); `validate` runs migrations and then compares entities with the database, failing startup on a mismatch (production); `off` skips. The retired `freeway.db.schema.auto` **has no effect**: setting only the old key **fails startup** and names the new key plus true→auto/false→off (otherwise a deployment originally on `false` in production would silently fall back to the default `auto`); when both are set, the new key wins, the old value is ignored and a WARN is printed. **Usable on MySQL/MariaDB**: this path forbids DDL only **inside a user transaction** (where DDL would implicitly commit), and automatic startup migrations are not subject to that restriction — **unlike** the dialect limitation of `freeway.db.migration.*`, see the next row |
+| `freeway.db.schema.groups` | tuning | String | *(empty)* | no | Comma-separated schema group filter. Empty = all groups |
 
-#### 迁移
+#### Migrations
 
-| 键 | 档 | 类型 | 默认值 | 必填 | 说明 |
+| Key | Class | Type | Default | Required | Meaning |
 |----|------|------|--------|------|------|
-| `freeway.db.migration.enabled` | 姿态 | Boolean | `true` | 否 | 启用 SQL 迁移执行。**生产必须为 `true`**。⚠️ **方言依赖**：在不支持事务 DDL 的方言（MySQL/MariaDB）上，**含 DDL 的迁移文件会在启动期直接抛 `SqlException`**——DDL 会隐式提交而校验行丢失，下次启动重跑该 DDL 便会失败。MySQL 上请把 DDL 拆成独立的、幂等的迁移（`IF NOT EXISTS`），或改用 `freeway.db.schema.mode=auto` 让实体驱动 DDL（该路径不受此限制）。**注意这与 `freeway.db.schema.*` 的限制不同**：Schema 只在**用户事务内**运行 DDL 时才拒绝，在 MySQL 上正常运行 |
-| `freeway.db.migration.path` | 调优 | String | `db/migration/` | 否 | 迁移 SQL 文件所在类路径目录 |
-| `freeway.db.migration.table` | 调优 | String | `_migrations` | 否 | 迁移跟踪表名 |
-| `freeway.db.migration.lock-ttl` | 调优 | Duration | *(运行器默认 1h)* | 否 | 锁行存活时长（ISO-8601，如 `PT1H`）。空则使用运行器默认。`0` 或负值禁用过期锁抢占。多实例部署建议设置 |
+| `freeway.db.migration.enabled` | posture | Boolean | `true` | no | Enable SQL migration execution. **Must be `true` in production**. ⚠️ **Dialect-dependent**: on dialects without transactional DDL (MySQL/MariaDB), **a migration file containing DDL throws `SqlException` during startup** — the DDL commits implicitly while the verification row is lost, so re-running that DDL on the next startup fails. On MySQL, split DDL into separate, idempotent migrations (`IF NOT EXISTS`), or switch to `freeway.db.schema.mode=auto` so entities drive the DDL (that path is not subject to this restriction). **Note this differs from the `freeway.db.schema.*` restriction**: schema refuses only when DDL runs **inside a user transaction**, and works normally on MySQL |
+| `freeway.db.migration.path` | tuning | String | `db/migration/` | no | Classpath directory containing migration SQL files |
+| `freeway.db.migration.table` | tuning | String | `_migrations` | no | Migration tracking table name |
+| `freeway.db.migration.lock-ttl` | tuning | Duration | *(runner default 1h)* | no | Lock row lifetime (ISO-8601, for example `PT1H`). Empty uses the runner default. `0` or a negative value disables expired-lock takeover. Recommended for multi-instance deployments |
 
-### 示例
+### Example
 
 ```json
 {
@@ -510,143 +513,146 @@ Three **process-level keys** (not under `freeway.*`, but read by the framework):
 
 ---
 
-## 五、Cloud — 云原生
+## V. Cloud — Cloud Native
 
-### 配置项
+### Configuration keys
 
-**分档**（规则见开头"配置分类规则"）：决策 = `event.peers` + `event.token`、
-`rpc.tls.key-store` + `-password`（走 mTLS 时）、
-`registry.service-host`（`auto` 在容器里通常够用，多网卡主机需点名）；姿态 = 各
-`.enabled`、presence 主键，以及三个 `auto` 键（`registry.service-scheme` /
-`.service-host` / `registry.shutdown-drain`）；声明 = 四个 `*.type`；机制 =
-`secret.file`/`secret.keys`（仅 `-D`）；其余为**调优**，且每簇已有一个键在管
-（`rpc.resilience=auto|off`、`event.enabled` presence）。
+**Classification** (rules in "Configuration classification rules" at the top): decision = `event.peers` + `event.token`,
+`rpc.tls.key-store` + `-password` (when using mTLS),
+`registry.service-host` (`auto` is usually enough in a container; a multi-NIC host must be named explicitly); posture = each
+`.enabled`, presence primary keys, and the three `auto` keys (`registry.service-scheme` /
+`.service-host` / `registry.shutdown-drain`); declaration = the four `*.type`; mechanism =
+`secret.file`/`secret.keys` (`-D` only); the rest is **tuning**, and each cluster already has a key governing it
+(`rpc.resilience=auto|off`, the `event.enabled` presence).
 
-**两类键，别混淆**（云后端相关键尤其容易）：
+**Two kinds of key, do not confuse them** (especially for cloud-backend keys):
 
-| 类别 | 例子 | 作用 |
+| Category | Example | Role |
 |---|---|---|
-| **选择键** | `.primary()` 绑定、`@Local` 标记、适配器模块本身 | **真正决定用哪个实现**：容器解析时主绑定胜出，本地默认让位 |
-| **声明键** | `freeway.cloud.discovery.type` / `registry.type` / `secret.type` / `storage.type` | **只表达意图**："我期望用 Nacos / Consul / S3 / Vault"。框架**不用它选择实现**（没有类名反射加载，也没有 classpath 扫描），适配器**可以**读它做校验/告警（Consul 适配器把它当纯意图声明，不参与选择），并在"声明了外部后端、本地实现却仍是活跃绑定"时触发一次启动告警（`BackendTypeGuard`），避免把声明当成生效 |
+| **Selection key** | a `.primary()` binding, an `@Local` marker, the adapter module itself | **Actually decides which implementation is used**: during container resolution the primary binding wins and the local default steps aside |
+| **Declaration key** | `freeway.cloud.discovery.type` / `registry.type` / `secret.type` / `storage.type` | **Expresses intent only**: "I intend to use Nacos / Consul / S3 / Vault". The framework **does not use it to select an implementation** (no reflective class-name loading and no classpath scanning); an adapter **may** read it for validation/warnings (the Consul adapter treats it as a pure intent declaration that does not participate in selection), and when "an external backend is declared but the local implementation is still the active binding" it triggers a one-time startup warning (`BackendTypeGuard`), so a declaration is not mistaken for effect |
 
-所以：想换后端，写适配器模块并 `.primary()`；`*.type` 是给人和适配器看的
-声明与自检，写错（或没装适配器）不会静默生效，而是启动告警一次。
+So: to switch backends, write an adapter module and `.primary()` it; `*.type` is a
+declaration and self-check for humans and adapters — a wrong value (or a missing adapter) does not
+silently take effect, but warns once at startup.
 
-#### 密钥
+#### Secrets
 
-| 键 | 档 | 类型 | 默认值 | 必填 | 说明 |
+| Key | Class | Type | Default | Required | Meaning |
 |----|------|------|--------|------|------|
-| `freeway.cloud.secret.type` | 声明 | String | *(空)* | 否 | 密钥后端类型。空（或 `local`）= 内置 env/文件实现；外部后端（Vault 等）由适配器 `.primary()` 接入（freeway-ext 未交付）——配了外部值而本地实现仍生效时启动告警一次 |
-| `freeway.cloud.secret.file` | 机制·-D | String | `application-secrets.properties` | 否 | 密钥文件路径（key=value 格式）。**仅 `-D` 系统属性生效**：密钥提供方参与符号解析，其自身配置不能经该链读取，写进配置文件/环境变量无效。文件被替换（size/mtime 变化）时**无需重启**即生效（最多 1s 节流）；读失败或文件瞬时消失时保留已加载的值并告警 |
-| `freeway.cloud.secret.keys` | 机制·-D | String | *(空)* | 否 | 允许从密钥存储解析的符号名白名单（逗号分隔）。**仅 `-D` 系统属性生效**（同上）。留空即"对任意符号名查环境变量"的锋利默认，启动时打 WARN |
+| `freeway.cloud.secret.type` | declaration | String | *(empty)* | no | Secret backend type. Empty (or `local`) = the built-in env/file implementation; external backends (Vault etc.) are plugged in by an adapter via `.primary()` (not yet delivered in freeway-ext) — if an external value is configured while the local implementation is still active, startup warns once |
+| `freeway.cloud.secret.file` | mechanism·-D | String | `application-secrets.properties` | no | Secret file path (key=value format). **Takes effect only via `-D` system properties**: the secret provider participates in symbol resolution and cannot read its own configuration through that chain, so writing it into a configuration file or an environment variable has no effect. When the file is replaced (size/mtime change) the change takes effect **without a restart** (throttled to at most 1s); a failed read or a momentarily missing file keeps the loaded values and warns |
+| `freeway.cloud.secret.keys` | mechanism·-D | String | *(empty)* | no | Allowlist of symbol names that may be resolved from the secret store (comma-separated). **Takes effect only via `-D` system properties** (same as above). Leaving it empty is the sharp default of "look up the environment variable for any symbol name", and startup prints a WARN |
 
-#### 对象存储
+#### Object storage
 
-| 键 | 档 | 类型 | 默认值 | 必填 | 说明 |
+| Key | Class | Type | Default | Required | Meaning |
 |----|------|------|--------|------|------|
-| `freeway.cloud.storage.type` | 声明 | String | *(空)* | 否 | 存储后端类型。空（或 `local`）= 内置本地文件系统实现；外部后端（S3 等）由适配器 `.primary()` 接入（freeway-ext 未交付）——配了外部值而本地实现仍生效时启动告警一次 |
-| `freeway.cloud.storage.base-path` | 调优 | String | `cloud-storage` | 否 | 本地后端根路径（相对工作目录，如 `cloud-storage`；绝对路径亦可） |
+| `freeway.cloud.storage.type` | declaration | String | *(empty)* | no | Storage backend type. Empty (or `local`) = the built-in local filesystem implementation; external backends (S3 etc.) are plugged in by an adapter via `.primary()` (not yet delivered in freeway-ext) — if an external value is configured while the local implementation is still active, startup warns once |
+| `freeway.cloud.storage.base-path` | tuning | String | `cloud-storage` | no | Root path of the local backend (relative to the working directory, for example `cloud-storage`; absolute paths also work) |
 
-#### 服务发现 / 注册
+#### Service discovery / registry
 
-| 键 | 档 | 类型 | 默认值 | 必填 | 说明 |
+| Key | Class | Type | Default | Required | Meaning |
 |----|------|------|--------|------|------|
-| `freeway.cloud.discovery.type` | 声明 | String | *(空)* | 否 | 发现后端类型。空（或 `local`）= 内置进程内注册表；外部后端由适配器 `.primary()` 接入（Consul 已在 freeway-ext 交付；Nacos 等未交付）——配了外部值而本地实现仍生效时启动告警一次 |
-| `freeway.cloud.registry.type` | 声明 | String | *(空)* | 否 | 注册后端类型。同上（空/`local` = 进程内注册表；Consul 已在 freeway-ext 交付） |
-| `freeway.cloud.registry.service-id` | 调优·哨兵 | String | *(空)* | 否 | 注册的逻辑服务名。空 = 回退 `freeway.app.name`（再回退 `freeway-app`） |
-| `freeway.app.name` | 调优·哨兵 | String | `freeway-app` | 否 | 服务名的通用回退键，cloud 注册时读取；注意 JVM `-D app.name`（无 `freeway.` 前缀）是另一回事——它只决定默认日志文件名 |
-| `freeway.cloud.registry.service-host` | 姿态·auto | String | `auto` | 否 | 注册地址主机名。`auto` = 绑定地址若是具体地址就用它（服务器只在那里监听）；绑定 `0.0.0.0`/`::` 时优先 `POD_IP`、否则首个可路由本地地址，都没有才回落绑定地址并告警。多网卡主机请点名 |
-| `freeway.cloud.registry.service-scheme` | 姿态·auto | String | `auto` | 否 | 注册协议，同时决定事件网格拨号用 `ws` 还是 `wss`。`auto` = 跟随 HTTP 服务器是否启用 TLS；显式值只接受 `http`/`https`，其它值启动失败 |
-| `freeway.cloud.registry.shutdown-drain` | 姿态·auto | Duration | `auto` | 否 | **停机 drain 窗口**：摘除注册并置 readiness 为 draining 之后，继续服务这段时间再停。`auto` = 由注册表后端回答（`ServiceRegistry.drainWindow()`）：内置进程内注册表答 `0s`（同 JVM 无传播延迟），注册中心适配器自带传播窗口（如 `5s`），因此不必每个部署各写一遍；显式时长优先，负值启动失败 |
-| `freeway.cloud.registry.token` | 决策 | String | *(空)* | 否 | **注册面共享密钥，一个键两侧都用**（与 `event.token` 同构）：节点要求它、客户端出示它（`X-Registry-Token` 头），因此**两边的值必须一致**。空 = 不认证（节点面板开放、客户端不发头）——开发姿态；节点出了本机就应设置 |
-| `freeway.cloud.registry.token-previous` | 决策 | String | *(空)* | 否 | **轮转窗口**：与 `token` 并列接受的旧密钥。轮转步骤：把当前值填到这里、新值写进 `token`、滚动切换写入方、最后清空本键——节点全程不停机。空 = 无窗口；两个都空 = 面开放 |
-| `freeway.cloud.registry.cache-ttl` | 调优 | Duration | `5s` | 否 | **发现结果的复用窗口**（缓存是发现实现的新鲜度策略，不是调用方的事）：`0` = 每次调用都问。5s 取半个心跳（心跳 10s），远在 30s 驱逐窗口之内；后端失败时窗口内最旧答案继续服务（grace = max(10×ttl, 30s)），超出才响亮失败 |
-| `freeway.cloud.registry.cache-ttl.<serviceId>` | 调优 | Duration | *(继承全局)* | 否 | **按服务的覆盖**：配了就生效、不配继承全局；`0` = 该服务不缓存。动态键族，以 `KnownKeys.admit` 前缀准入（与按文件日志键同一做法）；非法值 warn 一次后回退全局 |
-| `freeway.cloud.registry.service-port` | 调优·哨兵 | Integer | *(空)* | 否 | 注册端口。空 = HTTP server 实际监听端口 |
-| `freeway.cloud.registry.service-instance-id` | 调优·哨兵 | String | *(空)* | 否 | 实例级稳定标识。空 = 派生键 `service-id@host:port` |
+| `freeway.cloud.discovery.type` | declaration | String | *(empty)* | no | Discovery backend type. Empty (or `local`) = the built-in in-process registry; external backends are plugged in by an adapter via `.primary()` (Consul is delivered in freeway-ext; Nacos etc. are not) — if an external value is configured while the local implementation is still active, startup warns once |
+| `freeway.cloud.registry.type` | declaration | String | *(empty)* | no | Registry backend type. Same as above (empty/`local` = the in-process registry; Consul is delivered in freeway-ext) |
+| `freeway.cloud.registry.service-id` | tuning·sentinel | String | *(empty)* | no | Logical service name for registration. Empty = fall back to `freeway.app.name` (then `freeway-app`) |
+| `freeway.app.name` | tuning·sentinel | String | `freeway-app` | no | Generic fallback key for the service name, read by cloud registration; note that the JVM `-D app.name` (without the `freeway.` prefix) is something else — it only determines the default log file name |
+| `freeway.cloud.registry.service-host` | posture·auto | String | `auto` | no | Hostname to register. `auto` = if the bind address is a concrete address, use it (the server listens only there); with a `0.0.0.0`/`::` bind, prefer `POD_IP`, otherwise the first routable local address, and only when neither exists fall back to the bind address and warn. Multi-NIC hosts should name it explicitly |
+| `freeway.cloud.registry.service-scheme` | posture·auto | String | `auto` | no | Registration scheme, which also decides whether the event mesh dials `ws` or `wss`. `auto` = follow whether the HTTP server has TLS enabled; an explicit value accepts only `http`/`https`, and any other value fails startup |
+| `freeway.cloud.registry.shutdown-drain` | posture·auto | Duration | `auto` | no | **Shutdown drain window**: after deregistering and setting readiness to draining, keep serving for this period before stopping. `auto` = answered by the registry backend (`ServiceRegistry.drainWindow()`): the built-in in-process registry answers `0s` (no propagation delay within the same JVM), registry-center adapters carry their own propagation window (for example `5s`), so it need not be written per deployment; an explicit duration takes precedence, and a negative value fails startup |
+| `freeway.cloud.registry.token` | decision | String | *(empty)* | no | **Shared key for the registry surface; one key used by both sides** (isomorphic to `event.token`): the node requires it and the client presents it (the `X-Registry-Token` header), so **both values must match**. Empty = no authentication (the node panel is open and clients send no header) — a development posture; set it once the node leaves the local machine |
+| `freeway.cloud.registry.token-previous` | decision | String | *(empty)* | no | **Rotation window**: an old key accepted alongside `token`. Rotation steps: put the current value here, write the new value into `token`, roll the writers over, and finally clear this key — the node stays up throughout. Empty = no window; both empty = the surface is open |
+| `freeway.cloud.registry.cache-ttl` | tuning | Duration | `5s` | no | **Reuse window for discovery results** (caching is the discovery implementation's freshness policy, not the caller's business): `0` = ask on every call. 5s is half a heartbeat (heartbeat 10s), well inside the 30s eviction window; when the backend fails, the oldest answer is served for the window (grace = max(10×ttl, 30s)), and only beyond that does it fail loudly |
+| `freeway.cloud.registry.cache-ttl.<serviceId>` | tuning | Duration | *(inherits global)* | no | **Per-service override**: if configured it takes effect, otherwise the global value is inherited; `0` = no caching for that service. A dynamic key family admitted by prefix via `KnownKeys.admit` (the same approach as the per-file logging keys); an invalid value warns once and falls back to global |
+| `freeway.cloud.registry.service-port` | tuning·sentinel | Integer | *(empty)* | no | Registration port. Empty = the HTTP server's actual listening port |
+| `freeway.cloud.registry.service-instance-id` | tuning·sentinel | String | *(empty)* | no | Stable instance-level identifier. Empty = the derived key `service-id@host:port` |
 
-**注册节点舰队（客户端侧，`FleetRegistryModule`）**——模块放置即选择此后端；两个键在客户端进程上配，
-共享密钥就是上面的 `freeway.cloud.registry.token`（同一个键，两侧同值）：
+**Registered node fleet (client side, `FleetRegistryModule`)** — placing the module selects this backend; the two keys are configured on the client process, and the shared secret is the `freeway.cloud.registry.token` above (the same key, the same value on both sides):
 
-| 键 | 档 | 类型 | 默认值 | 必填 | 说明 |
+| Key | Class | Type | Default | Required | Meaning |
 |----|------|------|--------|------|------|
-| `freeway.cloud.registry.nodes` | 姿态·presence | String | *(空)* | 是* | **节点舰队地址**，逗号分隔，每项 `host:port`（按 `http://` 说）或完整 `http(s)://host:port`。写扇出到全部节点、读取并集——任一节点存活即整队可用。模块已放置而此键为空 = 启动失败并点名本键 |
-| `freeway.cloud.registry.timeout-ms` | 调优 | Long | `3000` | 否 | 单次节点交换的连接 + 请求超时（毫秒） |
+| `freeway.cloud.registry.nodes` | posture·presence | String | *(empty)* | yes* | **Node fleet addresses**, comma-separated, each item `host:port` (interpreted as `http://`) or a full `http(s)://host:port`. Writes fan out to every node, reads take the union — the fleet is usable while any node is alive. Module placed but this key empty = startup fails and names this key |
+| `freeway.cloud.registry.timeout-ms` | tuning | Long | `3000` | no | Connection + request timeout for a single node exchange (milliseconds) |
 
-#### RPC / 远程调用
+#### RPC / Remote invocation
 
-| 键 | 档 | 类型 | 默认值 | 必填 | 说明 |
+| Key | Class | Type | Default | Required | Meaning |
 |----|------|------|--------|------|------|
-| `freeway.cloud.rpc.connect-timeout` | 调优 | Long | `3000` | 否 | 连接超时（毫秒） |
-| `freeway.cloud.rpc.request-timeout` | 调优 | Long | `10000` | 否 | 请求超时（毫秒） |
-| `freeway.cloud.rpc.shutdown-grace` | 调优 | Duration | `5s` | 否 | **出站调用收尾窗口**：停机时先拒绝新调用，再等已在飞的调用完成，超时仍未有结果的才被以 `RpcHttpClient is closed` 失败。空转进程立即关闭（没有在飞调用就没有等待），所以默认值只在真有调用时付出时间；请压到部署的 terminationGracePeriod 以内 |
-| `freeway.cloud.rpc.trace.enabled` | 姿态 | Boolean | `true` | 否 | 启用 RPC 调用链路追踪 |
-| `freeway.cloud.rpc.resilience` | 调优·聚合闸 | String | `auto` | 否 | **聚合开关**：`auto` = 下方细项键各自生效；`off` = 总闸（不重试、熔断 NOOP、限流无限），忽略全部细项键。用于 mesh 接管（平台已做重试/熔断，应用层需退位）与故障诊断隔离变量。非法值启动即失败 |
+| `freeway.cloud.rpc.connect-timeout` | tuning | Long | `3000` | no | Connection timeout (milliseconds) |
+| `freeway.cloud.rpc.request-timeout` | tuning | Long | `10000` | no | Request timeout (milliseconds) |
+| `freeway.cloud.rpc.shutdown-grace` | tuning | Duration | `5s` | no | **Outbound call finishing window**: at shutdown, reject new calls first, then wait for in-flight calls to complete; only calls that still have no result when the timeout expires fail with `RpcHttpClient is closed`. An idle process closes immediately (no in-flight calls means no wait), so the default only costs time when there really are calls; keep it within the deployment's terminationGracePeriod |
+| `freeway.cloud.rpc.trace.enabled` | posture | Boolean | `true` | no | Enable RPC call tracing |
+| `freeway.cloud.rpc.resilience` | tuning·aggregate switch | String | `auto` | no | **Aggregate switch**: `auto` = the detailed keys below take effect individually; `off` = master off (no retries, NOOP circuit breaker, unlimited rate limiting), ignoring all detailed keys. Use it when the mesh takes over (the platform already does retries/circuit breaking, so the application layer must step aside) and to isolate variables during fault diagnosis. An invalid value fails startup |
 
-#### 弹性 — 重试
+#### Resilience — retry
 
-| 键 | 档 | 类型 | 默认值 | 必填 | 说明 |
+| Key | Class | Type | Default | Required | Meaning |
 |----|------|------|--------|------|------|
-| `freeway.cloud.rpc.retry.max-attempts` | 调优 | Integer | `3` | 否 | 最大重试次数（`resilience=off` 时忽略） |
-| `freeway.cloud.rpc.retry.backoff-base` | 调优 | Long | `100` | 否 | 重试退避基数（毫秒） |
-| `freeway.cloud.rpc.retry.backoff-max` | 调优 | Long | `5000` | 否 | 最大退避时间（毫秒） |
+| `freeway.cloud.rpc.retry.max-attempts` | tuning | Integer | `3` | no | Maximum retry attempts (ignored when `resilience=off`) |
+| `freeway.cloud.rpc.retry.backoff-base` | tuning | Long | `100` | no | Retry backoff base (milliseconds) |
+| `freeway.cloud.rpc.retry.backoff-max` | tuning | Long | `5000` | no | Maximum backoff time (milliseconds) |
 
-重试经过两道门：失败类别（连接失败/超时/中途 I/O/5xx 可重试，4xx 与本地拒绝不重试）与
-**幂等门**——timeout/中途 I/O/5xx 属"结果未知"（对端可能已执行请求），仅对幂等操作重放。
-幂等性由请求携带：按 HTTP 动词派生（`GET/HEAD/PUT/DELETE/OPTIONS/TRACE` 幂等，`POST/PATCH` 否），
-`RpcRequest.withIdempotent(true)` 显式覆盖；远程调用经 consumer 接口的 `@Idempotent`
-注解（方法级/接口级）声明。连接类失败请求未送达，任何操作都可重试。
+Retries pass through two gates: the failure category (connection failure/timeout/mid-flight I/O/5xx are
+retryable; 4xx and local rejections are not) and the **idempotency gate** — timeout/mid-flight I/O/5xx are
+"unknown outcome" (the peer may have executed the request), so they are replayed only for idempotent operations.
+Idempotency is carried by the request: derived from the HTTP verb (`GET/HEAD/PUT/DELETE/OPTIONS/TRACE` are
+idempotent, `POST/PATCH` are not), explicitly overridden by `RpcRequest.withIdempotent(true)`, and declared for
+remote calls by the consumer interface's `@Idempotent` annotation (method-level/interface-level). A
+connection-class failure means the request never arrived, so any operation can be retried.
 
-#### 弹性 — 熔断器
+#### Resilience — circuit breaker
 
-| 键 | 档 | 类型 | 默认值 | 必填 | 说明 |
+| Key | Class | Type | Default | Required | Meaning |
 |----|------|------|--------|------|------|
-| `freeway.cloud.rpc.circuit-breaker.enabled` | 姿态 | Boolean | `true` | 否 | 启用熔断器——默认就是生产姿态，只在明确要关时写 `false`（`resilience=off` 时忽略） |
-| `freeway.cloud.rpc.circuit-breaker.failure-threshold` | 调优 | Integer | `5` | 否 | 熔断触发阈值（滑动窗口内失败数） |
-| `freeway.cloud.rpc.circuit-breaker.failure-window` | 调优 | Long | `60` | 否 | 滑动窗口时长（秒） |
-| `freeway.cloud.rpc.circuit-breaker.open-window` | 调优 | Long | `30` | 否 | 熔断打开状态持续时长（秒） |
+| `freeway.cloud.rpc.circuit-breaker.enabled` | posture | Boolean | `true` | no | Enable the circuit breaker — the default is the production posture; write `false` only when you explicitly want it off (ignored when `resilience=off`) |
+| `freeway.cloud.rpc.circuit-breaker.failure-threshold` | tuning | Integer | `5` | no | Circuit-breaker trip threshold (failures within the sliding window) |
+| `freeway.cloud.rpc.circuit-breaker.failure-window` | tuning | Long | `60` | no | Sliding window duration (seconds) |
+| `freeway.cloud.rpc.circuit-breaker.open-window` | tuning | Long | `30` | no | How long the open state lasts (seconds) |
 
-#### 弹性 — 限流
+#### Resilience — rate limiting
 
-| 键 | 档 | 类型 | 默认值 | 必填 | 说明 |
+| Key | Class | Type | Default | Required | Meaning |
 |----|------|------|--------|------|------|
-| `freeway.cloud.rpc.rate-limit.enabled` | 姿态 | Boolean | `false` | 否 | 启用限流。按需开启（`resilience=off` 时忽略） |
-| `freeway.cloud.rpc.rate-limit.per-second` | 调优 | Double | `100` | 否 | 每秒最大请求数 |
+| `freeway.cloud.rpc.rate-limit.enabled` | posture | Boolean | `false` | no | Enable rate limiting. Opt-in (ignored when `resilience=off`) |
+| `freeway.cloud.rpc.rate-limit.per-second` | tuning | Double | `100` | no | Maximum requests per second |
 
-#### MeshEventBus — 跨节点事件网格
+#### MeshEventBus — cross-node event mesh
 
-入站兴趣**不是配置键**：由组合期的 `MeshSubscription` 贡献声明——同一份声明
-同时生成 hello 拉取前缀、入站闸门（未声明的 topic 到达即弃、不反序列化）与投递路由。
+Inbound interest is **not a configuration key**: it is declared by `MeshSubscription` contributions made
+during composition — one declaration simultaneously produces the hello fetch prefixes, the inbound gate
+(topics that were not declared are discarded on arrival without deserialization) and the delivery routes.
 
-| 键 | 档 | 类型 | 默认值 | 必填 | 说明 |
+| Key | Class | Type | Default | Required | Meaning |
 |----|------|------|--------|------|------|
-| `freeway.cloud.event.peers` | 姿态·presence | String | *(空)* | 否 | **对等节点列表（presence 主键）**——非空即启用 mesh；空 = 纯监听方需显式 `enabled=true`。启用前确认网络可达 |
-| `freeway.cloud.event.discovery-feed-ms` | 姿态·presence | Long | *(未设)* | 否 | **发现喂食间隔（presence 键，设了即开）**：每隔该毫秒数向已绑定的 `ServiceDiscovery` 查询本服务实例，整份替换 mesh 的 discovered 集合（本节点被排除）。发现后端上下线即网格自配置；一次查询失败保留原集合（不能把一次故障读成“全员离场”）。未设 = 关；值 < 1 启动失败并点名本键。需有 discovery 可问（`CloudModule` 或适配器），否则启动失败 |
-| `freeway.cloud.event.keepalive-ms` | 姿态·presence | Long | *(未设)* | 否 | **网格半开连接探测**：设了即开，每隔该毫秒数向每个 peer 发 WebSocket ping；同一时刻只保留一个在途探测，pong 的预算按 `max(3 × 间隔, 1 s)` 派生（不是"下一拍"），预算耗尽才关闭连接、交给既有重连/注销路径。抓的是 NAT/LB 静默丢连接（TCP 还活着、对端已不读），1 s 下限保证一次 JVM 停顿/调度延迟不会误杀健康链路。未设 = 关（只剩发送失败与 TCP keepalive 两个信号）；非正值启动失败 |
-| `freeway.cloud.event.enabled` | 姿态 | Boolean | *(未设)* | 否 | 显式主开关，**设了就赢**：`true` 开（含无 peers 的 discovery-fed mesh）、`false` = 总闸（连已配置的 peers 也压制）。未设时退到 presence 规则（peers 非空即开）。什么都不设 = 模块装了也不动 |
-| `freeway.cloud.event.token` | 决策 | String | *(空)* | 否 | Mesh 握手共享密钥（空 = 无对等认证）。**多节点生产必配**：全节点值一致、经 `FREEWAY_CLOUD_EVENT_TOKEN` 注入；不一致以 WS `1008` 断开，轮换需滚动重启 |
-| `freeway.cloud.event.connect-timeout-ms` | 调优 | Long | `3000` | 否 | 出站拨号 socket 连接超时（毫秒） |
-| `freeway.cloud.event.handshake-timeout-ms` | 调优 | Long | `10000` | 否 | 握手看门狗：连接建立后等待 hello/ack 的超时（毫秒） |
-| `freeway.cloud.event.backoff-base-ms` | 调优 | Long | `1000` | 否 | 断线重连退避基数（毫秒，指数退避） |
-| `freeway.cloud.event.backoff-max-ms` | 调优 | Long | `30000` | 否 | 断线重连退避上限（毫秒） |
+| `freeway.cloud.event.peers` | posture·presence | String | *(empty)* | no | **Peer node list (presence primary key)** — non-empty enables the mesh; empty = a pure listener that needs an explicit `enabled=true`. Confirm network reachability before enabling |
+| `freeway.cloud.event.discovery-feed-ms` | posture·presence | Long | *(unset)* | no | **Discovery feed interval (presence key; setting it enables it)**: every N milliseconds, query the bound `ServiceDiscovery` for instances of this service and replace the mesh's discovered set wholesale (this node is excluded). Nodes coming and going in the discovery backend configure the mesh automatically; a failed query keeps the previous set (a single failure must not be read as "everyone left"). Unset = off; a value < 1 fails startup and names this key. There must be a discovery to ask (`CloudModule` or an adapter), otherwise startup fails |
+| `freeway.cloud.event.keepalive-ms` | posture·presence | Long | *(unset)* | no | **Mesh half-open connection probing**: setting it enables it; every N milliseconds send a WebSocket ping to each peer. Only one probe is in flight at a time; the pong budget is derived as `max(3 × interval, 1 s)` (not "the next tick"), and only when the budget is exhausted is the connection closed and handed to the existing reconnect/deregister path. This catches connections silently dropped by NAT/LB (TCP is still alive but the peer no longer reads); the 1 s floor ensures a single JVM pause/scheduling delay does not falsely kill a healthy link. Unset = off (leaving only send failures and TCP keepalive as signals); a non-positive value fails startup |
+| `freeway.cloud.event.enabled` | posture | Boolean | *(unset)* | no | Explicit master switch; **if set, it wins**: `true` enables (including a discovery-fed mesh with no peers), `false` = master off (suppresses even configured peers). When unset, the presence rule applies (non-empty peers enables). Setting nothing = the module is installed but does nothing |
+| `freeway.cloud.event.token` | decision | String | *(empty)* | no | Mesh handshake shared secret (empty = no peer authentication). **Required for multi-node production**: the same value on all nodes, injected via `FREEWAY_CLOUD_EVENT_TOKEN`; a mismatch disconnects with WS `1008`, and rotation requires a rolling restart |
+| `freeway.cloud.event.connect-timeout-ms` | tuning | Long | `3000` | no | Outbound dial socket connection timeout (milliseconds) |
+| `freeway.cloud.event.handshake-timeout-ms` | tuning | Long | `10000` | no | Handshake watchdog: timeout for waiting for hello/ack after the connection is established (milliseconds) |
+| `freeway.cloud.event.backoff-base-ms` | tuning | Long | `1000` | no | Reconnect backoff base (milliseconds, exponential backoff) |
+| `freeway.cloud.event.backoff-max-ms` | tuning | Long | `30000` | no | Reconnect backoff ceiling (milliseconds) |
 
 #### RPC / TLS
 
-| 键 | 档 | 类型 | 默认值 | 必填 | 说明 |
+| Key | Class | Type | Default | Required | Meaning |
 |----|------|------|--------|------|------|
-| `freeway.cloud.rpc.tls.key-store` | 姿态·presence | String | *(空)* | 否 | **presence 主键**——RPC 客户端密钥库路径，非空即启用 mTLS；空 = 明文开发默认 |
-| `freeway.cloud.rpc.tls.key-store-password` | 必填·条件 | String | *(空)* | 否 | RPC 客户端密钥库密码 |
-| `freeway.cloud.rpc.tls.trust-store` | 决策 | String | *(空)* | 否 | RPC 客户端信任库路径 |
-| `freeway.cloud.rpc.tls.trust-store-password` | 决策 | String | *(空)* | 否 | RPC 客户端信任库密码 |
-| `freeway.cloud.rpc.tls.reload-interval` | 姿态·presence | Duration | *(未设 = 不轮换)* | 否 | **出站 TLS 材料热轮换**：设了就按该间隔允许下一次握手取到新的 keystore/truststore（惰性、握手时刷，无后台线程；读失败保留旧材料）。不设 = 解析一次、轮换需重启——与入站 `freeway.http.ssl.reload-interval` 同一约定。为什么要它：JDK `HttpClient` 在构建时捕获 `SSLContext`，所以换材料的正确做法是让 context 里的 KeyManager/TrustManager 委托给可轮换材料，而不是重建客户端 |
+| `freeway.cloud.rpc.tls.key-store` | posture·presence | String | *(empty)* | no | **presence primary key** — RPC client keystore path; non-empty enables mTLS; empty = the plaintext development default |
+| `freeway.cloud.rpc.tls.key-store-password` | required·conditional | String | *(empty)* | no | RPC client keystore password |
+| `freeway.cloud.rpc.tls.trust-store` | decision | String | *(empty)* | no | RPC client truststore path |
+| `freeway.cloud.rpc.tls.trust-store-password` | decision | String | *(empty)* | no | RPC client truststore password |
+| `freeway.cloud.rpc.tls.reload-interval` | posture·presence | Duration | *(unset = no rotation)* | no | **Hot rotation of outbound TLS material**: when set, every interval allows the next handshake to pick up new keystore/truststore material (lazy, refreshed at handshake time, no background thread; a failed read keeps the old material). Unset = resolve once, rotation requires a restart — the same convention as the inbound `freeway.http.ssl.reload-interval`. Why it exists: the JDK `HttpClient` captures its `SSLContext` at construction time, so the correct way to change material is to have the context's KeyManager/TrustManager delegate to rotatable material rather than rebuilding the client |
 
-#### Auth 传播
+#### Auth propagation
 
-| 键 | 档 | 类型 | 默认值 | 必填 | 说明 |
+| Key | Class | Type | Default | Required | Meaning |
 |----|------|------|--------|------|------|
-| `freeway.cloud.auth.extract.enabled` | 姿态 | Boolean | `false` | 否 | 启用 inbound `x-principal` 提取（仅信任服务网内部） |
+| `freeway.cloud.auth.extract.enabled` | posture | Boolean | `false` | no | Enable inbound `x-principal` extraction (trust only inside the service network) |
 
-### 示例
+### Example
 
 ```json
 {
@@ -717,120 +723,121 @@ Three **process-level keys** (not under `freeway.*`, but read by the framework):
 }
 ```
 
-> 注：`secret.file` / `secret.keys` 仅 `-D` 系统属性生效，不参与文件
-> 级联，故未列入上述 JSON 示例（见密钥表）。
+> Note: `secret.file` / `secret.keys` take effect only via `-D` system properties and do not
+> participate in the file cascade, so they are not included in the JSON example above (see the
+> secrets table).
 
 ---
 
-## 六、Flow — 工作流引擎
+## VI. Flow — Workflow Engine
 
-Flow 模块不提供外部化配置键。所有配置通过编程式 API 完成：
+The Flow module provides no externalized configuration keys. All configuration is done through the programmatic API:
 
-- **GraphSpec** 构建器：`GraphSpec.create("id", spec -> { ... })`
-- **NodeSpec** 构建器：`.putMetadata(key, value)`, `.when(...)`, `.task(...)`, `.linkTo(to, config)`
-- **节点类型**：START / END / ACTIVITY / EXCLUSIVE / INCLUSIVE / PARALLEL / LOOP
-- **图版本**：v2 DAG 格式（`GraphSpec.VERSION = 2`）
-- **执行约束**：最大递归深度 `1000`，最大 LOOP 迭代 `100_000`
-- **PlantUML**：`PlantUmlOptions` 控制输出格式
-
----
-
-## 七、IoC — 容器
-
-IoC 容器不提供外部化配置键。所有配置通过编程式 API 完成：
-
-- **绑定**：`binder.bind(X.class).to(Y.class)` / `.to(c -> ...)`
-- **作用域**：`bind().scope(SINGLETON | PROTOTYPE | BOUNDARY)`
-- **`.primary()`**：引擎/池/方言选择 — 默认实现绑定无 `.primary()`，扩展模块绑定替代实现时带 `.primary()`，容器自动解析
-- **注入**：`@Inject`、`@Symbol`（严格查找或表达式展开）
-- **扩展**：`Contribution<RuntimeHook>`、`Extension` 机制
-- **Bean 选择**：通过 `binding.primary()` 而非注解
+- **GraphSpec** builder: `GraphSpec.create("id", spec -> { ... })`
+- **NodeSpec** builder: `.putMetadata(key, value)`, `.when(...)`, `.task(...)`, `.linkTo(to, config)`
+- **Node types**: START / END / ACTIVITY / EXCLUSIVE / INCLUSIVE / PARALLEL / LOOP
+- **Graph version**: v2 DAG format (`GraphSpec.VERSION = 2`)
+- **Execution constraints**: maximum recursion depth `1000`, maximum LOOP iterations `100_000`
+- **PlantUML**: `PlantUmlOptions` controls the output format
 
 ---
 
-## 配置类型参考
+## VII. IoC — Container
 
-| 类型 | 格式 | 示例 |
+The IoC container provides no externalized configuration keys. All configuration is done through the programmatic API:
+
+- **Bindings**: `binder.bind(X.class).to(Y.class)` / `.to(c -> ...)`
+- **Scopes**: `bind().scope(SINGLETON | PROTOTYPE | BOUNDARY)`
+- **`.primary()`**: engine/pool/dialect selection — the default implementation's binding has no `.primary()`, and an extension module binding a replacement carries `.primary()`, which the container resolves automatically
+- **Injection**: `@Inject`, `@Symbol` (strict lookup or expression expansion)
+- **Extensions**: the `Contribution<RuntimeHook>` and `Extension` mechanisms
+- **Bean selection**: via `binding.primary()` rather than annotations
+
+---
+
+## Configuration type reference
+
+| Type | Format | Example |
 |------|------|------|
-| String | 文本 | `"127.0.0.1"` |
-| Integer | 数字 | `8080` |
-| Long | 数字 | `10485760` |
-| Double | 数字 | `100.0` |
+| String | Text | `"127.0.0.1"` |
+| Integer | Number | `8080` |
+| Long | Number | `10485760` |
+| Double | Number | `100.0` |
 | Boolean | `true` / `false` | `true` |
-| Duration | ISO-8601 或后缀 | `2s`, `30s`, `10m`, `30m`, `PT1H` |
-| List(String) | 逗号分隔（与 HTTP 头多值约定同形）| `a,b,c`；条目两端空白自动去除、空条目丢弃；未设 / `""` / `" , ,"` 一律空列表 |
+| Duration | ISO-8601 or suffix | `2s`, `30s`, `10m`, `30m`, `PT1H` |
+| List(String) | Comma-separated (same shape as the HTTP header multi-value convention) | `a,b,c`; whitespace around entries is trimmed automatically and empty entries are dropped; unset / `""` / `" , ,"` all yield an empty list |
 
-支持的后缀：`ms`（毫秒）、`s`（秒）、`m`（分钟）、`h`（小时）
+Supported suffixes: `ms` (milliseconds), `s` (seconds), `m` (minutes), `h` (hours)
 
-**列表键的两种写法**：properties/env/CLI 用逗号字符串；application.json 可写原生数组（展平时自动连接为同一逗号编码），两者等价——
+**Two spellings for list keys**: properties/env/CLI use a comma-separated string; application.json may write a native array (flattening joins it automatically into the same comma encoding); the two are equivalent —
 
 ```json
 { "freeway": { "cloud": { "event": { "peers": ["10.0.0.11:8080", "10.0.0.12:8080"] } } } }
 ```
 
-等价于 `freeway.cloud.event.peers=10.0.0.11:8080,10.0.0.12:8080`。列表条目不能包含逗号（与 HTTP 头列表同样的限制）。
+Equivalent to `freeway.cloud.event.peers=10.0.0.11:8080,10.0.0.12:8080`. List entries must not contain commas (the same restriction as HTTP header lists).
 
 ---
 
-## 未知键检测
+## Unknown-key detection
 
-启动时，boot 把配置实际声明的 `freeway.*` 键——文件层、CLI、环境变量映射，外加容器自行汇集的 `-D` 系统属性层——与各模块贡献的词表逐一比对，发现没人读的键就输出一条 WARN。**每个未知键只在启动期报一次、且只报不拦**：告警点名即止，配置照常生效，启动不失败；检查随启动钩子跑一遍，**热重载不重报**。
+At startup, boot compares the `freeway.*` keys actually declared by configuration — the file layer, CLI, environment-variable mapping, plus the `-D` system-property layer the container collects on its own — one by one against the vocabularies contributed by each module, and prints a WARN for every key nobody reads. **Each unknown key is reported once at startup, and reporting never blocks**: the warning names the key and that is all; configuration still takes effect and startup does not fail. The check runs once with the startup hook and **is not re-reported on hot reload**.
 
-### 词表从哪来
+### Where the vocabulary comes from
 
-模块经 `binder.contribute(KnownKeys.class)` 贡献自己命名空间的词表，两种构造方式：
+Modules contribute the vocabulary for their own namespaces via `binder.contribute(KnownKeys.class)`, with two constructors:
 
-- `KnownKeys.of(ConfigKeys.class, prefixes...)` —— 反射从键表（`*ConfigKeys`）收割该前缀下的全部键名，新键自动入表、不必维护第二份清单；键表与词表必须一致，表里出现前缀之外的键在绑定期直接失败，而不是被悄悄丢下（丢下它等于让那个命名空间整个退出检测）。
-- `KnownKeys.admit(prefix)` —— 纯前缀准入：只声明前缀、不列键名，用于键名无法枚举的动态命名空间；在该前缀下永不给建议，也永不按下面的命名空间规则点名（准入即豁免标记）。
+- `KnownKeys.of(ConfigKeys.class, prefixes...)` — reflectively harvests all key names under those prefixes from the key table (`*ConfigKeys`), so new keys enter the table automatically and no second list needs maintaining; the key table and the vocabulary must agree, and a key outside the prefixes appearing in the table fails immediately at bind time rather than being quietly dropped (dropping it would take that entire namespace out of detection).
+- `KnownKeys.admit(prefix)` — pure prefix admission: declares only a prefix, no key names, for dynamic namespaces whose key names cannot be enumerated; it never offers suggestions under that prefix and is never reported by the namespace rule below (admission is the exemption marker).
 
-部分动态的命名空间按“固定键入表、动态键经准入豁免”处理：`freeway.log.*` 的固定键都在词表里（拼错即得建议），而 `freeway.log.file.<name>.*` 这类按数据构造的名字由 boot 以 `admit(LogConfig.FILE_PREFIX)` 准入——存在本身不构成缺陷，永不按命名空间规则报告。
+Partially dynamic namespaces are handled as "fixed keys in the table, dynamic keys exempt by admission": the fixed keys of `freeway.log.*` are all in the vocabulary (a typo gets a suggestion), while data-constructed names such as `freeway.log.file.<name>.*` are admitted by boot via `admit(LogConfig.FILE_PREFIX)` — their existence alone is not a defect, and they are never reported by the namespace rule.
 
-### 什么时候点名
+### When a key is reported
 
-- **近邻给建议**：未知键与词表中某个键的编辑距离 ≤ 2 时点名，并给出拼写建议；各词表内按距离从近到远、同距离按字母序，多词表拼接去重后最多 3 个。
-- **已声明命名空间直接点名**：没有近邻、但键落在某个模块已声明的命名空间（`freeway.http`、`freeway.cloud` 这类非根前缀）之下时，同样点名——命名空间被声明意味着检测有据可依，词表里没有这个键就意味着没有模块读取它：
+- **Near neighbours get suggestions**: when the edit distance between the unknown key and a key in the vocabulary is ≤ 2, the key is reported with a spelling suggestion; within each vocabulary, closer distances come first and ties sort alphabetically, and after concatenating and deduplicating across vocabularies there are at most 3.
+- **Declared namespaces are reported directly**: with no near neighbour but the key falling under a namespace some module has declared (a non-root prefix such as `freeway.http`, `freeway.cloud`), it is reported as well — a declared namespace means detection has grounds, and a key missing from the vocabulary means no module reads it:
 
   ```text
   Unknown config key 'freeway.cloud.service-addr' — namespace 'freeway.cloud' is declared but no module reads this key
   ```
 
-- **未声明即静默**：键所在的命名空间没有任何词表贡献（子集装配下常见——模块未装载，检测无从判断），或者只被根 `freeway.` 覆盖（boot 的键表坐在根上，根不声明任何模块表面）——两类都保持沉默，凭空猜测只会制造噪音。
-- **动态键族豁免**：`admit` 准入的前缀（如 `freeway.log.file.`）下，键名无法枚举，存在本身不构成缺陷——只报近邻建议，永不按命名空间规则点名。
-- **只报不拦**：告警不改变任何行为，未知键不会被拒绝加载，配置照常生效。
-- **退役前缀走独立通告**：`freeway.web.*` 不进本检测——它由 HttpModule 单独精确通告，逐条点名 `旧键 → 新键` 的改名，且只在旧键已配置、当前键缺席时告警一次。
-- **应用键不参与**：`freeway.` 前缀之外的键（`app.name`、`slf4j.provider` 这类进程级键）不在检测范围内——框架的词表只覆盖 `freeway.*`。
+- **Undeclared means silent**: the key's namespace has no vocabulary contribution (common in subset assembly — the module is not loaded, so detection has nothing to judge by), or is covered only by the root `freeway.` (boot's key table sits at the root, and the root declares no module surface) — both stay silent; guessing would only create noise.
+- **Dynamic key families are exempt**: under a prefix admitted by `admit` (such as `freeway.log.file.`), key names cannot be enumerated and their existence alone is not a defect — only near-neighbour suggestions are reported, never a namespace-rule report.
+- **Report, never block**: the warning changes no behaviour; an unknown key is not rejected, and configuration takes effect as usual.
+- **Retired prefixes get a separate notice**: `freeway.web.*` does not enter this detection — HttpModule announces it separately and precisely, naming each `old key → new key` rename, and warns once only when the old key is configured and the current key is absent.
+- **Application keys do not participate**: keys outside the `freeway.` prefix (process-level keys such as `app.name`, `slf4j.provider`) are out of scope — the framework's vocabulary covers only `freeway.*`.
 
-### 示例
+### Example
 
-把 `freeway.log.file` 少写一个字母，启动日志给出这条 WARN（消息原文）：
+Writing `freeway.log.file` one letter short makes the startup log print this WARN (message verbatim):
 
 ```text
 Unknown config key 'freeway.log.fil' — did you mean 'freeway.log.file' or 'freeway.log.files'?
 ```
 
-只有一个近邻时省略 ` or `（如 `Unknown config key 'freeway.profil' — did you mean 'freeway.profile'?`），建议至多 3 个。
+With only one near neighbour, ` or ` is omitted (for example `Unknown config key 'freeway.profil' — did you mean 'freeway.profile'?`), and there are at most 3 suggestions.
 
 ---
 
-## 环境变量映射
+## Environment variable mapping
 
-默认前缀 `FREEWAY_`，下划线转点号：
+Default prefix `FREEWAY_`, underscores map to dots:
 - `freeway.http.server.port` → `FREEWAY_HTTP_SERVER_PORT`
 - `freeway.db.url` → `FREEWAY_DB_URL`
 - `freeway.log.level` → `FREEWAY_LOG_LEVEL`
 
-映射规则只有一条，没有例外：**键名的 `.` 换成 `_`，其余字符原样保留**。`-` 是普通字符，不参与转换——`key-store` 与 `key.store` 是两个不同的键，绝不能让同一个变量同时喂给它们（那正是"折叠"式映射的歧义来源，本框架不采用）。
+There is exactly one mapping rule, with no exceptions: **replace `.` in the key name with `_` and keep every other character as is**. `-` is an ordinary character and is not transformed — `key-store` and `key.store` are two different keys, and the same variable must never feed both (that ambiguity is exactly where "folding" mappings come from, and this framework does not use them).
 
-因此含连字符的键，其环境变量名里就是**字面连字符**：
+Therefore a key containing hyphens has **literal hyphens** in its environment variable name:
 
 ```
 freeway.http.ssl.key-store-password  →  FREEWAY_HTTP_SSL_KEY-STORE-PASSWORD
 freeway.db.pool.max-size             →  FREEWAY_DB_POOL_MAX-SIZE
 ```
 
-shell 的 `export` 不接受含 `-` 的名字，这是 shell 的限制、不是映射的例外：用 `-D`、`env 'NAME=value'`、systemd `Environment=` 或容器 `-e` 传入。变量名写错（例如用 `_` 代替 `-`）不会被特殊处理——它会映射成另一个键名；若没人声明那个键，这个映射出的键名会进入未知键检测：与词表中某个键相距 ≤2 时启动期 WARN 并给出拼写建议，更远则保持静默（见上一节「未知键检测」）——两种情形下该配置都不生效。CLI 里拼错完整的 `freeway.*` 键同理；不含 `freeway.` 前缀的键按应用键处理，不进入该检测。
+The shell's `export` does not accept names containing `-`; that is a shell limitation, not an exception to the mapping: pass them with `-D`, `env 'NAME=value'`, systemd `Environment=` or a container `-e`. A misspelled variable name (for example `_` instead of `-`) gets no special handling — it maps to a different key name; if nobody declares that key, the mapped key name enters unknown-key detection: when it is within ≤2 of a key in the vocabulary, a WARN with a spelling suggestion is printed at startup, and farther away it stays silent (see "Unknown-key detection" above) — in neither case does the configuration take effect. The same applies to a misspelled full `freeway.*` key on the CLI; keys without the `freeway.` prefix are treated as application keys and do not enter that detection.
 
-例外（读自 JVM 系统属性，不参与上述级联）：`freeway.cloud.secret.file`、
-`freeway.cloud.secret.keys` —— 两者只能 `-D` 设置，否则静默无效。
+Exception (read from JVM system properties, does not participate in the cascade above): `freeway.cloud.secret.file`,
+`freeway.cloud.secret.keys` — the two can only be set with `-D`, otherwise they are silently ineffective.
 
-自定义前缀 `freeway.env.prefix=APP_`：`APP_SERVER_PORT` → `server.port`（透传）
+Custom prefix `freeway.env.prefix=APP_`: `APP_SERVER_PORT` → `server.port` (passed through)

@@ -1,51 +1,51 @@
-# freeway-flow v2 图设计（历史提案稿）
+# freeway-flow v2 graph design (historical proposal draft)
 
-> **已被取代**：现行规格见 [graph-v3.md](graph-v3.md)（`version=3`）。
-> 本文是 v2 落地前的设计提案，保留作决策轨迹——其中的"建议"部分（GraphCodec/
-> GraphCompiler/CompiledGraph、双格式过渡期兼容）并未全部采纳，勿据此编写图。
-> 文中类型名（如 `FlowExchanger`）已随后续重命名（现为 `FlowEvaluation`），
-> 且 v2 格式已被解析器拒绝。
+> **Superseded**: see [graph-v3.md](graph-v3.md) for the current specification (`version=3`).
+> This document is the design proposal from before v2 landed, retained as a decision trail — its "recommendations" (GraphCodec/
+> GraphCompiler/CompiledGraph, dual-format transition compatibility) were not all adopted; do not write graphs based on it.
+> The type names in this document (such as `FlowExchanger`) were renamed later (now `FlowEvaluation`),
+> and the v2 format is rejected by the parser.
 
-> 目标：定义一套适合 Freeway 的 canonical graph 格式。v2 为 Freeway 原生设计，不来自 solon-flow。
+> Goal: define a canonical graph format suitable for Freeway. v2 is a Freeway-native design, not from solon-flow.
 >
-> 约束（1.5.2 起）：**只认 v2**——`version=2` + `nodes` + `links` 是唯一门禁，v1 已删除，
-> 不再有第二种读法。本文其余部分描述 v2 的字段与运行模型。
+> Constraint (as of 1.5.2): **only v2 is recognized** — `version=2` + `nodes` + `links` is the sole gate; v1 is deleted,
+> and there is no second reading. The rest of this document describes v2's fields and runtime model.
 
-## 1. 设计目标
+## 1. Design goals
 
-新图的目标不是扩展旧格式，而是把“定义”“编译”“执行”分开。
+The goal of the new graph is not to extend the old format, but to separate "definition", "compilation", and "execution".
 
-1. 定义层只表达业务图，不表达运行态。
-2. 编译层把定义转换为只读运行图。
-3. 执行层只处理单次 flow 的状态流转。
-4. 兼容层只负责旧图导入，不进入主设计路径。
-5. v2 运行时必须同时能直接跑旧图和新图，作为迁移过渡期的统一入口。
+1. The definition layer expresses only the business graph, not runtime state.
+2. The compilation layer converts the definition into a read-only runtime graph.
+3. The execution layer handles only the state transitions of a single flow.
+4. The compatibility layer is responsible only for importing old graphs and does not enter the main design path.
+5. The v2 runtime must be able to run both old and new graphs directly at the same time, as the unified entry point during the migration transition period.
 
-## 2. 新图原则
+## 2. New graph principles
 
-### 2.1 单一字段集
+### 2.1 Single field set
 
-新图只保留一套字段，不再提供 `layout/nodes`、`when/condition` 这类双写法。
+The new graph keeps only one field set, and no longer offers dual spellings such as `layout/nodes` and `when/condition`.
 
-### 2.2 显式入口
+### 2.2 Explicit entry
 
-新图必须显式声明入口节点，不再依赖“第一个无前驱节点”这种推断规则。
+The new graph must explicitly declare the entry node and no longer rely on inference rules such as "the first node without predecessors".
 
-### 2.3 边上放条件
+### 2.3 Conditions on links
 
-分支条件优先挂在 `link` 上，而不是散落在节点内部。
+Branch conditions should preferably be attached to the `link`, rather than scattered inside nodes.
 
-### 2.4 运行态不回写模型
+### 2.4 Runtime state is not written back to the model
 
-执行过程中的 `context`、`trace`、`exchanger`、停止标志，都不属于图定义。
+During execution, `context`, `trace`, `exchanger`, and stop flags are not part of the graph definition.
 
-### 2.5 编译后只读
+### 2.5 Read-only after compilation
 
-图定义一旦编译，得到的运行图应当是只读结构，运行时不再改写节点和边本身。
+Once a graph definition is compiled, the resulting runtime graph should be a read-only structure; nodes and links themselves are no longer rewritten at runtime.
 
-## 3. 推荐模型
+## 3. Recommended model
 
-### 3.1 图定义
+### 3.1 Graph definition
 
 ```json
 {
@@ -71,123 +71,123 @@
 }
 ```
 
-### 3.2 节点字段
+### 3.2 Node fields
 
-| 字段 | 说明 |
+| Field | Description |
 |---|---|
-| `id` | 节点唯一标识 |
-| `type` | 节点类型，必须显式声明 |
-| `title` | 展示名称，可选 |
-| `meta` | 节点元数据，可选 |
-| `task` | 节点任务标识或任务名，可选 |
-| `when` | 节点级条件，仅在确实需要时使用 |
+| `id` | Unique node identifier |
+| `type` | Node type, must be explicitly declared |
+| `title` | Display name, optional |
+| `meta` | Node metadata, optional |
+| `task` | Node task identifier or task name, optional |
+| `when` | Node-level condition, used only when truly needed |
 
-### 3.3 边字段
+### 3.3 Link fields
 
-| 字段 | 说明 |
+| Field | Description |
 |---|---|
-| `from` | 起点节点 id |
-| `to` | 终点节点 id |
-| `priority` | 分支优先级，数值越大越优先 |
-| `when` | 边条件 |
-| `meta` | 边元数据 |
+| `from` | Source node id |
+| `to` | Target node id |
+| `priority` | Branch priority; a larger value takes precedence |
+| `when` | Link condition |
+| `meta` | Link metadata |
 
-### 3.4 图字段
+### 3.4 Graph fields
 
-| 字段 | 说明 |
+| Field | Description |
 |---|---|
-| `id` | 图 id |
-| `title` | 图标题 |
-| `driver` | 驱动器名 |
-| `version` | 图版本，建议新图固定为 `2` |
-| `entry` | 显式入口节点 id |
-| `meta` | 图级元数据 |
+| `id` | Graph id |
+| `title` | Graph title |
+| `driver` | Driver name |
+| `version` | Graph version; new graphs are recommended to fix it at `2` |
+| `entry` | Explicit entry node id |
+| `meta` | Graph-level metadata |
 
-## 4. Java API 建议
+## 4. Java API recommendations
 
-### 4.1 定义层
+### 4.1 Definition layer
 
-建议把当前 `GraphSpec` 继续保留为旧图/兼容入口，但新增一套独立的新图 API。
+It is recommended to keep the current `GraphSpec` as the old-graph/compatibility entry, but add a separate new-graph API.
 
-新图命名采用 `GraphSpec2`。
+The new graph is named `GraphSpec2`.
 
-### 4.2 编译层
+### 4.2 Compilation layer
 
-建议增加一个专门的编译对象：
+It is recommended to add a dedicated compilation object:
 
-- `GraphCodec`：负责 JSON/对象互转
-- `GraphCompiler`：负责校验、补全和拓扑编译
-- `CompiledGraph`：只读运行图
+- `GraphCodec`: responsible for JSON/object conversion
+- `GraphCompiler`: responsible for validation, completion, and topological compilation
+- `CompiledGraph`: read-only runtime graph
 
-其中：
+Where:
 
-- `GraphCodec` 处理格式。
-- `GraphCompiler` 处理规则。
-- `CompiledGraph` 处理运行。
+- `GraphCodec` handles format.
+- `GraphCompiler` handles rules.
+- `CompiledGraph` handles execution.
 
-### 4.3 运行层
+### 4.3 Runtime layer
 
-运行层建议继续保持现有职责：
+The runtime layer is recommended to continue to keep its existing responsibilities:
 
-- `FlowEngine`：入口和注册
-- `FlowContext`：单次执行上下文
-- `FlowExchanger`：单次执行交换器
-- `FlowDriver`：具体驱动器实现
+- `FlowEngine`: entry and registration
+- `FlowContext`: single execution context
+- `FlowExchanger`: single execution exchanger
+- `FlowDriver`: concrete driver implementation
 
-## 5. 编译流程
+## 5. Compilation flow
 
-建议新图进入引擎前先走一次编译：
+It is recommended that a new graph go through compilation once before entering the engine:
 
-1. 解析 JSON 或 builder 输出。
-2. 校验 `id`、`entry`、节点唯一性、边引用完整性。
-3. 展开节点和边，建立只读索引。
-4. 推导入口、出边顺序、分支优先级。
-5. 生成可执行的只读图对象。
+1. Parse JSON or builder output.
+2. Validate `id`, `entry`, node uniqueness, and link reference integrity.
+3. Expand nodes and links, and build read-only indexes.
+4. Derive the entry, outgoing-link order, and branch priority.
+5. Generate an executable read-only graph object.
 
-这样运行时只做图遍历，不再做结构补偿。
+In this way, runtime only traverses the graph and no longer performs structural compensation.
 
-## 6. 兼容策略
+## 6. Compatibility strategy
 
-旧图和新图应该并行存在，但职责分开。v2 先承担统一运行入口，再逐步成为新图默认入口。
+Old and new graphs should coexist in parallel, but with separate responsibilities. v2 first serves as the unified runtime entry, then gradually becomes the default entry for new graphs.
 
-### 6.1 旧图
+### 6.1 Old graph
 
-旧图保留以下兼容点：
+The old graph retains the following compatibility points:
 
 - `layout` / `nodes`
 - `when` / `condition`
-- `link` 单值/数组/对象混合
-- 入口推断
+- `link` mixed single value/array/object
+- entry inference
 
-这些逻辑都应该放在兼容 codec 里。
+All this logic should live in the compatibility codec.
 
-### 6.2 新图
+### 6.2 New graph
 
-新图只认 canonical schema：
+The new graph recognizes only the canonical schema:
 
 - `version = 2`
-- `entry` 显式存在
-- `nodes` / `links` 结构化表达
-- 条件、优先级、元数据字段固定
+- `entry` is explicitly present
+- `nodes` / `links` are expressed structurally
+- conditions, priorities, and metadata fields are fixed
 
-### 6.3 兼容边界
+### 6.3 Compatibility boundary
 
-新图不要再加入更多历史别名。  
-一旦把别名继续塞进主格式，后面的结构优化会重新变复杂。
+Do not add more historical aliases to the new graph.  
+Once aliases keep being stuffed into the main format, later structural optimization will become complicated again.
 
-### 6.4 v2 过渡模式
+### 6.4 v2 transition mode
 
-v2 的目标是“一套运行时，两种输入”：
+v2's goal is "one runtime, two inputs":
 
-1. 旧应用继续用旧图配置运行，但由 v2 引擎承接执行。
-2. 新应用直接使用 `GraphSpec2`，同样由 v2 引擎承接执行。
-3. 迁移完成后，旧图兼容分支可以从编译/解析入口里移除。
+1. Old applications continue to run with old graph configuration, but the v2 engine takes over execution.
+2. New applications use `GraphSpec2` directly, also executed by the v2 engine.
+3. After migration is complete, the old-graph compatibility branch can be removed from the compilation/parsing entry.
 
-也就是说，v2 不是临时副本，而是正式的过渡承载层。
+That is to say, v2 is not a temporary copy, but the formal layer carrying the transition.
 
-## 7. 与现有实现的关系
+## 7. Relationship with the existing implementation
 
-当前代码里，下面这些类更适合作为迁移阶段的过渡实现，而不是新图的最终形态：
+In the current code, the following classes are more suitable as transitional implementations during the migration phase rather than the final form of the new graph:
 
 - `GraphSpec`
 - `NodeSpec`
@@ -196,30 +196,30 @@ v2 的目标是“一套运行时，两种输入”：
 - `FlowEventBus`
 - `FlowExchanger`
 
-它们现在承担了构建、兼容、执行的混合职责。  
-新图设计的方向，是把这些职责逐步拆成：
+They currently carry mixed responsibilities of construction, compatibility, and execution.  
+The direction of the new graph design is to gradually split these responsibilities into:
 
-- 规格层
-- 编译层
-- 运行层
-- 兼容层
+- spec layer
+- compilation layer
+- runtime layer
+- compatibility layer
 
-## 8. 推荐落地顺序
+## 8. Recommended implementation order
 
-1. 先抽出 `GraphCodec`，把旧图解析从 `GraphSpec` 里移走。
-2. 再引入 `GraphSpec2`，只表达新图。
-3. 然后加 `GraphCompiler`，把入口校验和拓扑检查集中起来。
-4. 最后把引擎入口改成接收编译后的只读图。
+1. First extract `GraphCodec`, moving old graph parsing out of `GraphSpec`.
+2. Then introduce `GraphSpec2`, expressing only the new graph.
+3. Then add `GraphCompiler`, centralizing entry validation and topology checks.
+4. Finally change the engine entry to accept the compiled read-only graph.
 
-这样改动是递进式的，不会一次性打散现有 API。
+In this way the changes are progressive and will not tear apart the existing API all at once.
 
-## 9. 结论
+## 9. Conclusion
 
-新图的核心不是“更强的表达力”，而是“更清晰的边界”。
+The core of the new graph is not "stronger expressiveness", but "clearer boundaries".
 
-如果要一句话概括：
+If summarized in one sentence:
 
-- 旧图负责兼容存量。
-- 新图负责成为未来默认。
-- 兼容逻辑负责过渡。
-- 运行逻辑只处理执行。
+- The old graph is responsible for compatibility with existing assets.
+- The new graph is responsible for becoming the future default.
+- Compatibility logic is responsible for the transition.
+- Runtime logic handles execution only.

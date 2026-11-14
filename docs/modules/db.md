@@ -1,36 +1,36 @@
-# freeway-db 使用手册与方言指南
+# freeway-db User Manual and Dialect Guide
 
-> **合并（2026-08-19）**：本文档由三份 freeway-db 文档合并而成——
-> `freeway-db-summary.md`（速览）、`freeway-db-how-to-use.md`（使用手册）、
-> `freeway-db-dialect-how-to-add.md`（新增方言指南），原三份已移除。
+> **Merge (2026-08-19)**: This document was merged from three freeway-db documents—
+> `freeway-db-summary.md` (quick overview), `freeway-db-how-to-use.md` (user manual),
+> `freeway-db-dialect-how-to-add.md` (guide to adding a dialect); the original three have been removed.
 >
-> 结构：
-> - **第一部分 · 使用速览**（原 summary）：从实体到 CRUD 的完整链路总结
-> - **第二部分 · 使用手册**（原 how-to-use）：实体定义 → DDL → 版本化迁移 →
->   构建 → ORM → 原始 SQL → SQL 构建器 → Row → 事务 → ExecuteResult → 自增 ID
-> - **第三部分 · 新增数据库方言指南**（原 dialect-how-to-add）：Dialect 契约、
->   新增方言步骤、模板代码、4 方言差异参考
+> Structure:
+> - **Part 1 · Quick Usage Overview** (formerly summary): a summary of the complete path from entity to CRUD
+> - **Part 2 · User Manual** (formerly how-to-use): entity definition → DDL → versioned migration →
+>   build → ORM → raw SQL → SQL builder → Row → transaction → ExecuteResult → auto-increment ID
+> - **Part 3 · Guide to Adding a Database Dialect** (formerly dialect-how-to-add): Dialect contract,
+>   steps to add a dialect, template code, 4-dialect difference reference
 
 ---
 
-## Freeway-DB 使用模式总结
+## Freeway-DB Usage Pattern Summary
 
-  ### 基本用法
+  ### Basic Usage
 
   ```java
-  // 1. 构建数据库
+  // 1. Build the database
   Database db = Database.create(PoolConfig.defaults("jdbc:...", "user", "pass"));
 
-  // 2. 原始查询
+  // 2. Raw query
   List<User> users = db.query("SELECT * FROM users WHERE status = ?", 1).list(User.class);
   Optional<User> user = db.query("SELECT * FROM users WHERE id = ?", 42).one(User.class);
 
-  // 3. 命名参数
+  // 3. Named parameters
   User u = db.query("SELECT * FROM users WHERE id = $id")
       .bind("id", 42L)
       .one(User.class).orElseThrow();
 
-  // 4. 流式处理
+  // 4. Streaming
   try (Stream<User> stream = db.query("SELECT * FROM users").stream(User.class)) {
       stream.forEach(System.out::println);
   }
@@ -40,99 +40,99 @@
   long id = r.longKey();
   int affected = r.rows();
 
-  // 6. 批处理
+  // 6. Batch processing
   db.batch("INSERT INTO users (name) VALUES (?)")
       .rowsRaw(new Object[]{"A"}, new Object[]{"B"})
       .execute();
 
-  // 7. 事务 + 事件总线感知
+  // 7. Transaction + event bus awareness
   db.transaction(() -> {
       db.execute("UPDATE accounts SET balance = balance - ? WHERE id = ?", 100, 1);
       db.execute("UPDATE accounts SET balance = balance + ? WHERE id = ?", 100, 2);
-      bus.publish(new TransferEvent(1, 2, 100));  // 自动延迟到提交后发布
+      bus.publish(new TransferEvent(1, 2, 100));  // automatically deferred until after commit
   });
 
-  // 8. ORM (Record 实体 — insert + find 可用，update/delete 走原始 SQL)
+  // 8. ORM (Record entity — insert + find are available; update/delete go through raw SQL)
   Orm orm = Orm.of(db);
   orm.insert(new User(null, "Alice", null, "alice@example.com", null));
   User u = orm.findById(User.class, 1L).orElseThrow();
   db.execute("DELETE FROM users WHERE id = ?", 1L);
 
-  // 9. Upsert（id 为 null → INSERT；id 有值 → ON CONFLICT DO UPDATE）
+  // 9. Upsert (id is null → INSERT; id has a value → ON CONFLICT DO UPDATE)
   orm.save(new User(null, "Bob", null, "bob@example.com", null));  // INSERT
   // orm.save(existingUser);                                        // UPSERT
 
-  // 10. Schema 自动迁移
+  // 10. Schema auto-migration
   Schema.ensure(db, User.class, Post.class);
 
-  // 11. SQL 构建器
+  // 11. SQL builder
   Sql q = Sql.select("*").from("users")
       .where("status = ?", 1)
       .orderBy("created_at DESC")
       .limit(10);
   List<User> users = db.query(q).list(User.class);
   ```
-### 注解驱动实体
+### Annotation-Driven Entities
 
   ```java
-  @Table("users")              // 表名覆盖（默认：User → user）
+  @Table("users")              // table name override (default: User → user)
   public record User(
-      @Id @Generated Long id,  // 自动生成的主键
-      @Column("user_name")     // 列名覆盖
+      @Id @Generated Long id,  // auto-generated primary key
+      @Column("user_name")     // column name override
       @Size(max = 100)         // VARCHAR(100)
       String name,
-      @Column(type = "TEXT")   // 显式 SQL 类型
+      @Column(type = "TEXT")   // explicit SQL type
       String bio,
-      @Index(name = "idx_email", unique = true)  // 唯一索引
+      @Index(name = "idx_email", unique = true)  // unique index
       String email,
-      @Transient                // 非持久化
+      @Transient                // not persisted
       String temp
   ) {}
   ```
 
-### 演示的 freeway-db 能力
+### Demonstrated freeway-db Capabilities
 
   ```
-  注解驱动实体  →  @Table @Id @Generated @Column
-  DDL 自动生成  →  Schema.define() / Schema.ensure()
-  ORM 存取      →  Orm.insert / findById / findAll / save (upsert)
-  原始 SQL      →  db.execute() / db.query()
-  SQL 构建器    →  Sql.select().from().where().orderBy()
-  Row 列访问    →  row.asString("name") / row.asInt("age")
-  事务处理      →  db.transaction(() -> ...) + EventBus 事务感知
+  Annotation-driven entities  →  @Table @Id @Generated @Column
+  DDL auto-generation         →  Schema.define() / Schema.ensure()
+  ORM access                  →  Orm.insert / findById / findAll / save (upsert)
+  Raw SQL                     →  db.execute() / db.query()
+  SQL builder                 →  Sql.select().from().where().orderBy()
+  Row column access           →  row.asString("name") / row.asInt("age")
+  Transaction handling        →  db.transaction(() -> ...) + EventBus transaction awareness
   ```
 
-结论：**LLM 完全可以读懂并使用 freeway 进行开发**，从实体定义到 DDL 建表再到 CRUD 存取的完整链路已跑通。
-# freeway-db 使用模式手册
+Conclusion: **an LLM can fully understand and use freeway for development**; the complete path from entity definition to DDL table creation to CRUD access has been proven.
+# freeway-db Usage Pattern Manual
 
-> 基于 freeway-db 模块的完整开发体验总结。涵盖：实体定义 → DDL 自动建表 → 版本化 SQL 迁移 → ORM 存取 → 原始 SQL → SQL 构建器 → 事务 → 自增 ID 行为。
+> A summary of the complete development experience based on the freeway-db module. Covers: entity definition → automatic DDL table creation → versioned SQL migration → ORM access → raw SQL → SQL builder → transaction → auto-increment ID behavior.
 
 ---
 
-## 一、实体定义
+## I. Entity Definition
 
-支持两种风格：**Record（不可变）** 和 **Bean（可变）**。使用注解驱动元数据。
+Two styles are supported: **Record (immutable)** and **Bean (mutable)**. Annotation-driven metadata is used.
 
-### 1.1 Record 风格（不可变，适合查询/插入）
+### 1.1 Record Style (immutable, suitable for queries/inserts)
 
 ```java
-@Table("t_user")                  // 指定表名（不指定则取类名 snake_case）
+@Table("t_user")                  // specify the table name (if omitted, the class name in snake_case)
 record User(
-    @Id @Generated Long id,       // 自增主键
-    @Column String name,          // 列名默认取字段名 snake_case，VARCHAR(255)
+    @Id @Generated Long id,       // auto-increment primary key
+    @Column String name,          // column name defaults to the field name in snake_case, VARCHAR(255)
     @Column Integer age           // INTEGER
 ) {
-    // 构造时不用管 id，数据库自动生成
+    // no need to handle id in the constructor; the database generates it automatically
     User(String name, Integer age) { this(null, name, age); }
 }
 ```
 
-### 1.2 Bean 风格（可变，适合 update 场景）
+### 1.2 Bean Style (mutable, suitable for update scenarios)
 
 ```java
 @Table("t_user")
 static class UserBean {
-    @Id @Generated Long id;       // 自增主键
+    @Id @Generated Long id;       // auto-increment primary key
     @Column String name;
     @Column Integer age;
 
@@ -141,24 +141,24 @@ static class UserBean {
 }
 ```
 
-### 1.3 注解说明
+### 1.3 Annotation Description
 
-| 注解 | 作用 | 说明 |
+| Annotation | Purpose | Description |
 |------|------|------|
-| `@Table("xxx")` | 映射表名 | 不指定则取类名的 snake_case（`UserProfile` → `user_profile`） |
-| `@Id` | 标记主键 | 必填 |
-| `@Generated` | 自增主键 | 搭配 `@Id` 使用，数据库自动生成 |
-| `@Column("xxx")` | 映射列名 | 不指定则取字段名的 snake_case（`userName` → `user_name`） |
-| `@Transient` | 忽略字段 | 不参与持久化 |
+| `@Table("xxx")` | Maps the table name | If not specified, the class name in snake_case is used (`UserProfile` → `user_profile`) |
+| `@Id` | Marks the primary key | Required |
+| `@Generated` | Auto-increment primary key | Used together with `@Id`; generated automatically by the database |
+| `@Column("xxx")` | Maps the column name | If not specified, the field name in snake_case is used (`userName` → `user_name`) |
+| `@Transient` | Ignores the field | Not part of persistence |
 
 ---
 
-## 二、DDL 自动生成
+## II. Automatic DDL Generation
 
-### 2.1 查看 DDL 语句（不执行）
+### 2.1 Viewing the DDL Statement (without executing)
 
 ```java
-Database db = ...;                        // 见 3.1 / 3.2
+Database db = ...;                        // see 3.1 / 3.2
 String ddl = Schema.define(db.dialect(), User.class);
 System.out.println(ddl);
 // → CREATE TABLE t_user (
@@ -168,26 +168,26 @@ System.out.println(ddl);
 //   )
 ```
 
-### 2.2 自动建表（安全执行，表已存在不报错）
+### 2.2 Automatic Table Creation (safe execution; no error if the table already exists)
 
 ```java
 Database db = ...;
 Schema.ensure(db, User.class);
 ```
 
-### 2.3 版本化 SQL 迁移（MigrationRunner）
+### 2.3 Versioned SQL Migration (MigrationRunner)
 
-把 `V1__描述.sql`（Flyway 兼容命名：`V` + 数字，可用 `.`/`_` 分隔，如 `V1_2__init.sql`）放进 classpath 的 `db/migration/` 目录。IoC 方式（`DbModule`）启动时会在 HTTP server 之前执行尚未应用的迁移；独立使用可手动调用 `new MigrationRunner(db, MigrationRunner.Options.defaults()).run()`。相关配置：`freeway.db.migration.enabled`（默认 `true`）、`freeway.db.migration.path`（默认 `db/migration/`）、`freeway.db.migration.table`（默认 `_migrations`）。
+Put `V1__description.sql` (Flyway-compatible naming: `V` + digits, which may be separated by `.`/`_`, e.g. `V1_2__init.sql`) into the `db/migration/` directory on the classpath. In IoC mode (`DbModule`), migrations that have not yet been applied run at startup before the HTTP server; when used standalone, you can call `new MigrationRunner(db, MigrationRunner.Options.defaults()).run()` manually. Related configuration: `freeway.db.migration.enabled` (default `true`), `freeway.db.migration.path` (default `db/migration/`), `freeway.db.migration.table` (default `_migrations`).
 
-**校验和双轨校验（CRLF/LF）**：每个已应用迁移的原始字节 SHA-256 存入校验和表。每次启动重新比对：原始字节一致 → 通过；不一致时再用 CRLF→LF 归一化后的字节比对一次——纯换行风格变化（如 Windows 检出把 LF 变 CRLF）不再误报"文件被修改"，而真正的内容改动仍抛 `SqlException`（checksum mismatch，启动失败）。已存储的校验和行不会被改写。
+**Checksum dual-track verification (CRLF/LF)**: The SHA-256 of the original bytes of each applied migration is stored in the checksum table. It is re-compared on every startup: identical original bytes → pass; when they differ, the comparison is repeated once with CRLF→LF normalized bytes—a pure line-ending style change (e.g. a Windows checkout turning LF into CRLF) is no longer falsely reported as "file modified", while a real content change still throws `SqlException` (checksum mismatch, startup fails). Stored checksum rows are never rewritten.
 
-**MySQL 上含 DDL 的迁移会被拒绝**：MySQL/MariaDB 的每条 DDL 都会隐式提交（无事务性 DDL），含 DDL 的迁移无法原子应用——DDL 已提交但校验和行丢失，下次启动会重跑 DDL 而失败。因此 `MigrationRunner` 在执行任何 SQL 之前就会拒绝这类迁移（启动失败，抛 `SqlException`），并附指引：把 DDL 拆成独立迁移并写成幂等（`IF NOT EXISTS`），或改用支持事务性 DDL 的数据库（PostgreSQL/H2/SQLite）。纯 DML 迁移不受影响。
+**Migrations containing DDL are rejected on MySQL**: Every DDL statement in MySQL/MariaDB commits implicitly (no transactional DDL), so a migration containing DDL cannot be applied atomically—the DDL is committed but the checksum row is lost, and the next startup reruns the DDL and fails. Therefore `MigrationRunner` rejects such migrations before executing any SQL (startup fails with `SqlException`), with guidance attached: split the DDL into a separate migration and make it idempotent (`IF NOT EXISTS`), or switch to a database that supports transactional DDL (PostgreSQL/H2/SQLite). Pure DML migrations are unaffected.
 
 ---
 
-## 三、数据库构建
+## III. Database Construction
 
-### 3.1 直接构建
+### 3.1 Direct Construction
 
 ```java
 Database db = Database.create(PoolConfig.defaults(
@@ -195,14 +195,14 @@ Database db = Database.create(PoolConfig.defaults(
         "sa", ""));
 ```
 
-### 3.2 IoC 模块方式
+### 3.2 IoC Module Approach
 
 ```java
 Container container = Freeway.create(new DbModule());
 Database db = container.get(Database.class);
 ```
 
-### 3.3 多数据源
+### 3.3 Multiple Data Sources
 
 ```java
 Database primary = ...;
@@ -224,18 +224,18 @@ Database a = registry.find("audit").orElseThrow();
 Database def = registry.primary();
 ```
 
-### 3.4 方言检测与选择
+### 3.4 Dialect Detection and Selection
 
-- **URL 自动检测**（`Dialect.of`）：`jdbc:mysql` / `jdbc:mariadb` → MySQL；`jdbc:sqlite` → SQLite；`jdbc:h2` → H2（保留 URL 的 `MODE`，不映射成 PostgreSQL/MySQL）；`jdbc:postgresql` → PostgreSQL。
-- URL 为 `null` 或空白 → 默认 PostgreSQL。
-- **未知 JDBC URL 启动失败（fail-fast）**：识别不了的 scheme（如 `jdbc:oracle:...`）**不再静默回退 PostgreSQL**，直接抛 `IllegalStateException`（消息带 `freeway.db.dialect` 指引）——独立构建用 `Database.create` 的 `withDialect(new XxxDialect())` 显式指定，IoC 方式配置 `freeway.db.dialect=xxx`。静默回退会让错误方言在运行时把 PG 语法（`ON CONFLICT`、`pg_indexes`）发给目标库才暴露，所以改为启动即失败。
-- IoC 下 `freeway.db.dialect` 显式配置优先于 URL 检测。
+- **URL auto-detection** (`Dialect.of`): `jdbc:mysql` / `jdbc:mariadb` → MySQL; `jdbc:sqlite` → SQLite; `jdbc:h2` → H2 (keeps the URL's `MODE`, does not map to PostgreSQL/MySQL); `jdbc:postgresql` → PostgreSQL.
+- URL is `null` or blank → default PostgreSQL.
+- **Unknown JDBC URL fails startup (fail-fast)**: an unrecognized scheme (e.g. `jdbc:oracle:...`) **no longer silently falls back to PostgreSQL**, but directly throws `IllegalStateException` (the message includes guidance to `freeway.db.dialect`) — for standalone construction, specify explicitly with `Database.create`'s `withDialect(new XxxDialect())`; in IoC mode, configure `freeway.db.dialect=xxx`. Silent fallback lets the wrong dialect send PG syntax (`ON CONFLICT`, `pg_indexes`) to the target database at runtime before the error surfaces, so it now fails at startup.
+- Under IoC, an explicitly configured `freeway.db.dialect` takes precedence over URL detection.
 
 ---
 
-## 四、ORM 存取（`Orm` 类）
+## IV. ORM Access (the `Orm` class)
 
-### 4.1 获取 ORM 实例
+### 4.1 Obtaining an ORM Instance
 
 ```java
 Orm orm = Orm.of(db);
@@ -244,96 +244,96 @@ Orm orm = Orm.of(db);
 ### 4.2 Create — INSERT
 
 ```java
-// Record 风格（返回结果中获取 ID）
-ExecuteResult r = orm.insert(new User("闪电", 3));
+// Record style (get the ID from the returned result)
+ExecuteResult r = orm.insert(new User("Lightning", 3));
 long id = r.longKey();
 
-// Bean 风格（ID 写回对象）
-UserBean bean = new UserBean("煤球", 5);
+// Bean style (ID written back to the object)
+UserBean bean = new UserBean("Coalball", 5);
 orm.insert(bean);
-// bean.id 已被赋值
+// bean.id has been assigned
 ```
 
-### 4.3 Read — 查询
+### 4.3 Read — Query
 
 ```java
-// 按 ID 查找
+// Look up by ID
 User found = orm.findById(User.class, 1L).orElseThrow();
 
-// 查找全部
+// Find all
 List<User> all = orm.findAll(User.class);
 
-// 排序 + 分页（orderBy, limit, offset）
-List<User> ordered = orm.findAll(User.class, "age ASC", 0, 0);  // 全部，age 升序
-List<User> limited = orm.findAll(User.class, "age ASC", 2, 0);  // 取前 2 条
-List<User> offset  = orm.findAll(User.class, "id ASC", 0, 1);   // 跳过第 1 条
+// Sorting + pagination (orderBy, limit, offset)
+List<User> ordered = orm.findAll(User.class, "age ASC", 0, 0);  // all, age ascending
+List<User> limited = orm.findAll(User.class, "age ASC", 2, 0);  // take the first 2 rows
+List<User> offset  = orm.findAll(User.class, "id ASC", 0, 1);   // skip the first row
 ```
 
-### 4.4 Update — 更新（仅 Bean）
+### 4.4 Update — Update (Bean Only)
 
 ```java
 UserBean bean = orm.findById(UserBean.class, 1L).orElseThrow();
-bean.age = 4;                       // 修改字段
-ExecuteResult r = orm.update(bean); // 按 ID 更新
-// r.rows() → 影响行数
+bean.age = 4;                       // modify the field
+ExecuteResult r = orm.update(bean); // update by ID
+// r.rows() → number of affected rows
 ```
 
-### 4.5 Delete — 删除
+### 4.5 Delete — Delete
 
 ```java
-// 按对象删除
+// Delete by object
 orm.delete(bean);
 
-// 按 ID 删除
+// Delete by ID
 orm.deleteById(UserBean.class, 1L);
 ```
 
-### 4.6 Save — 插入或更新
+### 4.6 Save — Insert or Update
 
 ```java
-// id=null（或未设置）→ INSERT，数据库分配自增键
-UserBean u = new UserBean("闪电", 3);
+// id=null (or unset) → INSERT; the database assigns the auto-increment key
+UserBean u = new UserBean("Lightning", 3);
 orm.save(u);
-// u.id 已被赋值
+// u.id has been assigned
 
-// 原始类型 @Generated 主键（如 long id）：新实体读到的 id 是 0 而非 null，
-// save() 仍按"未设置"处理 → INSERT 走自增序列并写回生成的键（不会拿 0 去 upsert）
+// Primitive @Generated primary key (e.g. long id): the id read for a new entity is 0 rather than null,
+// so save() still treats it as "unset" → INSERT goes through the identity sequence and writes back the generated key (it will not upsert with 0)
 
-// id=已有值 → upsert，子句由方言决定：
+// id=existing value → upsert; the clause is determined by the dialect:
 //   PostgreSQL / SQLite / H2 → INSERT ... ON CONFLICT (id) DO UPDATE
 //   MySQL / MariaDB         → INSERT ... ON DUPLICATE KEY UPDATE
 ```
 
 ---
 
-## 五、原始 SQL
+## V. Raw SQL
 
-### 5.1 执行 INSERT / UPDATE / DELETE
+### 5.1 Executing INSERT / UPDATE / DELETE
 
 ```java
-// 参数用 ? 占位，自动防注入
-ExecuteResult r = db.execute("INSERT INTO t_user (name, age) VALUES (?, ?)", "闪电", 3);
-long id = r.longKey();   // 自增 ID
-int rows = r.rows();     // 影响行数
+// Parameters use ? placeholders, with automatic injection protection
+ExecuteResult r = db.execute("INSERT INTO t_user (name, age) VALUES (?, ?)", "Lightning", 3);
+long id = r.longKey();   // auto-increment ID
+int rows = r.rows();     // number of affected rows
 ```
 
-### 5.2 查询并映射
+### 5.2 Querying and Mapping
 
 ```java
-// 映射到 Record
+// Map to Record
 User user = db.query("SELECT * FROM t_user WHERE id = ?", 1L)
     .one(User.class).orElseThrow();
 
-// 映射到 List
+// Map to List
 List<User> users = db.query("SELECT * FROM t_user WHERE age >= ?", 3)
     .list(User.class);
 
-// 映射到单列
+// Map to a single column
 Long count = db.query("SELECT count(*) FROM t_user")
     .one(Long.class).orElseThrow();
 ```
 
-### 5.3 命名参数
+### 5.3 Named Parameters
 
 ```java
 User user = db.query("SELECT * FROM t_user WHERE id = $id")
@@ -341,47 +341,47 @@ User user = db.query("SELECT * FROM t_user WHERE id = $id")
     .one(User.class).orElseThrow();
 ```
 
-### 5.4 集合参数（IN 查询）
+### 5.4 Collection Parameters (IN Query)
 
 ```java
 List<User> users = db.query("SELECT * FROM t_user WHERE id IN (?)", List.of(1L, 2L, 3L))
     .list(User.class);
 ```
 
-### 5.5 批量操作
+### 5.5 Batch Operations
 
 ```java
 db.batch("INSERT INTO t_user (name, age) VALUES (?, ?)")
     .rowsRaw(
-        new Object[]{"闪电", 3},
-        new Object[]{"煤球", 5}
+        new Object[]{"Lightning", 3},
+        new Object[]{"Coalball", 5}
     )
     .execute();
 ```
 
 ---
 
-## 六、Row 行访问（`Row` 类）
+## VI. Row Access (the `Row` class)
 
-当查询结果映射到 `Row.class` 时，可以按列名灵活取值：
+When query results are mapped to `Row.class`, values can be retrieved flexibly by column name:
 
 ```java
 List<Row> rows = db.query("SELECT * FROM t_user WHERE id = ?", 1L)
     .list(Row.class);
 
 Row row = rows.get(0);
-String name  = row.asString("name");        // 字符串
-Integer age  = row.asInt("age");        // 整数
-Long    id   = row.asLong("id");       // 长整型
-BigDecimal score = row.asBigDecimal("score");  // 浮点数（BigDecimal）
-List<String> cols = row.columns();        // 获取所有列名
+String name  = row.asString("name");        // string
+Integer age  = row.asInt("age");        // integer
+Long    id   = row.asLong("id");       // long integer
+BigDecimal score = row.asBigDecimal("score");  // floating-point number (BigDecimal)
+List<String> cols = row.columns();        // get all column names
 ```
 
 ---
 
-## 七、SQL 构建器（`Sql` 类）
+## VII. SQL Builder (the `Sql` class)
 
-链式构建 SQL 语句，适合动态条件场景：
+Build SQL statements in a chain, suitable for dynamic-condition scenarios:
 
 ```java
 List<User> adults = db.query(
@@ -392,75 +392,75 @@ List<User> adults = db.query(
 ).list(User.class);
 ```
 
-INSERT 构建器：
+INSERT builder:
 
 ```java
 ExecuteResult r = db.execute(
     Sql.insert("t_user")
-        .value("name", "闪电")
+        .value("name", "Lightning")
         .value("age", 3)
 );
 ```
 
 ---
 
-## 八、事务
+## VIII. Transactions
 
 ```java
-// 成功提交
+// Commits successfully
 db.transaction(() -> {
-    orm.insert(new User("闪电", 3));
-    orm.insert(new User("煤球", 5));
+    orm.insert(new User("Lightning", 3));
+    orm.insert(new User("Coalball", 5));
 });
 
-// 异常时自动回滚
+// Rolls back automatically on exception
 try {
     db.transaction(() -> {
-        orm.insert(new User("会回滚", 99));
-        throw new RuntimeException("模拟异常");
+        orm.insert(new User("WillRollBack", 99));
+        throw new RuntimeException("simulated exception");
     });
 } catch (RuntimeException ignored) {
-    // 事务已回滚，数据不变
+    // the transaction has rolled back; data is unchanged
 }
 ```
 
-### 事务感知的事件发布
+### Transaction-Aware Event Publishing
 
-事务内调用 `bus.publish()` 自动延迟到提交后执行——提交成功才发，回滚不发。零配置，框架基于 `Defer` 的提交后执行机制自动处理。
+Calling `bus.publish()` inside a transaction automatically defers execution until after commit—it is sent only if the commit succeeds, and not sent on rollback. Zero configuration; the framework handles it automatically through `Defer`'s post-commit execution mechanism.
 
 ```java
 db.transaction(() -> {
-    orm.insert(new User("闪电", 3));
-    bus.publish(new UserCreatedEvent(user));  // 提交后才真正发布
+    orm.insert(new User("Lightning", 3));
+    bus.publish(new UserCreatedEvent(user));  // actually published only after commit
 });
 ```
 
-### 跨线程限制（ScopedValue 不传播）
+### Cross-Thread Restriction (ScopedValue Does Not Propagate)
 
-事务绑定在开启它的线程上，`ScopedValue` **不会传播到子线程**。`transaction()` 内新起的线程/其它线程不能做 DB 工作——此时调用 `db.query/execute/batch` 会抛 `SqlException`（"Another thread holds an active transaction on this Database ..."），而不是静默借用独立连接绕过事务、破坏原子性。注意该守卫按 `Database` 实例生效：单例 `Database` 在事务进行期间，其它线程的全部非事务 DB 调用都会被拒绝；并发工作请走独立的 `Database` 实例（如经 `DatabaseRegistry`）。事务内创建的 `Query`/`BatchQuery` 也必须在事务线程上、事务结束前消费完，否则同样抛 `SqlException`。
+A transaction is bound to the thread that opened it; `ScopedValue` **does not propagate to child threads**. A newly started thread or any other thread inside `transaction()` cannot do DB work—calling `db.query/execute/batch` then throws `SqlException` ("Another thread holds an active transaction on this Database ..."), instead of silently borrowing a separate connection to bypass the transaction and break atomicity. Note that this guard applies per `Database` instance: while a singleton `Database` is in a transaction, all non-transactional DB calls from other threads are rejected; for concurrent work, use separate `Database` instances (e.g. through `DatabaseRegistry`). `Query`/`BatchQuery` created inside a transaction must also be consumed on the transaction thread before the transaction ends, otherwise a `SqlException` is thrown as well.
 
-### 跨库无 XA
+### No XA Across Databases
 
-`db.transaction()` 只覆盖当前 `Database` 自己的连接：经 `DatabaseRegistry` 拿到的其它数据源在事务内写入会**独立提交**，本事务失败不会回滚它们。跨库没有 XA / 两阶段提交，不要在单库事务里混写多个库。
+`db.transaction()` covers only the connection of the current `Database` itself: writes inside the transaction through other data sources obtained via `DatabaseRegistry` **commit independently**, and are not rolled back if this transaction fails. There is no XA / two-phase commit across databases; do not mix writes to multiple databases in a single-database transaction.
 
-### Schema.ensure 与事务
+### Schema.ensure and Transactions
 
-MySQL/MariaDB 的 DDL 隐式提交（无事务性 DDL）：事务内调用 `Schema.ensure()` / `Schema.drop()` 会被拒绝（抛 `SqlException`）——DDL 会连带提交事务里尚未提交的修改。请把 schema DDL 放在开启事务之前。PostgreSQL / H2 / SQLite 支持事务性 DDL，事务内 `ensure()` 安全（失败可整体回滚）。
+MySQL/MariaDB DDL commits implicitly (no transactional DDL): calling `Schema.ensure()` / `Schema.drop()` inside a transaction is rejected (throws `SqlException`) — the DDL would commit the transaction's uncommitted changes along with it. Put schema DDL before opening a transaction. PostgreSQL / H2 / SQLite support transactional DDL; inside a transaction `ensure()` is safe (a failure rolls back everything).
 
 ---
 
-## 九、ExecuteResult 返回值
+## IX. ExecuteResult Return Value
 
-`db.execute()` / `orm.insert()` 等操作返回 `ExecuteResult`，用于获取执行结果：
+`db.execute()` / `orm.insert()` and similar operations return `ExecuteResult`, used to obtain the execution result:
 
 ```java
-ExecuteResult r = db.execute("INSERT INTO t_user (name, age) VALUES (?, ?)", "闪电", 3);
+ExecuteResult r = db.execute("INSERT INTO t_user (name, age) VALUES (?, ?)", "Lightning", 3);
 
-r.rows();        // 影响行数（int）
-r.hasGeneratedKey();      // 是否包含自增 ID（boolean）
-r.longKey();     // 自增 ID 值（long）
+r.rows();        // number of affected rows (int)
+r.hasGeneratedKey();      // whether it contains an auto-increment ID (boolean)
+r.longKey();     // auto-increment ID value (long)
 
-// 典型断言
+// Typical assertions
 assertTrue(r.hasGeneratedKey());
 assertTrue(r.longKey() > 0);
 assertEquals(1, r.rows());
@@ -468,140 +468,140 @@ assertEquals(1, r.rows());
 
 ---
 
-## 十、自增 ID 核心行为
+## X. Core Auto-Increment ID Behavior
 
-| 操作 | `hasGeneratedKey()` | `longKey()` | 说明 |
+| Operation | `hasGeneratedKey()` | `longKey()` | Description |
 |------|-----------|-------------|------|
-| **INSERT** (普通) | `true` | 生成的 ID | 自增值从 1 开始递增 |
-| **INSERT** (显式指定 id) | `true` | 指定的值 | 如 `set("id", 100L)` |
-| **INSERT** (事务内) | `true` | 生成的 ID | 事务提交前也可获取 |
-| **INSERT** (SQL 构建器) | `true` | 生成的 ID | 和原始 SQL 一致 |
-| **INSERT** (含注释 SQL) | `true` | 生成的 ID | `/* ... */ insert ...` 仍识别 |
-| **UPDATE** | `false` | `0` | 不返回自增 ID |
-| **DELETE** | `false` | `0` | 不返回自增 ID |
+| **INSERT** (normal) | `true` | generated ID | The auto-increment value starts at 1 and increases |
+| **INSERT** (id explicitly specified) | `true` | the specified value | e.g. `set("id", 100L)` |
+| **INSERT** (inside a transaction) | `true` | generated ID | Available even before the transaction commits |
+| **INSERT** (SQL builder) | `true` | generated ID | Consistent with raw SQL |
+| **INSERT** (SQL with comments) | `true` | generated ID | `/* ... */ insert ...` is still recognized |
+| **UPDATE** | `false` | `0` | Does not return an auto-increment ID |
+| **DELETE** | `false` | `0` | Does not return an auto-increment ID |
 
 ---
 
-## 十一、完整开发模板
+## XI. Complete Development Template
 
 ```java
-// 1. 定义实体
+// 1. Define the entity
 @Table("t_user")
 record User(@Id @Generated Long id, @Column String name, @Column Integer age) {
     User(String name, Integer age) { this(null, name, age); }
 }
 
-// 2. 建库 + 建表
+// 2. Create the database + create the table
 Database db = Database.create(PoolConfig.defaults("jdbc:h2:mem:demo;MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""));
 Schema.ensure(db, User.class);
 Orm orm = Orm.of(db);
 
 // 3. CRUD
-var r = orm.insert(new User("闪电", 3));           // Create
+var r = orm.insert(new User("Lightning", 3));           // Create
 User u = orm.findById(User.class, r.longKey())...;   // Read
-// ...（Bean 风格 Update/Delete）
+// ... (Bean-style Update/Delete)
 
-// 4. 收尾
-db.close();  // Database 实现了 AutoCloseable
+// 4. Clean up
+db.close();  // Database implements AutoCloseable
 ```
 
 ---
 
-> **结论**: freeway-db 提供了从 DDL 到 CRUD 的完整数据库开发能力，注解简洁、API 一致、支持 Record 和 Bean 双风格。LLM 完全可以读懂并用它进行开发。
-# 新增数据库方言指南
+> **Conclusion**: freeway-db provides complete database development capability from DDL to CRUD, with concise annotations, a consistent API, and support for both Record and Bean styles. An LLM can fully understand it and use it for development.
+# Guide to Adding a Database Dialect
 
-`Dialect` 接口定义了 SQL 方言的完整契约。本文档描述新增一个数据库方言所需的全部步骤。
+The `Dialect` interface defines the complete contract of an SQL dialect. This document describes all the steps required to add a database dialect.
 
-## 目录
+## Table of Contents
 
-1. [概述](#概述)
-2. [步骤 1：创建方言类](#步骤-1创建方言类)
-3. [步骤 2：必须实现的抽象方法（5 个）](#步骤-2必须实现的抽象方法5-个)
-4. [步骤 3：必须覆写的默认方法（6 个）](#步骤-3必须覆写的默认方法6-个)
-5. [步骤 4：按需覆写的默认方法](#步骤-4按需覆写的默认方法)
-6. [步骤 5：注册到 DbModule](#步骤-5注册到-dbmodule)
-7. [步骤 6：特殊处理](#步骤-6特殊处理)
-8. [步骤 7：测试](#步骤-7测试)
-9. [模板代码](#模板代码)
-10. [与现有方言的差异参考](#与现有方言的差异参考)
+1. [Overview](#overview)
+2. [Step 1: Create the Dialect Class](#step-1-create-the-dialect-class)
+3. [Step 2: Abstract Methods That Must Be Implemented (5)](#step-2-abstract-methods-that-must-be-implemented-5)
+4. [Step 3: Default Methods That Must Be Overridden (6)](#step-3-default-methods-that-must-be-overridden-6)
+5. [Step 4: Default Methods to Override as Needed](#step-4-default-methods-to-override-as-needed)
+6. [Step 5: Register with DbModule](#step-5-register-with-dbmodule)
+7. [Step 6: Special Handling](#step-6-special-handling)
+8. [Step 7: Testing](#step-7-testing)
+9. [Template Code](#template-code)
+10. [Difference Reference Against Existing Dialects](#difference-reference-against-existing-dialects)
 
 ---
 
-## 概述
+## Overview
 
-`Dialect` 接口位于 `com.jujin.freeway.db.dialect`，**只声明语法特性**：标识符引用（`quoteName`/`identifierQuoteChars`）、identity 子句（`generatedClause`/`generatedTypeOverride`）、类型映射默认值、单子句映射（`upsertClause`/`forUpdateClause`/`offsetOnlyClause`/`truncateTable`）、能力标志（`supportsTransactionalDdl`/`supportsIndexIfNotExists`/`supportsReturning`/`supportsOnConflict`，及 `generatedPrimaryKeyInline`/`dropTableCascade`/`alterAddColumnNotNull`）、词法能力（`hashLineComments`/`dollarQuoting`/`escapeStringPrefix`/`backslashEscapesStrings`/`bracketQuoting`）与元数据查询。
+The `Dialect` interface is located in `com.jujin.freeway.db.dialect` and **only declares syntax features**: identifier quoting (`quoteName`/`identifierQuoteChars`), identity clauses (`generatedClause`/`generatedTypeOverride`), type mapping defaults, single-clause mappings (`upsertClause`/`forUpdateClause`/`offsetOnlyClause`/`truncateTable`), capability flags (`supportsTransactionalDdl`/`supportsIndexIfNotExists`/`supportsReturning`/`supportsOnConflict`, plus `generatedPrimaryKeyInline`/`dropTableCascade`/`alterAddColumnNotNull`), lexical capabilities (`hashLineComments`/`dollarQuoting`/`escapeStringPrefix`/`backslashEscapesStrings`/`bracketQuoting`) and metadata queries.
 
-**DDL 装配（CREATE TABLE / CREATE INDEX / ALTER / DROP）不属于 Dialect**——那是 `com.jujin.freeway.db.schema` 包（`Schema`/`SchemaGenerator`）的职责，它们消费 Dialect 原语生成方言正确的 DDL。Dialect 包自包含：`dialect` 只依赖 `com.jujin.freeway.db.Database`，不反向依赖 `schema`，这样新增方言时只需改 `dialect` 包。
+**DDL assembly (CREATE TABLE / CREATE INDEX / ALTER / DROP) is not part of Dialect**—that is the responsibility of the `com.jujin.freeway.db.schema` package (`Schema`/`SchemaGenerator`), which consume Dialect primitives to generate dialect-correct DDL. The Dialect package is self-contained: `dialect` depends only on `com.jujin.freeway.db.Database` and does not depend back on `schema`, so adding a dialect requires changing only the `dialect` package.
 
-| 类别 | 数量 | 说明 |
+| Category | Count | Description |
 |------|------|------|
-| 抽象方法（必须实现） | 5 | 编译器强制，不实现无法编译 |
-| 默认方法（必须覆写） | ~6 | 默认值是 PG 偏好，不覆写会出 bug |
-| 默认方法（按需覆写） | 4-6 | 视数据库特性而定（含 `backslashEscapesStrings`/`supportsTransactionalDdl`） |
-| 注册点 | 2 | `Dialect.ofId()` catalog + `Dialect.of()` URL 检测 |
+| Abstract methods (must implement) | 5 | Enforced by the compiler; it will not compile without them |
+| Default methods (must override) | ~6 | The defaults are PG-preferred; bugs occur if not overridden |
+| Default methods (override as needed) | 4-6 | Depends on database features (including `backslashEscapesStrings`/`supportsTransactionalDdl`) |
+| Registration points | 2 | `Dialect.ofId()` catalog + `Dialect.of()` URL detection |
 
-新增一个方言预计工作量约 **100-150 行代码 + 测试**。
+Adding a dialect is estimated at about **100-150 lines of code + tests**.
 
 ---
 
-## 步骤 1：创建方言类
+## Step 1: Create the Dialect Class
 
-在 `com.jujin.freeway.db.dialect` 包下创建类，实现 `Dialect` 接口：
+Create a class under the `com.jujin.freeway.db.dialect` package that implements the `Dialect` interface:
 
 ```java
 package com.jujin.freeway.db.dialect;
 
 public final class OracleDialect implements Dialect {
-    // 以下逐步填充
+    // fill in step by step below
 }
 ```
 
-所有 `Dialect` 实现必须是**无状态、线程安全**的（只有常量和纯函数，无可变字段）。
+All `Dialect` implementations must be **stateless and thread-safe** (only constants and pure functions, no mutable fields).
 
 ---
 
-## 步骤 2：必须实现的抽象方法（5 个）
+## Step 2: Abstract Methods That Must Be Implemented (5)
 
 ### 2.1 `dialectId()`
 
-返回方言标识符，用于 IoC 注册和错误消息。
+Returns the dialect identifier, used for IoC registration and error messages.
 
 ```java
 @Override
 public String dialectId() {
-    return "oracle";  // 小写，与 DbModule 中的 ID 保持一致
+    return "oracle";  // lowercase, consistent with the ID in DbModule
 }
 ```
 
 ### 2.2 `generatedClause()`
 
-返回自增列的 DDL 子句。
+Returns the DDL clause for an auto-increment column.
 
 ```java
 @Override
 public String generatedClause() {
-    return "GENERATED BY DEFAULT AS IDENTITY";  // PG/H2 风格
-    // 或 "AUTO_INCREMENT"                   // MySQL 风格
-    // 或 "AUTOINCREMENT"                    // SQLite 风格
+    return "GENERATED BY DEFAULT AS IDENTITY";  // PG/H2 style
+    // or "AUTO_INCREMENT"                   // MySQL style
+    // or "AUTOINCREMENT"                    // SQLite style
 }
 ```
 
 ### 2.3 `defaultUUIDType()`
 
-返回 `UUID` 对应的 SQL 类型。
+Returns the SQL type corresponding to `UUID`.
 
 ```java
 @Override
 public String defaultUUIDType() {
     return "UUID";         // PG/H2
-    // 或 "VARCHAR(36)"    // MySQL
-    // 或 "TEXT"           // SQLite
+    // or "VARCHAR(36)"    // MySQL
+    // or "TEXT"           // SQLite
 }
 ```
 
 ### 2.4 `existingTables(Database db)`
 
-查询数据库中已存在的表名。返回小写集合。
+Queries the names of tables that already exist in the database. Returns a lowercase set.
 
 ```java
 @Override
@@ -612,13 +612,13 @@ public Set<String> existingTables(Database db) {
 }
 ```
 
-- 使用 `querySet()` 辅助方法（自动小写、异常处理）
-- 按需过滤 schema（调用 `effectiveSchema()`）
-- 如果 INFORMATION_SCHEMA 大小写不确定，使用 `UPPER()` 比较
+- Uses the `querySet()` helper (automatic lowercasing, exception handling)
+- Filters the schema as needed (calls `effectiveSchema()`)
+- If INFORMATION_SCHEMA case is uncertain, compare with `UPPER()`
 
 ### 2.5 `existingColumns(Database db, String tableName)`
 
-查询指定表中已存在的列名。返回小写集合。
+Queries the names of columns that already exist in the specified table. Returns a lowercase set.
 
 ```java
 @Override
@@ -631,21 +631,21 @@ public Set<String> existingColumns(Database db, String tableName) {
 
 ---
 
-## 步骤 3：必须覆写的默认方法（6 个）
+## Step 3: Default Methods That Must Be Overridden (6)
 
-以下默认方法的返回值是 PG 偏好，在其他数据库上会产生错误 SQL。**必须覆写**。
+The return values of the following default methods are PG-preferred and will produce incorrect SQL on other databases. **They must be overridden**.
 
 ### 3.1 `reservedWords()`
 
-返回该数据库的 SQL 保留字集合（小写）。不覆写则所有标识符都不会被引号包裹。
+Returns the set of SQL reserved words for that database (lowercase). If not overridden, no identifier will be quoted at all.
 
-`buildReserved` 是 `Dialect` 接口上的 **static 方法**（`Dialect.buildReserved(String...)`）：把接口常量 `COMMON_RESERVED`（通用保留字）与传入的方言特有词合并后返回不可变集合。4 个内置方言（Postgres/MySql/Sqlite/H2）都在自己的类里通过它组装保留字集合，自定义方言也应复用——**不要在方言类里另写一套合并逻辑**。
+`buildReserved` is a **static method** on the `Dialect` interface (`Dialect.buildReserved(String...)`): it merges the interface constant `COMMON_RESERVED` (common reserved words) with the passed dialect-specific words and returns an immutable set. All four built-in dialects (Postgres/MySql/Sqlite/H2) assemble their reserved-word sets through it in their own classes, and custom dialects should reuse it too—**do not write another merge implementation in the dialect class**.
 
 ```java
 private static final Set<String> RESERVED = Dialect.buildReserved(
-    // 只需列出目标数据库特有保留字——通用保留字已由 COMMON_RESERVED 提供
+    // just list the reserved words specific to the target database—common reserved words are already provided by COMMON_RESERVED
     "status", "show", "describe", "explain",
-    // ... 参考现有方言的集合，加上目标数据库特有保留字
+    // ... refer to the sets of existing dialects and add the target database's specific reserved words
 );
 
 @Override
@@ -656,17 +656,17 @@ public Set<String> reservedWords() {
 
 ### 3.2 `quoteChar()`
 
-返回标识符引号字符。
+Returns the identifier quote character.
 
 ```java
 @Override
 public char quoteChar() {
     return '"';   // PG/SQLite/H2
-    // 或 '`'     // MySQL
+    // or '`'     // MySQL
 }
 ```
 
-不需要覆写 `quoteName()` 或 `needsQuoting()`——它们的默认实现会调用 `quoteChar()` 和 `reservedWords()`。
+There is no need to override `quoteName()` or `needsQuoting()`—their default implementations call `quoteChar()` and `reservedWords()`.
 
 ### 3.3 `supportsReturning()`
 
@@ -674,7 +674,7 @@ public char quoteChar() {
 @Override
 public boolean supportsReturning() {
     return true;   // PG/H2/SQLite 3.35+
-    // 或 false   // MySQL
+    // or false   // MySQL
 }
 ```
 
@@ -684,7 +684,7 @@ public boolean supportsReturning() {
 @Override
 public boolean supportsOnConflict() {
     return true;   // PG/SQLite/H2
-    // 或 false   // MySQL（MySQL 用 ON DUPLICATE KEY）
+    // or false   // MySQL (MySQL uses ON DUPLICATE KEY)
 }
 ```
 
@@ -694,9 +694,9 @@ public boolean supportsOnConflict() {
 @Override
 public String defaultBinaryType() {
     return "BYTEA";       // PG
-    // 或 "LONGBLOB"      // MySQL
-    // 或 "BLOB"          // SQLite
-    // 或 "BINARY VARYING" // H2
+    // or "LONGBLOB"      // MySQL
+    // or "BLOB"          // SQLite
+    // or "BINARY VARYING" // H2
 }
 ```
 
@@ -705,19 +705,19 @@ public String defaultBinaryType() {
 ```java
 @Override
 public String defaultInstantType() {
-    return "TIMESTAMP WITH TIME ZONE";  // PG/H2（默认，无需覆写）
-    // 或 "DATETIME(6)"                // MySQL
-    // 或 "TEXT"                       // SQLite
+    return "TIMESTAMP WITH TIME ZONE";  // PG/H2 (default, no override needed)
+    // or "DATETIME(6)"                // MySQL
+    // or "TEXT"                       // SQLite
 }
 ```
 
 ---
 
-## 步骤 4：按需覆写的默认方法
+## Step 4: Default Methods to Override as Needed
 
 ### 4.1 `upsertClause(List<String> conflict, List<String> update)`
 
-**如果不支持 `ON CONFLICT`**（如 MySQL），必须覆写：
+**If `ON CONFLICT` is not supported** (e.g. MySQL), it must be overridden:
 
 ```java
 @Override
@@ -725,17 +725,17 @@ public String upsertClause(List<String> conflictColumns, List<String> updateColu
     List<String> updates = new ArrayList<>(updateColumns.size());
     for (String col : updateColumns) {
         String q = quoteName(col);
-        updates.add(q + " = VALUES(" + q + ")");  // MySQL 语法
+        updates.add(q + " = VALUES(" + q + ")");  // MySQL syntax
     }
     return " ON DUPLICATE KEY UPDATE " + String.join(", ", updates);
 }
 ```
 
-默认实现使用 `ON CONFLICT (target) DO UPDATE SET col = EXCLUDED.col`（PG 语法）。
+The default implementation uses `ON CONFLICT (target) DO UPDATE SET col = EXCLUDED.col` (PG syntax).
 
-**注意**：
-- 传入的列名是**原始名**（未引用），方法内部需调用 `quoteName()`。
-- 返回值**必须以空格开头**。
+**Notes**:
+- The column names passed in are **raw names** (unquoted); the method must call `quoteName()` internally.
+- The return value **must start with a space**.
 
 ### 4.2 `truncateTable(String tableName)`
 
@@ -743,8 +743,8 @@ public String upsertClause(List<String> conflictColumns, List<String> updateColu
 @Override
 public String truncateTable(String tableName) {
     return "TRUNCATE TABLE " + quoteName(tableName) + " RESTART IDENTITY";  // PG/H2
-    // 或 "TRUNCATE TABLE " + quoteName(tableName)                           // MySQL（默认）
-    // 或 "DELETE FROM " + quoteName(tableName)                              // SQLite
+    // or "TRUNCATE TABLE " + quoteName(tableName)                           // MySQL (default)
+    // or "DELETE FROM " + quoteName(tableName)                              // SQLite
 }
 ```
 
@@ -754,15 +754,15 @@ public String truncateTable(String tableName) {
 @Override
 public boolean supportsIndexIfNotExists() {
     return true;   // PG/SQLite/H2
-    // 或 false   // MySQL
+    // or false   // MySQL
 }
 ```
 
-如果返回 `false`，必须同时覆写 `existingIndexes()` 来查询已有索引。
+If it returns `false`, `existingIndexes()` must also be overridden to query existing indexes.
 
 ### 4.4 `existingIndexes(Database db, String tableName)`
 
-**仅当 `supportsIndexIfNotExists()` 返回 `false` 时需要**。
+**Only needed when `supportsIndexIfNotExists()` returns `false`**.
 
 ```java
 @Override
@@ -778,16 +778,16 @@ public Set<String> existingIndexes(Database db, String tableName) {
 ```java
 @Override
 public String forUpdateClause() {
-    return "FOR UPDATE";   // PG/MySQL/H2（默认）
-    // 或 ""               // SQLite（不支持）
+    return "FOR UPDATE";   // PG/MySQL/H2 (default)
+    // or ""               // SQLite (not supported)
 }
 ```
 
-返回值**没有前导空格**。
+The return value has **no leading space**.
 
 ### 4.6 `generatedTypeOverride(String sqlType, Class<?> javaType)`
 
-**仅当自增列需要特定 SQL 类型时覆写**（如 SQLite 要求 `INTEGER`）：
+**Override only when the auto-increment column requires a specific SQL type** (e.g. SQLite requires `INTEGER`):
 
 ```java
 @Override
@@ -803,7 +803,7 @@ public String generatedTypeOverride(String sqlType, Class<?> javaType) {
 
 ### 4.7 `generatedPrimaryKeyInline()`
 
-**仅当自增主键必须内联声明在列上时覆写**（SQLite：`"id" INTEGER PRIMARY KEY AUTOINCREMENT`；其它数据库用尾部 `PRIMARY KEY (...)` 子句）。
+**Override only when the auto-increment primary key must be declared inline on the column** (SQLite: `"id" INTEGER PRIMARY KEY AUTOINCREMENT`; other databases use a trailing `PRIMARY KEY (...)` clause).
 
 ```java
 @Override
@@ -814,7 +814,7 @@ public boolean generatedPrimaryKeyInline() {
 
 ### 4.8 `alterAddColumnNotNull()`
 
-**仅当 ALTER TABLE ADD COLUMN 不能带 NOT NULL 时覆写**（SQLite 无 DEFAULT 时不能加 NOT NULL，约束会被剥离）。
+**Override only when ALTER TABLE ADD COLUMN cannot carry NOT NULL** (SQLite cannot add NOT NULL without a DEFAULT, and the constraint would be stripped).
 
 ```java
 @Override
@@ -823,7 +823,7 @@ public boolean alterAddColumnNotNull() {
 }
 ```
 
-> **注意**：CREATE TABLE / CREATE INDEX / ALTER / DROP 的完整语句装配在 `SchemaGenerator` / `Schema`（`com.jujin.freeway.db.schema`），不在 Dialect 上。Dialect 只提供 `quoteName`、`generatedClause`、上面的能力标志等原语。
+> **Note**: The complete statement assembly for CREATE TABLE / CREATE INDEX / ALTER / DROP lives in `SchemaGenerator` / `Schema` (`com.jujin.freeway.db.schema`), not on Dialect. Dialect only provides primitives such as `quoteName`, `generatedClause`, and the capability flags above.
 
 ### 4.9 `effectiveSchema()`
 
@@ -831,14 +831,14 @@ public boolean alterAddColumnNotNull() {
 @Override
 public String effectiveSchema() {
     return "public";   // PG
-    // 或 "dbo"        // SQL Server
-    // 或 "PUBLIC"      // H2
+    // or "dbo"        // SQL Server
+    // or "PUBLIC"      // H2
 }
 ```
 
 ### 4.10 `backslashEscapesStrings()`
 
-**MySQL 必须覆写为 `true`**：普通单引号字符串字面量里 `\` 是否转义下一个字符（`'it\'s'` = `it's`）。默认 `false`——SQL 标准只定义 `''` 加倍；PostgreSQL 的反斜杠转义走 `E'...'` 前缀（`escapeStringPrefix()`），普通 PG 字符串里 `\` 是字面文本。
+**MySQL must override it to `true`**: whether `\` escapes the next character in an ordinary single-quoted string literal (`'it\'s'` = `it's`). The default is `false`—the SQL standard defines only `''` doubling; PostgreSQL's backslash escape uses the `E'...'` prefix (`escapeStringPrefix()`), and in ordinary PG strings `\` is literal text.
 
 ```java
 @Override
@@ -849,69 +849,69 @@ public boolean backslashEscapesStrings() {
 
 ### 4.11 `supportsTransactionalDdl()`
 
-**MySQL 必须覆写为 `false`**：DDL 语句是否参与事务。默认 `true`（PG/H2/SQLite）。MySQL/MariaDB 每条 DDL 都会隐式提交：含 DDL 的迁移无法原子应用（DDL 已提交但校验和行丢失，下次启动会重跑 DDL 而失败），`MigrationRunner` 会直接拒绝这类迁移；`Schema.ensure()`/`Schema.drop()` 在事务内也会被拒。
+**MySQL must override it to `false`**: whether DDL statements participate in transactions. The default is `true` (PG/H2/SQLite). Every DDL statement in MySQL/MariaDB commits implicitly: a migration containing DDL cannot be applied atomically (the DDL is committed but the checksum row is lost, and the next startup reruns the DDL and fails), so `MigrationRunner` rejects such migrations outright; `Schema.ensure()`/`Schema.drop()` are also rejected inside a transaction.
 
 ```java
 @Override
 public boolean supportsTransactionalDdl() {
-    return false; // MySQL / MariaDB（每条 DDL 隐式提交）
+    return false; // MySQL / MariaDB (every DDL statement commits implicitly)
 }
 ```
 
 ---
 
-## 步骤 5：注册内建 dialect 到 catalog
+## Step 5: Register Built-in Dialects in the Catalog
 
-内建方言由 `Dialect.ofId(String)` 的 catalog 解析，`DbModule` 不再逐个绑定。修改两个位置：
+Built-in dialects are resolved by the `Dialect.ofId(String)` catalog; `DbModule` no longer binds them one by one. Two locations are changed:
 
-### 5.1 注册 id → 实现
+### 5.1 Register id → implementation
 
 ```java
-// Dialect.ofId() 的 switch 中
+// in the switch of Dialect.ofId()
 case "oracle" -> new OracleDialect();
 ```
 
-`id` 必须与 `dialectId()` 返回值一致。
+`id` must match the value returned by `dialectId()`.
 
-### 5.2 添加 URL 检测
+### 5.2 Add URL detection
 
 ```java
-// Dialect.of(url) 中：先把 scheme 映射到 id，再交给 ofId()
+// in Dialect.of(url): first map the scheme to an id, then hand it to ofId()
 if (url.contains("jdbc:oracle")) return Dialect.ofId("oracle");
 ```
 
-URL 检测的唯一实现在 `Dialect.of(String)`（大小写不敏感）——
-独立使用（`Database.create`）和 IoC 使用（`DbModule`）共用同一处。`DbModule` 只绑定一个
-最终选中的 `Dialect` service。第三方方言不必进入内建 catalog：按 id 绑定
-（`binder.bind(Dialect.class).to(OracleDialect.class).id("oracle")`）并配置
-`freeway.db.dialect=oracle` 即可。
+The only implementation of URL detection is in `Dialect.of(String)` (case-insensitive)—
+standalone use (`Database.create`) and IoC use (`DbModule`) share the same place. `DbModule` binds only one
+final selected `Dialect` service. Third-party dialects do not need to enter the built-in catalog: bind by id
+(`binder.bind(Dialect.class).to(OracleDialect.class).id("oracle")`) and configure
+`freeway.db.dialect=oracle`.
 
-**未知 scheme 会 fail-fast**：`Dialect.of` 对无法识别的 JDBC URL（如 `jdbc:oracle:...`）抛 `IllegalStateException`，消息带 `freeway.db.dialect` 指引——**不再静默回退 PostgreSQL**（静默回退会在运行时把 PG 语法发给目标库才暴露错误）。仅当 URL 为 `null` 或空白时才默认返回 `PostgresDialect`。H2 的 `MODE` 留在 `H2Dialect` 内：`MODE` 改变 H2 的语法面，不改变 H2 的 introspection、类型和 DDL 事务语义；`DbModule` 自动检测直接保留带 mode 的 H2 实例。新增方言时在此方法里加上对应的 URL 前缀匹配。
+**Unknown schemes fail fast**: `Dialect.of` throws `IllegalStateException` for an unrecognized JDBC URL (e.g. `jdbc:oracle:...`), with the message carrying guidance to `freeway.db.dialect`—**it no longer silently falls back to PostgreSQL** (silent fallback would only expose the error at runtime, after PG syntax had already been sent to the target database). Only when the URL is `null` or blank does it default to returning `PostgresDialect`. H2's `MODE` stays inside `H2Dialect`: `MODE` changes H2's syntax surface, not its introspection, type, or DDL transaction semantics; `DbModule` auto-detection directly preserves the H2 instance with the mode. When adding a dialect, add the corresponding URL prefix match in this method.
 
 ---
 
-## 步骤 6：特殊处理
+## Step 6: Special Handling
 
-### 6.1 ColumnDef 辅助方法
+### 6.1 ColumnDef Helper Methods
 
-`ColumnDef` 是 package-private 记录，提供以下方法给方言使用：
+`ColumnDef` is a package-private record that provides the following methods for dialects:
 
-| 方法 | 用途 |
+| Method | Purpose |
 |------|------|
-| `toSql(Dialect)` | 完整的 `"col" TYPE [NOT NULL] [GENERATED]` |
-| `toAlterSql(Dialect, includeNotNull, includeGenerated)` | `ADD COLUMN ...` 前缀 + 完整定义，按需剥离 NOT NULL / 生成子句（包私有，供 `Schema` 的 ALTER 装配使用） |
+| `toSql(Dialect)` | Complete `"col" TYPE [NOT NULL] [GENERATED]` |
+| `toAlterSql(Dialect, includeNotNull, includeGenerated)` | `ADD COLUMN ...` prefix + complete definition, stripping NOT NULL / the generated clause as needed (package-private, used by `Schema`'s ALTER assembly) |
 
-### 6.2 querySet 辅助方法
+### 6.2 querySet Helper Method
 
-`Dialect.querySet(db, sql, params...)` 执行 introspection 查询并将结果小写。**introspection 失败抛 `SqlException`**（绝不静默当成"空库"——否则 `Schema` 会对未知的当前状态生成误导性 DDL，如重复建索引、重 CREATE 已存在的表）；`Schema.ensure` 捕获该异常后跳过受影响的 DDL 阶段并记录警告。
+`Dialect.querySet(db, sql, params...)` executes an introspection query and lowercases the results. **An introspection failure throws `SqlException`** (never silently treat it as an "empty database"—otherwise `Schema` would generate misleading DDL against an unknown current state, such as creating duplicate indexes or issuing CREATE again for tables that already exist); `Schema.ensure` catches that exception, skips the affected DDL phases, and logs a warning.
 
 ---
 
-## 步骤 7：测试
+## Step 7: Testing
 
-### 7.1 单元测试
+### 7.1 Unit Tests
 
-在 `SchemaGeneratorTest.java` 中添加：
+Add to `SchemaGeneratorTest.java`:
 
 ```java
 @Test
@@ -931,25 +931,25 @@ void oracleDialectId() {
 }
 ```
 
-### 7.2 推荐覆盖的测试项
+### 7.2 Recommended Test Coverage
 
 - `supportsReturning()`
 - `supportsOnConflict()`
-- `supportsTransactionalDdl()`（覆写时）
+- `supportsTransactionalDdl()` (when overridden)
 - `supportsIndexIfNotExists()`
-- `backslashEscapesStrings()`（覆写时）
+- `backslashEscapesStrings()` (when overridden)
 - `dialectId()`
-- `upsertClause()` — 2-arg 签名
+- `upsertClause()` — 2-arg signature
 - `truncateTable()`
 - `forUpdateClause()`
 - `defaultBinaryType()`
-- `generatedTypeOverride()`（如果覆写了）
-- `quoteName()` 对保留字的处理
-- DDL 生成（通过 `new SchemaGenerator(dialect).generate(Entity.class)`）
+- `generatedTypeOverride()` (if overridden)
+- `quoteName()` handling of reserved words
+- DDL generation (via `new SchemaGenerator(dialect).generate(Entity.class)`)
 
 ---
 
-## 模板代码
+## Template Code
 
 ```java
 package com.jujin.freeway.db.dialect;
@@ -961,10 +961,10 @@ public final class XxxDialect implements Dialect {
 
     private static final Set<String> RESERVED = Dialect.buildReserved(
         "user", "order", "group", "table", "select", "from", "where"
-        // TODO: 添加目标数据库特有保留字（通用保留字由 COMMON_RESERVED 提供）
+        // TODO: add reserved words specific to the target database (common reserved words are provided by COMMON_RESERVED)
     );
 
-    // ====================== 抽象方法（5 个） ======================
+    // ====================== Abstract methods (5) ======================
 
     @Override public String dialectId()               { return "xxx"; }
     @Override public String generatedClause()         { return "GENERATED BY DEFAULT AS IDENTITY"; }
@@ -982,7 +982,7 @@ public final class XxxDialect implements Dialect {
             tableName.toUpperCase(Locale.ROOT), effectiveSchema());
     }
 
-    // ====================== 默认方法覆写（至少 6 个） ======================
+    // ====================== Default method overrides (at least 6) ======================
 
     @Override public Set<String> reservedWords()      { return RESERVED; }
     @Override public char quoteChar()                 { return '"'; }
@@ -991,75 +991,75 @@ public final class XxxDialect implements Dialect {
     @Override public String defaultBinaryType()       { return "BYTEA"; }
     @Override public String defaultInstantType()      { return "TIMESTAMP WITH TIME ZONE"; }
 
-    // ====================== 按需覆写 ======================
+    // ====================== Override as needed ======================
 
-    // truncate: 如果需要 RESTART IDENTITY 或 DELETE FROM
-    // upsertClause: 如果 ON CONFLICT 语法不同
-    // supportsIndexIfNotExists + existingIndexes: 如果不支持 IF NOT EXISTS
-    // forUpdateClause: 如果不支持 FOR UPDATE
-    // generatedTypeOverride: 如果自增列需要特定类型
-    // generatedPrimaryKeyInline: 如果自增主键必须内联（SQLite）
-    // alterAddColumnNotNull: 如果 ALTER ADD COLUMN 不能带 NOT NULL（SQLite）
-    // backslashEscapesStrings: 如果普通字符串字面量里 \ 转义下一个字符（MySQL）
-    // supportsTransactionalDdl: 如果 DDL 不参与事务（MySQL → false）
-    // dropTableCascade: 如果 DROP TABLE 需要 CASCADE（PG）
-    // effectiveSchema: 如果默认 schema 名不是 "public"
+    // truncate: if RESTART IDENTITY or DELETE FROM is needed
+    // upsertClause: if the ON CONFLICT syntax differs
+    // supportsIndexIfNotExists + existingIndexes: if IF NOT EXISTS is not supported
+    // forUpdateClause: if FOR UPDATE is not supported
+    // generatedTypeOverride: if the auto-increment column needs a specific type
+    // generatedPrimaryKeyInline: if the auto-increment primary key must be inline (SQLite)
+    // alterAddColumnNotNull: if ALTER ADD COLUMN cannot carry NOT NULL (SQLite)
+    // backslashEscapesStrings: if \ escapes the next character in ordinary string literals (MySQL)
+    // supportsTransactionalDdl: if DDL does not participate in transactions (MySQL → false)
+    // dropTableCascade: if DROP TABLE needs CASCADE (PG)
+    // effectiveSchema: if the default schema name is not "public"
 }
 ```
 
 ---
 
-## 与现有方言的差异参考
+## Difference Reference Against Existing Dialects
 
-| 能力 | PG | MySQL | SQLite | H2 |
+| Capability | PG | MySQL | SQLite | H2 |
 |------|----|-------|--------|----|
 | `quoteChar` | `"` | `` ` `` | `"` | `"` |
 | `generatedClause` | `GENERATED BY DEFAULT AS IDENTITY` | `AUTO_INCREMENT` | `AUTOINCREMENT` | `GENERATED BY DEFAULT AS IDENTITY` |
 | `defaultUUIDType` | `UUID` | `VARCHAR(36)` | `TEXT` | `UUID` |
-| `defaultInstantType` | `TIMESTAMP WITH TIME ZONE` | `DATETIME(6)` | `TEXT` | `TIMESTAMP WITH TIME ZONE`（默认） |
+| `defaultInstantType` | `TIMESTAMP WITH TIME ZONE` | `DATETIME(6)` | `TEXT` | `TIMESTAMP WITH TIME ZONE` (default) |
 | `defaultBinaryType` | `BYTEA` | `LONGBLOB` | `BLOB` | `BINARY VARYING` |
 | `supportsReturning` | ✓ | ✗ | ✓ | ✓ |
 | `supportsOnConflict` | ✓ | ✗ | ✓ | ✓ |
-| `supportsTransactionalDdl` | ✓（默认） | ✗（覆写） | ✓（默认） | ✓（默认） |
+| `supportsTransactionalDdl` | ✓ (default) | ✗ (overridden) | ✓ (default) | ✓ (default) |
 | `supportsIndexIfNotExists` | ✓ | ✗ | ✓ | ✓ |
-| `hashLineComments` | ✗（默认） | ✓（覆写） | ✗（默认） | ✗（默认） |
-| `dollarQuoting` | ✓（覆写） | ✗（默认） | ✗（默认） | ✓（继承 PG） |
-| `escapeStringPrefix` | ✓（覆写） | ✗（默认） | ✗（默认） | ✓（继承 PG） |
-| `backslashEscapesStrings` | ✗（默认） | ✓（覆写） | ✗（默认） | ✗（默认） |
+| `hashLineComments` | ✗ (default) | ✓ (overridden) | ✗ (default) | ✗ (default) |
+| `dollarQuoting` | ✓ (overridden) | ✗ (default) | ✗ (default) | ✓ (inherits PG) |
+| `escapeStringPrefix` | ✓ (overridden) | ✗ (default) | ✗ (default) | ✓ (inherits PG) |
+| `backslashEscapesStrings` | ✗ (default) | ✓ (overridden) | ✗ (default) | ✗ (default) |
 | `forUpdateClause` | `FOR UPDATE` | `FOR UPDATE` | `""` | `FOR UPDATE` |
-| `upsertClause` | `ON CONFLICT ... EXCLUDED` | `ON DUPLICATE KEY ... VALUES` | `ON CONFLICT ... EXCLUDED` | `ON CONFLICT ... EXCLUDED`（默认） |
-| `truncateTable` | `TRUNCATE ... RESTART IDENTITY` | `TRUNCATE ...`（默认） | `DELETE FROM ...` | `TRUNCATE ... RESTART IDENTITY` |
-| `dropTableCascade` | **覆写**（DROP ... CASCADE） | 默认 | 默认 | 默认 |
-| `generatedPrimaryKeyInline` | 默认 | 默认 | **覆写**（AUTOINCREMENT 内联于主键列） | 默认 |
-| `alterAddColumnNotNull` | 默认 | 默认 | **覆写**（ALTER 剥离 NOT NULL） | 默认 |
-| `generatedTypeOverride` | 默认 | 默认 | **覆写**（强制 INTEGER） | 默认 |
-| `effectiveSchema` | 默认 `"public"` | 未使用（`DATABASE()`） | 未使用（`sqlite_master`） | 默认 `"public"` |
-| `existingIndexes` | `pg_indexes` | `INFORMATION_SCHEMA.STATISTICS` | 默认 `Set.of()` | `INFORMATION_SCHEMA.INDEXES` |
+| `upsertClause` | `ON CONFLICT ... EXCLUDED` | `ON DUPLICATE KEY ... VALUES` | `ON CONFLICT ... EXCLUDED` | `ON CONFLICT ... EXCLUDED` (default) |
+| `truncateTable` | `TRUNCATE ... RESTART IDENTITY` | `TRUNCATE ...` (default) | `DELETE FROM ...` | `TRUNCATE ... RESTART IDENTITY` |
+| `dropTableCascade` | **overridden** (DROP ... CASCADE) | default | default | default |
+| `generatedPrimaryKeyInline` | default | default | **overridden** (AUTOINCREMENT inline on the primary key column) | default |
+| `alterAddColumnNotNull` | default | default | **overridden** (ALTER strips NOT NULL) | default |
+| `generatedTypeOverride` | default | default | **overridden** (forces INTEGER) | default |
+| `effectiveSchema` | default `"public"` | unused (`DATABASE()`) | unused (`sqlite_master`) | default `"public"` |
+| `existingIndexes` | `pg_indexes` | `INFORMATION_SCHEMA.STATISTICS` | default `Set.of()` | `INFORMATION_SCHEMA.INDEXES` |
 
 ---
 
-## 检查清单
+## Checklist
 
-新增一个方言时，逐项检查：
+When adding a dialect, check each item:
 
-- [ ] 5 个抽象方法全部实现
-- [ ] `reservedWords()` 已覆写（包含至少通用保留字 + 目标数据库特有保留字）
-- [ ] `quoteChar()` 已正确设置
-- [ ] `supportsReturning()` 正确
-- [ ] `supportsOnConflict()` 正确
-- [ ] `defaultBinaryType()` 正确
-- [ ] `defaultInstantType()` 按需覆写
-- [ ] `upsertClause()` 按需覆写（语法与 PG 不同时）
-- [ ] `truncateTable()` 按需覆写
-- [ ] `supportsIndexIfNotExists()` + `existingIndexes()` 配套
-- [ ] `forUpdateClause()` 按需覆写
-- [ ] `generatedTypeOverride()` 按需覆写
-- [ ] `generatedPrimaryKeyInline()` / `dropTableCascade()` / `alterAddColumnNotNull()` 按需覆写
-- [ ] `backslashEscapesStrings()` 按需覆写（MySQL：普通字符串字面量中 `\` 转义）
-- [ ] `supportsTransactionalDdl()` 按需覆写（MySQL：DDL 不参与事务 → `false`）
-- [ ] `effectiveSchema()` 按需覆写
-- [ ] `Dialect.ofId()` 注册（`id` 与 `dialectId()` 一致）
-- [ ] `Dialect.of()` URL 检测（大小写不敏感；未知 scheme 会 fail-fast）
-- [ ] `dialectId()` 单测
-- [ ] `upsertClause()` 单测
-- [ ] DDL 生成集成测试
+- [ ] All 5 abstract methods implemented
+- [ ] `reservedWords()` overridden (including at least the common reserved words + the target database's specific reserved words)
+- [ ] `quoteChar()` correctly set
+- [ ] `supportsReturning()` correct
+- [ ] `supportsOnConflict()` correct
+- [ ] `defaultBinaryType()` correct
+- [ ] `defaultInstantType()` overridden as needed
+- [ ] `upsertClause()` overridden as needed (when the syntax differs from PG)
+- [ ] `truncateTable()` overridden as needed
+- [ ] `supportsIndexIfNotExists()` + `existingIndexes()` paired
+- [ ] `forUpdateClause()` overridden as needed
+- [ ] `generatedTypeOverride()` overridden as needed
+- [ ] `generatedPrimaryKeyInline()` / `dropTableCascade()` / `alterAddColumnNotNull()` overridden as needed
+- [ ] `backslashEscapesStrings()` overridden as needed (MySQL: `\` escapes in ordinary string literals)
+- [ ] `supportsTransactionalDdl()` overridden as needed (MySQL: DDL does not participate in transactions → `false`)
+- [ ] `effectiveSchema()` overridden as needed
+- [ ] `Dialect.ofId()` registration (`id` consistent with `dialectId()`)
+- [ ] `Dialect.of()` URL detection (case-insensitive; unknown schemes fail fast)
+- [ ] `dialectId()` unit test
+- [ ] `upsertClause()` unit test
+- [ ] DDL generation integration test

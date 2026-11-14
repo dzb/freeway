@@ -1,49 +1,50 @@
-# freeway-flow 并行分支上下文隔离方案
+# freeway-flow Parallel Branch Context Isolation Plan
 
-## 现状(2026-09，引擎再设计后)
+## Current State (2026-09, after the engine redesign)
 
-fork/overlay/join 隔离模型已实现，成为默认语义；schema 见 `freeway-flow/docs/graph-v3.md` 的 `join` 声明。
+The fork/overlay/join isolation model is implemented and has become the default semantics; for the schema see the `join` declaration in `freeway-flow/docs/graph-v3.md`.
 
-- `PARALLEL` 节点缺省 `join: "merge"`：每个分支在 `FlowContext.beginBranch()` 打开的
-  线程本地写缓冲中执行——分支内的读"缓冲优先、父级兜底"，分支互不见半成品；分支干净走完后
-  `merge` 折叠进父层，同一键被两分支基于同一基值写出不同值时，合并以 `FlowException` 报冲突并点名该键
-  (不静默择一)。分支异常中止则整体丢弃其缓冲——半成品不进父级。
-- 显式 `join: "shared"` 退回共享写：无缓冲、无冲突检测，单写者纪律由图自己保证。
-- 执行态(`ExecState` 计数/loop 栈/死端)仍随子图评估共享，但收进引擎私有的 (graph,node) 键空间，
-  custom driver 不再能写入同一字符串袋；`$for` 的 `peek→hasNext→pop` 抢占继续在栈监视器内原子完成。
+- A `PARALLEL` node defaults to `join: "merge"`: each branch executes in a
+  thread-local write buffer opened by `FlowContext.beginBranch()` — reads inside a branch are
+  "buffer first, parent as fallback", so branches never see each other's partial work; after a branch completes cleanly
+  `merge` folds it into the parent layer, and when the same key is written to different values by two branches based on the same base value, the merge reports a conflict with a `FlowException` and names that key
+  (rather than silently picking one). If a branch aborts with an exception, its buffer is discarded entirely — partial work never reaches the parent.
+- An explicit `join: "shared"` falls back to shared writes: no buffer, no conflict detection, and single-writer discipline is left to the graph itself to guarantee.
+- Execution state (`ExecState` counters/loop stack/dead ends) is still shared across subgraph evaluation, but is confined to an engine-private (graph,node) key space,
+  so a custom driver can no longer write into the same string bag; the `$for` `peek→hasNext→pop` preemption still completes atomically inside the stack monitor.
 
-下文保留当年的设计论证(为何隔离、目标与模型取舍)作为决策轨迹；实现落点为 `FlowContextImpl`
-的 Layer/merge 与 `FlowEngineDefault.runBranch`。
+The following keeps the design argument from that time (why isolate, the goals, and the model tradeoffs) as a decision trail; the implementation lands in `FlowContextImpl`'s
+Layer/merge and in `FlowEngineDefault.runBranch`.
 
-## 背景
+## Background
 
-`freeway-flow` 当前在并行分支中共享同一个 `FlowContext`。虽然底层使用了并发容器，但这只能保证容器层面的线程安全，不能保证流程语义上的一致性。
+`freeway-flow` currently shares one `FlowContext` across parallel branches. Although the underlying implementation uses concurrent containers, that only guarantees thread safety at the container level, not consistency at the flow-semantics level.
 
-真正的问题不是“会不会崩”，而是：
+The real problem is not "will it crash", but:
 
-- 分支 A 和分支 B 可能同时写同一个 key，最终结果依赖线程调度。
-- 一个分支可能读到另一个分支刚写入但尚未完成的中间态。
-- 回放、排障和测试都很难稳定复现。
+- Branches A and B may write the same key at the same time, and the final result depends on thread scheduling.
+- One branch may read an intermediate state that another branch has just written but not yet completed.
+- Replay, troubleshooting, and testing are all hard to reproduce reliably.
 
-如果希望调用方完全不需要关心线程安全，推荐把并行分支设计成“隔离执行 + 汇合提交”。
+If callers should never have to care about thread safety, design parallel branches as "isolated execution + join commit".
 
-## 目标
+## Goals
 
-- 调用方不需要处理线程安全。
-- 并行分支之间默认互不影响。
-- 并行执行结果可预测、可回放、可测试。
-- 对确实需要共享状态的场景，提供显式的共享机制，而不是隐式共享整个 `FlowContext`。
+- Callers do not need to handle thread safety.
+- Parallel branches do not affect each other by default.
+- Parallel execution results are predictable, replayable, and testable.
+- For scenarios that genuinely need shared state, provide an explicit sharing mechanism instead of implicitly sharing the entire `FlowContext`.
 
-## 建议的模型
+## Proposed Model
 
-### 1. 拆分运行态与业务数据
+### 1. Split Runtime State from Business Data
 
-建议把上下文拆成两层：
+The context should be split into two layers:
 
-- `FlowRunState`：共享执行态
-- `FlowContext`：分支级业务数据
+- `FlowRunState`: shared execution state
+- `FlowContext`: branch-level business data
 
-共享执行态建议保留：
+The shared execution state should keep:
 
 - `trace`
 - `eventBus`
@@ -51,92 +52,92 @@ fork/overlay/join 隔离模型已实现，成为默认语义；schema 见 `freew
 - `stepCount`
 - `temporary`
 
-业务数据则不直接共享 `ConcurrentHashMap`，而是给每个并行分支一份视图。
+Business data, by contrast, is not shared directly through a `ConcurrentHashMap`; instead each parallel branch gets its own view.
 
-### 2. 分支上下文使用 fork / overlay
+### 2. Branch Contexts Use fork / overlay
 
-进入并行分支时，为每个分支生成一个子上下文：
+On entering a parallel branch, create a child context for each branch:
 
-- 读取时先查本分支的 overlay
-- 找不到时再回退到父快照
-- 写入只落到本分支 overlay
+- on read, consult the branch's own overlay first
+- fall back to the parent snapshot when it is not found
+- writes land only in the branch's own overlay
 
-这样可以保证：
+This guarantees:
 
-- 分支之间默认隔离
-- 分支内读写语义稳定
-- 调试时可以准确看到每个分支修改了什么
+- isolation between branches by default
+- stable read/write semantics inside a branch
+- when debugging, exactly what each branch modified is visible
 
-### 3. join 时显式 merge
+### 3. Explicit merge at join
 
-当所有并行分支执行结束后，由引擎在 join 点统一合并结果：
+After all parallel branches finish, the engine merges the results at the join point:
 
-- 单分支修改的 key，直接合并回父上下文
-- 多分支修改同一个 key，默认报冲突
-- 如确有需要，可为特定 key 配置 merge 策略
+- a key modified by a single branch is merged straight back into the parent context
+- a key modified by multiple branches reports a conflict by default
+- if truly needed, a merge strategy can be configured for specific keys
 
-默认策略建议是 fail fast，而不是“最后写入覆盖前面的写入”。
+The recommended default strategy is fail fast, not "the last write overwrites earlier writes".
 
-## 兼容性建议
+## Compatibility Recommendations
 
-### 兼容现有流程控制
+### Stay Compatible with Existing Flow Control
 
-以下对象建议继续共享：
+The following objects should continue to be shared:
 
 - `trace`
 - `eventBus`
 - `stopped` / `interrupted`
 - `temporary`
 
-原因是这些对象描述的是“本次运行”，而不是某个分支独占的业务数据。
+The reason is that these objects describe "this run", not business data owned exclusively by some branch.
 
-### 保留显式共享能力
+### Keep Explicit Sharing Capability
 
-对于确实需要跨分支协调的数据，不建议继续塞进主 `FlowContext` 数据区。
+For data that genuinely needs cross-branch coordination, do not keep stuffing it into the main `FlowContext` data area.
 
-更好的方式是单独暴露一个显式共享对象，例如：
+A better approach is to expose a separate explicit shared object, for example:
 
 - `SharedState`
 - `BranchMailbox`
 - `ConcurrentState`
 
-这样语义更清楚，也能避免把所有场景都拖进共享内存模型。
+That makes the semantics clearer and avoids dragging every scenario into a shared-memory model.
 
-## 实施建议
+## Implementation Recommendations
 
-### 第一阶段
+### Phase 1
 
-- 保持现有 API 不变。
-- 为并行分支增加上下文 fork 机制。
-- 默认只隔离 `data`，共享执行态。
+- Keep the existing API unchanged.
+- Add a context fork mechanism for parallel branches.
+- By default isolate only `data` and share the execution state.
 
-### 第二阶段
+### Phase 2
 
-- 增加 join 合并策略。
-- 先支持基础 merge，再支持冲突检测。
+- Add join merge strategies.
+- Support basic merge first, then conflict detection.
 
-### 第三阶段
+### Phase 3
 
-- 引入显式共享状态 API。
-- 为需要跨分支协作的场景提供专用接口。
+- Introduce an explicit shared-state API.
+- Provide dedicated interfaces for scenarios that need cross-branch collaboration.
 
-## 测试建议
+## Testing Recommendations
 
-建议补以下回归测试：
+The following regression tests should be added:
 
-- 并行分支各自写入不同 key，join 后都能保留。
-- 并行分支写同一个 key，默认报冲突。
-- 分支内读取只能看到自己的写入和父快照。
-- 并行分支执行顺序变化时，结果仍然稳定。
+- Parallel branches write different keys, and all of them are preserved after join.
+- Parallel branches write the same key, and a conflict is reported by default.
+- A read inside a branch sees only its own writes and the parent snapshot.
+- The result stays stable when the execution order of parallel branches changes.
 
-## 结论
+## Conclusion
 
-并行分支共享同一个 `FlowContext` 并不是最优设计。  
-如果目标是让调用方完全不用考虑线程安全，最稳妥的方案是：
+Sharing one `FlowContext` across parallel branches is not the optimal design.  
+If the goal is for callers never to consider thread safety, the safest scheme is:
 
-- 执行态共享
-- 业务数据分支隔离
-- join 时统一合并
-- 冲突显式处理
+- shared execution state
+- branch-isolated business data
+- unified merge at join
+- explicit conflict handling
 
-这比单纯使用并发容器更符合框架型产品的开发体验。
+This matches the developer experience of a framework product better than merely using concurrent containers.

@@ -1,23 +1,23 @@
-# 任务解析（Task Resolution）
+# Task Resolution
 
-> **已废弃/历史文档**：本文描述 v1/v2 的任务解析机制，已随 v3 删除；
-> 现行词汇见 [graph-v3.md](graph-v3.md) 的「词汇表」。
+> **Deprecated/historical document**: this document describes the v1/v2 task resolution mechanism, which was deleted with v3;
+> see the "Vocabulary" section of [graph-v3.md](graph-v3.md) for the current vocabulary.
 
-freeway-flow 的任务解析通过四种策略匹配图中 `task` 字段到实际执行器。
+freeway-flow's task resolution matches the graph's `task` field to the actual executor through four strategies.
 
-## v1/v2 历史策略（已删除）
+## v1/v2 historical strategies (deleted)
 
-| 优先级 | 策略 | 语法 | 说明 |
+| Priority | Strategy | Syntax | Description |
 |--------|------|------|------|
-| 1 | 内联组件 | `task.component()` | 代码中直接 set 的 `TaskComponent` |
-| 2 | Marker 匹配 | `!marker` | `FlowMarkerIndex` 交集匹配，最具体者胜出 |
-| 3 | 子图调用 | `#graph` | 调用命名子图 |
-| 4 | Bean 引用 | `@bean` | 容器 `get(TaskComponent.class, id)` |
-| 5 | 元数据 | `$meta` | 从 graph meta 取值 |
+| 1 | Inline component | `task.component()` | `TaskComponent` set directly in code |
+| 2 | Marker matching | `!marker` | `FlowMarkerIndex` intersection matching, most specific wins |
+| 3 | Subgraph call | `#graph` | Calls a named subgraph |
+| 4 | Bean reference | `@bean` | Container `get(TaskComponent.class, id)` |
+| 5 | Metadata | `$meta` | Takes a value from graph meta |
 
 ## @FlowMarker
 
-`@FlowMarker` 是 repeatable 注解，标记 `TaskComponent` 实现类：
+`@FlowMarker` is a repeatable annotation that marks `TaskComponent` implementation classes:
 
 ```java
 @FlowMarker("channel:email")
@@ -25,19 +25,19 @@ freeway-flow 的任务解析通过四种策略匹配图中 `task` 字段到实�
 public class EmailSender implements TaskComponent {
     @Override
     public void run(FlowContext context, Node node) throws Throwable {
-        // 发送邮件
+        // Send email
     }
 }
 ```
 
-图定义中通过 `!markerName` 引用：
+Graph definitions reference it via `!markerName`:
 
 ```json
 { "task": "!channel:email !priority:high" }
 ```
 
-`FlowMarkerIndex.resolve()` 按 `containsAll` 语义匹配——handler 的 marker 集必须包含节点声明的所有 marker。多个匹配时，marker 数量最多的 handler 胜出。
+`FlowMarkerIndex.resolve()` matches by `containsAll` semantics — the handler's marker set must contain all markers declared by the node. When multiple handlers match, the handler with the most markers wins.
 
-## 历史
+## History
 
-> 早期版本支持"类型化任务"——按全限定类名直接引用 `TaskComponent` 实现类（如 `"com.example.StockCheckHandler"`）。该机制通过 `FlowEngine.register(Class, TaskComponent)` 和 `typedTasks()` 实现，已在 v1.3.0 移除，由 `@FlowMarker` + `!markerName` 替代。
+> Early versions supported "typed tasks" — referencing `TaskComponent` implementation classes directly by fully qualified class name (e.g. `"com.example.StockCheckHandler"`). That mechanism was implemented through `FlowEngine.register(Class, TaskComponent)` and `typedTasks()`, and was removed in v1.3.0, replaced by `@FlowMarker` + `!markerName`.
