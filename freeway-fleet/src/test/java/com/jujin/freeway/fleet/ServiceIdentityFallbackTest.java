@@ -1,0 +1,89 @@
+package com.jujin.freeway.fleet;
+
+import com.jujin.freeway.cloud.CloudModule;
+import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+
+import com.jujin.freeway.boot.AppRuntime;
+import com.jujin.freeway.boot.FreewayApp;
+import com.jujin.freeway.cloud.discovery.ServiceInstance;
+import com.jujin.freeway.cloud.event.PeerHub;
+import com.jujin.freeway.cloud.event.EventMeshModule;
+import com.jujin.freeway.http.HttpModule;
+import java.time.Duration;
+import java.util.List;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+/**
+ * P1-3 regression (service-id default chain): the registry identity resolved
+ * by {@code HttpServiceDeclaration} and the event-mesh origin resolved by
+ * {@code MeshEventLifecycleHook} must walk the same fallback chain —
+ * {@code freeway.cloud.registry.service-id} → {@code freeway.app.name} →
+ * {@code "freeway-app"} — so a node configured only with
+ * {@code freeway.app.name} registers and broadcasts under the SAME name.
+ */
+class ServiceIdentityFallbackTest {
+
+    @BeforeEach
+    void randomPort() {
+        System.setProperty(HttpModule.ConfigKeys.SERVER_PORT, "0"); // random free port per test
+    }
+
+    @AfterEach
+    void clearProperties() {
+        System.clearProperty(HttpModule.ConfigKeys.SERVER_PORT);
+        System.clearProperty(ConfigKeys.REGISTRY_SERVICE_ID);
+        System.clearProperty(ConfigKeys.APP_NAME);
+        System.clearProperty(ConfigKeys.EVENT_ENABLED);
+    }
+
+    @Test
+    void appNameOnlyKeepsRegistrationAndMeshIdentitiesInLockstep() {
+        System.setProperty(ConfigKeys.APP_NAME, "myapp");
+        try (AppRuntime app = appWithEvents()) {
+            assertEquals("myapp", app.get(PeerHub.class).serviceId(),
+                "mesh origin must fall back to freeway.app.name");
+            assertEquals("myapp", registeredServiceId(app, "myapp"),
+                "registry identity must fall back to freeway.app.name");
+        }
+    }
+
+    @Test
+    void registryServiceIdOverridesAppNameForBothIdentities() {
+        System.setProperty(ConfigKeys.APP_NAME, "myapp");
+        System.setProperty(ConfigKeys.REGISTRY_SERVICE_ID, "custom");
+        try (AppRuntime app = appWithEvents()) {
+            assertEquals("custom", app.get(PeerHub.class).serviceId(),
+                "explicit registry service-id must win for the mesh origin");
+            assertEquals("custom", registeredServiceId(app, "custom"));
+        }
+    }
+
+    @Test
+    void unconfiguredIdentitiesShareTheFreewayAppDefault() {
+        try (AppRuntime app = appWithEvents()) {
+            assertEquals("freeway-app", app.get(PeerHub.class).serviceId());
+            assertEquals("freeway-app", registeredServiceId(app, "freeway-app"));
+        }
+    }
+
+    /** Events enabled so the lifecycle hook wires the hub with the mesh origin. */
+    private static AppRuntime appWithEvents() {
+        System.setProperty(ConfigKeys.EVENT_ENABLED, "true");
+        return FreewayApp.create(new HttpModule()).add(CloudModule.class).add(new LocalDiscoveryModule()).add(new EventMeshModule()).start();
+    }
+
+    /** Reads the identity HttpServiceDeclaration registered for this app. */
+    private static String registeredServiceId(AppRuntime app, String serviceId) {
+        FleetStore store = app.get(FleetStore.class);
+        List<ServiceInstance> instances = store.liveReady(serviceId, Duration.ofMinutes(1));
+        assertFalse(instances.isEmpty(),
+            "no instance registered under '" + serviceId + "' — registration identity diverged");
+        assertEquals(1, instances.size(), "one HTTP declaration registers one instance");
+        return instances.get(0).serviceId();
+    }
+}

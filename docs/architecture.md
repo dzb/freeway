@@ -18,7 +18,9 @@ freeway-commons         zero deps
  │   ├─ freeway-boot    depends on ioc + commons
  │   ├─ freeway-http    depends on ioc + commons (boot is test-scope only)
  │   ├─ freeway-flow    depends on ioc + commons (no extra deps)
- │   └─ freeway-cloud   depends on ioc + commons + http (boot is test-scope only)
+ │   ├─ freeway-cloud   depends on ioc + commons + http (boot is test-scope only)
+ │   │   ├─ freeway-fleet        depends on cloud (client/protocol only)
+ │   │   └─ freeway-fleet-server depends on fleet + cloud + http
  └─ freeway-db          depends on commons (+ ioc, DbModule only)
 ```
 

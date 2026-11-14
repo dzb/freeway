@@ -9,7 +9,7 @@ import javax.net.ssl.SSLContext;
  * when configured, the transport's TLS context.
  *
  * <p>Three cloud paths open clients — RPC ({@code RpcHttpClientDefault}),
- * registry writes ({@code FleetRegistryClient}) and the mesh dialer
+ * registry writes ({@code FleetClient}) and the mesh dialer
  * ({@code PeerConnector}) — and each had its own builder with the same two
  * rules. They differ in what they add afterwards; the base is shared.</p>
  */

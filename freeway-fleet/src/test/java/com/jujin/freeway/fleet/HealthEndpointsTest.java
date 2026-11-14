@@ -1,0 +1,202 @@
+package com.jujin.freeway.fleet;
+
+import com.jujin.freeway.cloud.CloudModule;
+import com.jujin.freeway.cloud.health.CloudHealthContributor;
+import com.jujin.freeway.cloud.health.HealthModule;
+
+import com.jujin.freeway.boot.AppRuntime;
+import com.jujin.freeway.boot.FreewayApp;
+import com.jujin.freeway.cloud.discovery.ServiceDiscovery;
+import com.jujin.freeway.cloud.discovery.ServiceInstance;
+import com.jujin.freeway.cloud.discovery.ServiceRegistry;
+import com.jujin.freeway.http.HttpModule;
+import com.jujin.freeway.http.HealthResult;
+import com.jujin.freeway.http.MediaTypes;
+import com.jujin.freeway.ioc.Binder;
+import com.jujin.freeway.ioc.ModuleEx;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.util.List;
+import com.jujin.freeway.http.HttpModule.ConfigKeys;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+/**
+ * Cloud-native probes: {@code /health/live} (process liveness) and
+ * {@code /health/ready} (aggregated dependency readiness, 503 when unhealthy).
+ */
+class HealthEndpointsTest {
+
+    @BeforeEach
+    void randomPort() {
+        System.setProperty(ConfigKeys.SERVER_PORT, "0");
+    }
+
+    @AfterEach
+    void clearProperties() {
+        System.clearProperty(ConfigKeys.SERVER_PORT);
+    }
+
+    @Test
+    void liveAndReadyAreOkByDefault() throws Exception {
+        try (AppRuntime app = FreewayApp.create(new HttpModule()).add(CloudModule.class).add(new LocalDiscoveryModule()).start()) {
+            HttpResponse<String> live = get(app, "/health/live");
+            assertEquals(200, live.statusCode());
+            assertTrue(live.body().contains("\"ok\""));
+
+            HttpResponse<String> ready = get(app, "/health/ready");
+            assertEquals(200, ready.statusCode());
+            assertTrue(ready.body().contains("\"ok\""));
+            assertTrue(ready.body().contains("\"cloud\""));
+            assertTrue(ready.body().contains("registry"),
+                "the built-in registry contributor must be aggregated");
+            assertTrue(ready.body().contains("instances="),
+                "readiness reports what the registry actually holds, not a constant: "
+                    + ready.body());
+        }
+    }
+
+    @Test
+    void readyFailsWhenAContributorIsUnhealthy() throws Exception {
+        try (AppRuntime app = FreewayApp.create(new FailingContributorModule(), new HttpModule()).add(CloudModule.class).add(new LocalDiscoveryModule()).start()) {
+            HttpResponse<String> ready = get(app, "/health/ready");
+            assertEquals(503, ready.statusCode());
+            assertTrue(ready.body().contains("unhealthy"));
+            assertTrue(ready.body().contains("registry-unreachable"));
+        }
+    }
+
+    @Test
+    void anExternalRegistryKeepsTheRegistryReadinessCheck() throws Exception {
+        // The state this contributor reports — registered / draining / heartbeat
+        // failing — belongs to FleetRenewal and is updated by this module's
+        // hook whichever registry is bound. An external backend must not make
+        // /health/ready forget that it is deregistered or draining.
+        try (AppRuntime app = FreewayApp.create(new BareExternalRegistryModule(), new HttpModule())
+                .add(CloudModule.class).add(new LocalDiscoveryModule()).start()) {
+            HttpResponse<String> ready = get(app, "/health/ready");
+            assertEquals(200, ready.statusCode());
+            assertTrue(ready.body().contains("\"registry\""),
+                "the registry readiness check must survive an external registry binding: "
+                    + ready.body());
+            assertTrue(ready.body().contains("backend=external"), ready.body());
+        }
+    }
+
+    @Test
+    void anExternalContributorAddsToTheRegistryCheckRatherThanReplacingIt() throws Exception {
+        try (AppRuntime app = FreewayApp.create(new ExternalRegistryModule(), new HttpModule()).add(CloudModule.class).add(new LocalDiscoveryModule()).start()) {
+            HttpResponse<String> ready = get(app, "/health/ready");
+            assertEquals(200, ready.statusCode());
+            assertTrue(ready.body().contains("external-registry"),
+                "the external adapter's own readiness contributor must be present");
+            assertTrue(ready.body().contains("\"registry\""),
+                "core keeps reporting registration/drain state alongside it");
+        }
+    }
+
+    @Test
+    void bothProbesAnswerAsJson() throws Exception {
+        // Two probe endpoints from one module must not disagree on how their
+        // body is typed. `send(String)` defaults Content-Type to text/plain
+        // while `sendJson` defaults it to application/json, so a hand-written
+        // body literal is a silent downgrade — and K8s aside, any client that
+        // parses a probe as JSON gets a different contract from the readiness
+        // probe sitting next to it.
+        try (AppRuntime app = FreewayApp.create(new HttpModule()).add(CloudModule.class).add(new LocalDiscoveryModule()).start()) {
+            for (String probe : List.of("/health/live", "/health/ready", "/healthz")) {
+                HttpResponse<String> response = get(app, probe);
+                String contentType = response.headers().firstValue("content-type").orElse("<none>");
+                // Exact, not startsWith: one owner (sendJson) types every JSON
+                // body, so the three probes must not disagree even on charset.
+                assertEquals(MediaTypes.JSON_UTF8, contentType,
+                    probe + " must answer as JSON; got " + contentType
+                        + " with body " + response.body());
+            }
+        }
+    }
+
+    private static HttpResponse<String> get(AppRuntime app, String path) throws Exception {
+        int port = app.get(com.jujin.freeway.http.HttpServer.class).port();
+        HttpClient client = HttpClient.newHttpClient();
+        return client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + path))
+            .GET().build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    static class FailingContributorModule implements ModuleEx {
+        @Override
+        public void bind(Binder b) {
+            b.contribute(CloudHealthContributor.class).add("fake-registry", new CloudHealthContributor() {
+                @Override
+                public String name() {
+                    return "fake-registry";
+                }
+
+                @Override
+                public HealthResult check() {
+                    return HealthResult.unhealthy("registry-unreachable");
+                }
+            });
+        }
+    }
+
+    /** A stand-in for a future freeway-ext cloud adapter: primary bindings
+     *  plus its own readiness contributor. */
+    /** A primary registry/discovery with no contributor of its own: core must still report. */
+    static class BareExternalRegistryModule extends ExternalRegistryModule {
+        @Override
+        public void bind(Binder b) {
+            b.bind(ServiceRegistry.class).to(container -> registry).primary();
+            b.bind(ServiceDiscovery.class).to(container -> discovery).primary();
+        }
+    }
+
+    static class ExternalRegistryModule implements ModuleEx {
+        final ServiceRegistry registry = new ServiceRegistry() {
+            @Override
+            public void register(ServiceInstance instance) {
+            }
+
+            @Override
+            public boolean renew(String serviceId, String instanceId) {
+                return true;
+            }
+
+            @Override
+            public void unregister(ServiceInstance instance) {
+            }
+        };
+        final ServiceDiscovery discovery = new ServiceDiscovery() {
+            @Override
+            public List<ServiceInstance> instances(String serviceId) {
+                return List.of();
+            }
+        };
+
+        @Override
+        public void bind(Binder b) {
+            b.bind(ServiceRegistry.class).to(container -> registry).primary();
+            b.bind(ServiceDiscovery.class).to(container -> discovery).primary();
+            b.contribute(CloudHealthContributor.class).add("external-registry",
+                new CloudHealthContributor() {
+                    @Override
+                    public String name() {
+                        return "external-registry";
+                    }
+
+                    @Override
+                    public HealthResult check() {
+                        return HealthResult.ok();
+                    }
+                });
+        }
+    }
+
+}

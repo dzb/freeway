@@ -16,11 +16,6 @@ freeway-cloud/src/main/java/com/jujin/freeway/cloud/context/internal/AuthPropaga
 freeway-cloud/src/main/java/com/jujin/freeway/cloud/context/internal/BaggagePropagator.java#BaggagePropagator
 freeway-cloud/src/main/java/com/jujin/freeway/cloud/context/internal/PropagationFilter.java#PropagationFilter
 freeway-cloud/src/main/java/com/jujin/freeway/cloud/context/internal/TracePropagator.java#TracePropagator
-freeway-cloud/src/main/java/com/jujin/freeway/cloud/discovery/internal/DiscoveryConnectionHook.java#DiscoveryConnectionHook
-freeway-cloud/src/main/java/com/jujin/freeway/cloud/discovery/internal/RegistryHealthContributor.java#RegistryHealthContributor
-freeway-cloud/src/main/java/com/jujin/freeway/cloud/discovery/internal/RegistryLifecycleHook.java#RegistryLifecycleHook
-freeway-cloud/src/main/java/com/jujin/freeway/cloud/discovery/internal/RegistryRenewal.java#RegistryRenewal
-freeway-cloud/src/main/java/com/jujin/freeway/cloud/discovery/internal/RegistryStore.java#RegistryStore
 freeway-cloud/src/main/java/com/jujin/freeway/cloud/health/internal/ReadyHandler.java#ReadyHandler
 freeway-cloud/src/main/java/com/jujin/freeway/cloud/internal/ActiveBindingProbe.java#ActiveBindingProbe
 freeway-cloud/src/main/java/com/jujin/freeway/cloud/internal/BackendTypeGuard.java#BackendTypeGuard

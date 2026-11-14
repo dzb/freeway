@@ -2,11 +2,10 @@ package com.jujin.freeway.cloud;
 
 import com.jujin.freeway.cloud.annotation.Local;
 import com.jujin.freeway.cloud.context.CloudContextModule;
-import com.jujin.freeway.cloud.discovery.DiscoveryModule;
-import com.jujin.freeway.cloud.discovery.LoadBalancer;
-import com.jujin.freeway.cloud.discovery.ServiceDiscovery;
-import com.jujin.freeway.cloud.discovery.ServiceRegistry;
+import com.jujin.freeway.cloud.discovery.StaticDiscoveryModule;
 import com.jujin.freeway.cloud.health.HealthModule;
+import com.jujin.freeway.cloud.rpc.RpcHttpClient;
+import com.jujin.freeway.cloud.rpc.RemoteCaller;
 import com.jujin.freeway.cloud.observe.ObserveModule;
 import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.cloud.observe.Tracer;
@@ -14,9 +13,7 @@ import com.jujin.freeway.cloud.resilience.ResilienceModule;
 import com.jujin.freeway.cloud.resilience.RetryBudget;
 import com.jujin.freeway.cloud.resilience.Retryer;
 import com.jujin.freeway.cloud.resilience.RateLimiter;
-import com.jujin.freeway.cloud.rpc.RpcHttpClient;
 import com.jujin.freeway.cloud.rpc.RpcModule;
-import com.jujin.freeway.cloud.rpc.RemoteCaller;
 import com.jujin.freeway.cloud.secret.SecretModule;
 import com.jujin.freeway.cloud.secret.SecretStore;
 import com.jujin.freeway.cloud.storage.ObjectStorage;
@@ -30,6 +27,7 @@ import com.jujin.freeway.ioc.ModuleEx;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Target;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
@@ -41,7 +39,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * {@link CloudModule} is the cloud bundle: placing it places the eight
+ * {@link CloudModule} is the cloud bundle: placing it places the seven
  * standard modules, and every module still installs on its own (subset
  * assembly) — taking a subset is placing the modules you want.
  */
@@ -50,7 +48,6 @@ class CloudModuleTest {
     private static final List<Class<?>> STANDARD = List.of(
         CloudContextModule.class,
         SecretModule.class,
-        DiscoveryModule.class,
         RpcModule.class,
         ObserveModule.class,
         ResilienceModule.class,
@@ -74,15 +71,12 @@ class CloudModuleTest {
 
     @Test
     void bundleInstallsEveryStandardModule() {
-        // Placing the bundle is placing its eight submodules — asserted through what each one makes
+        // Placing the bundle is placing its seven submodules — asserted through what each one makes
         // available, not through the tree the framework builds internally.
         try (Container container = Freeway.create(new CloudModule())) {
             assertNotNull(container.get(ContextCarrier.class), "context: the async carrier is bound");
             assertNotNull(container.get(SecretStore.class), "secret");
-            assertNotNull(container.get(ServiceRegistry.class), "discovery: registry");
-            assertNotNull(container.get(ServiceDiscovery.class), "discovery: client");
-            assertNotNull(container.get(RpcHttpClient.class), "rpc");
-            assertNotNull(container.get(Tracer.class), "observe");
+                                                assertNotNull(container.get(Tracer.class), "observe");
             assertNotNull(container.get(Retryer.class), "resilience");
             assertNotNull(container.get(RetryBudget.class), "retry budget");
             assertTrue(container.extension(Route.class).all().stream()
@@ -99,17 +93,10 @@ class CloudModuleTest {
         // One ordered call of modules: the application's own module first, then the bundle.
         try (Container container = Freeway.create(new AppMarkerModule(), new CloudModule())) {
             assertNotNull(container.get(AppMarkerModule.Marker.class));
-            assertNotNull(container.get(ServiceRegistry.class));
-            assertNotNull(container.get(ServiceDiscovery.class));
-            assertNotNull(container.get(RpcHttpClient.class));
             assertNotNull(container.get(SecretStore.class));
             assertNotNull(container.get(Tracer.class));
             assertNotNull(container.get(Metrics.class));
 
-            // Marker-based selection: @Local marks every built-in default —
-            // the single selector extension modules replace with a primary binding.
-            assertNotNull(container.get(ServiceDiscovery.class, Local.class));
-            assertNotNull(container.get(LoadBalancer.class, Local.class));
         }
     }
 
@@ -126,12 +113,11 @@ class CloudModuleTest {
     }
 
     @Test
-    void rpcClientSubsetResolvesRemoteCallerWithoutHttpModule() {
+    void rpcClientSubsetResolvesRemoteCallerWithAnExplicitDiscovery() {
         // The client subset documented by RpcModule: discovery + RPC, no
-        // Freeway HttpModule. JsonCodec is a container builtin, so RemoteCaller
-        // does not depend on an unrelated module to be resolvable.
+        // Freeway HttpModule. Static discovery is the no-registry default.
         try (Container container = Freeway.create(
-                RpcModule.class, DiscoveryModule.class)) {
+                new RpcModule(), StaticDiscoveryModule.of(Map.of()))) {
             assertNotNull(container.get(RemoteCaller.class));
         }
     }

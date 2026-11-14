@@ -45,7 +45,9 @@ or its CI configuration.
 | `freeway-http` | Routing, built-in HTTP engine, WebSocket, SSE | ioc + commons (+ boot, test) |
 | `freeway-db` | JDBC, ORM, pooling, transactions, migrations | commons (+ ioc, DbModule only) |
 | `freeway-flow` | Graph workflow engine — 7 node types, v3 DAG format (boot-validated), task vocabulary, branch isolation | ioc + commons |
-| `freeway-cloud` | Cloud-native foundation — discovery, remote invocation (JDK HttpClient), event fabric (`MeshEventBus`), observability, resilience, health, secrets, storage | ioc + commons + http (+ boot, test) |
+| `freeway-cloud` | Cloud runtime — remote invocation (JDK HttpClient), event fabric (`MeshEventBus`), observability, resilience, health, secrets, storage, discovery contracts and static discovery | ioc + commons + http (+ boot, test) |
+| `freeway-fleet` | Discovery implementations — local registry, Fleet client/protocol; no server | cloud |
+| `freeway-fleet-server` | Fleet registry server module — standalone with boot + http | fleet + cloud + http |
 
 No module adds an external dependency beyond SLF4J 2.0.18 (declared explicitly
 by every module that logs — currently all but `ioc`, which inherits it

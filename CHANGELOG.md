@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Static discovery for fixed deployments**: `StaticServiceDiscovery` and
+  `StaticDiscoveryModule` in `freeway-cloud`. A list with several instances lets
+  the client-side load balancer distribute per call; a single endpoint is the
+  VIP form, where an external load balancer owns selection. No registry process
+  or registration lifecycle is required.
+
+### Changed
+
+- **Fleet extracted from `freeway-cloud`**: `freeway-fleet` now owns the local
+  in-process registry, the Fleet client/protocol and the registration lifecycle;
+  `freeway-fleet-server` owns the registry server module. `freeway-cloud` keeps
+  the discovery contracts, static discovery and `LoadBalancer`. `CloudModule` no
+  longer installs a discovery implementation; install `LocalDiscoveryModule`
+  (in `freeway-fleet`), `StaticDiscoveryModule`, or a Fleet/Consul adapter
+  explicitly. `RpcModule` assembles without discovery and fails a call with
+  "no instances" instead of preventing the bundle from starting.
+- **Fleet vocabulary**: `FleetRegistryClient` → `FleetClient`,
+  `FleetRegistryModule` → `FleetModule`, `RegistryNodes` → `FleetNodes`,
+  `RegistryApi` → `FleetApi`, `RegistryIndexHandler` → `FleetIndexHandler`,
+  `RegistryServerModule` → `FleetServerModule`, `RegistryStore` → `FleetStore`,
+  `RegistryLifecycleHook` → `FleetLifecycleHook`, `RegistryRenewal` →
+  `FleetRenewal`, `RegistryHealthContributor` → `FleetHealthContributor`,
+  `DiscoveryModule` → `LocalDiscoveryModule`, and `FleetServiceRegistry` →
+  `FleetRegistrar` (`FleetServiceDiscovery` keeps its name: it is the discovery
+  side, not a registry).
+
 ### Renamed / API vocabulary
 
 - **`AsyncCarrier` → `ContextCarrier`** (`freeway-commons`): the ambient

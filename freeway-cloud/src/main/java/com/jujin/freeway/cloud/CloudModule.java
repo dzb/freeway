@@ -1,7 +1,6 @@
 package com.jujin.freeway.cloud;
 
 import com.jujin.freeway.cloud.context.CloudContextModule;
-import com.jujin.freeway.cloud.discovery.DiscoveryModule;
 import com.jujin.freeway.cloud.health.HealthModule;
 import com.jujin.freeway.cloud.observe.ObserveModule;
 import com.jujin.freeway.cloud.resilience.ResilienceModule;
@@ -15,7 +14,7 @@ import com.jujin.freeway.ioc.annotation.SubModule;
 import java.time.Duration;
 
 /**
- * The standard cloud bundle: the eight {@code freeway-cloud} modules declared
+ * The standard cloud bundle: the seven {@code freeway-cloud} modules declared
  * as one. Placing this module places them — pre-order, after the module
  * itself — and the startup tree shows the bundle as its own level:
  *
@@ -27,13 +26,13 @@ import java.time.Duration;
  * directly instead of the bundle — no exclusion list exists. A subset still
  * has to include what the subset reads: the RPC client resolves through
  * {@code ServiceDiscovery} and {@code LoadBalancer}, which
- * {@code DiscoveryModule} binds, so "just the client" is two modules —
+ * {@code freeway-cloud} does not bind by default, so "just the client" is two modules —
  * otherwise the container builds and the first call fails with a missing
  * binding:
  *
  * <pre>{@code
  * FreewayApp.run(new OrderModule(),
- *     RpcModule.class, DiscoveryModule.class);   // just the client
+ *     RpcModule.class, StaticDiscoveryModule.class);   // just the client
  * }</pre>
  *
  * <p>{@code bind(Binder)} is the shared cloud surface: cross-cutting bindings
@@ -47,7 +46,6 @@ import java.time.Duration;
 @SubModule({
     CloudContextModule.class,
     SecretModule.class,
-    DiscoveryModule.class,
     RpcModule.class,
     ObserveModule.class,
     ResilienceModule.class,
@@ -55,8 +53,8 @@ import java.time.Duration;
     StorageModule.class
 })
 /**
- * The standard cloud bundle: declares the context, secret, discovery, RPC,
- * observe, resilience, health and storage modules as submodules, so placing this
+ * The standard cloud bundle: declares the context, secret, RPC, observe,
+ * resilience, health and storage modules as submodules, so placing this
  * class places all of them. Each is an ordinary module and can be placed on its
  * own instead — the bundle is a convenience, not a policy.
  */

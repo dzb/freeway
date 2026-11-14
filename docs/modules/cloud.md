@@ -10,7 +10,7 @@ and no retries; "having neighbors" is expressed by the composition root (which m
 
 ## Modules and Composition
 
-`CloudModule` is the cloud capability bundle: it declares 8 standard modules with `@SubModule` — context propagation, secrets,
+`CloudModule` is the cloud capability bundle: it declares 7 standard modules with `@SubModule` — context propagation, secrets,
 **service registry and discovery**, remote invocation, observability, resilience, health, and object storage. Placing the bundle installs everything;
 each submodule is also an ordinary module, so **for a subset, place the subset directly** — there is no exclusion list:
 
@@ -42,9 +42,17 @@ with zero changes to business code:
 
 | Backend | Placement | Infrastructure |
 |---|---|---|
-| In-process (default) | `CloudModule` (or `DiscoveryModule`) | None — single instance / fixed topology |
-| **freeway registry node** | `CloudModule` + `FleetRegistryModule` | Self-deployed registry nodes (1–N freeway applications) |
+| In-process | `CloudModule` + `LocalDiscoveryModule` | None — single instance / fixed topology |
+| Static | `StaticDiscoveryModule` | None — fixed endpoint list or VIP, no registration |
+| **Fleet** | `CloudModule` + `LocalDiscoveryModule` + `FleetModule` | Self-deployed `freeway-fleet-server` nodes (1–N freeway applications) |
 | Consul | `CloudModule` + ext `ConsulModule` | Consul cluster |
+
+Static discovery needs no registry process: `StaticServiceDiscovery` (or
+`StaticDiscoveryModule`) binds a service-id → instance-list map. Several
+instances let the client-side load balancer distribute per call; a single
+endpoint is the VIP form, where an external load balancer owns selection. It
+never registers or renews, so it is the right mode for fixed endpoints and the
+wrong mode for membership that changes without a deployment.
 
 ### Deploying Registry Nodes (freeway native)
 
@@ -53,9 +61,8 @@ A node is just an ordinary freeway application; assembly is all there is:
 ```java
 public static void main(String[] args) {
     FreewayApp.run(Launch.of(args),
-        new HttpModule(),              // HTTP face: six routes — register/renew/deregister/discover/ready/index
-        new DiscoveryModule(),    // instance table (RegistryStore)
-        new RegistryServerModule());   // publishes the instance table as the HTTP face
+        new HttpModule(),          // HTTP face: six routes — register/renew/deregister/discover/ready/index
+        new FleetServerModule());  // FleetStore + registry surface; no discovery module
 }
 ```
 
@@ -70,7 +77,8 @@ freeway.cloud.registry.token=s3cret      # required off-machine: both reads and 
 FreewayApp.run(Launch.of(args),
     new HttpModule(),
     new CloudModule(),
-    new FleetRegistryModule());    // binds the node fleet as this process's registry and discovery
+    new LocalDiscoveryModule(), // registration/heartbeat lifecycle
+    new FleetModule());      // binds the Fleet as this process's registry and discovery
 ```
 
 ```properties

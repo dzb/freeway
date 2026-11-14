@@ -35,6 +35,11 @@
             <artifactId>freeway-cloud</artifactId>
             <version>${freeway.version}</version>
         </dependency>
+        <dependency>
+            <groupId>com.jujin8.freeway</groupId>
+            <artifactId>freeway-fleet-server</artifactId>
+            <version>${freeway.version}</version>
+        </dependency>
     </dependencies>
 
     <build>

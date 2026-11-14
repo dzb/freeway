@@ -6,8 +6,6 @@ import com.jujin.freeway.cloud.discovery.ServiceEndpoint;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.cloud.discovery.LoadBalancerDefault;
 import com.jujin.freeway.cloud.observe.MetricsDefault;
-import com.jujin.freeway.cloud.discovery.internal.RegistryStore;
-import com.jujin.freeway.cloud.discovery.ServiceDiscoveryDefault;
 import com.jujin.freeway.cloud.observe.TracerDefault;
 import com.jujin.freeway.http.HttpModule;
 import com.jujin.freeway.http.HttpServer;
@@ -15,6 +13,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.Map;
 import com.jujin.freeway.http.HttpModule.ConfigKeys;
 
@@ -42,11 +41,10 @@ class RpcObserveTest {
 
     private static RpcHttpClientDefault client(
         HttpServer server, MetricsDefault metrics, TracerDefault tracer) {
-        var store = new RegistryStore();
-        store.register(ServiceInstance.of("echo", "i1",
-            ServiceEndpoint.of("http", server.host(), server.port()), Map.of()));
+        ServiceInstance instance = ServiceInstance.of("echo", "i1",
+            ServiceEndpoint.of("http", server.host(), server.port()), Map.of());
         return new RpcHttpClientDefault(
-            new ServiceDiscoveryDefault(store),
+            serviceId -> List.of(instance),
             new LoadBalancerDefault(),
             RpcHttpClientDefault.Wiring.defaults()
                 .withTracer(tracer)

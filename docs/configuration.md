@@ -594,7 +594,7 @@ silently take effect, but warns once at startup.
 | `freeway.cloud.registry.service-port` | tuning·sentinel | Integer | *(empty)* | no | Registration port. Empty = the HTTP server's actual listening port |
 | `freeway.cloud.registry.service-instance-id` | tuning·sentinel | String | *(empty)* | no | Stable instance-level identifier. Empty = the derived key `service-id@host:port` |
 
-**Registered node fleet (client side, `FleetRegistryModule`)** — placing the module selects this backend; the two keys are configured on the client process, and the shared secret is the `freeway.cloud.registry.token` above (the same key, the same value on both sides):
+**Registered node fleet (client side, `FleetModule`)** — placing the module selects this backend; the two keys are configured on the client process, and the shared secret is the `freeway.cloud.registry.token` above (the same key, the same value on both sides):
 
 | Key | Class | Type | Default | Required | Meaning |
 |----|------|------|--------|------|------|

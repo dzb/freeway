@@ -1,6 +1,7 @@
 package com.jujin.freeway.cloud.rpc;
 
 import com.jujin.freeway.cloud.CloudModule;
+import com.jujin.freeway.cloud.discovery.TestDiscoveryModule;
 import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -76,7 +77,7 @@ class RemoteCallerTest {
     void startApps() {
         System.setProperty(HttpModule.ConfigKeys.SERVER_PORT, "0");
         System.setProperty(ConfigKeys.RPC_REQUEST_TIMEOUT, "2000");
-        server = FreewayApp.create(new HttpModule()).add(CloudModule.class).add(new RpcExportModule()).start();
+        server = FreewayApp.create(new HttpModule()).add(CloudModule.class).add(new TestDiscoveryModule()).add(new RpcExportModule()).start();
         var webServer = server.get(com.jujin.freeway.http.HttpServer.class);
         caller = server.get(RemoteCaller.class);   // framework-bound, not hand-wired
 

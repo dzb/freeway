@@ -1,0 +1,47 @@
+package com.jujin.freeway.fleet;
+
+import com.jujin.freeway.cloud.discovery.ServiceHealth;
+import com.jujin.freeway.cloud.discovery.ServiceInstance;
+import com.jujin.freeway.cloud.discovery.ServiceRegistry;
+
+import java.util.Objects;
+
+/**
+ * In-process {@link ServiceRegistry} backed by {@link FleetStore}.
+ * Production-usable for single-process / static-topology deployments.
+ * Cross-process registration/discovery needs a custom backend bound primary
+ * (an extension module — freeway-cloud-consul in freeway-ext is one).
+ */
+public final class ServiceRegistryDefault implements ServiceRegistry {
+
+    private final FleetStore store;
+
+    public ServiceRegistryDefault(FleetStore store) {
+        this.store = Objects.requireNonNull(store, "store");
+    }
+
+    @Override
+    public void register(ServiceInstance instance) {
+        store.register(instance);
+    }
+
+    @Override
+    public void register(ServiceInstance instance, ServiceHealth health) {
+        store.register(instance, health);
+    }
+
+    @Override
+    public boolean renew(String serviceId, String instanceId) {
+        return store.renew(serviceId, instanceId);
+    }
+
+    @Override
+    public void markReady(ServiceInstance instance, boolean ready) {
+        store.markReady(instance.serviceId(), instance.instanceId(), ready);
+    }
+
+    @Override
+    public void unregister(ServiceInstance instance) {
+        store.unregister(instance);
+    }
+}

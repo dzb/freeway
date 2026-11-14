@@ -68,9 +68,9 @@ The dependency direction is one-way (cloud → http), and http has zero external
 
 ### 3.1 Modules and Bundles
 
-`CloudModule` is the **standard cloud bundle**: at class level it declares the 8 standard modules
+`CloudModule` is the **standard cloud bundle**: at class level it declares the 7 standard modules
 `CloudContextModule` / `SecretModule` /
-`DiscoveryModule` / `RpcModule` / `ObserveModule` /
+`RpcModule` / `ObserveModule` /
 `ResilienceModule` / `HealthModule` / `StorageModule` via `@SubModule`;
 placing `CloudModule` places them (pre-order, after the bundle). All bindings live in each module's `bind()`;
 `CloudModule.bind()` is the bundle's shared surface (currently empty), and the container receives
@@ -102,11 +102,10 @@ com.jujin.freeway.cloud
 ├── annotation/   @Local backend marker
 ├── context/      InvocationContext, TraceContext, PrincipalContext, Baggage,
 │                 Propagator, CloudContextModule
-├── discovery/    ServiceEndpoint, ServiceHealth, ServiceInstance, ServiceDiscovery(+Default),
-│                 ServiceRegistry(+Default), ServiceDeclaration,
-│                 LoadBalancer(+Default), DiscoveryModule
-│                 registry/ FleetRegistryModule, FleetRegistryClient,
-│                 FleetServiceRegistry, FleetServiceDiscovery, RegistryNodes
+├── discovery/    ServiceEndpoint, ServiceHealth, ServiceInstance, ServiceDiscovery,
+│                 ServiceRegistry, ServiceDeclaration,
+│                 LoadBalancer(+Default), StaticServiceDiscovery,
+│                 StaticDiscoveryModule
 ├── rpc/          RpcHttpClient(+Default), RpcRequest/RpcResponse,
 │                 RpcException, TransportSecurity(+Default), RemoteCaller,
 │                 RemoteProxyFactory, Idempotent, RpcExport, RpcEndpoint,
@@ -122,15 +121,16 @@ com.jujin.freeway.cloud
 │                 StorageModule
 ├── context/internal/   AuthPropagator, BaggagePropagator, TracePropagator,
 │                       PropagationFilter
-├── discovery/internal/ RegistryStore, RegistryRenewal, RegistryLifecycleHook,
-│                       DiscoveryConnectionHook, ReadinessGate,
-│                       RegistryHealthContributor
 ├── health/internal/    ReadyHandler
 ├── observe/internal/   MetricsHandler, TracingFilter
 └── internal/           cross-domain shared mechanisms: HttpServiceDeclaration, ServiceIdentity,
                         BackendTypeGuard, ActiveBindingProbe, OptionalBinding,
                         CloudHttpClients, ConstantTime
 ```
+
+Fleet moved out of this module in 2.0: `freeway-fleet` holds `LocalDiscoveryModule`, the Fleet client and
+`FleetProtocol`; `freeway-fleet-server` holds `FleetServerModule`, `FleetStore`
+and the HTTP surface. `freeway-cloud` depends on neither.
 
 Visibility is deliberate: types in `internal/` may be `public` (cross-package assembly needs it)
 but carry no stability promise; conversely `PeerConnector` / `RpcTarget` /
@@ -508,7 +508,7 @@ rateLimiter.tryAcquire()
 - `/health/ready` — aggregates the `CloudHealthContributor` set (contribute mode);
   all healthy `200`, otherwise `503`.
 
-Registry readiness is provided by `RegistryHealthContributor` (delivered with `DiscoveryModule`),
+Registry readiness is provided by `FleetHealthContributor` (delivered with `LocalDiscoveryModule` in `freeway-fleet`),
 and its semantics declare only facts the framework **can verify**:
 
 - Never registered (no HTTP module, no service declaration) → reports `not registered`, rather than a
@@ -688,7 +688,7 @@ bring your own backend marker and type-key consumption when needed, and it must 
 
 | Capability | Seam | Minimal closing action |
 |---|---|---|
-| Registry / discovery backend (Nacos, K8s endpoints are adapted by ext; **freeway's own backend is already delivered in the main body**: a node = a `RegistryServerModule` composition, the client = `FleetRegistryModule`, write fan-out / discovery union, zero third-party dependencies; **Consul is in ext**) | `ServiceRegistry` + `ServiceDiscovery` | One adapter module + real-backend tests; `renew` already returns boolean, so the self-healing contract is ready |
+| Registry / discovery backend (Nacos, K8s endpoints are adapted by ext; **freeway's own backend is already delivered in the main body**: a node = a `FleetServerModule` composition, the client = `FleetModule`, write fan-out / discovery union, zero third-party dependencies; **Consul is in ext**) | `ServiceRegistry` + `ServiceDiscovery` | One adapter module + real-backend tests; `renew` already returns boolean, so the self-healing contract is ready |
 | Secrets backend (Vault, KMS) | `SecretStore` | The adapter owns leases/TTLs (the SPI has no `reload()`); file rotation semantics are settled |
 | Object storage backend (S3-compatible) | `ObjectStorage` | Schedule version capability together with version-addressed read/delete; do not deliver only half |
 | Metrics export (OTel/Prometheus push) | Do not install `ObserveModule`; primary-bind `Metrics` + provide your own export route | Design the label dimension of §8.2 along with it |

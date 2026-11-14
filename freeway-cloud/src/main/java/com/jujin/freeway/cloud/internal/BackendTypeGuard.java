@@ -11,7 +11,7 @@ import org.slf4j.LoggerFactory;
  * Backend-<code>type</code> config guard. The {@code freeway.cloud.*.type}
  * keys select an external backend (Nacos/Consul/K8s/S3/Vault/...) provided by
  * a backend bound primary — an extension adapter (Consul ships in freeway-ext)
- * or the freeway-native fleet ({@code FleetRegistryModule}); the built-in
+ * or the freeway-native fleet ({@code FleetModule}); the built-in
  * implementations are local-only and ignore them. When an external value is configured but the local binding is
  * still the active one, the value is silently dropped — so the local provider
  * warns once (mirroring the {@code @Marker} fallback's non-silent principle).

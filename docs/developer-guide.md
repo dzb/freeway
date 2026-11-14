@@ -2188,8 +2188,8 @@ classification and its HTTP boundary.
 
 **Service registration & discovery ships with three backends behind one seam:**
 the in-process store (the default — a single node needs nothing), the
-freeway-native fleet (`FleetRegistryModule` pointing at deployable registry
-nodes — each an ordinary freeway application running `RegistryServerModule`;
+freeway-native fleet (`FleetModule` pointing at deployable registry
+nodes — each an ordinary freeway application running `FleetServerModule`;
 writes fan out to every node, reads union the answers), and third-party ext
 adapters (Consul). Switching is swapping the module and its keys; application
 code never changes. The event mesh feeds itself from whichever backend is bound

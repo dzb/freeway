@@ -1,6 +1,7 @@
 package com.jujin.freeway.cloud.rpc;
 
 import com.jujin.freeway.cloud.CloudModule;
+import com.jujin.freeway.cloud.discovery.TestDiscoveryModule;
 import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -118,10 +119,11 @@ class RpcExportWiringTest {
 
     private AppRuntime run(ModuleEx... modules) {
         System.setProperty(HttpModule.ConfigKeys.SERVER_PORT, "0");
-        ModuleEx[] composed = new ModuleEx[modules.length + 2];
+        ModuleEx[] composed = new ModuleEx[modules.length + 3];
         composed[0] = new HttpModule();
         composed[1] = new CloudModule();
-        System.arraycopy(modules, 0, composed, 2, modules.length);
+        composed[2] = new TestDiscoveryModule();
+        System.arraycopy(modules, 0, composed, 3, modules.length);
         return FreewayApp.run(composed);
     }
 

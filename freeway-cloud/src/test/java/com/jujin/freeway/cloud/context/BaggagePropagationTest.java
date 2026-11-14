@@ -1,6 +1,7 @@
 package com.jujin.freeway.cloud.context;
 
 import com.jujin.freeway.cloud.CloudModule;
+import com.jujin.freeway.cloud.discovery.TestDiscoveryModule;
 
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
@@ -61,7 +62,7 @@ class BaggagePropagationTest {
 
     @Test
     void inboundExtractionAndOutboundInjectionCarryTheSameBaggage() throws Exception {
-        try (AppRuntime app = FreewayApp.create(new BaggageModule(), new HttpModule()).add(CloudModule.class).start()) {
+        try (AppRuntime app = FreewayApp.create(new BaggageModule(), new HttpModule()).add(CloudModule.class).add(new TestDiscoveryModule()).start()) {
             app.get(ServiceRegistry.class).register(
                 ServiceInstance.of("svc", "i1",
                     ServiceEndpoint.of("http", "127.0.0.1", app.get(com.jujin.freeway.http.HttpServer.class).port()),
@@ -91,7 +92,7 @@ class BaggagePropagationTest {
 
     @Test
     void noBaggageHeaderLeavesTheContextAbsent() throws Exception {
-        try (AppRuntime app = FreewayApp.create(new BaggageModule(), new HttpModule()).add(CloudModule.class).start()) {
+        try (AppRuntime app = FreewayApp.create(new BaggageModule(), new HttpModule()).add(CloudModule.class).add(new TestDiscoveryModule()).start()) {
             app.get(ServiceRegistry.class).register(
                 ServiceInstance.of("svc", "i1",
                     ServiceEndpoint.of("http", "127.0.0.1", app.get(com.jujin.freeway.http.HttpServer.class).port()),

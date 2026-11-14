@@ -2,15 +2,14 @@ package demo;
 
 import com.jujin.freeway.boot.Launch;
 import com.jujin.freeway.boot.FreewayApp;
-import com.jujin.freeway.cloud.discovery.DiscoveryModule;
-import com.jujin.freeway.cloud.discovery.RegistryServerModule;
+import com.jujin.freeway.fleet.server.FleetServerModule;
 import com.jujin.freeway.http.HttpModule;
 import java.util.concurrent.CountDownLatch;
 
 /**
- * Standalone node: a freeway process whose job is to BE the registry server.
+ * Standalone node: a freeway process whose job is to BE the fleet registry server.
  *
- * <p>It starts with a local {@code RegistryStore} and exposes it over HTTP;
+ * <p>It starts with a local {@code FleetStore} and exposes it over HTTP;
  * nothing else registers into it — if a second freeway app hits its
  * endpoints, it finds them. Read {@code README.md} for the walk-through.
  */
@@ -21,8 +20,7 @@ public final class RegistryServer {
 
         FreewayApp.run(Launch.of(args),
             new HttpModule(),
-            new DiscoveryModule(),
-            new RegistryServerModule());
+            new FleetServerModule());
 
         System.out.println("Registry server listening on http://127.0.0.1:19090");
         System.out.println("  register : curl -X POST localhost:19090/registry/services/svc/instances \\");

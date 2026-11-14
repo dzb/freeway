@@ -7,7 +7,7 @@ import java.util.Objects;
 
 /**
  * Container-aware probe for the currently selected bindings. Bound by
- * {@code DiscoveryModule} so container-created contributions can ask
+ * {@code LocalDiscoveryModule} so container-created contributions can ask
  * whether the {@code @Local} default is still in use without being handed the
  * container itself (which is not an injectable boundary type).
  */

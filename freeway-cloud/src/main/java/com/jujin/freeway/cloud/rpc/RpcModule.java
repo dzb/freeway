@@ -1,6 +1,7 @@
 package com.jujin.freeway.cloud.rpc;
 
 import com.jujin.freeway.cloud.annotation.Local;
+import com.jujin.freeway.cloud.discovery.LoadBalancerDefault;
 import com.jujin.freeway.cloud.internal.OptionalBinding;
 import com.jujin.freeway.cloud.context.Propagator;
 import com.jujin.freeway.cloud.discovery.LoadBalancer;
@@ -25,6 +26,7 @@ import com.jujin.freeway.ioc.symbol.SymbolSpec;
 
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.List;
 import java.util.function.Function;
 import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
 
@@ -110,9 +112,24 @@ public final class RpcModule implements ModuleEx {
                 long connectMs = symbols.resolve(CONNECT_TIMEOUT_MS);
                 Duration shutdownGrace = symbols.resolve(SHUTDOWN_GRACE);
                 boolean traceEnabled = symbols.resolve(TRACE_ENABLED);
+                // Discovery is a deployment choice: CloudModule no longer
+                // installs a registry by default (local/static/Fleet are
+                // explicit). RPC still assembles without one; a call then
+                // fails with "no instances" instead of preventing the bundle
+                // from starting. A bound discovery/LoadBalancer wins.
+                ServiceDiscovery discovery =
+                    OptionalBinding.get(container, ServiceDiscovery.class);
+                if (discovery == null) {
+                    discovery = serviceId -> List.of();
+                }
+                LoadBalancer loadBalancer =
+                    OptionalBinding.get(container, LoadBalancer.class);
+                if (loadBalancer == null) {
+                    loadBalancer = new LoadBalancerDefault();
+                }
                 return new RpcHttpClientDefault(
-                    container.get(ServiceDiscovery.class),
-                    container.get(LoadBalancer.class),
+                    discovery,
+                    loadBalancer,
                     new RpcHttpClientDefault.Wiring(
                         container.extension(Propagator.class).all(),
                         OptionalBinding.get(container, Retryer.class),

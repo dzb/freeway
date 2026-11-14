@@ -1,0 +1,47 @@
+package com.jujin.freeway.fleet.server;
+
+import com.jujin.freeway.fleet.FleetProtocol;
+import com.jujin.freeway.http.HttpExchange;
+import com.jujin.freeway.http.route.RouteHandler;
+import com.jujin.freeway.http.HttpStatus;
+import java.io.IOException;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * The registry surface describes itself: protocol version, the routes it
+ * serves and whether it expects a token. {@code GET /registry}, deliberately
+ * open — a client must be able to learn what it is talking to <em>before</em>
+ * it has credentials, and a mismatch answered here is a readable failure
+ * instead of a 404 on whichever route happened to move.
+ *
+ * <p>The protocol is the compatibility contract: this node accepts
+ * {@link FleetServerModule#PROTO} and every older value; a client that
+ * announces a newer one is refused with {@code 426}, never guessed at. Adding a
+ * route or a header is therefore a protocol bump, not a silent change.</p>
+ */
+final class FleetIndexHandler implements RouteHandler {
+
+    @Override
+    public void handle(HttpExchange ctx) throws IOException {
+        Map<String, Object> routes = new LinkedHashMap<>();
+        // Derived from the served table, so a new route cannot be missing from
+        // its own self-description.
+        for (FleetServerModule.Surface surface : FleetServerModule.SURFACE) {
+            routes.put(surface.label(), surface.path());
+        }
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("proto", FleetProtocol.PROTO);
+        body.put("routes", routes);
+        body.put("tokenHeader", FleetProtocol.TOKEN_HEADER);
+        body.put("protoHeader", FleetProtocol.PROTO_HEADER);
+        // A rotation window is a posture a client may want to know about: an
+        // operator reading this can tell whether accepting two secrets is on.
+        body.put("tokenRotation", List.of("current", "previous"));
+        ctx.setHeader(FleetProtocol.PROTO_HEADER,
+            String.valueOf(FleetProtocol.PROTO));
+        ctx.sendJson(HttpStatus.OK, body);
+    }
+}

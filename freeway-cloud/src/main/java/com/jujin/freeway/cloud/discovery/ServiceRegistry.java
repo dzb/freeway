@@ -52,7 +52,7 @@ public interface ServiceRegistry {
      * <p>The default is a no-op for adapters whose backend owns readiness
      * itself (Consul's TTL/health checks answer it), and for any adapter not
      * yet migrated. Backends without that concept — the in-process store and
-     * the registry fleet client (`FleetRegistryModule`) — implement it.</p>
+     * the registry fleet client (`FleetModule`) — implement it.</p>
      *
      * @param ready {@code false} marks the instance as starting/warming
      */
