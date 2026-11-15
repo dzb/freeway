@@ -16,7 +16,6 @@ import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZonedDateTime;
-import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -50,7 +49,6 @@ public final class StaticResourceMount {
     /** Cap for fully memory-loading an asset; streaming/sendfile paths are
      *  not size-limited (meta() reports the size and the client consumes it). */
     private static final long MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024L; // 50MB
-    private static final DateTimeFormatter HTTP_DATE = DateTimeFormatter.RFC_1123_DATE_TIME;
 
     private final String mountPath;
     private final ResourceSource source;
@@ -485,7 +483,7 @@ public final class StaticResourceMount {
             return false;
         }
         try {
-            Instant requested = ZonedDateTime.parse(ifModifiedSince, HTTP_DATE).toInstant();
+            Instant requested = HttpHeaders.parseHttpDate(ifModifiedSince);
             Instant lastModified = Instant.ofEpochMilli(meta.lastModifiedMillis() / 1000 * 1000);
             return !lastModified.isAfter(requested);
         } catch (DateTimeParseException ignored) {
@@ -576,7 +574,7 @@ public final class StaticResourceMount {
             return false;
         }
         try {
-            Instant requested = ZonedDateTime.parse(ifRange, HTTP_DATE).toInstant();
+            Instant requested = HttpHeaders.parseHttpDate(ifRange);
             // HTTP dates have second precision, and the Last-Modified header we
             // emit is truncated to whole seconds — compare on the same
             // precision or a file whose mtime carries milliseconds would never

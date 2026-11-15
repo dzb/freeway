@@ -53,7 +53,8 @@ public final class HttpServer implements AutoCloseable {
      */
     public static HttpServer create(HttpEngine engine, HttpServerConfig config,
             HttpPipeline pipeline) {
-        return create(engine, config, pipeline, NOOP_SINK);
+        return new HttpServer(engine, config, NOOP_SINK, builtInMapperLast(pipeline),
+            (host, port) -> port > 0, false);
     }
 
     /**
@@ -70,7 +71,7 @@ public final class HttpServer implements AutoCloseable {
     public static HttpServer create(HttpEngine engine, HttpServerConfig config,
             HttpPipeline pipeline, Consumer<Object> eventSink) {
         return new HttpServer(engine, config, eventSink, builtInMapperLast(pipeline),
-            (host, port) -> port > 0);
+            (host, port) -> port > 0, true);
     }
 
     /**
@@ -97,7 +98,8 @@ public final class HttpServer implements AutoCloseable {
         HttpServerConfig config,
         Consumer<Object> eventSink,
         HttpPipeline pipeline,
-        ReadinessProbe readinessProbe
+        ReadinessProbe readinessProbe,
+        boolean publishEvents
     ) {
         this.routes = pipeline.routes();
         this.webSocketIndex = pipeline.webSocketIndex();
@@ -131,8 +133,9 @@ public final class HttpServer implements AutoCloseable {
         this.config = Objects.requireNonNull(config, "config");
         this.eventSink = eventSink != null ? eventSink : NOOP_SINK;
         this.readinessProbe = Objects.requireNonNull(readinessProbe, "readinessProbe");
-        // Skip event computation when the sink is the noop sentinel
-        this.publishEvents = this.eventSink != NOOP_SINK;
+        // Explicit policy: the standalone 3-arg factory opts out; any caller
+        // that supplies a sink opts in, even if its consumer happens to be empty.
+        this.publishEvents = publishEvents;
 
         RouteHandler request = ctx -> {
             // Filters run before dispatch, and the tracing filter needs the

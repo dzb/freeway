@@ -141,6 +141,11 @@ public final class HttpHeaders {
         return cachedHttpDate;
     }
 
+    /** Parses an RFC 7231 HTTP-date; one parser for Date/If-Modified-Since/If-Range. */
+    public static Instant parseHttpDate(String value) {
+        return ZonedDateTime.parse(value, HTTP_DATE).toInstant();
+    }
+
     /**
      * Returns the first value of a header in a parsed header map, or null
      * when absent. Header names are case-insensitive.

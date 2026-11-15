@@ -10,6 +10,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Supplier;
 
+import com.jujin.freeway.http.internal.HeaderStore;
 import com.jujin.freeway.http.internal.HttpHeaders;
 
 /**
@@ -89,18 +90,7 @@ public final class RequestViewSupport implements RequestView {
 
     private static Map<String, List<String>> copyHeaders(
             Map<String, List<String>> source) {
-        if (source == null || source.isEmpty()) return Map.of();
-        Map<String, List<String>> copy = new LinkedHashMap<>(source.size());
-        source.forEach((key, values) -> {
-            if (key != null && values != null) {
-                String canonical = key.toLowerCase(Locale.ROOT);
-                copy.computeIfAbsent(canonical, ignored -> new ArrayList<>(values.size()))
-                    .addAll(values);
-            }
-        });
-        Map<String, List<String>> frozen = new LinkedHashMap<>(copy.size());
-        copy.forEach((key, values) -> frozen.put(key, List.copyOf(values)));
-        return Collections.unmodifiableMap(frozen);
+        return HeaderStore.copyOf(source).asMap();
     }
 
     private Map<String, List<String>> queryMap() {
