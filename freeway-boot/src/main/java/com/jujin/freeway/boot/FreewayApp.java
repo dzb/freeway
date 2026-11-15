@@ -44,11 +44,14 @@ import org.slf4j.LoggerFactory;
  * returns.
  */
 public final class FreewayApp {
-    private static final Logger LOG = LoggerFactory.getLogger(FreewayApp.class);
-
+    // Must run before the first LoggerFactory.getLogger(): static field
+    // initializers execute in textual order, and the provider pin is only
+    // effective before SLF4J binds its backend.
     static {
         LogBootstrap.ensureProvider();
     }
+
+    private static final Logger LOG = LoggerFactory.getLogger(FreewayApp.class);
 
     /**
      * The declared modules, in declaration order. A class declaration is
