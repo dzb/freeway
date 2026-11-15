@@ -43,7 +43,6 @@ with zero changes to business code:
 | Backend | Placement | Infrastructure |
 |---|---|---|
 | Static | `StaticModule` | None — fixed endpoint list or VIP, no registration; no write side |
-| **Fleet** | `CloudModule` + `RegistrationModule` + `FleetModule` | Self-deployed `freeway-fleet-server` nodes (1–N freeway applications) |
 | Consul | `CloudModule` + `RegistrationModule` + ext `ConsulModule` | Consul cluster |
 
 There is no public in-process registry module. Tests use a test-scope registry
@@ -57,38 +56,9 @@ endpoint is the VIP form, where an external load balancer owns selection. It
 never registers or renews, so it is the right mode for fixed endpoints and the
 wrong mode for membership that changes without a deployment.
 
-### Deploying Registry Nodes (freeway native)
-
-A node is just an ordinary freeway application; assembly is all there is:
-
-```java
-public static void main(String[] args) {
-    FreewayApp.run(Launch.of(args),
-        new HttpModule(),          // HTTP face: six routes — register/renew/deregister/discover/ready/index
-        new FleetServerModule());  // LeaseStore + registry surface; no discovery module
-}
-```
-
-```properties
-freeway.http.server.port=8060
-freeway.cloud.registry.token=s3cret      # required off-machine: both reads and writes need this header
-```
-
-**Every business service** (registrar = caller = listener):
-
-```java
-FreewayApp.run(Launch.of(args),
-    new HttpModule(),
-    new CloudModule(),
-    new RegistrationModule(),   // register, renew, readiness, drain
-    new FleetModule()); // Fleet client + client-side load balancer
-```
-
-```properties
-freeway.cloud.registry.nodes=http://n1:8060,http://n2:8060
-freeway.cloud.registry.token=s3cret
-freeway.cloud.registry.service-id=order-service
-```
+Fleet and Consul are optional adapters in **freeway-ext**. Registration
+lifecycle remains here (`RegistrationModule`); the backend module supplies
+`ServiceRegistry` / `ServiceDiscovery`.
 
 **What happens automatically** (zero registration logic in business code):
 

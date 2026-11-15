@@ -578,8 +578,9 @@ silently take effect, but warns once at startup.
 #### Service discovery / registration
 
 The keys in this section are declared by `RegistrationModule.ConfigKeys`
-(endpoint identity and drain), `LoadBalancer.ConfigKeys` (local-zone) and
-`FleetModule.ConfigKeys` (Fleet nodes, token, cache).
+(endpoint identity and drain) and `LoadBalancer.ConfigKeys` (local-zone).
+Fleet keys (`nodes`, `token`, `cache-ttl`, `timeout-ms`) are documented with the
+Fleet modules in **freeway-ext**.
 
 | Key | Class | Type | Default | Required | Meaning |
 |----|------|------|--------|------|------|
@@ -591,19 +592,8 @@ The keys in this section are declared by `RegistrationModule.ConfigKeys`
 | `freeway.cloud.registry.service-host` | posture·auto | String | `auto` | no | Hostname to register. `auto` = if the bind address is a concrete address, use it (the server listens only there); with a `0.0.0.0`/`::` bind, prefer `POD_IP`, otherwise the first routable local address, and only when neither exists fall back to the bind address and warn. Multi-NIC hosts should name it explicitly |
 | `freeway.cloud.registry.service-scheme` | posture·auto | String | `auto` | no | Registration scheme, which also decides whether the event mesh dials `ws` or `wss`. `auto` = follow whether the HTTP server has TLS enabled; an explicit value accepts only `http`/`https`, and any other value fails startup |
 | `freeway.cloud.registry.shutdown-drain` | posture·auto | Duration | `auto` | no | **Shutdown drain window**: after deregistering and setting readiness to draining, keep serving for this period before stopping. `auto` = answered by the registry backend (`ServiceRegistry.drainWindow()`): registry adapters carry their own propagation window (for example `5s`; static has no registration lifecycle), so it need not be written per deployment; an explicit duration takes precedence, and a negative value fails startup |
-| `freeway.cloud.registry.token` | decision | String | *(empty)* | no | **Shared key for the registry surface; one key used by both sides** (isomorphic to `event.token`): the node requires it and the client presents it (the `X-Registry-Token` header), so **both values must match**. Empty = no authentication (the node panel is open and clients send no header) — a development posture; set it once the node leaves the local machine |
-| `freeway.cloud.registry.token-previous` | decision | String | *(empty)* | no | **Rotation window**: an old key accepted alongside `token`. Rotation steps: put the current value here, write the new value into `token`, roll the writers over, and finally clear this key — the node stays up throughout. Empty = no window; both empty = the surface is open |
-| `freeway.cloud.registry.cache-ttl` | tuning | Duration | `5s` | no | **Reuse window for discovery results** (caching is the discovery implementation's freshness policy, not the caller's business): `0` = ask on every call. 5s is half a heartbeat (heartbeat 10s), well inside the 30s eviction window; when the backend fails, the oldest answer is served for the window (grace = max(10×ttl, 30s)), and only beyond that does it fail loudly |
-| `freeway.cloud.registry.cache-ttl.<serviceId>` | tuning | Duration | *(inherits global)* | no | **Per-service override**: if configured it takes effect, otherwise the global value is inherited; `0` = no caching for that service. A dynamic key family admitted by prefix via `KnownKeys.admit` (the same approach as the per-file logging keys); an invalid value warns once and falls back to global |
 | `freeway.cloud.registry.service-port` | tuning·sentinel | Integer | *(empty)* | no | Registration port. Empty = the HTTP server's actual listening port |
 | `freeway.cloud.registry.service-instance-id` | tuning·sentinel | String | *(empty)* | no | Stable instance-level identifier. Empty = the derived key `service-id@host:port` |
-
-**Registered node fleet (client side, `FleetModule`)** — placing the module selects this backend; the two keys are configured on the client process, and the shared secret is the `freeway.cloud.registry.token` above (the same key, the same value on both sides):
-
-| Key | Class | Type | Default | Required | Meaning |
-|----|------|------|--------|------|------|
-| `freeway.cloud.registry.nodes` | posture·presence | String | *(empty)* | yes* | **Node fleet addresses**, comma-separated, each item `host:port` (interpreted as `http://`) or a full `http(s)://host:port`. Writes fan out to every node, reads take the union — the fleet is usable while any node is alive. Module placed but this key empty = startup fails and names this key |
-| `freeway.cloud.registry.timeout-ms` | tuning | Long | `3000` | no | Connection + request timeout for a single node exchange (milliseconds) |
 
 #### RPC / Remote invocation
 

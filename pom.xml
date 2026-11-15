@@ -86,16 +86,6 @@
                 <artifactId>freeway-cloud</artifactId>
                 <version>${project.version}</version>
             </dependency>
-            <dependency>
-                <groupId>com.jujin8.freeway</groupId>
-                <artifactId>freeway-fleet</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.jujin8.freeway</groupId>
-                <artifactId>freeway-fleet-server</artifactId>
-                <version>${project.version}</version>
-            </dependency>
 
             <!-- Third-party -->
             <dependency>
@@ -209,8 +199,6 @@
         <module>freeway-db</module>
         <module>freeway-flow</module>
         <module>freeway-cloud</module>
-        <module>freeway-fleet</module>
-        <module>freeway-fleet-server</module>
     </modules>
 
     <profiles>
@@ -223,7 +211,6 @@
             <id>demos</id>
             <modules>
                 <module>demo/rest-db</module>
-                <module>demo/registry-server</module>
                 <module>demo/cloud-event-mesh</module>
             </modules>
         </profile>

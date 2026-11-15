@@ -14,7 +14,7 @@ repository-level [`README`](../README.md) covers the project itself and
 | Every configuration key, by module | [Configuration](configuration.md) |
 | The module model (`ModuleEx`, `@SubModule`, composition) | [Module system](module-system.md) |
 | Reflection sites and their cache rules | [Reflection](reflection.md) |
-| Per-module guides | [Commons](modules/commons.md) · [DB](modules/db.md) · [Cloud](modules/cloud.md) · [Fleet](modules/fleet.md) · [Fleet Server](modules/fleet-server.md) |
+| Per-module guides | [Commons](modules/commons.md) · [DB](modules/db.md) · [Cloud](modules/cloud.md) |
 | Design decisions and rationale | [Cloud](design/cloud.md) · [Defer & ScopedCache](design/defer.md) · [Flow](design/flow.md) |
 | Reference material | [Metrics](reference/metrics.md) · [Failures](reference/failures.md) · [Logging configuration template](reference/logging.properties.reference) |
 | Configuration samples | [`samples/`](samples/) |

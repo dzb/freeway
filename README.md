@@ -151,8 +151,6 @@ smoke path lives in [`demo/rest-db`](demo/rest-db/README.md).
 | **`freeway-db`** | JDBC, ORM, pooling, transactions, schema, migrations |
 | **`freeway-flow`** | Graph workflow engine — 7 node types, v3 DAG format, `@name` tasks |
 | **`freeway-cloud`** | Cloud runtime — registration lifecycle, RPC, event mesh, observability, resilience, health, secrets, storage, static discovery |
-| **`freeway-fleet`** | Fleet client/protocol; registration lifecycle and static discovery live in cloud |
-| **`freeway-fleet-server`** | Standalone Fleet registry server module (owns `LeaseStore`) |
 
 Third-party adapters live in **[freeway-ext](https://github.com/dzb/freeway-ext)**:
 
@@ -224,7 +222,7 @@ PlantUML export.
 In-process and fleet registry/discovery; RPC over HTTP with load balancing,
 retries, circuit breaking and rate limiting; an at-most-once `MeshEventBus`
 event plane; health/readiness, metrics/tracing, secrets, object storage and TLS
-rotation. Domain packages use `Rpc*`, `Mesh*` and `Fleet*` vocabulary directly.
+rotation. Domain packages use `Rpc*` / `Mesh*` vocabulary directly.
 
 ## Configuration
 
@@ -379,7 +377,7 @@ compatibility alias was added.
 - Implementation types moved to `cloud.<domain>.internal`; top-level
   `cloud.internal` now contains only cross-domain support such as
   `CloudHttpClients`, `Identity` and `BackendTypeGuard`.
-- RPC, event mesh and fleet registry use `Rpc*`, `Mesh*` and `Fleet*` vocabulary.
+- RPC and event mesh use `Rpc*` / `Mesh*` vocabulary; Fleet lives in freeway-ext.
   The event mesh is explicitly `MeshEventBus`, not a second `EventBus`.
 - `RpcModule`, `HealthModule`, `EventMeshModule` and the other
   domain modules no longer repeat the `Cloud` prefix already supplied by the

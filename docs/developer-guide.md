@@ -2188,9 +2188,8 @@ classification and its HTTP boundary.
 
 **Service registration & discovery ships with three production backends behind one seam:**
 static discovery (fixed endpoints/VIP, no write side), the freeway-native fleet
-(`FleetModule` pointing at deployable registry nodes — each an ordinary freeway
-application running `FleetServerModule`; writes fan out to every node, reads
-union the answers), and third-party ext adapters (Consul). The registration
+(`FleetModule` + `FleetServerModule`, both in **freeway-ext**; writes fan out to
+every node, reads union the answers), and third-party ext adapters (Consul). The registration
 lifecycle is shared: `RegistrationModule` drives whichever backend is installed.
 Switching is swapping the module and its keys; application code never changes. The event mesh feeds itself from whichever backend is bound
 (`freeway.cloud.event.discovery-feed-ms`).
