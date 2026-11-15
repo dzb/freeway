@@ -60,49 +60,16 @@ Fleet and Consul are optional adapters in **freeway-ext**. Registration
 lifecycle remains here (`RegistrationModule`); the backend module supplies
 `ServiceRegistry` / `ServiceDiscovery`.
 
-**What happens automatically** (zero registration logic in business code):
-
-| Timing | What happens automatically |
-|---|---|
-| Startup | Resolve identity (service-id + host:port) → POST registration to **every** node; a single node failure logs a warning and the others keep serving; startup fails only when **all** nodes reject it |
-| Every 10 seconds | Heartbeat fan-out; a node returning 404 (it was restarted) → **refill it in place** with the instances this process has registered |
-| Every `discovery-feed-ms` | Pull the same-service instance list once and feed the whole snapshot to the event mesh — new instances are dialed automatically, departed ones are disconnected automatically |
-| Calling others | `RemoteProxyFactory` selects an instance from discovery results + zone-aware weighted round-robin |
-| `GET /health/ready` | Reports real registration state: registered / draining / consecutive heartbeat failures |
-| Shutdown | Deregister from all nodes first (drain window), then close the process |
-
-**Reuse of discovery results**: `ServiceDiscovery` implementations cache answers internally (Eureka/Ribbon/Spring Cloud LB
-are all the same shape; push-style ones such as the K8s informer need no TTL). The default is
-`freeway.cloud.registry.cache-ttl=5s` (half a heartbeat, well within the 30s eviction window), overridable per service
-(`…cache-ttl.checkout=1s`, `0` = do not cache that service). When the backend fails, the oldest answer keeps being used within the window
-(grace = max(10×ttl, 30s)); only beyond the window does it throw.
-
-**Policy** (a default the framework provides, not a mandate): a discovery implementation that goes over the network is wrapped with `CachingDiscovery.around(delegate, ttl, metrics)`
-— that is what the fleet does; static discovery is not wrapped (a fixed list needs no freshness policy), and
-adapters that bring their own push freshness (the K8s informer) are not wrapped either — they answer `TtlPolicy` with `0`. In other words: **a caching discovery implementation is
-a default the framework provides; whether to wrap is the backend's decision**.
-
-**Protocol and credential rotation**: the registry face has a protocol version — every client request carries `X-Registry-Proto`, and when incompatible the node answers
-`426` (with the versions it supports); a node always accepts older protocols. `GET /registry` is readable without credentials and describes the protocol,
-routes, and authentication method. Credential rotation needs no node downtime: put the current `token` value into
-`freeway.cloud.registry.token-previous` and the new value into `token` so both coexist, then roll the
-writers over, and finally clear the old-value key — secrets are resolved per request, so a config hot reload takes effect immediately.
+Registration behavior is lifecycle-level: declared endpoints are registered,
+renewed, marked ready, and deregistered on shutdown. Backend-specific behavior
+(Fleet fan-out/protocol/cache, Consul sessions) is documented with that adapter
+in **freeway-ext**.
 
 **Readiness gate**: registration happens before the application can serve, so a process with `CloudHealthContributor`s registers as
 "not ready" first (`ServiceHealth.starting()`: in the registry, not in discovery results), and flips to
 ready only after **all** contributors pass — a slow-starting connection pool/migration no longer takes traffic it cannot handle. An application with no contributors is **ready on registration** (preserving the old behavior:
 no wait added to an application that exposes no signal). The flip is immediate (`POST …/instances/{id}/ready`) and is also carried on the next heartbeat,
 so old nodes lag by one beat instead of diverging.
-
-**Operational semantics of nodes** (an explicit v1 choice): no persistence — the table is reconstructible state; after a node restart the table is empty, and each instance's
-next heartbeat gets a 404 and **re-registers itself with that node in place**, restoring full membership within one heartbeat period; no consensus replication —
-HA relies on client fan-out (write all nodes, read the union), so any surviving node keeps the whole fleet usable; nodes do not know each other and there is no leader/follower.
-Capacity is estimated on a polling model: one heartbeat per instance every 10s plus one discovery query per feed interval.
-
-### Consul
-
-ext's `freeway-cloud-consul`: the same seam; `renew` self-healing, `drainWindow()`, and the `BackendTypeGuard`
-warning are all driven by core, and the adapter implements only the transport. Nacos / K8s endpoints plug in the same way.
 
 ## Remote Invocation
 
