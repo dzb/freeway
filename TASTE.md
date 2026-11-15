@@ -17,6 +17,10 @@ If two sections disagree, the axioms win.
 
 ### Contract + composition
 
+**Prefer an interface (contract) + composition over inheritance.** Inheritance
+is not the extension mechanism; it survives only for the three named exceptions
+below.
+
 - An interface states a role; a record states data; a sealed type states a closed
   set. Put the contract where a caller can substitute an implementation.
 - Modules compose through bindings, contributions and `.primary()`; inheritance
