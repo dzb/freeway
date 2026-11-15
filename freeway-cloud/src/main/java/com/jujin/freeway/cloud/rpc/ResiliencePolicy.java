@@ -135,7 +135,7 @@ final class ResiliencePolicy {
                 }
                 boolean probe = breaker.state() == CircuitBreaker.State.HALF_OPEN;
                 try {
-                    // Bind the RPC child span for the attempt: propagators read
+                    // Bind the RPC child span for the attempt: bridges read
                     // the current context, and without this the outbound trace
                     // carried the parent span (the child never reached the wire).
                     RpcResponse response = span != null

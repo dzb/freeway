@@ -1,7 +1,7 @@
 package com.jujin.freeway.cloud.context.internal;
 
 import com.jujin.freeway.cloud.context.InvocationContext;
-import com.jujin.freeway.cloud.context.Propagator;
+import com.jujin.freeway.cloud.context.ContextBridge;
 import com.jujin.freeway.cloud.context.TraceContext;
 
 import java.util.Map;
@@ -20,12 +20,12 @@ import org.slf4j.LoggerFactory;
  * request, while locally constructed contexts reject it in the record's
  * constructor.</p>
  */
-public final class TracePropagator implements Propagator {
+public final class TraceBridge implements ContextBridge {
 
     public static final String HEADER_TRACEPARENT = "traceparent";
     public static final String HEADER_TRACESTATE = "tracestate";
 
-    private static final Logger LOG = LoggerFactory.getLogger(TracePropagator.class);
+    private static final Logger LOG = LoggerFactory.getLogger(TraceBridge.class);
 
     @Override
     public void inject(InvocationContext ctx, Map<String, String> headers) {
@@ -44,7 +44,7 @@ public final class TracePropagator implements Propagator {
             .map(t -> t.withTraceState(inboundTraceState(headers)))
             .orElse(null);
         // Unset baggage is null (not Baggage.empty()): the propagation filter
-        // merges parts by "non-null wins", so a later propagator's baggage
+        // merges parts by "non-null wins", so a later bridge's baggage
         // must not be clobbered by an empty value here.
         return InvocationContext.of(trace, null, null);
     }

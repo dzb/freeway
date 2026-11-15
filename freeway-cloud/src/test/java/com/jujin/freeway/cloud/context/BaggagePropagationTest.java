@@ -8,7 +8,7 @@ import com.jujin.freeway.boot.FreewayApp;
 import com.jujin.freeway.cloud.discovery.ServiceEndpoint;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.cloud.discovery.ServiceRegistry;
-import com.jujin.freeway.cloud.context.internal.BaggagePropagator;
+import com.jujin.freeway.cloud.context.internal.BaggageBridge;
 import com.jujin.freeway.cloud.rpc.RpcHttpClient;
 import com.jujin.freeway.cloud.rpc.RpcRequest;
 import com.jujin.freeway.http.HttpExchange;
@@ -116,7 +116,7 @@ class BaggagePropagationTest {
     void wireCodecRoundTripsValuesThatWouldCorruptTheHeader() {
         // Separator characters, whitespace, non-ASCII and the escape char
         // itself must travel as data, not corrupt the wire structure.
-        BaggagePropagator propagator = new BaggagePropagator();
+        BaggageBridge bridge = new BaggageBridge();
         Baggage baggage = Baggage.of(Map.of(
             "tenant", "acme,corp",
             "k=v", "tricky",
@@ -126,9 +126,9 @@ class BaggagePropagationTest {
         InvocationContext ctx = InvocationContext.of(null, null, baggage);
 
         Map<String, String> headers = new HashMap<>();
-        propagator.inject(ctx, headers);
+        bridge.inject(ctx, headers);
 
-        Baggage restored = propagator.extract(headers).baggage();
+        Baggage restored = bridge.extract(headers).baggage();
         assertEquals(baggage.values(), restored.values(),
             "the wire codec must round-trip arbitrary application baggage");
     }
@@ -137,8 +137,8 @@ class BaggagePropagationTest {
     void malformedEscapeDegradesToRawText() {
         // A foreign peer's malformed escape must not change the failure type
         // the caller sees — extraction degrades to the raw text.
-        BaggagePropagator propagator = new BaggagePropagator();
-        Baggage restored = propagator.extract(Map.of("baggage", "k=%zz,ok=fine")).baggage();
+        BaggageBridge bridge = new BaggageBridge();
+        Baggage restored = bridge.extract(Map.of("baggage", "k=%zz,ok=fine")).baggage();
         assertEquals("%zz", restored.get("k"));
         assertEquals("fine", restored.get("ok"));
     }
@@ -148,35 +148,35 @@ class BaggagePropagationTest {
         // Regression: no entry/length caps meant every hop multiplied header
         // size and memory unboundedly (W3C recommends implementation limits).
         // Injection drops entries beyond the cap; extraction truncates too.
-        BaggagePropagator propagator = new BaggagePropagator();
+        BaggageBridge bridge = new BaggageBridge();
         Map<String, String> oversized = new HashMap<>();
-        for (int i = 0; i < BaggagePropagator.MAX_ENTRIES + 10; i++) {
+        for (int i = 0; i < BaggageBridge.MAX_ENTRIES + 10; i++) {
             oversized.put("k" + i, "v" + i);
         }
         InvocationContext ctx = InvocationContext.of(null, null, Baggage.of(oversized));
 
         Map<String, String> headers = new HashMap<>();
-        propagator.inject(ctx, headers);
-        String header = headers.get(BaggagePropagator.HEADER_BAGGAGE);
+        bridge.inject(ctx, headers);
+        String header = headers.get(BaggageBridge.HEADER_BAGGAGE);
         assertNotNull(header);
-        assertTrue(header.split(",").length <= BaggagePropagator.MAX_ENTRIES,
+        assertTrue(header.split(",").length <= BaggageBridge.MAX_ENTRIES,
             "injected baggage never exceeds the entry cap");
 
-        Baggage restored = propagator.extract(headers).baggage();
-        assertTrue(restored.values().size() <= BaggagePropagator.MAX_ENTRIES,
+        Baggage restored = bridge.extract(headers).baggage();
+        assertTrue(restored.values().size() <= BaggageBridge.MAX_ENTRIES,
             "extracted baggage never exceeds the entry cap");
     }
 
     @Test
     void propagationStopsAtTheLengthLimit() {
-        BaggagePropagator propagator = new BaggagePropagator();
+        BaggageBridge bridge = new BaggageBridge();
         Map<String, String> huge = new HashMap<>();
-        huge.put("big", "x".repeat(BaggagePropagator.MAX_ENCODED_LENGTH));
+        huge.put("big", "x".repeat(BaggageBridge.MAX_ENCODED_LENGTH));
         InvocationContext ctx = InvocationContext.of(null, null, Baggage.of(huge));
 
         Map<String, String> headers = new HashMap<>();
-        propagator.inject(ctx, headers);
-        String header = headers.get(BaggagePropagator.HEADER_BAGGAGE);
+        bridge.inject(ctx, headers);
+        String header = headers.get(BaggageBridge.HEADER_BAGGAGE);
         assertNull(header,
             "a single entry past the length cap must not be injected at all");
     }

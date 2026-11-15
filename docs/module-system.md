@@ -59,7 +59,7 @@ A library that ships more than one module annotates the umbrella module: the cla
 
 ```java
 @SubModule({
-    CloudContextModule.class,
+    ContextModule.class,
     RpcModule.class,
     /* … */
 })
@@ -97,7 +97,7 @@ Loaded 9 module(s):
 - application
   - OrderModule
   - CloudModule
-    - CloudContextModule
+    - ContextModule
     …
 ```
 

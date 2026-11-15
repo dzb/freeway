@@ -1,7 +1,7 @@
 package com.jujin.freeway.cloud.event;
 
 import com.jujin.freeway.cloud.context.InvocationContext;
-import com.jujin.freeway.cloud.context.internal.TracePropagator;
+import com.jujin.freeway.cloud.context.internal.TraceBridge;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -10,7 +10,7 @@ import java.util.Map;
  * outbound envelopes and restores the inbound trace around local dispatch, so
  * an event crossing a JVM boundary does not break the causal chain.
  *
- * <p>Both directions reuse {@link TracePropagator} — the same inject/extract
+ * <p>Both directions reuse {@link TraceBridge} — the same inject/extract
  * the HTTP path uses — instead of re-implementing W3C parsing. The carrier
  * differs per transport (JSON frame extensions on the mesh, {@code ce-}
  * headers on Kafka), so this helper speaks plain header maps in both
@@ -31,7 +31,7 @@ public final class EventTrace {
     public static final String TRACEPARENT = "traceparent";
     public static final String TRACESTATE = "tracestate";
 
-    private static final TracePropagator TRACE = new TracePropagator();
+    private static final TraceBridge TRACE = new TraceBridge();
 
     private EventTrace() {}
 

@@ -69,7 +69,7 @@ class TraceContextTest {
     void traceStateThatCouldBreakAHeaderIsRejected() {
         // A CR/LF here would be header injection on the next hop; an oversized
         // value is a protocol violation. Local construction is strict, inbound
-        // extraction drops instead (TracePropagator).
+        // extraction drops instead (TraceBridge).
         assertThrows(IllegalArgumentException.class,
             () -> TraceContext.root().withTraceState("vendor=abc\r\nX-Evil: 1"));
         assertThrows(IllegalArgumentException.class,

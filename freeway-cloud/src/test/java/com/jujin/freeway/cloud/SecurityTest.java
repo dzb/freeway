@@ -5,7 +5,7 @@ import com.jujin.freeway.boot.FreewayApp;
 import com.jujin.freeway.cloud.context.Baggage;
 import com.jujin.freeway.cloud.context.InvocationContext;
 import com.jujin.freeway.cloud.context.PrincipalContext;
-import com.jujin.freeway.cloud.context.internal.AuthPropagator;
+import com.jujin.freeway.cloud.context.internal.AuthBridge;
 import com.jujin.freeway.cloud.rpc.TransportSecurity;
 import com.jujin.freeway.cloud.rpc.TransportSecurityDefault;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
@@ -19,7 +19,7 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import com.jujin.freeway.cloud.context.CloudContextModule;
+import com.jujin.freeway.cloud.context.ContextModule;
 import com.jujin.freeway.cloud.secret.SecretModule;
 import com.jujin.freeway.http.HttpModule;
 
@@ -49,37 +49,37 @@ class SecurityTest {
     }
 
     @Test
-    void authPropagatorRoundTripsPrincipalAndRolesWhenEnabled() {
-        System.setProperty(CloudContextModule.ConfigKeys.AUTH_EXTRACT_ENABLED, "true");
+    void authContextBridgeRoundTripsPrincipalAndRolesWhenEnabled() {
+        System.setProperty(ContextModule.ConfigKeys.AUTH_EXTRACT_ENABLED, "true");
         try {
-            AuthPropagator propagator = new AuthPropagator(sysProps());
+            AuthBridge bridge = new AuthBridge(sysProps());
             PrincipalContext principal = PrincipalContext.of("alice", List.of("admin", "user"));
             InvocationContext ctx = InvocationContext.of(null, principal, Baggage.empty());
 
             Map<String, String> headers = new HashMap<>();
-            propagator.inject(ctx, headers);
-            assertEquals("alice", headers.get(AuthPropagator.HEADER_PRINCIPAL));
-            assertEquals("admin,user", headers.get(AuthPropagator.HEADER_ROLES));
+            bridge.inject(ctx, headers);
+            assertEquals("alice", headers.get(AuthBridge.HEADER_PRINCIPAL));
+            assertEquals("admin,user", headers.get(AuthBridge.HEADER_ROLES));
 
-            InvocationContext extracted = propagator.extract(headers);
+            InvocationContext extracted = bridge.extract(headers);
             assertNotNull(extracted.principal());
             assertEquals("alice", extracted.principal().name());
             assertTrue(extracted.principal().hasRole("admin"));
         } finally {
-            System.clearProperty(CloudContextModule.ConfigKeys.AUTH_EXTRACT_ENABLED);
+            System.clearProperty(ContextModule.ConfigKeys.AUTH_EXTRACT_ENABLED);
         }
     }
 
     @Test
-    void authPropagatorIgnoresInboundIdentityByDefault() {
+    void authContextBridgeIgnoresInboundIdentityByDefault() {
         // Security default: a client-supplied x-principal must NOT be trusted
         // unless extraction was explicitly enabled.
-        AuthPropagator propagator = new AuthPropagator(sysProps());
+        AuthBridge bridge = new AuthBridge(sysProps());
         Map<String, String> forged = Map.of(
-            AuthPropagator.HEADER_PRINCIPAL, "admin",
-            AuthPropagator.HEADER_ROLES, "admin,superuser");
+            AuthBridge.HEADER_PRINCIPAL, "admin",
+            AuthBridge.HEADER_ROLES, "admin,superuser");
 
-        InvocationContext extracted = propagator.extract(forged);
+        InvocationContext extracted = bridge.extract(forged);
         assertNull(extracted.principal(),
             "inbound identity headers must be ignored when extraction is disabled");
     }
@@ -165,7 +165,7 @@ class SecurityTest {
         assertEquals(0, exit, "keytool failed: " + new String(process.getInputStream().readAllBytes()));
     }
     /** SymbolSource backed by system properties with ${name:default} expansion
-     *  (mirrors the framework contract AuthPropagator relies on: a miss
+     *  (mirrors the framework contract AuthBridge relies on: a miss
      *  carries {@link com.jujin.freeway.ioc.symbol.UnknownSymbolException},
      *  which is what makes resolve(name, default) and typed get(spec) work). */
     private static com.jujin.freeway.ioc.symbol.SymbolSource sysProps() {

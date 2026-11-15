@@ -18,12 +18,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * {@code PropagationFilter} is itself a deferred contribution. Resolving its
- * propagator list in the constructor used to freeze the modules that happened
+ * bridge list in the constructor used to freeze the modules that happened
  * to publish before it; the lazy supplier reads the sealed store instead.
  */
 class PropagationFilterContributionTest {
 
-    public static final class LatePropagator implements Propagator {
+    public static final class LateContextBridge implements ContextBridge {
         static final AtomicInteger EXTRACTED = new AtomicInteger();
 
         @Override
@@ -38,11 +38,11 @@ class PropagationFilterContributionTest {
     }
 
     @Test
-    void propagatorContributedAfterTheModuleReachesTheFilter() throws Exception {
-        LatePropagator.EXTRACTED.set(0);
+    void bridgeContributedAfterTheModuleReachesTheFilter() throws Exception {
+        LateContextBridge.EXTRACTED.set(0);
         Container container = Freeway.create(
-            new CloudContextModule(),
-            binder -> binder.contribute(Propagator.class).addDeferred(LatePropagator.class)
+            new ContextModule(),
+            binder -> binder.contribute(ContextBridge.class).addDeferred(LateContextBridge.class)
         );
         try {
             PropagationFilter filter = (PropagationFilter)
@@ -72,8 +72,8 @@ class PropagationFilterContributionTest {
             RouteHandler handler = ctx -> next.incrementAndGet();
             filter.doFilter(context, handler);
 
-            assertEquals(1, LatePropagator.EXTRACTED.get(),
-                "a Propagator contributed after CloudContextModule must reach the filter");
+            assertEquals(1, LateContextBridge.EXTRACTED.get(),
+                "a ContextBridge contributed after ContextModule must reach the filter");
             assertEquals(1, next.get());
         } finally {
             container.close();

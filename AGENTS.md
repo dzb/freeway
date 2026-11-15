@@ -196,7 +196,7 @@ construction and `@SubModule`; `ModuleNode` is internal to `ioc.internal`;
   `RegistrationModule.ConfigKeys`, `RpcModule.ConfigKeys`,
   `ResilienceModule.ConfigKeys`, `EventMeshModule.ConfigKeys`,
   `SecretModule.ConfigKeys`, `StorageModule.ConfigKeys`,
-  `CloudContextModule.ConfigKeys` and `LoadBalancer.ConfigKeys` own their own
+  `ContextModule.ConfigKeys` and `LoadBalancer.ConfigKeys` own their own
   keys. Fleet keys live in ext: `FleetKeys` (`freeway.fleet.*`) and
   `FleetServerModule.ConfigKeys` (`freeway.fleet.db.*`). `commons` is not a
   module: logging stays in package-private `LogKeys`, published via `LogConfig`.

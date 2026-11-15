@@ -2,7 +2,7 @@ package com.jujin.freeway.cloud.context.internal;
 
 import com.jujin.freeway.cloud.context.Baggage;
 import com.jujin.freeway.cloud.context.InvocationContext;
-import com.jujin.freeway.cloud.context.Propagator;
+import com.jujin.freeway.cloud.context.ContextBridge;
 import com.jujin.freeway.ioc.symbol.SymbolSpec;
 
 import java.io.ByteArrayOutputStream;
@@ -19,7 +19,7 @@ import org.slf4j.LoggerFactory;
  * {@link Baggage} as a {@code baggage} header ({@code k=v,k2=v2}), extracts
  * it back on the receiving side. Inbound extraction returns {@code null} when
  * the header is absent or empty, so the merge in {@link PropagationFilter}
- * keeps any baggage established by earlier propagators.
+ * keeps any baggage established by earlier bridges.
  *
  * <p>Keys and values are percent-encoded (UTF-8) — unreserved characters
  * verbatim, everything else escaped — so a value containing {@code ,},
@@ -27,9 +27,9 @@ import org.slf4j.LoggerFactory;
  * structure. The codec is symmetric, so arbitrary application baggage
  * round-trips byte-for-byte.
  */
-public final class BaggagePropagator implements Propagator {
+public final class BaggageBridge implements ContextBridge {
 
-    private static final Logger LOG = LoggerFactory.getLogger(BaggagePropagator.class);
+    private static final Logger LOG = LoggerFactory.getLogger(BaggageBridge.class);
 
     public static final String HEADER_BAGGAGE = "baggage";
 
@@ -99,7 +99,7 @@ public final class BaggagePropagator implements Propagator {
 
     /** RFC 3986 unreserved characters survive verbatim; every other byte is
      *  percent-encoded, so it can never be mistaken for wire structure.
-     *  Package-visible so the other header propagators share one codec. */
+     *  Package-visible so the other header bridges share one codec. */
     static String encode(String raw) {
         StringBuilder out = new StringBuilder(raw.length());
         for (byte b : raw.getBytes(StandardCharsets.UTF_8)) {
@@ -121,7 +121,7 @@ public final class BaggagePropagator implements Propagator {
     /** Lenient inverse of {@link #encode}: a malformed escape (a bare
      *  {@code %}) degrades to its literal text instead of failing extraction
      *  — a foreign peer's bad value must not change the failure type the
-     *  caller sees. Package-visible so the other header propagators share
+     *  caller sees. Package-visible so the other header bridges share
      *  one codec. */
     static String decode(String value) {
         if (value.indexOf('%') < 0) {

@@ -641,7 +641,7 @@ corresponding `List`/`Map`):
 | `EventSubscriber` | module-level subscribers | `EventBus`, ordered |
 | `FlowDriver`, `FlowInterceptor` | flow drivers/interceptors | `FlowEngine` |
 | `SchemaEntity`, `RowMapping`, `NamedDatabase` | schema groups, row mappings, named databases | DB module |
-| `Propagator` | context propagators | cloud invocation and event mesh |
+| `ContextBridge` | context bridges (trace/auth/baggage) | cloud invocation and event mesh |
 | `RpcExport`, `MeshSubscription`, `CloudHealthContributor` | RPC exports, mesh subscriptions, readiness | cloud modules |
 | `SymbolProvider`, `CoerceRule`, `KnownKeys` | config tiers, coercion rules, key vocabulary | config chain |
 

@@ -53,12 +53,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Config ownership**: feature keys moved out of `CloudModule.ConfigKeys` into
   the modules that read them — `RegistrationModule` / `FleetModule`,
   `RpcModule`, `ResilienceModule`, `EventMeshModule`, `SecretModule`,
-  `StorageModule`, `CloudContextModule`. `CloudModule.ConfigKeys`
+  `StorageModule`, `ContextModule`. `CloudModule.ConfigKeys`
   now owns only the application identity keys; `CloudKeys` owns the two
   namespaces. `CloudHookIds` (formerly `CloudHooks`) holds hook ids.
 
 ### Renamed / API vocabulary
 
+- **Cloud context vocabulary** (`freeway-cloud`): `CloudContextModule` →
+  `ContextModule`; `Propagator` → `ContextBridge`, with `TracePropagator` →
+  `TraceBridge`, `AuthPropagator` → `AuthBridge`, and `BaggagePropagator` →
+  `BaggageBridge`. The `freeway.cloud.propagation.*` ids and wire headers are
+  unchanged.
 - **`AsyncCarrier` → `ContextCarrier`** (`freeway-commons`): the ambient
   work-context carrier moved out of `ioc.event` into
   `com.jujin.freeway.commons.util`, beside `ContextExecutor`. It is the one
@@ -572,7 +577,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (construct plus field injection) → `@PostConstruct` → `ext.add`; a service
   realized midway through a field-injection chain would freeze the then-partial
   extension view into a singleton, silently losing cross-module contributions (the
-  `List<Propagator>` constructor of `PropagationFilter` was exactly that shape).
+  `List<ContextBridge>` constructor of `PropagationFilter` was exactly that shape).
   Now the config layer is constructed-only, published and initialized first; the
   remaining deferred entries are constructed-only and published, and after `seal`
   field injection and `@PostConstruct` run uniformly; a field-injection chain sees
@@ -587,8 +592,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     way for a construction-time consumer to read the complete view after startup;
     an eager `List`/`Map` injection in a constructor fails startup while pending
     entries remain.
-  - `PropagationFilter`'s constructor takes `Supplier<List<Propagator>>`, so a
-    `Propagator` from a late module cannot be silently missed.
+  - `PropagationFilter`'s constructor takes `Supplier<List<ContextBridge>>`, so a
+    `ContextBridge` from a late module cannot be silently missed.
   - `@PostConstruct` no longer runs while the store is publishing: the config
     layer initializes after its own entries are constructed/published, and the
     remaining entries initialize uniformly after the global seal; no extension can
@@ -3570,7 +3575,7 @@ Behaviour changes (no call sites need changing, but worth knowing):
   constants share one source between the config spec and
   `CloudHttpClientDefault.Wiring`'s library fallbacks (without the module, the
   constants are reused directly, so the two layers cannot drift). `Wiring` gains
-  7 withers (`withPropagators` / `withRetryer` / `withBreaker` / `withRateLimiter`
+  7 withers (`withContextBridges` / `withRetryer` / `withBreaker` / `withRateLimiter`
   / `withTransport` / `withRequestTimeout` / `withConnectTimeout`) for stepwise
   customization.
 
@@ -4203,7 +4208,7 @@ Behaviour changes (no call sites need changing, but worth knowing):
 
 - **freeway-cloud**: `PrincipalPropagationTest`'s `@AfterEach` did not clear
   `freeway.cloud.auth.extract.enabled`, leaking the system property into later
-  test classes, so `SecurityTest.authPropagatorIgnoresInboundIdentityByDefault`
+  test classes, so `SecurityTest.authContextBridgeIgnoresInboundIdentityByDefault`
   failed deterministically in the full suite by class order (passing alone) —
   the cleanup is added.
 - **freeway-ioc test reorganization** — the 2900-line single-file FreewayTest

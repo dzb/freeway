@@ -71,7 +71,7 @@ The dependency direction is one-way (cloud → http), and http has zero external
 ### 3.1 Modules and Bundles
 
 `CloudModule` is the **standard cloud bundle**: at class level it declares the 7 standard modules
-`CloudContextModule` / `SecretModule` /
+`ContextModule` / `SecretModule` /
 `RpcModule` / `ObserveModule` /
 `ResilienceModule` / `HealthModule` / `StorageModule` via `@SubModule`;
 placing `CloudModule` places them (pre-order, after the bundle). All bindings live in each module's `bind()`;
@@ -103,7 +103,7 @@ com.jujin.freeway.cloud
 ├── CloudModule (contains nested ConfigKeys) / CloudHookIds
 ├── annotation/   @Local backend marker
 ├── context/      InvocationContext, TraceContext, PrincipalContext, Baggage,
-│                 Propagator, CloudContextModule
+│                 ContextBridge, ContextModule
 ├── discovery/    ServiceEndpoint, ServiceHealth, ServiceInstance, ServiceDiscovery,
 │                 ServiceRegistry, ServiceDeclaration,
 │                 LoadBalancer(+Default), StaticDiscovery,
@@ -124,7 +124,7 @@ com.jujin.freeway.cloud
 ├── storage/      ObjectStorage(+Default), ObjectMetadata/ObjectEntry/PutResult,
 │                 StorageException, ObjectStoredEvent/ObjectDeletedEvent,
 │                 StorageModule
-├── context/internal/   AuthPropagator, BaggagePropagator, TracePropagator,
+├── context/internal/   AuthBridge, BaggageBridge, TraceBridge,
 │                       PropagationFilter
 ├── health/internal/    ReadyHandler
 ├── observe/internal/   MetricsHandler, TracingFilter
@@ -226,11 +226,11 @@ public record ServiceHealth(boolean live, boolean ready, Instant lastSeen) {
   (owned by infrastructure), `PrincipalContext` (owned by security, unforgeable) and `Baggage`
   (owned by the application). It carries no business data, configuration snapshot or object cache. In-process asynchronous propagation uses
   `ContextExecutor`; **MDC is display-only** (ThreadLocal-based, not cross-thread).
-- Propagation always goes through `Propagator`: inbound `extract(headers)` returns a partial context,
+- Propagation always goes through `ContextBridge`: inbound `extract(headers)` returns a partial context,
   merged by `PropagationFilter` with "non-empty wins"; outbound `inject(ctx, headers)`.
-  Built in: `TracePropagator` (W3C `traceparent`/`tracestate`), `AuthPropagator`
-  (`x-principal` / `x-principal-roles`) and `BaggagePropagator` (W3C
-  `baggage`). A new concern = contribute a `Propagator`; core does not change.
+  Built in: `TraceBridge` (W3C `traceparent`/`tracestate`), `AuthBridge`
+  (`x-principal` / `x-principal-roles`) and `BaggageBridge` (W3C
+  `baggage`). A new concern = contribute a `ContextBridge`; core does not change.
 
 ## 5. Capability Design
 
@@ -588,7 +588,7 @@ Scope boundary: **service-to-service cloud-native security**, not an application
   and the event mesh (`wss://`)**: the mesh is not a second configuration surface. The capability is decided by runtime configuration,
   and a static marker cannot express a conditional capability, so core does not pre-provision `@Mtls` / `@None`; a custom
   implementation (Vault dynamic certificates, etc.) can simply bind.
-- **Identity propagation**: `PrincipalContext` is injected/extracted via `InvocationContext` + `AuthPropagator`
+- **Identity propagation**: `PrincipalContext` is injected/extracted via `InvocationContext` + `AuthBridge`
   as `x-principal` / `x-principal-roles`, on the same pipeline as `traceparent`.
   What is propagated is the **verified identity**, not raw credentials.
   **Trust boundary**: inbound extraction trusts the propagation headers and is **off by default**

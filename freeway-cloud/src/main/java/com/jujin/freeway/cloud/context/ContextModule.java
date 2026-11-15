@@ -1,26 +1,26 @@
 package com.jujin.freeway.cloud.context;
 
 import com.jujin.freeway.cloud.CloudKeys;
-import com.jujin.freeway.cloud.context.internal.AuthPropagator;
-import com.jujin.freeway.cloud.context.internal.BaggagePropagator;
+import com.jujin.freeway.cloud.context.internal.AuthBridge;
+import com.jujin.freeway.cloud.context.internal.BaggageBridge;
 import com.jujin.freeway.cloud.context.internal.PropagationFilter;
-import com.jujin.freeway.cloud.context.internal.TracePropagator;
+import com.jujin.freeway.cloud.context.internal.TraceBridge;
 import com.jujin.freeway.commons.util.ContextCarrier;
-import java.util.Map;
-import org.slf4j.MDC;
 import com.jujin.freeway.http.filter.HttpFilter;
 import com.jujin.freeway.ioc.Binder;
-import com.jujin.freeway.ioc.symbol.KnownKeys;
 import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.annotation.Builtin;
 import com.jujin.freeway.ioc.annotation.Marker;
+import com.jujin.freeway.ioc.symbol.KnownKeys;
+import java.util.Map;
+import org.slf4j.MDC;
 
 /**
  * IoC wiring for the context subsystem: {@code InvocationContext} (ScopedValue
- * carrier), {@code Propagator} chain, and the inbound {@code PropagationFilter}.
+ * carrier), {@code ContextBridge} chain, and the inbound {@code PropagationFilter}.
  */
 @Marker(Builtin.class)
-public final class CloudContextModule implements ModuleEx {
+public final class ContextModule implements ModuleEx {
 
     @Override
     public void bind(Binder b) {
@@ -68,13 +68,13 @@ public final class CloudContextModule implements ModuleEx {
                 }
             };
         });
-        b.contribute(Propagator.class).add("freeway.cloud.propagation.trace", new TracePropagator());
-        // Container-created so the auth propagator can read the
+        b.contribute(ContextBridge.class).add("freeway.cloud.propagation.trace", new TraceBridge());
+        // Container-created so the auth bridge can read the
         // freeway.cloud.auth.extract.enabled switch from the SymbolSource.
-        b.contribute(Propagator.class).addDeferred(AuthPropagator.class);
+        b.contribute(ContextBridge.class).addDeferred(AuthBridge.class);
         // After trace/auth: their extract() leaves unset baggage as null, so
         // the merge keeps the baggage parsed here (null wins only when absent).
-        b.contribute(Propagator.class).add("freeway.cloud.propagation.baggage", new BaggagePropagator());
+        b.contribute(ContextBridge.class).add("freeway.cloud.propagation.baggage", new BaggageBridge());
         b.contribute(HttpFilter.class).addDeferred(PropagationFilter.class);
     }
     /** Keys read by context propagation. */

@@ -1,7 +1,7 @@
 package com.jujin.freeway.cloud.rpc;
 
 import com.jujin.freeway.cloud.context.InvocationContext;
-import com.jujin.freeway.cloud.context.Propagator;
+import com.jujin.freeway.cloud.context.ContextBridge;
 import com.jujin.freeway.cloud.resilience.CircuitBreaker;
 import com.jujin.freeway.cloud.resilience.RateLimiter;
 import com.jujin.freeway.cloud.resilience.Retryer;
@@ -26,7 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
  */
 class RpcHttpClientWiringTest {
 
-    private static final Propagator NOOP_PROPAGATOR = new Propagator() {
+    private static final ContextBridge NOOP_PROPAGATOR = new ContextBridge() {
         @Override
         public void inject(InvocationContext ctx, Map<String, String> headers) {
             // no-op for the field test
@@ -47,7 +47,7 @@ class RpcHttpClientWiringTest {
         Duration connectTimeout = Duration.ofMillis(2500);
 
         RpcHttpClientDefault.Wiring wiring = RpcHttpClientDefault.Wiring.defaults()
-            .withPropagators(List.of(NOOP_PROPAGATOR))
+            .withContextBridges(List.of(NOOP_PROPAGATOR))
             .withRetryer(retryer)
             .withBreaker(breaker)
             .withRateLimiter(limiter)
@@ -55,7 +55,7 @@ class RpcHttpClientWiringTest {
             .withRequestTimeout(requestTimeout)
             .withConnectTimeout(connectTimeout);
 
-        assertEquals(List.of(NOOP_PROPAGATOR), wiring.propagators());
+        assertEquals(List.of(NOOP_PROPAGATOR), wiring.bridges());
         assertSame(retryer, wiring.retryer());
         assertSame(breaker, wiring.breaker());
         assertSame(limiter, wiring.rateLimiter());

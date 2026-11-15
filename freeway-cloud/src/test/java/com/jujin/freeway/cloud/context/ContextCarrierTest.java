@@ -24,7 +24,7 @@ class ContextCarrierTest {
 
     @Test
     void restoresInvocationContextAndMdcAndLeavesTheWorkerClean() throws Exception {
-        try (Container container = Freeway.create(new CloudContextModule())) {
+        try (Container container = Freeway.create(new ContextModule())) {
             ContextCarrier carrier = container.get(ContextCarrier.class);
             ExecutorService pool = Executors.newSingleThreadExecutor();
             try {

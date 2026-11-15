@@ -12,10 +12,10 @@ freeway-boot/src/main/java/com/jujin/freeway/boot/internal/AppRuntimeDefault.jav
 freeway-boot/src/main/java/com/jujin/freeway/boot/internal/BootModule.java#BootModule
 freeway-boot/src/main/java/com/jujin/freeway/boot/internal/ConfigCascade.java#ConfigCascade
 freeway-boot/src/main/java/com/jujin/freeway/boot/internal/ConfigSources.java#ConfigSources
-freeway-cloud/src/main/java/com/jujin/freeway/cloud/context/internal/AuthPropagator.java#AuthPropagator
-freeway-cloud/src/main/java/com/jujin/freeway/cloud/context/internal/BaggagePropagator.java#BaggagePropagator
+freeway-cloud/src/main/java/com/jujin/freeway/cloud/context/internal/AuthBridge.java#AuthBridge
+freeway-cloud/src/main/java/com/jujin/freeway/cloud/context/internal/BaggageBridge.java#BaggageBridge
 freeway-cloud/src/main/java/com/jujin/freeway/cloud/context/internal/PropagationFilter.java#PropagationFilter
-freeway-cloud/src/main/java/com/jujin/freeway/cloud/context/internal/TracePropagator.java#TracePropagator
+freeway-cloud/src/main/java/com/jujin/freeway/cloud/context/internal/TraceBridge.java#TraceBridge
 freeway-cloud/src/main/java/com/jujin/freeway/cloud/health/internal/ReadyHandler.java#ReadyHandler
 freeway-cloud/src/main/java/com/jujin/freeway/cloud/internal/BackendTypeGuard.java#BackendTypeGuard
 freeway-cloud/src/main/java/com/jujin/freeway/cloud/observe/internal/MetricsHandler.java#MetricsHandler

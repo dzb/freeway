@@ -1,7 +1,7 @@
 package com.jujin.freeway.cloud;
 
 import com.jujin.freeway.cloud.annotation.Local;
-import com.jujin.freeway.cloud.context.CloudContextModule;
+import com.jujin.freeway.cloud.context.ContextModule;
 import com.jujin.freeway.cloud.discovery.StaticModule;
 import com.jujin.freeway.cloud.event.EventMeshModule;
 import com.jujin.freeway.cloud.health.HealthModule;
@@ -49,7 +49,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class CloudModuleTest {
 
     private static final List<Class<?>> STANDARD = List.of(
-        CloudContextModule.class,
+        ContextModule.class,
         SecretModule.class,
         RpcModule.class,
         ObserveModule.class,

@@ -1,7 +1,7 @@
 package com.jujin.freeway.cloud.event;
 
 import com.jujin.freeway.cloud.context.Baggage;
-import com.jujin.freeway.cloud.context.CloudContextModule;
+import com.jujin.freeway.cloud.context.ContextModule;
 import com.jujin.freeway.cloud.context.InvocationContext;
 import com.jujin.freeway.cloud.context.PrincipalContext;
 import com.jujin.freeway.cloud.context.TraceContext;
@@ -31,7 +31,7 @@ class EventBusAsyncTraceTest {
     private static final TraceContext TRACE = TraceContext.root();
 
     private static Container containerWithContext() {
-        return Freeway.create(new CloudContextModule());
+        return Freeway.create(new ContextModule());
     }
 
     @Test

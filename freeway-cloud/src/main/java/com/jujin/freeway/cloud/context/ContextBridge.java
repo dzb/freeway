@@ -7,11 +7,11 @@ import java.util.Map;
  *
  * <p>Contributed like {@code Route}/{@code HttpFilter} (same extension-point
  * pattern). Adding a new cross-boundary concern = contributing a
- * {@code Propagator}, never touching core: inbound {@code extract} →
+ * {@code ContextBridge}, never touching core: inbound {@code extract} →
  * {@code InvocationContext.runWith} (that is the only write face), outbound
  * {@code inject} of the current context.
  */
-public interface Propagator {
+public interface ContextBridge {
 
     /** Writes the current context into outbound headers. */
     void inject(InvocationContext ctx, Map<String, String> headers);

@@ -1,6 +1,6 @@
 package com.jujin.freeway.cloud;
 
-import com.jujin.freeway.cloud.context.CloudContextModule;
+import com.jujin.freeway.cloud.context.ContextModule;
 import com.jujin.freeway.cloud.health.HealthModule;
 import com.jujin.freeway.cloud.observe.ObserveModule;
 import com.jujin.freeway.cloud.resilience.ResilienceModule;
@@ -32,7 +32,7 @@ import com.jujin.freeway.ioc.symbol.KnownKeys;
  * {@code RegistrationModule}, backends in {@code freeway-fleet} or ext.
  */
 @SubModule({
-    CloudContextModule.class,
+    ContextModule.class,
     SecretModule.class,
     RpcModule.class,
     ObserveModule.class,

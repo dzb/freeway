@@ -4,7 +4,7 @@ import com.jujin.freeway.cloud.CloudKeys;
 import com.jujin.freeway.cloud.annotation.Local;
 import com.jujin.freeway.cloud.discovery.LoadBalancerDefault;
 import com.jujin.freeway.ioc.OptionalBinding;
-import com.jujin.freeway.cloud.context.Propagator;
+import com.jujin.freeway.cloud.context.ContextBridge;
 import com.jujin.freeway.cloud.discovery.LoadBalancer;
 import com.jujin.freeway.cloud.discovery.ServiceDiscovery;
 import com.jujin.freeway.cloud.observe.Tracer;
@@ -139,7 +139,7 @@ public final class RpcModule implements ModuleEx {
                     discovery,
                     loadBalancer,
                     new RpcHttpClientDefault.Wiring(
-                        container.extension(Propagator.class).all(),
+                        container.extension(ContextBridge.class).all(),
                         OptionalBinding.get(container, Retryer.class),
                         OptionalBinding.get(container, CircuitBreaker.class),
                         OptionalBinding.get(container, RateLimiter.class),

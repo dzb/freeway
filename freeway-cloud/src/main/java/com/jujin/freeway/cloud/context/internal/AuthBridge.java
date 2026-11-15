@@ -2,13 +2,13 @@ package com.jujin.freeway.cloud.context.internal;
 
 import com.jujin.freeway.cloud.context.InvocationContext;
 import com.jujin.freeway.cloud.context.PrincipalContext;
-import com.jujin.freeway.cloud.context.Propagator;
+import com.jujin.freeway.cloud.context.ContextBridge;
 import com.jujin.freeway.ioc.symbol.SymbolSpec;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 
 import java.util.List;
 import java.util.Map;
-import com.jujin.freeway.cloud.context.CloudContextModule;
+import com.jujin.freeway.cloud.context.ContextModule;
 
 /**
  * Verified-identity propagation: injects the current
@@ -23,18 +23,18 @@ import com.jujin.freeway.cloud.context.CloudContextModule;
  * service mesh / behind an ext token-verifying security module. Outbound
  * injection is always on: it forwards a locally verified identity.
  */
-public final class AuthPropagator implements Propagator {
+public final class AuthBridge implements ContextBridge {
 
     public static final String HEADER_PRINCIPAL = "x-principal";
     public static final String HEADER_ROLES = "x-principal-roles";
 
     /** Off by default: see the trust boundary above. */
     private static final SymbolSpec<Boolean> EXTRACT_ENABLED = SymbolSpec.of(
-        CloudContextModule.ConfigKeys.AUTH_EXTRACT_ENABLED, Boolean.class, false);
+        ContextModule.ConfigKeys.AUTH_EXTRACT_ENABLED, Boolean.class, false);
 
     private final boolean extractEnabled;
 
-    public AuthPropagator(SymbolSource symbols) {
+    public AuthBridge(SymbolSource symbols) {
         this.extractEnabled = symbols.resolve(EXTRACT_ENABLED);
     }
 
@@ -50,7 +50,7 @@ public final class AuthPropagator implements Propagator {
             // data, not a list separator, so it round-trips instead of
             // splitting into two (richer) roles on the receiving side.
             headers.put(HEADER_ROLES, principal.roles().stream()
-                .map(BaggagePropagator::encode)
+                .map(BaggageBridge::encode)
                 .collect(java.util.stream.Collectors.joining(",")));
         }
     }
@@ -66,7 +66,7 @@ public final class AuthPropagator implements Propagator {
             return InvocationContext.of(null, null, null);
         }
         List<String> roles = SymbolSpec.splitList(headers.get(HEADER_ROLES)).stream()
-            .map(BaggagePropagator::decode)
+            .map(BaggageBridge::decode)
             .toList();
         return InvocationContext.of(null, PrincipalContext.of(name, roles), null);
     }

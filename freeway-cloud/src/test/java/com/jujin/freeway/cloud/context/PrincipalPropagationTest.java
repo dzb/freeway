@@ -8,7 +8,7 @@ import com.jujin.freeway.boot.FreewayApp;
 import com.jujin.freeway.cloud.discovery.ServiceEndpoint;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.cloud.discovery.ServiceRegistry;
-import com.jujin.freeway.cloud.context.internal.AuthPropagator;
+import com.jujin.freeway.cloud.context.internal.AuthBridge;
 import com.jujin.freeway.cloud.rpc.RpcHttpClient;
 import com.jujin.freeway.cloud.rpc.RpcRequest;
 import com.jujin.freeway.http.HttpExchange;
@@ -43,13 +43,13 @@ class PrincipalPropagationTest {
     @BeforeEach
     void randomPort() {
         System.setProperty(HttpModule.ConfigKeys.SERVER_PORT, "0");
-        System.setProperty(CloudContextModule.ConfigKeys.AUTH_EXTRACT_ENABLED, "true");
+        System.setProperty(ContextModule.ConfigKeys.AUTH_EXTRACT_ENABLED, "true");
     }
 
     @AfterEach
     void clearProperties() {
         System.clearProperty(HttpModule.ConfigKeys.SERVER_PORT);
-        System.clearProperty(CloudContextModule.ConfigKeys.AUTH_EXTRACT_ENABLED);
+        System.clearProperty(ContextModule.ConfigKeys.AUTH_EXTRACT_ENABLED);
     }
 
     @Test
@@ -62,8 +62,8 @@ class PrincipalPropagationTest {
             HttpClient client = HttpClient.newHttpClient();
             HttpRequest request = HttpRequest.newBuilder(
                     URI.create("http://127.0.0.1:" + server.port() + "/api/call"))
-                .header(AuthPropagator.HEADER_PRINCIPAL, "alice")
-                .header(AuthPropagator.HEADER_ROLES, "admin,user")
+                .header(AuthBridge.HEADER_PRINCIPAL, "alice")
+                .header(AuthBridge.HEADER_ROLES, "admin,user")
                 .GET()
                 .build();
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
@@ -89,8 +89,8 @@ class PrincipalPropagationTest {
             HttpClient client = HttpClient.newHttpClient();
             HttpRequest request = HttpRequest.newBuilder(
                     URI.create("http://127.0.0.1:" + server.port() + "/api/call"))
-                .header(AuthPropagator.HEADER_PRINCIPAL, "alice")
-                .header(AuthPropagator.HEADER_ROLES, "admin%2Croot,dev")
+                .header(AuthBridge.HEADER_PRINCIPAL, "alice")
+                .header(AuthBridge.HEADER_ROLES, "admin%2Croot,dev")
                 .GET()
                 .build();
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
