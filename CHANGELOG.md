@@ -42,6 +42,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `FleetServiceDiscovery` → `FleetDiscovery`, `FleetServiceRegistry` →
   `FleetRegistrar`. The in-process local backend was removed; tests use a
   test-scope registry fixture.
+- **Fleet wire/config vocabulary**: Fleet is now `/fleet` with `X-Fleet-Token` /
+  `X-Fleet-Proto`, and its keys are `freeway.fleet.*`. A shared
+  `freeway-fleet-protocol` module owns routes, headers, version and keys, so the
+  server depends on protocol rather than on the client.
 - **Config ownership**: feature keys moved out of `CloudModule.ConfigKeys` into
   the modules that read them — `RegistrationModule` / `FleetModule`,
   `RpcModule`, `ResilienceModule`, `EventMeshModule`, `SecretModule`,
