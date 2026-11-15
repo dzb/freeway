@@ -121,7 +121,7 @@ final class RegistrationHook implements RuntimeHook {
                 readinessGate.start();
             }
             renewal.track();
-                long intervalMillis = renewInterval.toMillis();
+            long intervalMillis = renewInterval.toMillis();
             scheduler = Executors.newSingleThreadScheduledExecutor(
                 Thread.ofPlatform().daemon().name("cloud-registry-heartbeat").factory());
             scheduler.scheduleWithFixedDelay(this::heartbeat, intervalMillis, intervalMillis,
@@ -131,11 +131,9 @@ final class RegistrationHook implements RuntimeHook {
 
     /**
      * {@code auto} (the default) asks the bound registry for its propagation
-     * window: the built-in in-process registry answers zero — an endpoint
-     * disappears the moment it is unregistered — while an adapter backed by
-     * Nacos or Kubernetes endpoints answers the window that backend needs, so
-     * no deployment has to know its registry's number. An explicit duration
-     * always wins, and must be non-negative.
+     * window; an adapter answers the window its backend needs, so no deployment
+     * has to know the registry's number. An explicit duration always wins, and
+     * must be non-negative.
      */
     static Duration resolveDrain(String raw, ServiceRegistry registry, SymbolSource symbols) {
         if (raw == null || raw.isBlank()
@@ -163,16 +161,13 @@ final class RegistrationHook implements RuntimeHook {
     }
 
     /**
-     * One heartbeat: renew, and re-register whatever the registry no longer
+     * One heartbeat pass: renew, and re-register whatever the registry no longer
      * holds. The registry's own answer is the verification — asking discovery
-     * afterwards would be a second, weaker opinion, and for an adapter
-     * backend a second network round trip on every interval.
-     */
-    /**
-     * One heartbeat pass. Package-private (not private) so the stop/heartbeat
-     * interleaving can be exercised without a scheduler: the test blocks inside
-     * {@code renew} while {@code stop()} deregisters, which is exactly the race
-     * the {@code stopped} flag exists for.
+     * afterwards would be a second, weaker opinion, and for an adapter backend a
+     * second network round trip on every interval. Package-private (not private)
+     * so the stop/heartbeat interleaving can be exercised without a scheduler:
+     * the test blocks inside {@code renew} while {@code stop()} deregisters,
+     * exactly the race {@code stopped} exists for.
      */
     void heartbeat() {
         if (stopped) {

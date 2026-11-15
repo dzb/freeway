@@ -21,7 +21,7 @@ public final class CloudHookIds {
      *  ({@code freeway.cloud.rpc.resilience} must be {@code auto} or {@code off}). */
     public static final String RESILIENCE = "freeway.cloud.resilience";
 
-    /** Registry-client connection; runs before the HTTP server. */
+    /** Backend-type guard for discovery/registration; runs before the HTTP server. */
     public static final String DISCOVERY = "freeway.cloud.discovery";
 
     /** RPC export wiring: resolves the declared exports, registers their

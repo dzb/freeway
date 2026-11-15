@@ -69,9 +69,12 @@ class ContributionShutdownTest {
         Shared shared = new Shared();
         try (Container container = Freeway.create(
                 binder -> {
-                    binder.bind(Ability.class).to(c -> shared);
+                    binder.bind(Shared.class).to(c -> shared);
                     binder.contribute(Ability.class).addDeferred("shared", c -> shared);
                 })) {
+            // Realize the concrete binding too: both the service cache and the
+            // contribution list now hold the same identity.
+            assertEquals(shared, container.get(Shared.class));
             assertEquals(1, container.extension(Ability.class).all().size());
         }
         assertEquals(1, Shared.preDestroyed, "the identity drain must not run @PreDestroy twice");

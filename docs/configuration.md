@@ -20,7 +20,7 @@ Each key's **class** is stated in the tables below. Classification is not a matt
 
 Two further classes are **not "decisions"** — do not mix them with the above:
 
-- **declaration** (`freeway.cloud.{secret,storage,discovery,registry}.type`): expresses only "which backend I intend to use"; it **does not select an implementation** (selection = a `.primary()` binding, an `@Local` marker, which adapter module is installed). When the local implementation is still in use and the declaration is non-empty, startup warns once.
+- **declaration** (`freeway.cloud.{secret,storage,discovery,registry}.type`): expresses only "which backend I intend to use"; it **does not select an implementation** (selection = a `.primary()` binding, an `@Local` marker, which adapter module is installed). When a local default is still in use and the declaration is non-empty, startup warns once; for discovery/registration (no local default), startup warns when the declared type has no binding.
 - **mechanism** (`freeway.config.file`, `freeway.env.prefix`, `freeway.cloud.secret.file/.keys`): these configure the configuration system itself, and writing them into any configuration file has no effect. The first two may come from `-D` or `FREEWAY_CONFIG_FILE`/`FREEWAY_ENV_PREFIX`; the latter two **honour `-D` only** — they are read through the symbol resolution chain, and going through the cascade once would recurse.
 
 A **shape suffix** describes where the value comes from (it determines whether the value can be "hidden"):
@@ -554,7 +554,7 @@ default or no limit, and empty means the JDK default.
 | Category | Example | Role |
 |---|---|---|
 | **Selection key** | a `.primary()` binding, an `@Local` marker, the adapter module itself | **Actually decides which implementation is used**: during container resolution the primary binding wins and the local default steps aside |
-| **Declaration key** | `freeway.cloud.discovery.type` / `registry.type` / `secret.type` / `storage.type` | **Expresses intent only**: "I intend to use Nacos / Consul / S3 / Vault". The framework **does not use it to select an implementation** (no reflective class-name loading and no classpath scanning); an adapter **may** read it for validation/warnings (the Consul adapter treats it as a pure intent declaration that does not participate in selection), and when "an external backend is declared but the local implementation is still the active binding" it triggers a one-time startup warning (`BackendTypeGuard`), so a declaration is not mistaken for effect |
+| **Declaration key** | `freeway.cloud.discovery.type` / `registry.type` / `secret.type` / `storage.type` | **Expresses intent only**: "I intend to use Nacos / Consul / S3 / Vault". The framework **does not use it to select an implementation** (no reflective class-name loading and no classpath scanning); an adapter **may** read it for validation/warnings (the Consul adapter treats it as a pure intent declaration that does not participate in selection). `BackendTypeGuard.warnIfExternal` warns for roles with a local default; `warnIfMissing` warns when discovery/registration has no binding at all |
 
 So: to switch backends, write an adapter module and `.primary()` it; `*.type` is a
 declaration and self-check for humans and adapters — a wrong value (or a missing adapter) does not
@@ -578,7 +578,8 @@ silently take effect, but warns once at startup.
 #### Service discovery / registration
 
 The keys in this section are declared by `RegistrationModule.ConfigKeys`
-(endpoint identity and drain) and `LoadBalancer.ConfigKeys` (local-zone).
+(endpoint identity and drain), `LoadBalancer.ConfigKeys` (local-zone), and
+`CloudModule.ConfigKeys` (`freeway.app.name`).
 Fleet keys (`nodes`, `token`, `cache-ttl`, `timeout-ms`) are documented with the
 Fleet modules in **freeway-ext**.
 

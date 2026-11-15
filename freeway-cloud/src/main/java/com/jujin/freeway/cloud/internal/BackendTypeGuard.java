@@ -1,6 +1,7 @@
 package com.jujin.freeway.cloud.internal;
 
 import com.jujin.freeway.cloud.annotation.Local;
+import com.jujin.freeway.ioc.MissingBindingException;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.RuntimeHook;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
@@ -11,12 +12,11 @@ import org.slf4j.LoggerFactory;
  * Backend-<code>type</code> config guard. The {@code freeway.cloud.*.type}
  * keys select an external backend (Nacos/Consul/K8s/S3/Vault/...) provided by
  * a backend bound primary — an extension adapter (Consul ships in freeway-ext)
- * or the freeway-native fleet ({@code FleetModule}); the built-in
- * implementations are local-only and ignore them. When an external value is configured but the local binding is
- * still the active one, the value is silently dropped — so the local provider
- * warns once (mirroring the {@code @Marker} fallback's non-silent principle).
- * An adapter bound primary suppresses the warning because the setting is then
- * honored.
+ * or the freeway-native fleet ({@code FleetModule}). For roles that still have a
+ * built-in local default, an external value is ignored while that local binding
+ * is primary; {@link #warnIfExternal} reports that once. Discovery and
+ * registration have no local default, so their guard asks whether any binding
+ * exists instead ({@link #warnIfMissing}).
  */
 public final class BackendTypeGuard {
 
@@ -40,6 +40,38 @@ public final class BackendTypeGuard {
                 warnIfExternal(container, type, typeKey, subsystem);
             }
         };
+    }
+
+    /**
+     * Warns when an external backend is declared but the role has no binding at
+     * all. This is the discovery/registration case after the local default was
+     * removed: there is no {@code @Local} marker to inspect, and a missing
+     * provider is the fact that matters.
+     *
+     * @return true when a warning was emitted
+     */
+    public static <T> boolean warnIfMissing(
+        Container container,
+        Class<T> type,
+        String typeKey,
+        String subsystem
+    ) {
+        String configured = container.get(SymbolSource.class).resolve(typeKey, "");
+        if (configured == null || configured.isBlank()
+                || "local".equalsIgnoreCase(configured.trim())) {
+            return false;
+        }
+        try {
+            container.get(type);
+            return false;
+        } catch (MissingBindingException absent) {
+            LOG.warn(
+                "freeway.cloud.{} type '{}' is configured but no implementation is bound;"
+                    + " install an adapter or clear the key",
+                subsystem,
+                configured.trim());
+            return true;
+        }
     }
 
     /**

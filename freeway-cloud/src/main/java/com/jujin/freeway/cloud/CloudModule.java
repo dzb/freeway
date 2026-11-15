@@ -24,7 +24,7 @@ import com.jujin.freeway.ioc.symbol.KnownKeys;
  * module directly instead of the bundle. A subset still has to include what it
  * reads: RPC resolves through {@code ServiceDiscovery} and {@code LoadBalancer},
  * which the bundle does not bind by default. A client-only application places
- * {@code RpcModule} plus {@code StaticModule} (or a Fleet/local adapter).
+ * {@code RpcModule} plus {@code StaticModule}, or a Fleet/Consul adapter.
  *
  * <p>{@code EventMeshModule} is intentionally absent: it opens listeners and
  * dials peers, so a mesh is something an application asks for explicitly.

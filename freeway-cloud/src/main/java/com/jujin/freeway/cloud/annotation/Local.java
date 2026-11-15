@@ -14,7 +14,7 @@ import java.lang.annotation.Target;
  * about.
  *
  * <pre>{@code
- *   @Inject @Local ServiceDiscovery local;   // the built-in, even when an adapter is primary
+ *   @Inject @Local SecretStore local;   // the built-in, even when an adapter is primary
  * }</pre>
  *
  * <p>There is deliberately no {@code TYPE} position: nothing reads this

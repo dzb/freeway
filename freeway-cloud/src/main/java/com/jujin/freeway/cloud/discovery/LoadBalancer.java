@@ -8,9 +8,10 @@ import java.util.Optional;
  * set before an RPC call. Instances provide data, the LoadBalancer provides
  * policy — and the policy is the substitution point.
  *
- * <p>{@link LoadBalancerDefault} is plain round-robin: it reads no instance
- * attribute at all. Weighted, zone-aware and canary strategies are the
- * application's (or an adapter's) job, bound as the primary implementation:
+ * <p>{@link LoadBalancerDefault} is weighted, zone-aware round-robin: it reads
+ * {@code weight} and prefers {@code zone} when configured. Canary and other
+ * policies are the application's (or an adapter's) job, bound as the primary
+ * implementation:
  * {@code binder.bind(LoadBalancer.class).to(CanaryLb.class).primary()}. Their
  * input vocabulary is the typed accessors on {@link ServiceInstance} —
  * {@code weight()}, {@code zone()}, {@code version()}, {@code isCanary()} —

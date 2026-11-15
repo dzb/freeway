@@ -1,8 +1,12 @@
 package com.jujin.freeway.cloud.discovery;
 
+import com.jujin.freeway.cloud.CloudKeys;
+import com.jujin.freeway.cloud.annotation.Local;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
+import com.jujin.freeway.ioc.symbol.KnownKeys;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
+import com.jujin.freeway.ioc.symbol.SymbolSpec;
 import com.jujin.freeway.ioc.ModuleEx;
 import java.util.List;
 import java.util.Map;
@@ -38,12 +42,16 @@ public final class StaticModule implements ModuleEx {
 
     @Override
     public void bind(Binder b) {
+        // The default balancer is a fallback, not a primary: a caller-supplied
+        // weighted/canary policy must win without an ambiguity error.
+        b.contribute(KnownKeys.class)
+            .add(KnownKeys.of(LoadBalancer.ConfigKeys.class, CloudKeys.PREFIX));
         b.bind(ServiceDiscovery.class).to(container -> discovery).primary();
         b.bind(LoadBalancer.class)
             .to((Container container) -> new LoadBalancerDefault(
                 container.get(SymbolSource.class).resolve(
-                    com.jujin.freeway.ioc.symbol.SymbolSpec.of(
+                    SymbolSpec.of(
                         LoadBalancer.ConfigKeys.LOCAL_ZONE, String.class, ""))))
-            .primary();
+            .marker(Local.class);
     }
 }

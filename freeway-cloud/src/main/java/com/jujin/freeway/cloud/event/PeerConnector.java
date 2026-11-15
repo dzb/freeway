@@ -37,8 +37,8 @@ final class PeerConnector implements AutoCloseable {
     private static final Logger LOG = LoggerFactory.getLogger(PeerConnector.class);
     /** Default reconnect backoff floor / ceiling (exponential, capped) — one
      *  source with the config layer
-     *  ({@link ConfigKeys#EVENT_BACKOFF_BASE_MS_DEFAULT} /
-     *  {@link ConfigKeys#EVENT_BACKOFF_MAX_MS_DEFAULT}), so this library
+     *  ({@link EventMeshModule.ConfigKeys#EVENT_BACKOFF_BASE_MS_DEFAULT} /
+     *  {@link EventMeshModule.ConfigKeys#EVENT_BACKOFF_MAX_MS_DEFAULT}), so this library
      *  fallback cannot drift from the lifecycle hook's specs. */
     private static final long BACKOFF_BASE_MS =
         EventMeshModule.ConfigKeys.EVENT_BACKOFF_BASE_MS_DEFAULT;
@@ -51,7 +51,7 @@ final class PeerConnector implements AutoCloseable {
     /** A peer that accepts the socket but never answers the hello must not
      *  pin a half-open connection forever — abort and let the dial loop
      *  retry with backoff. One source with the config layer
-     *  ({@link ConfigKeys#EVENT_HANDSHAKE_TIMEOUT_MS_DEFAULT}); the
+     *  ({@link EventMeshModule.ConfigKeys#EVENT_HANDSHAKE_TIMEOUT_MS_DEFAULT}); the
      *  ms→Duration conversion happens at this boundary. */
     private static final Duration HANDSHAKE_TIMEOUT =
         Duration.ofMillis(EventMeshModule.ConfigKeys.EVENT_HANDSHAKE_TIMEOUT_MS_DEFAULT);
@@ -129,7 +129,7 @@ final class PeerConnector implements AutoCloseable {
      * set, from an adapter). There is no separate constructor-supplied set: it
      * would be a second way to feed the same thing, and production never used
      * it. Networking values come from the {@code freeway.cloud.event.*} config
-     * via {@link ConfigKeys}.
+     * via {@link EventMeshModule.ConfigKeys}.
      */
     public PeerConnector(PeerHub hub, Wiring wiring) {
         this.hub = Objects.requireNonNull(hub, "hub");

@@ -11,7 +11,8 @@ and no retries; "having neighbors" is expressed by the composition root (which m
 ## Modules and Composition
 
 `CloudModule` is the cloud capability bundle: it declares 7 standard modules with `@SubModule` — context propagation, secrets,
-**service registry and discovery**, remote invocation, observability, resilience, health, and object storage. Placing the bundle installs everything;
+remote invocation, observability, resilience, health, and object storage. Discovery and registration are deliberately separate:
+for fixed endpoints place `StaticModule`; for dynamic membership place `RegistrationModule` plus `FleetModule` or an ext adapter. Placing the bundle installs these seven;
 each submodule is also an ordinary module, so **for a subset, place the subset directly** — there is no exclusion list:
 
 ```java
@@ -31,7 +32,7 @@ These modules are reached through exactly three layers:
 
 | Layer | What the application writes | What it covers |
 |------|-----------------------------|--------------|
-| **Environment layer** | Nothing — install the modules and it is there | Automatic instance registration (heartbeat renewal, deregistration on shutdown), `GET /health/live`, `/health/ready`, `/metrics`; every outbound call carries metrics/tracing/resilience/context propagation |
+| **Environment layer** | Nothing for the bundle; registration is explicit | With `RegistrationModule`, automatic instance registration (heartbeat renewal, deregistration on shutdown); `GET /health/live`, `/health/ready`, `/metrics`; every outbound call carries metrics/tracing/resilience/context propagation |
 | **Declaration layer** | Data contributions: `binder.bind(Handlers.class)` + `contribute(RpcExport.class)`, `contribute(MeshSubscription.class)` (mesh), `contribute(CloudHealthContributor.class)` | What this service provides to others |
 | **Consumption layer** | `@Inject ServiceDiscovery` / `ObjectStorage` / `SecretStore` / `Metrics` / `Tracer`, plus `binder.bind(Api.class).to(...)` | What this service uses from others |
 
@@ -42,7 +43,8 @@ with zero changes to business code:
 
 | Backend | Placement | Infrastructure |
 |---|---|---|
-| Static | `StaticModule` | None — fixed endpoint list or VIP, no registration; no write side |
+| Static | `CloudModule` + `StaticModule` | None — fixed endpoint list or VIP, no registration; no write side |
+| Fleet | `CloudModule` + `RegistrationModule` + ext `FleetModule` | Self-hosted Fleet server nodes |
 | Consul | `CloudModule` + `RegistrationModule` + ext `ConsulModule` | Consul cluster |
 
 There is no public in-process registry module. Tests use a test-scope registry

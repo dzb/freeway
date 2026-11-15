@@ -5,7 +5,9 @@ import com.jujin.freeway.cloud.context.CloudContextModule;
 import com.jujin.freeway.cloud.discovery.StaticModule;
 import com.jujin.freeway.cloud.event.EventMeshModule;
 import com.jujin.freeway.cloud.health.HealthModule;
+import com.jujin.freeway.cloud.rpc.RpcException;
 import com.jujin.freeway.cloud.rpc.RpcHttpClient;
+import com.jujin.freeway.cloud.rpc.RpcRequest;
 import com.jujin.freeway.cloud.rpc.RemoteCaller;
 import com.jujin.freeway.cloud.observe.ObserveModule;
 import com.jujin.freeway.commons.metrics.Metrics;
@@ -183,4 +185,16 @@ class CloudModuleTest {
             binder.bind(Marker.class).to(c -> new Marker());
         }
     }
+
+    @Test
+    void rpcWithoutDiscoveryFailsWithNoInstanceAtCallTime() {
+        try (Container container = Freeway.create(new RpcModule())) {
+            RpcHttpClient client = container.get(RpcHttpClient.class);
+            RpcException failure = assertThrows(RpcException.class,
+                () -> client.call("orders", RpcRequest.get("/orders")));
+            assertEquals(RpcException.Kind.NO_INSTANCE, failure.kind(),
+                "a missing discovery backend must surface at the call as NO_INSTANCE");
+        }
+    }
+
 }

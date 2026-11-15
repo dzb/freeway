@@ -31,8 +31,10 @@
 ## 2. Positioning and Principles
 
 `freeway-cloud` is a **core module** (not a collection of ext adapters): it provides the
-**seams + runnable local defaults** for cloud-native capabilities, so an application can
+**seams + runnable local defaults** for its runtime capabilities, so an application can
 start, invoke, observe, rate-limit and probe health without any third-party cloud SDK.
+Discovery is the exception: it has no local default — place static discovery, Fleet, or an
+adapter explicitly.
 Implementations that genuinely depend on external infrastructure (Nacos/Consul,
 S3, Vault, OTel, gRPC) are **optional alternatives**, overridden by extension modules with `.primary()`.
 
@@ -142,16 +144,17 @@ are the public **inspection surface** (operations and tests read connection stat
 ### 3.3 Backend Markers and Assembly Protocol
 
 - The composition unit is the list of modules placed at the entry point; the cloud side provides the bundle class `CloudModule` (`@SubModule` declares the standard modules).
-- Local default implementations are all bound through `.marker(Local.class)`; the assembly surface can use
-  `@Inject @Local ServiceDiscovery` to name "the built-in one" explicitly. `@Local` is allowed only
+- Local default implementations (secrets, storage, resilience) are bound through `.marker(Local.class)`; the assembly surface can use
+  `@Inject @Local SecretStore` to name "the built-in one" explicitly. Discovery/registration have no local default. `@Local` is allowed only
   on **parameters and fields** — no code reads it from a class, so putting it on an implementation class would compile
   yet be silently ineffective; the `TYPE` target was therefore removed outright, and misuse is a compile error.
 - A replacement implementation = bind the same interface and use `.primary()`; an adapter with its own backend
   annotation defines and registers its marker itself (core does not pre-provision anything like `@Nacos` / `@S3` / `@OTel`).
 - If the assembly surface references an unregistered marker, ioc ignores the annotation and falls back to the default
   binding, warning once per `(annotation, owner)` pair.
-- When a backend type key (`freeway.cloud.secret/discovery/registry/storage.type`) is set
-  while the local implementation is still in effect, `BackendTypeGuard` warns once at startup — **it does not silently discard it**.
+- When a backend type key (`freeway.cloud.secret/storage.type`) is set while the local implementation is still effective,
+  `BackendTypeGuard.warnIfExternal` warns once. For discovery/registration, which have no local default, `warnIfMissing`
+  warns when the configured type has no binding at all.
 
 ### 3.4 RuntimeHook Ordering
 
@@ -266,11 +269,11 @@ public record ServiceHealth(boolean live, boolean ready, Instant lastSeen) {
   `ServiceInstance.weight()` (default 1), and the weight sum is taken modulo the call sequence. zone/canary
   remain metadata only; a custom policy just binds a primary implementation (the interface is a
   `@FunctionalInterface`).
-- **Reusing discovery results is the discovery implementation's own policy** (`CachingDiscovery`, default
-  `registry.cache-ttl=5s`): TTL + single-flight refresh + keep-stale-on-failure. The implementation wraps the cache itself,
+- **Reusing discovery results is the discovery implementation's own policy** (`CachingDiscovery`, Fleet's
+  `freeway.fleet.cache-ttl=5s`): TTL + single-flight refresh + keep-stale-on-failure. The implementation wraps the cache itself,
   so every consumer (RPC, the mesh feeder, the application reading for itself) gets it while the seam still has a single method;
-  keep-stale-on-failure also lands in the layer that knows about the failure. The in-process store does not wrap it (a table lookup itself costs 0),
-  and push-style backends (K8s informer) do not wrap or answer `0`.
+  keep-stale-on-failure also lands in the layer that knows about the failure. Static discovery and push-style backends (K8s informer)
+  do not wrap or answer `0`.
 
 ### 5.2 Cross-Process Invocation (rpc)
 
@@ -618,8 +621,9 @@ only fixes how keys are read and the three shapes, so the same list does not dri
   it is not done.
 - **Shape two: declaration keys** — `freeway.cloud.secret/discovery/registry/storage.type`.
   They **do not select an implementation**: the framework does no class-name reflective loading or classpath scanning; what actually
-  selects an implementation is a `.primary()` binding, the `@Local` marker and which adapter module is installed. While the local
-  implementation is still in use and a type key is non-empty and not `local`, `BackendTypeGuard` warns once at startup.
+  selects an implementation is a `.primary()` binding and which adapter module is installed. For roles with a local default,
+  `warnIfExternal` reports a type key that is still ignored; for discovery/registration, `warnIfMissing` reports a configured type
+  with no binding.
 - **Shape three: presence switches** — a few keys decide behaviour by whether they appear, most typically
   `freeway.cloud.event.enabled`: an explicit `true`/`false` wins; when unset, "`event.peers`
   configured" means enabled; with neither set the module is inert.
@@ -714,8 +718,8 @@ bring your own backend marker and type-key consumption when needed, and it must 
 
 ### 8.3 Delivery Criteria (Carried Over from the Implementation Plan)
 
-Runs without any third-party cloud SDK; every core abstraction has a local default implementation; RPC, observability, resilience and health
-can each work independently and their assembly is optional; `freeway-ext` is responsible only for third-party adaptation and enhancement and does not affect core's
+Runs without any third-party cloud SDK; runtime capabilities other than discovery have local defaults; discovery/registration are explicit;
+RPC, observability, resilience and health can each work independently and their assembly is optional; `freeway-ext` is responsible only for third-party adaptation and enhancement and does not affect core's
 runnability or default semantics; anything that can be closed inside core is done in core first, anything depending on a specific cloud platform or
 infrastructure goes to ext, and ingress traffic governance / cluster scheduling / certificate platform are out of core; every capability has
 regression test coverage. Regression coverage is added along boundaries: module assembly and default-implementation resolution,

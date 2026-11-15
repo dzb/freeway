@@ -7,23 +7,21 @@ import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.RuntimeHook;
 
 /**
- * Registry-client connection hook: runs BEFORE {@code freeway.http.server}.
- * The local in-process registry keeps no persistent connection, so this is a
- * no-op here. Also runs the backend-type guard (warns when an external
- * backend {@code type} is configured but no adapter is bound primary) — in
- * the hook, not in a provider, because resolving the symbol chain
+ * Backend-type guard, run BEFORE {@code freeway.http.server}. Discovery and
+ * registration have no built-in local implementation, so this warns when an
+ * external {@code type} is configured but no implementation is bound at all.
+ * The guard lives in a hook, not a provider, because resolving the symbol chain
  * mid-construction would cycle through the symbol provider chain.
- * External-backend lifecycle is owned by the custom adapter's own hooks
- * (bound primary).
+ * External-backend lifecycle is owned by the custom adapter's own hooks.
  */
 final class TypeGuardHook implements RuntimeHook {
 
     @Override
     public void start(Container container) {
-        BackendTypeGuard.warnIfExternal(
+        BackendTypeGuard.warnIfMissing(
             container, ServiceDiscovery.class,
             RegistrationModule.ConfigKeys.DISCOVERY_TYPE, "discovery");
-        BackendTypeGuard.warnIfExternal(
+        BackendTypeGuard.warnIfMissing(
             container, ServiceRegistry.class,
             RegistrationModule.ConfigKeys.REGISTRY_TYPE, "registry");
     }

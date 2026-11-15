@@ -86,10 +86,6 @@ final class ReadinessGate implements AutoCloseable {
         for (ServiceInstance instance : instances) {
             registry.markReady(instance, false);
         }
-        // The seam's markReady is a no-op by default, so an external backend
-        // either implements it or ignores the gate entirely. Say which one it
-        // is once, instead of leaving "the gate never takes effect" to be
-        // discovered from behaviour.
         return gate;
     }
 

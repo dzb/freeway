@@ -17,10 +17,12 @@ public final class OptionalBinding {
     public static <T> T get(Container container, Class<T> type) {
         Objects.requireNonNull(container, "container");
         Objects.requireNonNull(type, "type");
-        try {
-            return container.get(type);
-        } catch (MissingBindingException absent) {
+        // Selection first: only a genuinely absent binding becomes null. A
+        // provider that throws MissingBindingException from a nested dependency
+        // must propagate, not be mistaken for "module not installed".
+        if (!container.isActiveBindingMarked(type)) {
             return null;
         }
+        return container.get(type);
     }
 }

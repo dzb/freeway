@@ -51,8 +51,8 @@ public interface ServiceRegistry {
      *
      * <p>The default is a no-op for adapters whose backend owns readiness
      * itself (Consul's TTL/health checks answer it), and for any adapter not
-     * yet migrated. Backends without that concept — the in-process store and
-     * the registry fleet client (`FleetModule`) — implement it.</p>
+     * yet migrated. The Fleet client (`FleetModule`) implements it; static
+     * discovery has no write side to implement.</p>
      *
      * @param ready {@code false} marks the instance as starting/warming
      */
@@ -64,12 +64,11 @@ public interface ServiceRegistry {
      * window {@code freeway.cloud.registry.shutdown-drain=auto} waits out
      * before the socket closes.
      *
-     * <p>The default is zero, which is right for the built-in in-process
-     * registry: an endpoint disappears the moment it is unregistered, so there
-     * is no propagation to wait for. An adapter backed by a real registry
-     * answers its own window (a Nacos or Kubernetes-endpoints backend typically
-     * needs a few seconds), which is knowledge the adapter has and the
-     * deployment should not have to repeat per environment.</p>
+     * <p>The default is zero for an adapter whose removal is immediately
+     * visible. An adapter backed by a real registry answers its own window (a
+     * Nacos or Kubernetes-endpoints backend typically needs a few seconds),
+     * which is knowledge the adapter has and the deployment should not have to
+     * repeat per environment.</p>
      */
     default Duration drainWindow() {
         return Duration.ZERO;

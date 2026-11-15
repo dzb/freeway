@@ -105,7 +105,12 @@ class StaticResourceMountTest {
     @Test
     void doublyEncodedTraversalAndBackslashVariantsReturnNotFound() throws Exception {
         Path root = Files.createDirectory(tempDir.resolve("encoded-traversal"));
-        Files.writeString(root.resolve("secret.txt"), "secret");
+        // Files that WOULD be served if the traversal guard were absent: the
+        // decoded spellings must exist for the 404 to prove the guard, not a
+        // missing file.
+        Path nested = Files.createDirectory(root.resolve("%2e%2e"));
+        Files.writeString(nested.resolve("secret.txt"), "secret");
+        Files.writeString(root.resolve("..\\secret.txt"), "secret");
 
         StaticResourceMount mount = StaticResourceMount.directory("/static", root);
         for (String path : new String[] {

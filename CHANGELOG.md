@@ -18,14 +18,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now owns registration, heartbeat, readiness and drain for any
   `ServiceRegistry` backend. Fleet and Consul discovery install the same
   lifecycle instead of each backend carrying it.
-- **Server-owned LeaseStore**: `LeaseStore` and `MemLeaseStore` live in
-  `freeway-fleet-server`; a durable server store can replace the in-memory
-  implementation without changing the HTTP surface.
+- **Server-owned LeaseStore**: `LeaseStore`, `H2LeaseStore` and
+  `MemLeaseStore` live in `freeway-fleet-server`; H2 is the embedded default,
+  `MemLeaseStore` is test/embedding only, and a durable PostgreSQL store can
+  replace either without changing the HTTP surface.
 
 ### Changed
 
-- **Fleet extracted from `freeway-cloud`**: `freeway-fleet` now owns the local
-  Fleet client/protocol; `freeway-fleet-server` owns the registry server and
+- **Fleet extracted from `freeway-cloud`**: `freeway-fleet` owns the Fleet
+  client/protocol; `freeway-fleet-server` owns the registry server and
   `LeaseStore`. `freeway-cloud` keeps the discovery contracts, static discovery
   and `LoadBalancer`. `CloudModule` no longer installs a discovery
   implementation; install `RegistrationModule` plus `StaticModule`, `FleetModule`

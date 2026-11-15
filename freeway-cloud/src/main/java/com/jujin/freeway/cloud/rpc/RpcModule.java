@@ -90,7 +90,9 @@ public final class RpcModule implements ModuleEx {
     public void bind(Binder b) {
         b.contribute(KnownKeys.class)
             .add(KnownKeys.of(ConfigKeys.class, CloudKeys.PREFIX,
-                CloudKeys.APP_PREFIX));
+                CloudKeys.APP_PREFIX))
+            // The no-discovery fallback still honors the shared zone policy.
+            .add(KnownKeys.of(LoadBalancer.ConfigKeys.class, CloudKeys.PREFIX));
         b.bind(TransportSecurity.class)
             .to((Container container) -> {
                 SymbolSource symbols = container.get(SymbolSource.class);
@@ -118,8 +120,8 @@ public final class RpcModule implements ModuleEx {
                 Duration shutdownGrace = symbols.resolve(SHUTDOWN_GRACE);
                 boolean traceEnabled = symbols.resolve(TRACE_ENABLED);
                 // Discovery is a deployment choice: CloudModule no longer
-                // installs a registry by default (local/static/Fleet are
-                // explicit). RPC still assembles without one; a call then
+                // installs a discovery backend by default (static/Fleet/Consul
+                // are explicit). RPC still assembles without one; a call then
                 // fails with "no instances" instead of preventing the bundle
                 // from starting. A bound discovery/LoadBalancer wins.
                 ServiceDiscovery discovery =
@@ -130,7 +132,8 @@ public final class RpcModule implements ModuleEx {
                 LoadBalancer loadBalancer =
                     OptionalBinding.get(container, LoadBalancer.class);
                 if (loadBalancer == null) {
-                    loadBalancer = new LoadBalancerDefault();
+                    loadBalancer = new LoadBalancerDefault(
+                        symbols.resolve(LoadBalancer.ConfigKeys.LOCAL_ZONE, ""));
                 }
                 return new RpcHttpClientDefault(
                     discovery,

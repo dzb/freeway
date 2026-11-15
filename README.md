@@ -219,7 +219,7 @@ validation at build/load; iterative `FlowExecution` runs with
 PlantUML export.
 
 ### Cloud
-In-process and fleet registry/discovery; RPC over HTTP with load balancing,
+Static/Fleet/Consul registry/discovery (Fleet and Consul live in freeway-ext); RPC over HTTP with load balancing,
 retries, circuit breaking and rate limiting; an at-most-once `MeshEventBus`
 event plane; health/readiness, metrics/tracing, secrets, object storage and TLS
 rotation. Domain packages use `Rpc*` / `Mesh*` vocabulary directly.

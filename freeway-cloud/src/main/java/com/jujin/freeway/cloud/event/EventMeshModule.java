@@ -1,9 +1,11 @@
 package com.jujin.freeway.cloud.event;
 
 import com.jujin.freeway.cloud.CloudKeys;
+import com.jujin.freeway.cloud.CloudModule;
 import com.jujin.freeway.cloud.CloudHookIds;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.symbol.KnownKeys;
+import com.jujin.freeway.cloud.registration.RegistrationModule;
 import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.RuntimeHook;
 import com.jujin.freeway.ioc.annotation.Builtin;
@@ -54,9 +56,16 @@ public final class EventMeshModule implements ModuleEx {
 
     @Override
     public void bind(Binder binder) {
+        // The mesh origin reuses the registration identity: HttpDeclaration
+        // reads app.name / registry.service-* from these two tables, so this
+        // module must declare them even when RegistrationModule is absent.
         binder.contribute(KnownKeys.class)
             .add(KnownKeys.of(ConfigKeys.class, CloudKeys.PREFIX,
-                CloudKeys.APP_PREFIX));
+                CloudKeys.APP_PREFIX))
+            .add(KnownKeys.of(CloudModule.ConfigKeys.class, CloudKeys.PREFIX,
+                CloudKeys.APP_PREFIX))
+            .add(KnownKeys.of(RegistrationModule.ConfigKeys.class,
+                CloudKeys.PREFIX, CloudKeys.APP_PREFIX));
         var hub = new PeerHub();
 
         binder.bind(PeerHub.class).to(container -> hub);

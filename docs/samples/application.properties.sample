@@ -289,8 +289,8 @@
 #  Cloud / Discovery & Registry (freeway-cloud)
 # ================================
 
-# Discovery and registry backend types (empty = no discovery backend (static/Fleet/Consul bind explicitly);
-# external backends need a freeway-ext adapter — none shipped yet).
+# Discovery and registry backend types (empty = no discovery backend; StaticModule,
+# or ext FleetModule/ConsulModule, binds explicitly).
 # freeway.cloud.discovery.type=
 # freeway.cloud.registry.type=
 # freeway.cloud.registry.service-id=

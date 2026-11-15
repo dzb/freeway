@@ -21,7 +21,7 @@ import org.junit.jupiter.api.Test;
  * registry, an explicit duration wins, and a negative one is a config error
  * rather than a sleep that throws at shutdown.
  */
-class FleetDrainTest {
+class HookDrainTest {
 
     private static ServiceRegistry registry(Duration window) {
         return new ServiceRegistry() {

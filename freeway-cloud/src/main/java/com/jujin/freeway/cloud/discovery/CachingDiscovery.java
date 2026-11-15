@@ -29,8 +29,8 @@ import org.slf4j.LoggerFactory;
  *
  * <p><b>Policy — who wraps what.</b> Caching is the default capability of a
  * discovery implementation, expressed by the implementation wrapping itself at
- * its own binding (a {@code .primary()} binding replaces the default wholesale,
- * so a framework-side wrapper would only ever reach the in-process store):</p>
+ * its own binding; a framework-side wrapper would have to know every
+ * implementation's freshness policy:</p>
  *
  * <ul>
  *   <li>an implementation that talks to the network wraps itself —
