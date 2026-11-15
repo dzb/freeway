@@ -316,17 +316,16 @@ contracts on the public API. It is not cosmetic: it answers the same question:
 
 `cloud.rpc.RpcModule` has one fewer layer of noise than
 `cloud.rpc.CloudRpcModule`; `cloud.event.MeshEventBus` is explicitly the mesh
-plane while the local `EventBus` remains the local plane;
-`cloud.discovery.registry.FleetRegistryClient` states "the client of the
-registry fleet" completely, so `RegistryNodeServiceDiscovery`, which stacks the
-same word three times, is no longer needed.
+plane while the local `EventBus` remains the local plane; the Fleet client,
+registrar and protocol live in `com.jujin.freeway.fleet`, so the package carries
+the domain and the class carries the role.
 
 The principle is not "remove every prefix", but:
 
 > `Cloud` appears only at umbrella/shared boundaries; in domain subpackages the
 > package carries the domain and the class carries the role.
 
-That is why `CloudModule`, `CloudHookIds` and `CloudHttpClients` remain — they are
+That is why `CloudModule`, `CloudHookIds` and `HttpClients` remain — they are
 genuinely cross-domain names — and `CloudHealthContributor` remains as a role
 name; only module types whose package already covered their semantics changed.
 
@@ -411,7 +410,7 @@ answer that survives.
 Names that were not selected for change and still express the right semantics
 remain untouched: `ModuleEx`, `HttpPipeline`, `DbModule`, `HttpUtils`,
 `ContextExecutor`, `RuntimeDescription`, `HttpRequest.param/pathVar`,
-`CloudHttpClients`, `CloudHealthContributor`.
+`HttpClients`, `CloudHealthContributor`.
 
 The reason is not "later", but:
 
@@ -420,8 +419,8 @@ The reason is not "later", but:
 > readable.
 
 `CloudEvents 1.0` is a protocol proper noun and does not follow the `Cloud*`
-class rename; `CloudHttpClients` is a shared helper across RPC / registry /
-event, not an RPC type. A name's ownership follows facts, not string prefixes.
+class rename; `HttpClients` is a shared helper across RPC / Fleet / event,
+not an RPC type. A name's ownership follows facts, not string prefixes.
 
 ## 10. The naming ledger of this round
 
@@ -440,11 +439,11 @@ event, not an RPC type. A name's ownership follows facts, not string prefixes.
 | `ScopedCache.computeIfAbsent` / `JsonUtils.toJson` / `JsonCodec.coerce` | side effects, serialization and type coercion each use an accurate verb |
 | `MeshEventBus` / `MeshEnvelope` / `MeshSubscription` | the mesh plane has its own vocabulary and does not mix names with the local EventBus |
 | `RpcRequest/RpcResponse/RpcException/RpcHttpClient` | within the RPC subdomain the package carries cloud and the class carries the role |
-| `RpcModule/DiscoveryModule/HealthModule/...` | module types no longer repeat the package name |
+| `RpcModule/RegistrationModule/StaticModule/...` | module types no longer repeat the package name |
 | `ServiceHealth/ServiceEndpoint` | discovery public types use the `service` qualifier |
-| `cloud.discovery.registry.Fleet*` | the registry-fleet client/adapter states itself completely in the name |
+| `freeway.fleet.*` | the Fleet client/server and its protocol state the same domain in every artifact |
 | `CloudHttpClient` rename includes `CloudHttpClientDefault` | an interface and its default implementation are one type family; half a naming set is not kept |
-| Keep `CloudHttpClients` / `CloudHealthContributor` / `CloudEvents` | do not rename mechanically by prefix; rename by ownership of the fact |
+| Keep `HttpClients` / `CloudHealthContributor` / `CloudEvents` | do not rename mechanically by prefix; rename by ownership of the fact |
 
 ## 11. Review checklist
 
@@ -492,7 +491,182 @@ Before submitting a "refactor/cleanup", ask in order:
 
 ---
 
-## 12. One-sentence summary
+## 12. The boundary round: framework, optional control planes, and data planes
+
+This round did not add a feature; it decided **where Freeway ends**. The taste
+question is not "can this live in core?" but "does every application need it?".
+
+### 12.1 Core is a framework, not a product bundle
+
+The core reactor is now:
+
+    commons / ioc / boot / http / db / flow / cloud
+
+`freeway-fleet` (client/protocol) and `freeway-fleet-server` (control plane)
+live in `freeway-ext`; so does the standalone Fleet demo. `freeway-cloud`
+keeps the discovery contracts, static discovery, registration lifecycle and
+load-balancer policy.
+
+The rule:
+
+> A module enters core only when the framework itself cannot work without it.
+> A deployable control plane is an optional product, even when Freeway owns it.
+
+Ext is not limited to third-party adapters. It may host complete optional
+applications and tools — the benchmark suite was already the precedent, and
+the Fleet server is the second. A separate repository is a later decision, not
+a purity requirement; split when release cadence, ownership or operations
+actually diverge.
+
+### 12.2 A discovery backend is chosen by need, not by a default
+
+| Need | Backend |
+|---|---|
+| Fixed endpoints / VIP, no registration | `StaticModule` |
+| Dynamic membership, self-hosted control plane | Fleet (`freeway-ext`) |
+| Existing Consul estate | `ConsulModule` (`freeway-ext`) |
+| Tests of registration/readiness | test-scope registry fixture |
+
+There is no production in-process registry. `LocalModule` did not have a
+multi-replica production role, so keeping it in core would have been a false
+default. Static discovery has no write side; it must not be forced to pretend
+it is a registry.
+
+> A backend that cannot express the deployment's lifecycle should not be the
+> default just because it is convenient.
+
+### 12.3 Registration is a runtime lifecycle; storage is the server's fact
+
+`RegistrationModule` in `freeway-cloud` owns register, renew, readiness and
+drain for **any** `ServiceRegistry`. It knows no Fleet, Consul or H2.
+
+`LeaseStore` lives with the Fleet server, not in the client and not in cloud:
+
+    LeaseStore
+    ├── H2LeaseStore      embedded default, single node
+    └── MemLeaseStore     tests / embedding
+
+H2 is the first store because a Fleet node should run standalone without an
+external database. It is not HA: two Fleet processes must not share one
+embedded H2 file; a PostgreSQL implementation replaces it behind the same seam.
+The server-only `freeway.fleet.db.*` keys belong to `FleetServerModule`, not to
+the protocol or the client.
+
+> Put a fact in the module whose lifecycle owns it: registration in cloud,
+> leases in the server, the protocol in neither.
+
+### 12.4 A contract shared by two modules is an artifact
+
+The server must not depend on the client just to know the wire shape. So:
+
+    freeway-fleet-protocol
+    ├── FleetProtocol   routes, headers, version
+    └── FleetKeys       shared fleet.* keys
+
+    freeway-fleet        -> protocol + cloud
+    freeway-fleet-server -> protocol + cloud/http
+
+`FleetProtocol`, `FleetKeys`, the client and the server now say the same thing:
+
+    module   freeway-fleet / freeway-fleet-server
+    wire     /fleet, X-Fleet-*
+    config   freeway.fleet.*
+    protocol freeway-fleet-protocol
+
+This is the protocol rule, not a naming preference:
+
+> When two modules share a contract, the contract is its own compiled artifact.
+> An `internal` import across a boundary is a missing public type, not a shortcut.
+
+### 12.5 Public helpers beat `cloud.internal` imports
+
+Ext used to import `cloud.internal` for three generic helpers. The fix was to
+promote the smallest public contract, not to copy code:
+
+- `CloudHttpClients` → `cloud.http.HttpClients`
+- `ConstantTime` → `commons.util.ConstantTime`
+- `OptionalBinding` → `ioc.OptionalBinding`
+
+`cloud.internal` now contains only `BackendTypeGuard`, which no external module
+needs. The rule:
+
+> An out-of-module consumer turns an internal helper into a public contract or
+> proves the helper belongs to a lower module. It never justifies widening
+> `internal`.
+
+### 12.6 A test fixture is not a production backend
+
+The local registry became a test fixture:
+
+- it lives in `freeway-cloud/src/test/java`;
+- it binds with the `@Local` marker, not `.primary()`, so an application or
+  adapter that binds a real registry still wins;
+- it supports register/renew/markReady/unregister, but no heartbeat scheduler,
+  TTL or drain;
+- production startup fails loudly when no real backend is installed.
+
+Tests must not force production to keep a backend just so they can run.
+Conversely, a fixture must not silently outrank a configured primary.
+
+### 12.7 Client-side LB is the default; a gateway is a product decision
+
+Freeway already has client-side load balancing: a caller gets a candidate list
+from static/Fleet discovery and chooses per attempt (weighted, zone-aware,
+retry-aware). Fleet is a **control plane**: it publishes membership, not
+traffic.
+
+Server-side LB adds a hop and a data plane:
+
+    client -> gateway/ingress -> instance
+
+It is justified for north-south entry, non-Freeway clients, central TLS/auth,
+or Fleet-aware dynamic upstreams. It is not justified merely because "load
+balancing sounds like a server feature".
+
+Current choice:
+
+- internal service-to-service: client-side LB;
+- north-south: external ingress/LB (Nginx, Envoy, Kubernetes);
+- `freeway-gateway`: only after a concrete requirement; if built, an optional
+  ext application that consumes the Fleet client, never a core module and never
+  a Fleet-server responsibility.
+
+> Do not build a data plane before the requirement. A control plane that also
+> proxies traffic has become two products with one failure domain.
+
+### 12.8 One namespace, one migration
+
+The Fleet upgrade was taken as a whole:
+
+- `/registry` → `/fleet`;
+- `X-Registry-*` → `X-Fleet-*`;
+- `freeway.cloud.registry.*` → `freeway.fleet.*` for Fleet keys;
+- route contribution ids → `freeway.fleet.*`;
+- demo curl examples and docs moved with them.
+
+No compatibility alias was kept. But the break was only acceptable because
+every consumer moved in the same change: client, server, tests, demo, docs,
+config vocabulary and KnownKeys.
+
+> A no-shims rule is a promise to move the whole family, not a license to leave
+> half the old name alive.
+
+### 12.9 The ledger of this round
+
+| Decision | Taste |
+|---|---|
+| Fleet + Fleet server in ext, core is seven modules | optional product stays out of the framework |
+| Local backend deleted, test fixture added | a test seam is not a production backend |
+| `RegistrationModule` backend-neutral | lifecycle has one owner, independent of backend |
+| `LeaseStore` server-side; H2 default; PG later | storage belongs where its lifecycle lives |
+| `freeway-fleet-protocol` artifact | a shared contract is compiled, not imported from `internal` |
+| `/fleet`, `X-Fleet-*`, `freeway.fleet.*` | module, wire, config and protocol say one word |
+| ext no longer imports `cloud.internal` | promote the smallest public contract |
+| gateway deferred; client LB + external ingress | don't add a data plane without a requirement |
+| Fleet stays in ext, no separate repo yet | split by real release/ownership pressure, not aesthetics |
+| H2 embedded, not shared-file HA | document the limit instead of pretending it is a cluster |
+
+## 13. One-sentence summary
 
 **Freeway's aesthetic is not "less code", but "fewer structures that need an
 explanation".**
