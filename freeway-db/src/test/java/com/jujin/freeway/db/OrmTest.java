@@ -144,8 +144,8 @@ class OrmTest {
     }
 
     /**
-     * Records the last executed SQL so save() upsert SQL can be asserted
-     * without a database that executes ON CONFLICT DO UPDATE (H2 rejects it).
+     * Records the last executed SQL so save() can be asserted against a
+     * dialect-rendered statement without executing it.
      */
     static final class RecordingDatabase implements Database {
         private final Dialect dialect;
@@ -559,10 +559,10 @@ class OrmTest {
 
     @Test
     void saveWithExistingGeneratedIdUpdatesInPlace() {
-        // H2 cannot execute ON CONFLICT DO UPDATE, so verify the generated
-        // SQL shape instead: the explicit @Generated id must be part of the
-        // INSERT column list, otherwise the conflict target is never supplied
-        // and save() silently inserts a duplicate row.
+        // Assert the PostgreSQL SQL shape with a recording database: the
+        // explicit @Generated id must be part of the INSERT column list,
+        // otherwise the conflict target is never supplied and save() silently
+        // inserts a duplicate row.
         RecordingDatabase db = new RecordingDatabase(new PostgresDialect());
         Orm orm = Orm.of(db);
 

@@ -1907,10 +1907,9 @@ quoting, `#` comments, `E'...'` literals).
 `MSSQLServer`, `DB2`, `Derby` and `HSQLDB`. H2 keeps its own
 `INFORMATION_SCHEMA`, DDL auto-commit semantics and types in every mode.
 H2 does not support `RETURNING`, and its prepared upsert is rendered as
-`MERGE` (not `ON CONFLICT`); the same `Dialect.upsertStatement` seam owns both
-Orm and Sql upserts
-(so `supportsOnConflict()` is false), and uses `MERGE INTO ... KEY (...)` for
-`Orm.save()`. Its pagination is standard `OFFSET/FETCH`, working in native,
+`MERGE` (not `ON CONFLICT`), so `supportsOnConflict()` is false. The same
+`Dialect.upsertStatement` seam owns both `Orm.save` and `Sql.onConflict`.
+H2's pagination is standard `OFFSET/FETCH`, working in native,
 PostgreSQL, MySQL and the other H2 modes. An explicit `freeway.db.dialect=h2`
 selects native H2; URL auto-detection preserves the URL mode.
 

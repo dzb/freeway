@@ -14,7 +14,6 @@ import com.jujin.freeway.db.schema.Transient;
 
 import java.lang.reflect.Array;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -393,8 +392,6 @@ public final class Orm {
         }
         return values;
     }
-
-
 
     private record ColumnInfo(List<String> names, List<String> rawNames, List<BeanProperty> properties, BeanProperty generated) {}
 }

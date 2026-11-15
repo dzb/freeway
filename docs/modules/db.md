@@ -302,7 +302,7 @@ orm.save(u);
 // id=existing value → upsert; the clause is determined by the dialect:
 //   PostgreSQL / SQLite → INSERT ... ON CONFLICT (id) DO UPDATE
 //   H2                   → MERGE INTO ... KEY (id) ...
-//   MySQL / MariaDB         → INSERT ... ON DUPLICATE KEY UPDATE
+//   MySQL / MariaDB       → INSERT ... ON DUPLICATE KEY UPDATE
 ```
 
 ---

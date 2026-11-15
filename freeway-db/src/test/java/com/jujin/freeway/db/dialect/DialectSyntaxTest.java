@@ -103,6 +103,16 @@ class DialectSyntaxTest {
     }
 
     @Test
+    void upsertRequestRejectsAnEmptyShape() {
+        assertThrows(IllegalArgumentException.class, () -> new Upsert(
+            "t", List.of(), "?", List.of("id"), List.of("name"), false));
+        assertThrows(IllegalArgumentException.class, () -> new Upsert(
+            "t", List.of("id"), "?", List.of(), List.of("name"), false));
+        assertThrows(IllegalArgumentException.class, () -> new Upsert(
+            "t", List.of("id"), "?", List.of("id"), List.of(), false));
+    }
+
+    @Test
     void h2OwnDdlAndClauses() {
         assertEquals("h2", h2.dialectId());
         assertEquals("TRUNCATE TABLE \"order\" RESTART IDENTITY", h2.truncateTable("order"));
