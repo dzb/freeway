@@ -1,6 +1,5 @@
 package com.jujin.freeway.flow;
 
-import com.jujin.freeway.flow.internal.FlowContexts;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -157,9 +156,9 @@ public final class FlowEngineDefault implements FlowEngine {
     @Override
     public void run(Graph graph, FlowContext context) throws FlowException {
         Objects.requireNonNull(context, "context");
-        // A fresh top-level run owns its context: a reused one must not carry
-        // a previous run's stop flag or subscriptions into it.
-        FlowContexts.setStopped(context, false);
+        // The caller owns the context. A fresh top-level run clears stale
+        // subscriptions, but it does not write a stop flag into an arbitrary
+        // FlowContext implementation: pass a fresh context for a fresh run.
         FlowExecution execution = new FlowExecution(graph, this, driver(graph), context);
         run(graph, execution);
     }

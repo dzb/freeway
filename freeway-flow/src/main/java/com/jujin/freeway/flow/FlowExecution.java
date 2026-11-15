@@ -1,6 +1,5 @@
 package com.jujin.freeway.flow;
 
-import com.jujin.freeway.flow.internal.FlowContexts;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -86,7 +85,7 @@ public final class FlowExecution {
 
     /** Ends the run at the next node boundary (intentional early completion). */
     public void stop() {
-        FlowContexts.setStopped(context, true);
+        context.stop();
     }
 
     public boolean isStopped() {

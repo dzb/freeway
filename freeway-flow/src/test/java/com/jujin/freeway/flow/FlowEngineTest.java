@@ -4,7 +4,6 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Phaser;
 
 import com.jujin.freeway.flow.internal.FlowContextImpl;
-import com.jujin.freeway.flow.internal.FlowContexts;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Freeway;
 import org.junit.jupiter.api.Test;
@@ -2273,7 +2272,6 @@ class FlowEngineTest {
         ctx.put("k", "A");
         // Parent changed under the branch's feet: the value the branch based
         // its write on (null) moved before merge — conflict.
-        FlowContexts.setStopped(ctx, false);
         merge.commit();
         assertEquals("A", ctx.get("k"), "clean merge lands in the parent");
 
@@ -2282,4 +2280,30 @@ class FlowEngineTest {
         second.commit();
         assertEquals("2", ctx.get("base"));
     }
+    /** The public FlowContext contract must be enough to run a graph. */
+    static final class DelegatingContext implements FlowContext {
+        private final FlowContext delegate = FlowContext.of();
+        @Override public void stop() { delegate.stop(); }
+        @Override public boolean isStopped() { return delegate.isStopped(); }
+        @Override public FlowEventBus eventBus() { return delegate.eventBus(); }
+        @Override public Map<String, Object> data() { return delegate.data(); }
+        @Override public String toJson() { return delegate.toJson(); }
+        @Override public Branch beginBranch() { return delegate.beginBranch(); }
+    }
+
+    @Test
+    void customFlowContextIsAValidPublicRunTarget() {
+        Graph graph = Graph.create("custom_context", spec -> {
+            spec.addStart("s").linkTo("a");
+            spec.addActivity("a").task("@noop").linkTo("e");
+            spec.addEnd("e");
+        });
+        FlowEngine engine = newEngine(driverResolving(Map.of("noop",
+            (TaskHandler) (ctx, node) -> ctx.put("ran", true)), null));
+
+        DelegatingContext context = new DelegatingContext();
+        assertDoesNotThrow(() -> engine.run(graph, context));
+        assertEquals(Boolean.TRUE, context.get("ran"));
+    }
+
 }

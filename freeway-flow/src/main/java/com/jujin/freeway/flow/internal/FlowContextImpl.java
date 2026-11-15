@@ -43,7 +43,7 @@ import java.util.concurrent.Executor;
  * {@code containsKey} (the backing map forbids null values, so a sentinel
  * stores the clearing inside a layer).</p>
  */
-public final class FlowContextImpl implements FlowContext, FlowContextState {
+public final class FlowContextImpl implements FlowContext {
     /** Sentinel for "cleared in this layer" (the CHM root simply drops the key). */
     private static final Object REMOVED = new Object();
 
@@ -95,17 +95,12 @@ public final class FlowContextImpl implements FlowContext, FlowContextState {
 
     @Override
     public void stop() {
-        setStopped(true);
+        stopped = true;
     }
 
     @Override
     public boolean isStopped() {
         return stopped;
-    }
-
-    @Override
-    public void setStopped(boolean stopped) {
-        this.stopped = stopped;
     }
 
     // --- event bus ---
