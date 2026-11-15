@@ -6,6 +6,7 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Supplier;
 
 import com.jujin.freeway.ioc.event.EventBus;
 
@@ -16,6 +17,8 @@ final class Shutdown {
     private static final int MAX_DRAIN_ITERATIONS = 10_000;
 
     private final Map<ServiceKey, Object> targetCache;
+    /** Contribution instances are built outside the service target cache. */
+    private final Supplier<List<Object>> extraTargets;
     private final Set<Object> preDestroyed = Collections.newSetFromMap(new IdentityHashMap<>());
     private final Set<Object> closed = Collections.newSetFromMap(new IdentityHashMap<>());
     /**
@@ -28,7 +31,12 @@ final class Shutdown {
     private final List<EventBus> deferredBuses = new ArrayList<>();
 
     Shutdown(Map<ServiceKey, Object> targetCache) {
+        this(targetCache, List::of);
+    }
+
+    Shutdown(Map<ServiceKey, Object> targetCache, Supplier<List<Object>> extraTargets) {
         this.targetCache = targetCache;
+        this.extraTargets = extraTargets;
     }
 
     /**
@@ -164,6 +172,13 @@ final class Shutdown {
         Set<Object> seen = Collections.newSetFromMap(new IdentityHashMap<>());
         for (Object value : targetCache.values()) {
             if (seen.add(value)) {
+                targets.add(value);
+            }
+        }
+        // Contribution instances never enter ServiceRuntime's cache; include
+        // them here so they run through the same phases and identity dedup.
+        for (Object value : extraTargets.get()) {
+            if (value != null && seen.add(value)) {
                 targets.add(value);
             }
         }

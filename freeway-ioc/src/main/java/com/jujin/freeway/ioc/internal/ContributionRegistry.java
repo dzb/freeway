@@ -274,24 +274,16 @@ final class ContributionRegistry {
         }
     }
 
-    /** Instances this registry constructed; closed with the container. */
+    /** Instances this registry constructed; handed to the container shutdown drain. */
     private final List<Object> constructed = new java.util.concurrent.CopyOnWriteArrayList<>();
 
-    /** Drops every store and deferred queue — container close. */
+    /** Snapshot for {@link Shutdown}; ownership stays with the container lifecycle. */
+    List<Object> constructed() {
+        return constructed;
+    }
+
+    /** Drops composition state after the shutdown drain has owned lifecycle callbacks. */
     void clear() {
-        for (Object instance : constructed) {
-            try {
-                // These never entered ServiceRuntime's target cache, so the
-                // container's shutdown drain does not know them; a file handle
-                // or connection they opened would otherwise leak.
-                Lifecycle.invokePreDestroy(instance);
-                if (instance instanceof AutoCloseable closeable) {
-                    closeable.close();
-                }
-            } catch (Exception ignored) {
-                // One bad contribution must not abort the rest of the drain.
-            }
-        }
         constructed.clear();
         extensions.clear();
         pending.clear();
