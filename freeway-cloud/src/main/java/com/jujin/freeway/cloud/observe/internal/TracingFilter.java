@@ -76,7 +76,7 @@ public final class TracingFilter implements HttpFilter {
                 next.handle(ctx);
             } else {
                 // Bind the span as the request's context, not just as ambient
-                // state: inside an existing scope (the propagation filter's)
+                // state: inside an existing scope (the ContextFilter's)
                 // the scoped binding wins, so without this the handler — and
                 // every outbound call it makes — would keep reporting the
                 // caller's span instead of this hop's.

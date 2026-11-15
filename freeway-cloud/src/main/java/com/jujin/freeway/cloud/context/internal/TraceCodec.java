@@ -43,7 +43,7 @@ public final class TraceCodec implements ContextCodec {
         TraceContext trace = TraceContext.fromTraceparent(headers.get(HEADER_TRACEPARENT))
             .map(t -> t.withTraceState(inboundTraceState(headers)))
             .orElse(null);
-        // Unset baggage is null (not Baggage.empty()): the propagation filter
+        // Unset baggage is null (not Baggage.empty()): the ContextFilter
         // merges parts by "non-null wins", so a later codec's baggage
         // must not be clobbered by an empty value here.
         return InvocationContext.of(trace, null, null);

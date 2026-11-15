@@ -64,7 +64,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `TraceCodec`, `AuthPropagator` → `AuthCodec`, and `BaggagePropagator` →
   `BaggageCodec`; `inject/extract` became `encode/decode`. The contribution ids
   moved from `freeway.cloud.propagation.*` to `freeway.cloud.context.*`; wire
-  headers are unchanged.
+  headers are unchanged. `ContextFilter` is the **inbound context filter**
+  (decode → merge → bind); outbound encoding lives in `RpcHttpClient`, not in
+  that filter.
 - **`AsyncCarrier` → `ContextCarrier`** (`freeway-commons`): the ambient
   work-context carrier moved out of `ioc.event` into
   `com.jujin.freeway.commons.util`, beside `ContextExecutor`. It is the one

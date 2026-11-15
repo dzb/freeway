@@ -19,7 +19,7 @@ public interface ContextCodec {
     /**
      * Decodes an inbound context from request headers, leaving absent sub-contexts unset ({@code null})
      * rather than substituting empty ones. A context that carries nothing at all is equivalent to
-     * finding nothing: the propagation filter then binds no context for the request, so "the header
+     * finding nothing: the ContextFilter then binds no context for the request, so "the header
      * was absent" stays distinguishable from "the header was present and empty".
      */
     InvocationContext decode(Map<String, String> headers);
