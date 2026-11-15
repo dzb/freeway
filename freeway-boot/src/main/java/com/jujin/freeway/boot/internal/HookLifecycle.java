@@ -17,7 +17,9 @@ final class HookLifecycle {
     private final Container container;
     private final List<RuntimeHook> started = new ArrayList<>();
     private List<RuntimeHook> hooks;
-    /** Set once a stop pass has run. A reentrant close() from inside a
+    /** Hook-start lifecycle guard: distinct from AppRuntimeDefault's shutdown
+     *  idempotence flag — this one stops starting new hooks, that one stops
+     *  running the runtime's close twice. Set once a stop pass has run. A reentrant close() from inside a
      *  hook's own start() re-enters stop() on this thread (the monitor is
      *  reentrant); {@link #start()} observes the seal and aborts the loop —
      *  later hooks must not start against a sealed runtime, and the closer

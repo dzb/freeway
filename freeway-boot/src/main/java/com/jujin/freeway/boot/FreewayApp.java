@@ -198,7 +198,12 @@ public final class FreewayApp {
         return this;
     }
 
-    /** Use a specific class loader for resource lookup and SPI scanning. */
+    /**
+     * Use a specific class loader for the main config cascade and SPI scanning.
+     * Logging bootstrap runs before a launcher exists and therefore deliberately
+     * uses the thread context class loader; this setting does not retroactively
+     * change how {@code application*.properties} were read for log keys.
+     */
     public FreewayApp classLoader(ClassLoader loader) {
         this.classLoader = Objects.requireNonNull(loader, "classLoader");
         return this;

@@ -3,6 +3,8 @@ import java.net.URL;
 import java.sql.Timestamp;
 
 import com.jujin.freeway.db.dialect.Dialect;
+import com.jujin.freeway.db.dialect.H2Dialect;
+import com.jujin.freeway.db.dialect.H2Mode;
 import com.jujin.freeway.db.dialect.MySqlDialect;
 import com.jujin.freeway.db.schema.Id;
 import com.jujin.freeway.db.schema.Generated;
@@ -353,6 +355,23 @@ class DbModuleTest {
 
         try (Container container = Freeway.create(new DbModule())) {
             assertEquals("mysql", DbModule.resolveDialect(container).dialectId());
+        }
+    }
+
+    @Test
+    void explicitH2DialectKeepsTheUrlMode() {
+        String dbName = "freeway_dialect_h2_mode_" + UUID.randomUUID().toString().replace('-', '_');
+        System.setProperty(URL_KEY,
+            "jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1");
+        System.setProperty(USER_KEY, "sa");
+        System.setProperty(PASS_KEY, "");
+        System.setProperty(DIALECT_KEY, "h2");
+
+        try (Container container = Freeway.create(new DbModule())) {
+            Dialect selected = container.get(Database.class).dialect();
+            assertTrue(selected instanceof H2Dialect, "h2 id must select the H2 dialect");
+            assertEquals(H2Mode.POSTGRESQL, ((H2Dialect) selected).mode(),
+                "an explicit h2 id must not discard the URL's MODE");
         }
     }
 

@@ -37,8 +37,10 @@ public final class AppLogSource implements LogConfigSource {
 
     @Override
     public Map<String, String> values() {
-        // The loader's own classpath resolution — the same loader rule the
-        // main cascade uses (FreewayApp's resolveClassLoader: TCCL first).
+        // Logging bootstrap runs before FreewayApp resolves its launcher
+        // classLoader, so this read is deliberately TCCL-only. The main
+        // cascade may use a launcher-supplied loader; that divergence is a
+        // documented boundary, not a parity claim.
         ClassLoader loader = Thread.currentThread().getContextClassLoader();
         ConfigSources sources = ConfigCascade.bootstrapLayers(
             loader != null ? loader : AppLogSource.class.getClassLoader());

@@ -161,9 +161,9 @@ public final class SqlTypeMapping {
         } else {
             baseType = defaultSqlType(javaType, dialect);
             if (baseType.startsWith("VARCHAR") || baseType.startsWith("CHAR")) {
-                baseType = resolveStringType(javaType, property, col, baseType);
+                baseType = resolveStringType(javaType, property, col, dialect);
             } else if (baseType.startsWith("DECIMAL") || baseType.startsWith("NUMERIC")) {
-                baseType = resolveDecimalType(col);
+                baseType = resolveDecimalType(col, dialect);
             }
         }
         return normalizeGeneratedSqlType(baseType, javaType, dialect, generated);
@@ -189,7 +189,7 @@ public final class SqlTypeMapping {
         Class<?> javaType,
         BeanProperty property,
         Column col,
-        String baseType
+        Dialect dialect
     ) {
         Size size = property.annotation(Size.class).orElse(null);
         int colLen = col != null ? col.length() : 0;
@@ -206,16 +206,16 @@ public final class SqlTypeMapping {
         } else {
             len = 255;
         }
-        return baseType.replaceFirst("\\(\\d+\\)", "") + "(" + len + ")";
+        return javaType.isEnum() ? dialect.enumType(len) : dialect.stringType(len);
     }
 
     /**
      * DECIMAL precision: @Column.precision > @Column.length (fallback) > default 30.
      * Scale: @Column.scale (only when precision &gt; 0), default 2.
      */
-    private static String resolveDecimalType(Column col) {
+    private static String resolveDecimalType(Column col, Dialect dialect) {
         if (col == null) {
-            return "DECIMAL(30,2)";
+            return dialect.decimalType(30, 2);
         }
         int precision = col.precision() > 0 ? col.precision() : col.length();
         if (precision <= 0) {
@@ -224,66 +224,23 @@ public final class SqlTypeMapping {
         // The annotation cannot distinguish "unset" from 0, and the documented
         // default is 2 — so 0 means "use the default".
         int scale = col.scale() == 0 ? 2 : col.scale();
-        return "DECIMAL(" + precision + "," + scale + ")";
+        return dialect.decimalType(precision, scale);
     }
 
     private static String defaultSqlType(Class<?> javaType, Dialect dialect) {
         if (javaType == String.class) {
-            return "VARCHAR(255)";
-        }
-        if (javaType == Integer.class || javaType == int.class) {
-            return "INTEGER";
-        }
-        if (javaType == Long.class || javaType == long.class) {
-            return "BIGINT";
-        }
-        if (javaType == Double.class || javaType == double.class) {
-            return "DOUBLE PRECISION";
-        }
-        if (javaType == Float.class || javaType == float.class) {
-            return "REAL";
-        }
-        if (javaType == Short.class || javaType == short.class) {
-            return "SMALLINT";
-        }
-        if (javaType == Byte.class || javaType == byte.class) {
-            return "SMALLINT";
-        }
-        if (javaType == Boolean.class || javaType == boolean.class) {
-            return "BOOLEAN";
+            return dialect.stringType(255);
         }
         if (javaType == BigDecimal.class) {
-            return "DECIMAL(30,2)";
+            return dialect.decimalType(30, 2);
         }
         if (javaType == BigInteger.class) {
-            return "DECIMAL(38,0)";
-        }
-        if (javaType == LocalDate.class) {
-            return "DATE";
-        }
-        if (javaType == LocalDateTime.class) {
-            return "TIMESTAMP";
-        }
-        if (javaType == LocalTime.class) {
-            return "TIME";
-        }
-        if (javaType == Instant.class) {
-            return dialect.defaultInstantType();
-        }
-        if (javaType == UUID.class) {
-            return dialect.defaultUUIDType();
-        }
-        if (javaType == byte[].class) {
-            return dialect.defaultBinaryType();
+            return dialect.decimalType(38, 0);
         }
         if (javaType.isEnum()) {
-            return "VARCHAR(32)";
+            return dialect.enumType(32);
         }
-        throw new IllegalArgumentException(
-            "No default SQL type for " +
-                javaType.getName() +
-                ". Use @Column(type=\"...\") to specify."
-        );
+        return dialect.baseSqlType(javaType);
     }
 
     private static boolean nullable(BeanProperty property, Column col) {

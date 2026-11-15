@@ -351,7 +351,7 @@ public final class DbModule implements ModuleEx {
                 return bound;
             }
             try {
-                return Dialect.ofId(configured);
+                return Dialect.of(configured, s.resolve(ConfigKeys.URL, ""));
             } catch (IllegalArgumentException ex) {
                 throw new IllegalStateException(
                     "Unknown dialect '" + configured + "'", ex);
