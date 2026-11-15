@@ -4,7 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
-import com.jujin.freeway.cloud.CloudModule;
+import com.jujin.freeway.fleet.FleetDiscoveryModule;
 import com.jujin.freeway.fleet.FleetProtocol;
 import com.jujin.freeway.http.HttpModule;
 import com.jujin.freeway.http.HttpModule.ConfigKeys;
@@ -17,7 +17,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * The registry server is real: it serves the SAME {@code FleetStore} that
+ * The registry server is real: it serves the SAME {@code InMemoryLeaseStore} that
  * the in-process defaults wrap, so registering here makes the process's own
  * discovery side see it, and deregistering via the wire removes it.
  */
@@ -153,14 +153,14 @@ class FleetServerModuleTest {
 
     @Test
     void the_index_describes_the_protocol_before_any_credential() throws Exception {
-        System.setProperty(CloudModule.ConfigKeys.REGISTRY_TOKEN, "s3cret");
+        System.setProperty(FleetDiscoveryModule.ConfigKeys.REGISTRY_TOKEN, "s3cret");
         try (AppRuntime app = FreewayApp.create(
                 new HttpModule(), new FleetServerModule()).start()) {
             HttpResponse<String> index = http(app, HttpRequest.newBuilder(
-                uri(app, FleetProtocol.INDEX)).GET());
+                uri(app, FleetProtocol.SELF_DESCRIPTION)).GET());
             assertTrue(index.statusCode() == 200,
                 "the self-description must be readable without the token, got " + index.statusCode());
-            assertTrue(index.body().contains("\"proto\":" + FleetProtocol.PROTO),
+            assertTrue(index.body().contains("\"proto\":" + FleetProtocol.PROTOCOL),
                 "the index must announce the protocol: " + index.body());
             assertTrue(index.body().contains("discover"),
                 "and the routes it serves: " + index.body());
@@ -169,12 +169,12 @@ class FleetServerModuleTest {
                     + "cannot be missing here: " + index.body());
             assertTrue(index.body().contains("\"index\""),
                 "including the index itself: " + index.body());
-            assertTrue(String.valueOf(FleetProtocol.PROTO).equals(
-                    index.headers().firstValue(FleetProtocol.PROTO_HEADER).orElse("")),
+            assertTrue(String.valueOf(FleetProtocol.PROTOCOL).equals(
+                    index.headers().firstValue(FleetProtocol.PROTOCOL_HEADER).orElse("")),
                 "responses echo the protocol, got header "
                     + index.headers().map());
         } finally {
-            System.clearProperty(CloudModule.ConfigKeys.REGISTRY_TOKEN);
+            System.clearProperty(FleetDiscoveryModule.ConfigKeys.REGISTRY_TOKEN);
         }
     }
 
@@ -187,7 +187,7 @@ class FleetServerModuleTest {
                 new HttpModule(), new FleetServerModule()).start()) {
             HttpResponse<String> older = http(app, HttpRequest.newBuilder(
                     uri(app, "/registry/services/svc/instances"))
-                .header(FleetProtocol.PROTO_HEADER, "0")
+                .header(FleetProtocol.PROTOCOL_HEADER, "0")
                 .POST(HttpRequest.BodyPublishers.ofString(INSTANCE)));
             assertTrue(older.statusCode() != 426,
                 "an older protocol must be served, got " + older.statusCode()
@@ -201,7 +201,7 @@ class FleetServerModuleTest {
                 new HttpModule(), new FleetServerModule()).start()) {
             HttpResponse<String> newer = http(app, HttpRequest.newBuilder(
                     uri(app, "/registry/services/svc/instances"))
-                .header(FleetProtocol.PROTO_HEADER, "99")
+                .header(FleetProtocol.PROTOCOL_HEADER, "99")
                 .POST(HttpRequest.BodyPublishers.ofString(INSTANCE)));
             assertTrue(newer.statusCode() == 426,
                 "a newer protocol must be a version answer, not a routing answer, got "
@@ -212,8 +212,8 @@ class FleetServerModuleTest {
 
     @Test
     void the_previous_token_is_accepted_during_rotation() throws Exception {
-        System.setProperty(CloudModule.ConfigKeys.REGISTRY_TOKEN, "new-secret");
-        System.setProperty(CloudModule.ConfigKeys.REGISTRY_TOKEN_PREVIOUS, "old-secret");
+        System.setProperty(FleetDiscoveryModule.ConfigKeys.REGISTRY_TOKEN, "new-secret");
+        System.setProperty(FleetDiscoveryModule.ConfigKeys.REGISTRY_TOKEN_PREVIOUS, "old-secret");
         try (AppRuntime app = FreewayApp.create(
                 new HttpModule(), new FleetServerModule()).start()) {
             HttpResponse<String> old = http(app, HttpRequest.newBuilder(
@@ -236,14 +236,14 @@ class FleetServerModuleTest {
             assertTrue(stranger.statusCode() == 401,
                 "two live secrets is a window, not an open door, got " + stranger.statusCode());
         } finally {
-            System.clearProperty(CloudModule.ConfigKeys.REGISTRY_TOKEN);
-            System.clearProperty(CloudModule.ConfigKeys.REGISTRY_TOKEN_PREVIOUS);
+            System.clearProperty(FleetDiscoveryModule.ConfigKeys.REGISTRY_TOKEN);
+            System.clearProperty(FleetDiscoveryModule.ConfigKeys.REGISTRY_TOKEN_PREVIOUS);
         }
     }
 
     @Test
     void a_set_token_rejects_writers_without_the_header() throws Exception {
-        System.setProperty(CloudModule.ConfigKeys.REGISTRY_TOKEN, "s3cret");
+        System.setProperty(FleetDiscoveryModule.ConfigKeys.REGISTRY_TOKEN, "s3cret");
         try (AppRuntime app = FreewayApp.create(
                 new HttpModule(), new FleetServerModule()).start()) {
             HttpResponse<String> bare = http(app, HttpRequest.newBuilder(
@@ -257,13 +257,13 @@ class FleetServerModuleTest {
             assertTrue(peek.statusCode() == 401,
                 "reads are writes to the attacker's map too — a set token guards them as well");
         } finally {
-            System.clearProperty(CloudModule.ConfigKeys.REGISTRY_TOKEN);
+            System.clearProperty(FleetDiscoveryModule.ConfigKeys.REGISTRY_TOKEN);
         }
     }
 
     @Test
     void the_matching_token_passes_and_a_wrong_one_does_not() throws Exception {
-        System.setProperty(CloudModule.ConfigKeys.REGISTRY_TOKEN, "s3cret");
+        System.setProperty(FleetDiscoveryModule.ConfigKeys.REGISTRY_TOKEN, "s3cret");
         try (AppRuntime app = FreewayApp.create(
                 new HttpModule(), new FleetServerModule()).start()) {
             HttpResponse<String> wrong = http(app, HttpRequest.newBuilder(
@@ -279,7 +279,7 @@ class FleetServerModuleTest {
             assertTrue(right.statusCode() == 200,
                 "the matching token writes, got " + right.statusCode());
         } finally {
-            System.clearProperty(CloudModule.ConfigKeys.REGISTRY_TOKEN);
+            System.clearProperty(FleetDiscoveryModule.ConfigKeys.REGISTRY_TOKEN);
         }
     }
 }

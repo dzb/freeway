@@ -8,8 +8,8 @@ import com.jujin.freeway.http.HttpModule;
  * contract: cloud hooks reference the HTTP server hook by constant, never by
  * a scattered string literal.
  */
-public final class CloudHooks {
-    private CloudHooks() {}
+public final class CloudHookIds {
+    private CloudHookIds() {}
 
     /** Secret-store startup validation (backend type check). */
     public static final String SECRET = "freeway.cloud.secret";

@@ -150,8 +150,8 @@ smoke path lives in [`demo/rest-db`](demo/rest-db/README.md).
 | **`freeway-http`** | Routing, filters, static resources, multipart, SSE, WebSocket |
 | **`freeway-db`** | JDBC, ORM, pooling, transactions, schema, migrations |
 | **`freeway-flow`** | Graph workflow engine — 7 node types, v3 DAG format, `@name` tasks |
-| **`freeway-cloud`** | Cloud runtime — RPC, event mesh, observability, resilience, health, secrets, storage, static discovery |
-| **`freeway-fleet`** | Local registry, Fleet client/protocol and registration lifecycle |
+| **`freeway-cloud`** | Cloud runtime — registration lifecycle, RPC, event mesh, observability, resilience, health, secrets, storage, static discovery |
+| **`freeway-fleet`** | Local LeaseStore/registrar and Fleet client/protocol; registration lifecycle lives in cloud |
 | **`freeway-fleet-server`** | Standalone Fleet registry server module |
 
 Third-party adapters live in **[freeway-ext](https://github.com/dzb/freeway-ext)**:
@@ -381,7 +381,7 @@ compatibility alias was added.
   `CloudHttpClients`, `ServiceIdentity` and `BackendTypeGuard`.
 - RPC, event mesh and fleet registry use `Rpc*`, `Mesh*` and `Fleet*` vocabulary.
   The event mesh is explicitly `MeshEventBus`, not a second `EventBus`.
-- `RpcModule`, `LocalDiscoveryModule`, `HealthModule`, `EventMeshModule` and the other
+- `RpcModule`, `HealthModule`, `EventMeshModule` and the other
   domain modules no longer repeat the `Cloud` prefix already supplied by the
   package.
 - `Proxies.objectMethod(...)`, `OptionalBinding.get(...)` and shared HTTP-client

@@ -21,7 +21,7 @@ import java.util.Map;
  *       runs, 503 after three consecutive heartbeat failures, and otherwise the
  *       instance count; external-backend connectivity is contributed by adapters
  *       bound primary (the Consul adapter ships in freeway-ext; the
- *       freeway-native fleet backend is {@code FleetModule}).
+ *       freeway-native fleet backend is {@code FleetDiscoveryModule}).
  *       Installing this module standalone yields an empty (always-ok)
  *       aggregation.</li>
  * </ul>

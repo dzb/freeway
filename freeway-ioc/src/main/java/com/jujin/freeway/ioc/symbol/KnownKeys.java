@@ -70,7 +70,7 @@ public record KnownKeys(Set<String> prefixes, Set<String> keys) {
      *
      * <p>Only key tables belong here. {@code freeway.*} is also the spelling of
      * identity strings that are not configurable — runtime-hook ids
-     * ({@code CloudHooks}), WebSocket route paths, contribution ids — and feeding
+     * ({@code CloudHookIds}), WebSocket route paths, contribution ids — and feeding
      * one of those classes in would admit unconfigurable names as "known keys".
      *
      * <p>The table and the vocabulary must agree: a key in {@code keysClass}

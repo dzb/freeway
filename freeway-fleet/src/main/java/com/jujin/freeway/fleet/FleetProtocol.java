@@ -22,14 +22,14 @@ public final class FleetProtocol {
     public static final String READY =
         "/registry/services/{serviceId}/instances/{instanceId}/ready";
     /** Self-description (protocol, routes, auth posture). */
-    public static final String INDEX = "/registry";
+    public static final String SELF_DESCRIPTION = "/registry";
 
     /** Header a writer presents when the server has a token. */
     public static final String TOKEN_HEADER = "X-Registry-Token";
     /** Client-declared/echoed protocol. */
-    public static final String PROTO_HEADER = "X-Registry-Proto";
+    public static final String PROTOCOL_HEADER = "X-Registry-Proto";
     /** Current wire protocol. */
-    public static final int PROTO = 1;
+    public static final int PROTOCOL = 1;
 
     private FleetProtocol() {}
 }

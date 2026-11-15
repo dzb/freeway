@@ -1,4 +1,4 @@
-package com.jujin.freeway.fleet;
+package com.jujin.freeway.cloud.registration;
 
 import com.jujin.freeway.cloud.internal.ActiveBindingProbe;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;

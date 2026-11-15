@@ -326,7 +326,7 @@ The principle is not "remove every prefix", but:
 > `Cloud` appears only at umbrella/shared boundaries; in domain subpackages the
 > package carries the domain and the class carries the role.
 
-That is why `CloudModule`, `CloudHooks` and `CloudHttpClients` remain — they are
+That is why `CloudModule`, `CloudHookIds` and `CloudHttpClients` remain — they are
 genuinely cross-domain names — and `CloudHealthContributor` remains as a role
 name; only module types whose package already covered their semantics changed.
 

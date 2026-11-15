@@ -1,7 +1,5 @@
-package com.jujin.freeway.fleet;
+package com.jujin.freeway.cloud.registration;
 
-import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
-import com.jujin.freeway.cloud.CloudModule;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -26,7 +24,7 @@ import org.junit.jupiter.api.Test;
  * registry actually knows, and a registration lost to eviction must come back
  * without a restart.
  */
-class FleetRenewalTest {
+class RegistrationRenewalTest {
 
     private static final ServiceInstance INSTANCE =
         ServiceInstance.of("svc", "i1", ServiceEndpoint.of("http", "127.0.0.1", 8080));
@@ -45,17 +43,17 @@ class FleetRenewalTest {
 
             @Override public void unregister(ServiceInstance instance) { }
         };
-        FleetRenewal renewal = new FleetRenewal();
+        RegistrationRenewal renewal = new RegistrationRenewal();
         try (Container container = Freeway.create(binder -> {
             binder.bind(ServiceRegistry.class).to(c -> registry);
             binder.contribute(ServiceDeclaration.class)
                 .add("test", (ServiceDeclaration) c -> INSTANCE);
         })) {
-            FleetLifecycleHook hook =
-                new FleetLifecycleHook(renewal, Duration.ofMillis(20));
+            RegistrationLifecycleHook hook =
+                new RegistrationLifecycleHook(renewal, Duration.ofMillis(20));
             hook.start(container);
             try {
-                assertTrue(await(() -> renewal.consecutiveFailures() >= FleetRenewal.UNHEALTHY_AFTER),
+                assertTrue(await(() -> renewal.consecutiveFailures() >= RegistrationRenewal.UNHEALTHY_AFTER),
                     "a heartbeat that cannot verify the entry must count against readiness");
                 assertFalse(renewal.isHealthy());
                 assertTrue(registrations.size() >= 2,
@@ -80,13 +78,13 @@ class FleetRenewalTest {
             @Override public void unregister(ServiceInstance instance) { }
         };
 
-        FleetRenewal renewal = new FleetRenewal();
+        RegistrationRenewal renewal = new RegistrationRenewal();
         try (Container container = Freeway.create(binder -> {
             binder.bind(ServiceRegistry.class).to(c -> registry);
             binder.contribute(ServiceDeclaration.class).add("test", (ServiceDeclaration) c -> INSTANCE);
         })) {
-            FleetLifecycleHook hook =
-                new FleetLifecycleHook(renewal, Duration.ofMillis(20));
+            RegistrationLifecycleHook hook =
+                new RegistrationLifecycleHook(renewal, Duration.ofMillis(20));
             hook.start(container);
             try {
                 assertTrue(await(() -> renewal.isTracking()), "the hook must publish that it tracks");
@@ -122,12 +120,12 @@ class FleetRenewalTest {
 
             @Override public void unregister(ServiceInstance instance) { unregistered.add(instance); }
         };
-        FleetRenewal renewal = new FleetRenewal();
+        RegistrationRenewal renewal = new RegistrationRenewal();
         try (Container container = Freeway.create(binder -> {
             binder.bind(ServiceRegistry.class).to(c -> registry);
             binder.contribute(ServiceDeclaration.class).add("test", (ServiceDeclaration) c -> INSTANCE);
         })) {
-            FleetLifecycleHook hook = new FleetLifecycleHook(renewal, Duration.ofHours(1));
+            RegistrationLifecycleHook hook = new RegistrationLifecycleHook(renewal, Duration.ofHours(1));
             hook.start(container);
 
             Thread heartbeat = Thread.ofVirtual().start(hook::heartbeat);
@@ -160,17 +158,17 @@ class FleetRenewalTest {
                 events.add("unregistered");
             }
         };
-        FleetRenewal renewal = new FleetRenewal();
+        RegistrationRenewal renewal = new RegistrationRenewal();
         try (Container container = Freeway.create(binder -> {
             binder.bind(ServiceRegistry.class).to(c -> registry);
             binder.contribute(ServiceDeclaration.class).add("test", (ServiceDeclaration) c -> INSTANCE);
             // 60 ms window: long enough to observe, short enough to keep the suite fast.
             binder.bind(com.jujin.freeway.ioc.symbol.SymbolSource.class)
-                .to(c -> symbols(ConfigKeys.REGISTRY_SHUTDOWN_DRAIN, "60ms"))
+                .to(c -> symbols(RegistrationModule.ConfigKeys.REGISTRY_SHUTDOWN_DRAIN, "60ms"))
                 .primary();
         })) {
-            FleetLifecycleHook hook =
-                new FleetLifecycleHook(renewal, Duration.ofMillis(20));
+            RegistrationLifecycleHook hook =
+                new RegistrationLifecycleHook(renewal, Duration.ofMillis(20));
             hook.start(container);
             assertTrue(await(() -> renewal.isTracking()));
             // Wait until the drain window is demonstrably open.
@@ -191,7 +189,7 @@ class FleetRenewalTest {
     void nothingRegisteredMeansNothingToGuard() {
         // No declaration resolved: the contributor must not claim a healthy
         // registry it never registered with.
-        FleetRenewal renewal = new FleetRenewal();
+        RegistrationRenewal renewal = new RegistrationRenewal();
         assertFalse(renewal.isTracking());
         assertTrue(renewal.isHealthy(), "an untracked renewal is not a failure");
     }

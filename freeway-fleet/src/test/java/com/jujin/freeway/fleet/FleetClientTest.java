@@ -143,7 +143,7 @@ class FleetClientTest {
 
         client.register(instance("i1"));
 
-        assertEquals(String.valueOf(FleetProtocol.PROTO), node.lastProto,
+        assertEquals(String.valueOf(FleetProtocol.PROTOCOL), node.lastProto,
             "the client declares its protocol so a newer node can answer 426, not 404");
     }
 
@@ -197,7 +197,7 @@ class FleetClientTest {
                     lastToken = exchange.getRequestHeaders()
                         .getFirst(FleetProtocol.TOKEN_HEADER);
                     lastProto = exchange.getRequestHeaders()
-                        .getFirst(FleetProtocol.PROTO_HEADER);
+                        .getFirst(FleetProtocol.PROTOCOL_HEADER);
                     String path = exchange.getRequestURI().getPath();
                     byte[] body = exchange.getRequestBody().readAllBytes();
                     int status = forcedStatus == 0 ? 404 : forcedStatus;

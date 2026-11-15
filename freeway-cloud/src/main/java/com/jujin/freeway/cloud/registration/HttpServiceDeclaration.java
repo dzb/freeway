@@ -1,5 +1,6 @@
-package com.jujin.freeway.cloud.internal;
+package com.jujin.freeway.cloud.registration;
 
+import com.jujin.freeway.cloud.CloudModule;
 import com.jujin.freeway.cloud.discovery.ServiceEndpoint;
 import com.jujin.freeway.cloud.discovery.ServiceDeclaration;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
@@ -13,7 +14,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Map;
 import java.util.function.Function;
-import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
+
 
 /**
  * Built-in {@link ServiceDeclaration} for the HTTP endpoint: registers the
@@ -35,16 +36,16 @@ public final class HttpServiceDeclaration implements ServiceDeclaration {
 
     /** Malformed values fail with the key named; unset falls back to the live server port. */
     private static final SymbolSpec<Integer> SERVICE_PORT = SymbolSpec.of(
-        ConfigKeys.REGISTRY_SERVICE_PORT, Integer.class, null, Integer::parseInt);
+        RegistrationModule.ConfigKeys.REGISTRY_SERVICE_PORT, Integer.class, null, Integer::parseInt);
 
     /** Scheme/host defaults are the {@code auto} token; the derivation lives in
      *  {@link ServiceIdentity}, shared with the event mesh. */
     private static final SymbolSpec<String> SERVICE_SCHEME = SymbolSpec.of(
-        ConfigKeys.REGISTRY_SERVICE_SCHEME, String.class,
-        ConfigKeys.REGISTRY_SERVICE_SCHEME_DEFAULT, Function.identity());
+        RegistrationModule.ConfigKeys.REGISTRY_SERVICE_SCHEME, String.class,
+        RegistrationModule.ConfigKeys.REGISTRY_SERVICE_SCHEME_DEFAULT, Function.identity());
     private static final SymbolSpec<String> SERVICE_HOST = SymbolSpec.of(
-        ConfigKeys.REGISTRY_SERVICE_HOST, String.class,
-        ConfigKeys.REGISTRY_SERVICE_HOST_DEFAULT, Function.identity());
+        RegistrationModule.ConfigKeys.REGISTRY_SERVICE_HOST, String.class,
+        RegistrationModule.ConfigKeys.REGISTRY_SERVICE_HOST_DEFAULT, Function.identity());
 
 
     /**
@@ -68,8 +69,8 @@ public final class HttpServiceDeclaration implements ServiceDeclaration {
             return null; // no HTTP module — nothing to register
         }
         SymbolSource symbols = container.get(SymbolSource.class);
-        String serviceId = symbols.resolve(ConfigKeys.REGISTRY_SERVICE_ID,
-            symbols.resolve(ConfigKeys.APP_NAME, ConfigKeys.APP_NAME_DEFAULT));
+        String serviceId = symbols.resolve(RegistrationModule.ConfigKeys.REGISTRY_SERVICE_ID,
+            symbols.resolve(CloudModule.ConfigKeys.APP_NAME, CloudModule.ConfigKeys.APP_NAME_DEFAULT));
         String scheme = ServiceIdentity.scheme(
             symbols.resolve(SERVICE_SCHEME), server.isSecure(), serviceId);
         String host = ServiceIdentity.host(
@@ -78,12 +79,12 @@ public final class HttpServiceDeclaration implements ServiceDeclaration {
         // resolve raw and fall back manually.
         Integer configuredPort = symbols.resolve(SERVICE_PORT);
         int port = configuredPort != null ? configuredPort : server.port();
-        String instanceId = symbols.resolve(ConfigKeys.REGISTRY_SERVICE_INSTANCE_ID,
+        String instanceId = symbols.resolve(RegistrationModule.ConfigKeys.REGISTRY_SERVICE_INSTANCE_ID,
             serviceId + "@" + host + ":" + port);
         if (ServiceIdentity.isBindAll(host)) {
             LOG.warn("Registering unroutable host '{}' for service '{}' — peers cannot call it;"
                     + " set {} to the address other nodes should use (e.g. a Pod IP)",
-                host, serviceId, ConfigKeys.REGISTRY_SERVICE_HOST);
+                host, serviceId, RegistrationModule.ConfigKeys.REGISTRY_SERVICE_HOST);
         }
         return ServiceInstance.of(serviceId, instanceId,
             ServiceEndpoint.of(scheme, host, port), Map.of());

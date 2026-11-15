@@ -7,19 +7,19 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * In-process {@link ServiceDiscovery} backed by {@link FleetStore}.
+ * In-process {@link ServiceDiscovery} backed by {@link LeaseStore}.
  * Returns live && ready, non-stale instances; stale entries are evicted lazily.
  */
-public final class LocalServiceDiscovery implements ServiceDiscovery {
+final class LocalDiscovery implements ServiceDiscovery {
 
-    private final FleetStore store;
+    private final LeaseStore store;
 
-    public LocalServiceDiscovery(FleetStore store) {
+    LocalDiscovery(LeaseStore store) {
         this.store = Objects.requireNonNull(store, "store");
     }
 
     @Override
     public List<ServiceInstance> instances(String serviceId) {
-        return store.liveReady(serviceId, FleetStore.DEFAULT_EVICTION);
+        return store.liveReadyInstances(serviceId, LeaseStore.DEFAULT_EVICTION);
     }
 }

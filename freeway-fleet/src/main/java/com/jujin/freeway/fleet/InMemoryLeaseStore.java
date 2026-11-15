@@ -11,14 +11,11 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * In-process lease store shared by {@link LocalServiceRegistry} and
- * {@link LocalServiceDiscovery}, and by the Fleet Server. One instance per
- * container, bound as a singleton by {@code LocalDiscoveryModule}.
+ * In-memory {@link LeaseStore}: the dev/single-process implementation shared
+ * by the local discovery backend and the Fleet Server. The server will grow a
+ * durable implementation without changing its HTTP surface.
  */
-public final class FleetStore {
-
-    /** Staleness threshold: instances without a heartbeat beyond this are evicted lazily. */
-    public static final Duration DEFAULT_EVICTION = Duration.ofSeconds(30);
+public final class InMemoryLeaseStore implements LeaseStore {
 
     private final Map<String, Map<String, Entry>> byService = new ConcurrentHashMap<>();
 
@@ -43,12 +40,14 @@ public final class FleetStore {
 
     /** Registers as live and ready — the shape every caller without a
      *  readiness signal uses. */
+    @Override
     public void register(ServiceInstance instance) {
         register(instance, ServiceHealth.up());
     }
 
     /** Registers with the caller's probe state: a slow-starting instance is
      *  {@link ServiceHealth#starting()}, which discovery filters out until it flips. */
+    @Override
     public void register(ServiceInstance instance, ServiceHealth health) {
         var instances = byService.computeIfAbsent(instance.serviceId(), k -> new ConcurrentHashMap<>());
         instances.put(instance.instanceId(), new Entry(instance, health));
@@ -57,6 +56,7 @@ public final class FleetStore {
     /** @return false when this store no longer holds the instance (evicted or never seen) */
     /** Heartbeat that also asserts readiness — the readiness bit rides the
      *  heartbeat so a flipping instance costs no extra round trip. */
+    @Override
     public boolean renew(String serviceId, String instanceId, boolean ready) {
         var instances = byService.get(serviceId);
         if (instances == null) {
@@ -72,6 +72,7 @@ public final class FleetStore {
 
     /** Flips the readiness bit in place; keeps the heartbeat clock running.
      *  @return false when the store does not hold the instance */
+    @Override
     public boolean markReady(String serviceId, String instanceId, boolean ready) {
         var instances = byService.get(serviceId);
         if (instances == null) {
@@ -85,6 +86,7 @@ public final class FleetStore {
         return true;
     }
 
+    @Override
     public boolean renew(String serviceId, String instanceId) {
         var instances = byService.get(serviceId);
         if (instances == null) {
@@ -98,6 +100,7 @@ public final class FleetStore {
         return true;
     }
 
+    @Override
     public void unregister(ServiceInstance instance) {
         var instances = byService.get(instance.serviceId());
         if (instances == null) {
@@ -114,6 +117,7 @@ public final class FleetStore {
      *
      * @return false when the store does not hold the instance
      */
+    @Override
     public boolean unregister(String serviceId, String instanceId) {
         var instances = byService.get(serviceId);
         if (instances == null || instances.remove(instanceId) == null) {
@@ -124,6 +128,7 @@ public final class FleetStore {
     }
 
     /** Total registered instances across all services (readiness reporting). */
+    @Override
     public int instanceCount() {
         int count = 0;
         for (Map<String, Entry> instances : byService.values()) {
@@ -137,7 +142,8 @@ public final class FleetStore {
      * evicted (removed) on read, not merely filtered out — the store's size
      * stays bounded and a dead instance cannot linger indefinitely.
      */
-    public List<ServiceInstance> liveReady(String serviceId, Duration maxAge) {
+    @Override
+    public List<ServiceInstance> liveReadyInstances(String serviceId, Duration maxAge) {
         var instances = byService.get(serviceId);
         if (instances == null || instances.isEmpty()) {
             return List.of();

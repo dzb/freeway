@@ -14,26 +14,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the client-side load balancer distribute per call; a single endpoint is the
   VIP form, where an external load balancer owns selection. No registry process
   or registration lifecycle is required.
+- **Neutral registration lifecycle**: `RegistrationModule` in `freeway-cloud`
+  now owns registration, heartbeat, readiness and drain for any
+  `ServiceRegistry` backend. Local, Fleet and Consul discovery install the same
+  lifecycle instead of each backend carrying it.
+- **LeaseStore seam**: `LeaseStore` and `InMemoryLeaseStore` in `freeway-fleet`
+  are shared by local discovery and the Fleet Server; a durable server store can
+  replace the in-memory implementation without changing the HTTP surface.
 
 ### Changed
 
 - **Fleet extracted from `freeway-cloud`**: `freeway-fleet` now owns the local
-  in-process registry, the Fleet client/protocol and the registration lifecycle;
+  in-process registry, the Fleet client/protocol and `LeaseStore`;
   `freeway-fleet-server` owns the registry server module. `freeway-cloud` keeps
   the discovery contracts, static discovery and `LoadBalancer`. `CloudModule` no
-  longer installs a discovery implementation; install `LocalDiscoveryModule`
-  (in `freeway-fleet`), `StaticDiscoveryModule`, or a Fleet/Consul adapter
-  explicitly. `RpcModule` assembles without discovery and fails a call with
-  "no instances" instead of preventing the bundle from starting.
+  longer installs a discovery implementation; install `RegistrationModule` plus
+  `LocalDiscoveryModule`, `StaticDiscoveryModule`, `FleetDiscoveryModule` or a
+  Fleet/Consul adapter explicitly. `RpcModule` assembles without discovery and
+  fails a call with "no instances" instead of preventing the bundle from
+  starting.
 - **Fleet vocabulary**: `FleetRegistryClient` → `FleetClient`,
-  `FleetRegistryModule` → `FleetModule`, `RegistryNodes` → `FleetNodes`,
+  `FleetRegistryModule` → `FleetDiscoveryModule`, `RegistryNodes` → `FleetNodes`,
   `RegistryApi` → `FleetApi`, `RegistryIndexHandler` → `FleetIndexHandler`,
-  `RegistryServerModule` → `FleetServerModule`, `RegistryStore` → `FleetStore`,
-  `RegistryLifecycleHook` → `FleetLifecycleHook`, `RegistryRenewal` →
-  `FleetRenewal`, `RegistryHealthContributor` → `FleetHealthContributor`,
-  `DiscoveryModule` → `LocalDiscoveryModule`, and `FleetServiceRegistry` →
-  `FleetRegistrar` (`FleetServiceDiscovery` keeps its name: it is the discovery
-  side, not a registry).
+  `RegistryServerModule` → `FleetServerModule`, `RegistryStore` →
+  `LeaseStore`/`InMemoryLeaseStore`, `RegistryLifecycleHook` →
+  `RegistrationLifecycleHook`, `RegistryRenewal` → `RegistrationRenewal`,
+  `RegistryHealthContributor` → `RegistrationHealthContributor`,
+  `DiscoveryModule` → `LocalDiscoveryModule`, `FleetServiceDiscovery` →
+  `FleetDiscovery`, `FleetServiceRegistry` → `FleetRegistrar`, and
+  `ServiceRegistryDefault` / `ServiceDiscoveryDefault` → `LocalRegistrar` /
+  `LocalDiscovery`.
+- **Config ownership**: registration/Fleet/local-discovery keys moved out of
+  `CloudModule.ConfigKeys` into `RegistrationModule.ConfigKeys`,
+  `FleetDiscoveryModule.ConfigKeys` and `LocalDiscoveryModule.ConfigKeys`;
+  `CloudHookIds` (formerly `CloudHooks`) holds hook ids.
 
 ### Renamed / API vocabulary
 
@@ -95,8 +109,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ServiceHealth` / `ServiceEndpoint`; `cloud.registry` →
   `cloud.discovery.registry`, and `RegistryNodeClient` /
   `RegistryNodeServiceRegistry` / `RegistryNodeServiceDiscovery` /
-  `RegistryFleetModule` → `FleetRegistryClient` / `FleetServiceRegistry` /
-  `FleetServiceDiscovery` / `FleetRegistryModule`.
+  `RegistryFleetDiscoveryModule` → `FleetRegistryClient` / `FleetServiceRegistry` /
+  `FleetDiscovery` / `FleetRegistryModule`.
 
   - `ErrorHandler` → `ErrorMapper`: error mapping no longer writes the response.
     A mapper returns `Optional<ErrorResponse>` (the server is the only writer),
@@ -827,13 +841,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `CloudEventBus.stats()`) — present even when the mesh is not wired, because
   "no peers" is a fact that must be visible, not a missing series.
 
-- **freeway's own registry backend takes shape: node + `RegistryFleetModule`
+- **freeway's own registry backend takes shape: node + `RegistryFleetDiscoveryModule`
   client** (`freeway-cloud`): `RegistryServerModule`'s HTTP surface was plaintext,
   unauthenticated and written by no freeway client — "standalone registry node"
   was half a feature. Both ends now exist, inside freeway-cloud: the node can set
   a shared secret (when non-empty, writers must carry `X-Registry-Token`; both
   reads and writes check it — a readiness table filled in by strangers is an
-  attack surface too); `RegistryFleetModule` binds a **set** of registry nodes as
+  attack surface too); `RegistryFleetDiscoveryModule` binds a **set** of registry nodes as
   `ServiceRegistry`/`ServiceDiscovery` (keys `freeway.cloud.registry.*`): writes
   fan out to the node list, discovery takes the union of the nodes' answers, a 404
   heartbeat re-registers in place (re-registering only what this process
@@ -3026,7 +3040,7 @@ Behaviour changes (no call sites need changing, but worth knowing):
   the package `cloud.events` → `cloud.event`, the WS endpoint `/cloud/events` →
   `/cloud/event`, the config keys `freeway.cloud.events.*` →
   `freeway.cloud.event.*`, the constants `CloudConfigKeys.EVENTS_*` → `EVENT_*`
-  and `CloudHooks.EVENTS` → `EVENT`, and boot's event classes move into
+  and `CloudHookIds.EVENTS` → `EVENT`, and boot's event classes move into
   `boot.event`. Config semantics are unchanged, naming only; code referencing the
   constants and key names in config files/env rename in step.
 
@@ -4260,7 +4274,7 @@ Behaviour changes (no call sites need changing, but worth knowing):
 - **cloud structure cleanup (freeway-cloud)** — `TransportSecurity`'s binding
   drops the static `@None` marker (capability is decided by runtime config, which
   a static marker cannot express; `@Mtls` stays as the ext contract surface);
-  hook names centralize into `CloudHooks` constants and reference
+  hook names centralize into `CloudHookIds` constants and reference
   `HttpModule.SERVER_HOOK`; the only redundant `.scope(SINGLETON)` is deleted
   (singleton is the default); `PropagationFilter` sinks into `internal`;
   `/health/ready` gains the built-in `RegistryHealthContributor` (registry

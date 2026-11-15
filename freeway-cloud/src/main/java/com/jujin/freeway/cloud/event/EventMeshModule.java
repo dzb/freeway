@@ -1,6 +1,6 @@
 package com.jujin.freeway.cloud.event;
 
-import com.jujin.freeway.cloud.CloudHooks;
+import com.jujin.freeway.cloud.CloudHookIds;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.RuntimeHook;
@@ -70,7 +70,7 @@ public final class EventMeshModule implements ModuleEx {
                 EVENT_PATH, hub));
 
         binder.contribute(RuntimeHook.class)
-            .add(CloudHooks.EVENT, new MeshEventLifecycleHook(hub))
+            .add(CloudHookIds.EVENT, new MeshEventLifecycleHook(hub))
             // After the server: the mesh origin is the node identity, which
             // needs the port this node actually serves on. Required, not
             // conditional — this plane cannot serve without the HTTP module,
@@ -78,6 +78,6 @@ public final class EventMeshModule implements ModuleEx {
             // rather than later as an unbound JsonCodec. A peer that dials
             // during the short window before wiring is closed with 1013 and
             // reconnects on its backoff — the mesh treats that as normal.
-            .after(CloudHooks.HTTP_SERVER);
+            .after(CloudHookIds.HTTP_SERVER);
     }
 }

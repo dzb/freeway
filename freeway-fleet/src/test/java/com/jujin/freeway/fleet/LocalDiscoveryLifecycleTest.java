@@ -1,6 +1,7 @@
 package com.jujin.freeway.fleet;
 
 import com.jujin.freeway.cloud.CloudModule;
+import com.jujin.freeway.cloud.registration.RegistrationModule;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 
 import com.jujin.freeway.boot.AppRuntime;
@@ -13,7 +14,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 import java.util.List;
-import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
+import com.jujin.freeway.cloud.registration.RegistrationModule.ConfigKeys;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -43,14 +44,21 @@ class LocalDiscoveryLifecycleTest {
     @Test
     void autoRegistersHttpEndpointAndDeregistersOnStop() {
         System.setProperty(ConfigKeys.REGISTRY_SERVICE_ID, "lifecycle-svc");
-        FleetStore store;
-        try (AppRuntime app = FreewayApp.create(new HttpModule()).add(CloudModule.class).add(new LocalDiscoveryModule()).start()) {
-            store = app.get(FleetStore.class);
-            List<ServiceInstance> instances = store.liveReady("lifecycle-svc", Duration.ofMinutes(1));
+        // Bind the store directly so the post-close assertion can inspect the
+        // table after the container (and its proxy) is gone.
+        InMemoryLeaseStore store = new InMemoryLeaseStore();
+        try (AppRuntime app = FreewayApp.create(new HttpModule())
+                .add(CloudModule.class)
+                .add(new RegistrationModule())
+                .add(new LocalDiscoveryModule())
+                .add(binder -> binder.bind(LeaseStore.class)
+                    .to(container -> store).primary())
+                .start()) {
+            List<ServiceInstance> instances = store.liveReadyInstances("lifecycle-svc", Duration.ofMinutes(1));
             assertEquals(1, instances.size(), "HTTP endpoint must auto-register");
             assertEquals(app.get(HttpServer.class).port(), instances.get(0).endpoint().port());
         }
-        assertTrue(store.liveReady("lifecycle-svc", Duration.ofMinutes(1)).isEmpty(),
+        assertTrue(store.liveReadyInstances("lifecycle-svc", Duration.ofMinutes(1)).isEmpty(),
             "shutdown unregisters before the container closes");
     }
 
@@ -58,18 +66,18 @@ class LocalDiscoveryLifecycleTest {
     void serviceHostOverrideWinsOverBoundAddress() {
         System.setProperty(ConfigKeys.REGISTRY_SERVICE_ID, "host-svc");
         System.setProperty(ConfigKeys.REGISTRY_SERVICE_HOST, "myhost.example");
-        try (AppRuntime app = FreewayApp.create(new HttpModule()).add(CloudModule.class).add(new LocalDiscoveryModule()).start()) {
-            FleetStore store = app.get(FleetStore.class);
-            List<ServiceInstance> instances = store.liveReady("host-svc", Duration.ofMinutes(1));
+        try (AppRuntime app = FreewayApp.create(new HttpModule()).add(CloudModule.class).add(new RegistrationModule()).add(new LocalDiscoveryModule()).start()) {
+            LeaseStore store = app.get(LeaseStore.class);
+            List<ServiceInstance> instances = store.liveReadyInstances("host-svc", Duration.ofMinutes(1));
             assertEquals("myhost.example", instances.get(0).endpoint().host());
         }
     }
 
     @Test
     void customServiceDeclarationIsCollected() {
-        try (AppRuntime app = FreewayApp.create(new AdminDeclarationModule(), new HttpModule()).add(CloudModule.class).add(new LocalDiscoveryModule()).start()) {
-            FleetStore store = app.get(FleetStore.class);
-            List<ServiceInstance> instances = store.liveReady("admin-svc", Duration.ofMinutes(1));
+        try (AppRuntime app = FreewayApp.create(new AdminDeclarationModule(), new HttpModule()).add(CloudModule.class).add(new RegistrationModule()).add(new LocalDiscoveryModule()).start()) {
+            LeaseStore store = app.get(LeaseStore.class);
+            List<ServiceInstance> instances = store.liveReadyInstances("admin-svc", Duration.ofMinutes(1));
             assertEquals(1, instances.size());
             assertEquals(9091, instances.get(0).endpoint().port());
         }
@@ -82,9 +90,9 @@ class LocalDiscoveryLifecycleTest {
         // module, the registry hook's conditional ordering reference is
         // vacuous — startup succeeds and the HTTP declaration resolves to
         // null (nothing to register) instead of failing.
-        try (AppRuntime app = FreewayApp.create(CloudModule.class, LocalDiscoveryModule.class).autoDiscovery(false).start()) {
-            FleetStore store = app.get(FleetStore.class);
-            assertTrue(store.liveReady("lifecycle-svc", Duration.ofMinutes(1)).isEmpty(),
+        try (AppRuntime app = FreewayApp.create(CloudModule.class, RegistrationModule.class, LocalDiscoveryModule.class).autoDiscovery(false).start()) {
+            LeaseStore store = app.get(LeaseStore.class);
+            assertTrue(store.liveReadyInstances("lifecycle-svc", Duration.ofMinutes(1)).isEmpty(),
                 "without an HTTP server there is no endpoint to register");
         }
     }

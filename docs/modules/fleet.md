@@ -1,52 +1,65 @@
-# Fleet (client)
+# Fleet and local discovery
 
-`freeway-fleet` contains the discovery implementations: the local in-process
-registry (`LocalDiscoveryModule`) and the Fleet client/protocol
-(`FleetModule`). Both bind the process's `ServiceRegistry` /
-`ServiceDiscovery`; the registry server itself lives in
-`freeway-fleet-server`.
+`freeway-fleet` contains the discovery implementations:
 
-## When to use it
+- `LocalDiscoveryModule` — in-process lease store, `LocalRegistrar`,
+  `LocalDiscovery` and the default client-side load balancer;
+- `FleetDiscoveryModule` — Fleet client, `FleetDiscovery`, `FleetRegistrar`
+  and the wire protocol;
+- `LeaseStore` / `InMemoryLeaseStore` — the storage seam shared by the local
+  backend and the Fleet Server.
 
-Use `freeway-fleet` when instance membership changes dynamically and the
-deployment does not already provide discovery through its platform. For fixed
-endpoints use `StaticServiceDiscovery` / `StaticDiscoveryModule` from
-`freeway-cloud`; for a single process use `LocalDiscoveryModule` (also in `freeway-fleet`).
-
-The module is a library, not a server: installing it does not require a Fleet
-process until the application actually resolves discovery. It never starts a
-listener.
+The registration lifecycle is not in this module. Install
+`RegistrationModule` from `freeway-cloud` to register the HTTP endpoint, renew
+it and publish readiness. Static discovery (`StaticDiscoveryModule`) does not
+use that lifecycle.
 
 ## Assembly
+
+Fleet backend:
 
 ```java
 FreewayApp.run(
     new HttpModule(),
-    new CloudModule(),      // runtime: health, metrics, RPC, ...
-    new LocalDiscoveryModule(), // registration/heartbeat lifecycle + local fallback
-    new FleetModule());     // overrides discovery/registry with the Fleet client
+    new CloudModule(),          // runtime: health, metrics, RPC, ...
+    new RegistrationModule(),   // register, renew, readiness, drain
+    new FleetDiscoveryModule()); // Fleet client + client-side load balancer
 ```
 
-`FleetModule` must be installed alongside `LocalDiscoveryModule`: the lifecycle hook
-that registers on start, renews, publishes readiness and deregisters on stop is
-owned by `LocalDiscoveryModule`; `FleetModule` supplies the backend. Do not install
-both `FleetModule` and a third-party discovery adapter with `.primary()` at the
-same time.
+Local single-process backend:
+
+```java
+FreewayApp.run(
+    new HttpModule(),
+    new CloudModule(),
+    new RegistrationModule(),
+    new LocalDiscoveryModule());
+```
+
+Applications depend on `freeway-fleet`; they never depend on
+`freeway-fleet-server`. The client module is inert until installed: a dependency
+alone does not require a Fleet process. Once `FleetDiscoveryModule` is placed,
+`freeway.cloud.registry.nodes` must name at least one node, or startup fails
+with the key in the message.
 
 ## Configuration
 
-The client uses the `freeway.cloud.registry.*` keys owned by
-`CloudModule.ConfigKeys`:
+`FleetDiscoveryModule.ConfigKeys` owns the client keys:
 
 | Key | Meaning |
 |---|---|
-| `freeway.cloud.registry.nodes` | Comma-separated Fleet node addresses (`host:port` or `http(s)://...`). Required once the module is active. |
+| `freeway.cloud.registry.nodes` | Comma-separated Fleet addresses (`host:port` or `http(s)://...`). Required when the module is active. |
 | `freeway.cloud.registry.token` | Optional shared token sent as `X-Registry-Token`. |
 | `freeway.cloud.registry.cache-ttl` | Discovery cache TTL; per-service overrides use the family prefix. |
 
-An empty node list fails startup with a message naming the key. A running Fleet
-that becomes unreachable degrades discovery to the cached membership; a failed
-registration fails startup loudly.
+`RegistrationModule.ConfigKeys` owns the endpoint identity and drain keys
+(`service-id`, `service-host`, `service-scheme`, `service-port`,
+`service-instance-id`, `shutdown-drain`). `LocalDiscoveryModule.ConfigKeys` owns
+`freeway.cloud.discovery.local-zone`.
+
+An empty node list fails startup naming the key. A running Fleet that becomes
+unreachable degrades discovery to the cached membership; a failed registration
+fails startup loudly.
 
 ## Protocol
 
@@ -56,11 +69,11 @@ remains under `/registry` for compatibility with earlier Fleet clients.
 
 Writes fan out to every configured node; reads union their answers and
 deduplicate by instance id. A node that answers a heartbeat with 404 makes the
-client report the lost lease so the lifecycle hook can re-register.
+client report the lost lease so `RegistrationLifecycleHook` can re-register.
 
 ## Load balancing
 
-`freeway-fleet` does not choose instances. `FleetServiceDiscovery` returns the
+`freeway-fleet` does not choose instances. `FleetDiscovery` returns the
 candidate list; `LoadBalancerDefault` in `freeway-cloud` chooses per RPC
 attempt (weighted, zone-aware). A VIP-only deployment belongs in static
 discovery, not here.

@@ -1,7 +1,5 @@
-package com.jujin.freeway.fleet;
+package com.jujin.freeway.cloud.registration;
 
-import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
-import com.jujin.freeway.cloud.CloudModule;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -80,37 +78,37 @@ class FleetDrainTest {
     @Test
     void autoAndUnsetBothAskTheRegistry() {
         assertEquals(Duration.ofSeconds(5),
-            FleetLifecycleHook.resolveDrain("auto", registry(Duration.ofSeconds(5)), symbols(Map.of())));
+            RegistrationLifecycleHook.resolveDrain("auto", registry(Duration.ofSeconds(5)), symbols(Map.of())));
         assertEquals(Duration.ofSeconds(5),
-            FleetLifecycleHook.resolveDrain(null, registry(Duration.ofSeconds(5)), symbols(Map.of())));
+            RegistrationLifecycleHook.resolveDrain(null, registry(Duration.ofSeconds(5)), symbols(Map.of())));
         assertEquals(Duration.ofSeconds(5),
-            FleetLifecycleHook.resolveDrain(" AUTO ", registry(Duration.ofSeconds(5)), symbols(Map.of())));
+            RegistrationLifecycleHook.resolveDrain(" AUTO ", registry(Duration.ofSeconds(5)), symbols(Map.of())));
     }
 
     @Test
     void inProcessRegistryAnswersZero() {
         assertEquals(Duration.ZERO,
-            FleetLifecycleHook.resolveDrain("auto", registry(Duration.ZERO), symbols(Map.of())));
+            RegistrationLifecycleHook.resolveDrain("auto", registry(Duration.ZERO), symbols(Map.of())));
     }
 
     @Test
     void registryWithNoOpinionFallsBackToZero() {
-        assertEquals(ConfigKeys.REGISTRY_SHUTDOWN_DRAIN_DEFAULT,
-            FleetLifecycleHook.resolveDrain("auto", registry(null), symbols(Map.of())));
+        assertEquals(RegistrationModule.ConfigKeys.REGISTRY_SHUTDOWN_DRAIN_DEFAULT,
+            RegistrationLifecycleHook.resolveDrain("auto", registry(null), symbols(Map.of())));
     }
 
     @Test
     void explicitDurationWinsOverTheRegistry() {
         assertEquals(Duration.ofSeconds(2),
-            FleetLifecycleHook.resolveDrain("2s", registry(Duration.ofSeconds(30)),
-                symbols(Map.of(ConfigKeys.REGISTRY_SHUTDOWN_DRAIN, "2s"))));
+            RegistrationLifecycleHook.resolveDrain("2s", registry(Duration.ofSeconds(30)),
+                symbols(Map.of(RegistrationModule.ConfigKeys.REGISTRY_SHUTDOWN_DRAIN, "2s"))));
     }
 
     @Test
     void negativeExplicitDurationFailsNamingTheKey() {
         IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
-            () -> FleetLifecycleHook.resolveDrain("-1s", registry(Duration.ZERO),
-                symbols(Map.of(ConfigKeys.REGISTRY_SHUTDOWN_DRAIN, "-1s"))));
+            () -> RegistrationLifecycleHook.resolveDrain("-1s", registry(Duration.ZERO),
+                symbols(Map.of(RegistrationModule.ConfigKeys.REGISTRY_SHUTDOWN_DRAIN, "-1s"))));
         assertTrue(failure.getMessage().contains("registry.shutdown-drain"),
             "the failure must name the key: " + failure.getMessage());
     }

@@ -1,11 +1,10 @@
-package com.jujin.freeway.fleet;
+package com.jujin.freeway.cloud.registration;
 
 import com.jujin.freeway.cloud.internal.BackendTypeGuard;
 import com.jujin.freeway.cloud.discovery.ServiceDiscovery;
 import com.jujin.freeway.cloud.discovery.ServiceRegistry;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.RuntimeHook;
-import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
 
 /**
  * Registry-client connection hook: runs BEFORE {@code freeway.http.server}.
@@ -17,15 +16,15 @@ import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
  * External-backend lifecycle is owned by the custom adapter's own hooks
  * (bound primary).
  */
-public final class FleetConnectionHook implements RuntimeHook {
+final class RegistrationConnectionHook implements RuntimeHook {
 
     @Override
     public void start(Container container) {
         BackendTypeGuard.warnIfExternal(
             container, ServiceDiscovery.class,
-            ConfigKeys.DISCOVERY_TYPE, "discovery");
+            RegistrationModule.ConfigKeys.DISCOVERY_TYPE, "discovery");
         BackendTypeGuard.warnIfExternal(
             container, ServiceRegistry.class,
-            ConfigKeys.REGISTRY_TYPE, "registry");
+            RegistrationModule.ConfigKeys.REGISTRY_TYPE, "registry");
     }
 }

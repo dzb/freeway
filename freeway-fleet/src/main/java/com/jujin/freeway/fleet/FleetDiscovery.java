@@ -10,11 +10,11 @@ import java.util.Objects;
  * answer, deduplicated by instance id (every node holds a full copy, so the
  * same instance arrives once per node).
  */
-final class FleetServiceDiscovery implements ServiceDiscovery {
+final class FleetDiscovery implements ServiceDiscovery {
 
     private final FleetClient client;
 
-    FleetServiceDiscovery(FleetClient client) {
+    FleetDiscovery(FleetClient client) {
         this.client = Objects.requireNonNull(client, "client");
     }
 

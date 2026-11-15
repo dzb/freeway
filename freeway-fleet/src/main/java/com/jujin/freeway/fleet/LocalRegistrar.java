@@ -7,16 +7,16 @@ import com.jujin.freeway.cloud.discovery.ServiceRegistry;
 import java.util.Objects;
 
 /**
- * In-process {@link ServiceRegistry} backed by {@link FleetStore}.
+ * In-process {@link ServiceRegistry} backed by {@link LeaseStore}.
  * Production-usable for single-process / static-topology deployments.
  * Cross-process registration/discovery needs a custom backend bound primary
  * (an extension module — freeway-cloud-consul in freeway-ext is one).
  */
-public final class LocalServiceRegistry implements ServiceRegistry {
+final class LocalRegistrar implements ServiceRegistry {
 
-    private final FleetStore store;
+    private final LeaseStore store;
 
-    public LocalServiceRegistry(FleetStore store) {
+    LocalRegistrar(LeaseStore store) {
         this.store = Objects.requireNonNull(store, "store");
     }
 

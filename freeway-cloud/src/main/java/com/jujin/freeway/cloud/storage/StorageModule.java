@@ -1,6 +1,6 @@
 package com.jujin.freeway.cloud.storage;
 
-import com.jujin.freeway.cloud.CloudHooks;
+import com.jujin.freeway.cloud.CloudHookIds;
 import com.jujin.freeway.cloud.annotation.Local;
 import com.jujin.freeway.cloud.internal.BackendTypeGuard;
 import com.jujin.freeway.ioc.Binder;
@@ -47,7 +47,7 @@ public final class StorageModule implements ModuleEx {
             ;
 
         b.contribute(RuntimeHook.class).add(
-            CloudHooks.STORAGE,
+            CloudHookIds.STORAGE,
             BackendTypeGuard.warnHook(
                 ObjectStorage.class, ConfigKeys.STORAGE_TYPE, "storage"));
     }

@@ -1,6 +1,7 @@
 package com.jujin.freeway.fleet;
 
 import com.jujin.freeway.cloud.CloudModule;
+import com.jujin.freeway.fleet.FleetDiscoveryModule.ConfigKeys;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 import com.jujin.freeway.ioc.symbol.SymbolSpec;
 import java.net.URI;
@@ -22,21 +23,21 @@ import java.util.List;
 record FleetNodes(List<URI> addresses, String token, Duration timeout) {
 
     private static final SymbolSpec<String> NODES =
-        SymbolSpec.of(CloudModule.ConfigKeys.REGISTRY_NODES, String.class, "");
+        SymbolSpec.of(ConfigKeys.REGISTRY_NODES, String.class, "");
     private static final SymbolSpec<String> TOKEN =
-        SymbolSpec.of(CloudModule.ConfigKeys.REGISTRY_TOKEN, String.class, "");
+        SymbolSpec.of(ConfigKeys.REGISTRY_TOKEN, String.class, "");
     private static final SymbolSpec<Long> TIMEOUT_MS = SymbolSpec.of(
-        CloudModule.ConfigKeys.REGISTRY_TIMEOUT_MS, Long.class,
-        CloudModule.ConfigKeys.REGISTRY_TIMEOUT_MS_DEFAULT);
+        ConfigKeys.REGISTRY_TIMEOUT_MS, Long.class,
+        ConfigKeys.REGISTRY_TIMEOUT_MS_DEFAULT);
 
     private static final Duration DEFAULT_TIMEOUT = Duration.ofMillis(
-        CloudModule.ConfigKeys.REGISTRY_TIMEOUT_MS_DEFAULT);
+        ConfigKeys.REGISTRY_TIMEOUT_MS_DEFAULT);
 
     FleetNodes {
         addresses = List.copyOf(addresses);
         if (addresses.isEmpty()) {
             throw new IllegalArgumentException(
-                CloudModule.ConfigKeys.REGISTRY_NODES + " is empty — the backend has no registry to talk to");
+                ConfigKeys.REGISTRY_NODES + " is empty — the backend has no registry to talk to");
         }
         token = token == null ? "" : token;
         timeout =
@@ -50,7 +51,7 @@ record FleetNodes(List<URI> addresses, String token, Duration timeout) {
         String raw = symbols.resolve(NODES).trim();
         if (raw.isEmpty()) {
             throw new IllegalStateException(
-                CloudModule.ConfigKeys.REGISTRY_NODES
+                ConfigKeys.REGISTRY_NODES
                     + " is blank — the backend is bound but has no registry node to talk to;"
                     + " list at least one node (host:port or http(s)://host:port)");
         }
@@ -63,12 +64,12 @@ record FleetNodes(List<URI> addresses, String token, Duration timeout) {
             URI uri = URI.create(trimmed.contains("://") ? trimmed : "http://" + trimmed);
             if (!"http".equals(uri.getScheme()) && !"https".equals(uri.getScheme())) {
                 throw new IllegalStateException(
-                    CloudModule.ConfigKeys.REGISTRY_NODES + " entry must be http(s): " + trimmed);
+                    ConfigKeys.REGISTRY_NODES + " entry must be http(s): " + trimmed);
             }
             addresses.add(uri);
         }
         if (addresses.isEmpty()) {
-            throw new IllegalStateException(CloudModule.ConfigKeys.REGISTRY_NODES + " is blank — no node was parsed");
+            throw new IllegalStateException(ConfigKeys.REGISTRY_NODES + " is blank — no node was parsed");
         }
         return new FleetNodes(addresses, symbols.resolve(TOKEN),
             Duration.ofMillis(symbols.resolve(TIMEOUT_MS)));

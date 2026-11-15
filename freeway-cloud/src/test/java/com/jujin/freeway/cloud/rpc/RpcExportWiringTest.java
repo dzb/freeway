@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
-import com.jujin.freeway.cloud.CloudHooks;
+import com.jujin.freeway.cloud.CloudHookIds;
 import com.jujin.freeway.cloud.discovery.ServiceEndpoint;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.cloud.discovery.ServiceRegistry;
@@ -298,7 +298,7 @@ class RpcExportWiringTest {
                         }
 
                     })
-                    .before(CloudHooks.RPC);
+                    .before(CloudHookIds.RPC);
             }
         });
         pointDiscoveryAt(app, "target");

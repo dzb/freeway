@@ -21,7 +21,6 @@ freeway-cloud/src/main/java/com/jujin/freeway/cloud/internal/ActiveBindingProbe.
 freeway-cloud/src/main/java/com/jujin/freeway/cloud/internal/BackendTypeGuard.java#BackendTypeGuard
 freeway-cloud/src/main/java/com/jujin/freeway/cloud/internal/CloudHttpClients.java#CloudHttpClients
 freeway-cloud/src/main/java/com/jujin/freeway/cloud/internal/ConstantTime.java#ConstantTime
-freeway-cloud/src/main/java/com/jujin/freeway/cloud/internal/HttpServiceDeclaration.java#HttpServiceDeclaration
 freeway-cloud/src/main/java/com/jujin/freeway/cloud/internal/OptionalBinding.java#OptionalBinding
 freeway-cloud/src/main/java/com/jujin/freeway/cloud/observe/internal/MetricsHandler.java#MetricsHandler
 freeway-cloud/src/main/java/com/jujin/freeway/cloud/observe/internal/TracingFilter.java#TracingFilter

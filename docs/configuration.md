@@ -575,7 +575,12 @@ silently take effect, but warns once at startup.
 | `freeway.cloud.storage.type` | declaration | String | *(empty)* | no | Storage backend type. Empty (or `local`) = the built-in local filesystem implementation; external backends (S3 etc.) are plugged in by an adapter via `.primary()` (not yet delivered in freeway-ext) — if an external value is configured while the local implementation is still active, startup warns once |
 | `freeway.cloud.storage.base-path` | tuning | String | `cloud-storage` | no | Root path of the local backend (relative to the working directory, for example `cloud-storage`; absolute paths also work) |
 
-#### Service discovery / registry
+#### Service discovery / registration
+
+The keys in this section are declared by `RegistrationModule.ConfigKeys`
+(endpoint identity and drain), `LocalDiscoveryModule.ConfigKeys` (local-zone)
+and `FleetDiscoveryModule.ConfigKeys` (Fleet nodes, token, cache).
+`CloudModule.ConfigKeys` no longer owns them.
 
 | Key | Class | Type | Default | Required | Meaning |
 |----|------|------|--------|------|------|
@@ -594,7 +599,7 @@ silently take effect, but warns once at startup.
 | `freeway.cloud.registry.service-port` | tuning·sentinel | Integer | *(empty)* | no | Registration port. Empty = the HTTP server's actual listening port |
 | `freeway.cloud.registry.service-instance-id` | tuning·sentinel | String | *(empty)* | no | Stable instance-level identifier. Empty = the derived key `service-id@host:port` |
 
-**Registered node fleet (client side, `FleetModule`)** — placing the module selects this backend; the two keys are configured on the client process, and the shared secret is the `freeway.cloud.registry.token` above (the same key, the same value on both sides):
+**Registered node fleet (client side, `FleetDiscoveryModule`)** — placing the module selects this backend; the two keys are configured on the client process, and the shared secret is the `freeway.cloud.registry.token` above (the same key, the same value on both sides):
 
 | Key | Class | Type | Default | Required | Meaning |
 |----|------|------|--------|------|------|

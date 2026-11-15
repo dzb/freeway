@@ -1,4 +1,4 @@
-package com.jujin.freeway.fleet;
+package com.jujin.freeway.cloud.registration;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -18,7 +18,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * is not tracked at all: there is nothing to guard, and the contributor says so
  * instead of reporting a vacuous "healthy".</p>
  */
-public final class FleetRenewal {
+final class RegistrationRenewal {
 
     /** Consecutive failed heartbeats before readiness reports unhealthy. */
     public static final int UNHEALTHY_AFTER = 3;

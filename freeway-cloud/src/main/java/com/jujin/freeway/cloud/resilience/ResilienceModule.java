@@ -1,6 +1,6 @@
 package com.jujin.freeway.cloud.resilience;
 
-import com.jujin.freeway.cloud.CloudHooks;
+import com.jujin.freeway.cloud.CloudHookIds;
 import com.jujin.freeway.cloud.annotation.Local;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
@@ -78,7 +78,7 @@ public final class ResilienceModule implements ModuleEx {
         // lazily behind the container's proxies, so without this hook a typo
         // would surface at the first RPC call instead of at startup.
         b.contribute(RuntimeHook.class)
-            .add(CloudHooks.RESILIENCE,
+            .add(CloudHookIds.RESILIENCE,
                 (Container container) ->
                     mode(container.get(SymbolSource.class)))
             ;

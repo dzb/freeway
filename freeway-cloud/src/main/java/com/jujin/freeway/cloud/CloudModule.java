@@ -129,10 +129,7 @@ public final class CloudModule implements ModuleEx {
         // ── Default-optimal: backend selection (empty = built-in local) ──────
         public static final String SECRET_TYPE        = "freeway.cloud.secret.type";
         public static final String STORAGE_TYPE       = "freeway.cloud.storage.type";
-        public static final String DISCOVERY_TYPE        = "freeway.cloud.discovery.type";
         /** This process's zone; blank = no zone preference. */
-        public static final String DISCOVERY_LOCAL_ZONE   = "freeway.cloud.discovery.local-zone";
-        public static final String REGISTRY_TYPE         = "freeway.cloud.registry.type";
 
         // ── Default-optimal: feature posture ────────────────────
         /** Master switch for the WS event mesh — presence-driven: an explicit
@@ -148,105 +145,18 @@ public final class CloudModule implements ModuleEx {
         public static final String AUTH_EXTRACT_ENABLED = "freeway.cloud.auth.extract.enabled";
 
         // ── Default-optimal: derived placement ────────────────────────────────
-        // The registry entries default to what the HTTP server bound. Mesh
-        // interest is not a key at all: it is the MeshSubscription
-        // contributions, which simultaneously drive the hello pull-prefixes,
-        // the inbound gate and delivery.
         public static final String STORAGE_BASE_PATH  = "freeway.cloud.storage.base-path";
         /** Local backend root under the working directory. */
         public static final String STORAGE_BASE_PATH_DEFAULT = "cloud-storage";
-        public static final String REGISTRY_SERVICE_ID   = "freeway.cloud.registry.service-id";
         /**
-         * Generic service-name fallback in the registry identity chain
-         * ({@link #REGISTRY_SERVICE_ID} unset → this key → {@link #APP_NAME_DEFAULT}).
-         * Outside {@link #PREFIX} on purpose: cloud registration is its only
-         * reader, and it is distinct from JVM {@code -D app.name} (log file name).
+         * Generic service-name fallback used by registration and the event
+         * mesh ({@code freeway.cloud.registry.service-id} unset → this key →
+         * {@link #APP_NAME_DEFAULT}). Outside {@link #PREFIX} on purpose; it is
+         * distinct from JVM {@code -D app.name} (log file name).
          */
         public static final String APP_NAME = "freeway.app.name";
-        /** Value used when neither {@link #REGISTRY_SERVICE_ID} nor {@link #APP_NAME} is set. */
+        /** Value used when neither the registration service-id nor {@link #APP_NAME} is set. */
         public static final String APP_NAME_DEFAULT = "freeway-app";
-        /**
-         * Host other nodes should use to reach this instance.
-         *
-         * <p>{@code auto} (the default) picks a routable local address: the
-         * {@code POD_IP} environment variable when the platform injects it,
-         * otherwise the first non-loopback interface address. Falling back to the
-         * HTTP server's bind address is the last resort — a bind-all address
-         * registers an endpoint peers cannot call, so it is warned about. Set this
-         * explicitly on a host with several addresses, where no derivation can
-         * know which one peers should use.</p>
-         */
-        public static final String REGISTRY_SERVICE_HOST = "freeway.cloud.registry.service-host";
-        /** Value of {@link #REGISTRY_SERVICE_HOST} that derives a local address. */
-        public static final String REGISTRY_SERVICE_HOST_AUTO = "auto";
-        /** Host used when {@link #REGISTRY_SERVICE_HOST} is unset: derive it. */
-        public static final String REGISTRY_SERVICE_HOST_DEFAULT = REGISTRY_SERVICE_HOST_AUTO;
-        /**
-         * Scheme registered for this instance — and the scheme the event mesh
-         * dials with ({@code http}→{@code ws}, {@code https}→{@code wss}).
-         *
-         * <p>{@code auto} (the default) follows the HTTP server's own transport:
-         * https when TLS is enabled, http otherwise. The two cannot disagree, and
-         * enabling TLS cannot leave a node registering {@code http://} (or dialing
-         * {@code ws://}) by omission.</p>
-         */
-        public static final String REGISTRY_SERVICE_SCHEME = "freeway.cloud.registry.service-scheme";
-        /** Value of {@link #REGISTRY_SERVICE_SCHEME} that follows the HTTP server. */
-        public static final String REGISTRY_SERVICE_SCHEME_AUTO = "auto";
-        /** Scheme used when {@link #REGISTRY_SERVICE_SCHEME} is unset: follow the
-         *  HTTP server. */
-        public static final String REGISTRY_SERVICE_SCHEME_DEFAULT = REGISTRY_SERVICE_SCHEME_AUTO;
-        public static final String REGISTRY_SERVICE_PORT = "freeway.cloud.registry.service-port";
-        public static final String REGISTRY_SERVICE_INSTANCE_ID = "freeway.cloud.registry.service-instance-id";
-        /**
-         * Time to keep serving after deregistering, so a load balancer that still
-         * holds this endpoint can notice before the socket closes.
-         *
-         * <p>{@code auto} (the default) asks the bound registry for its own
-         * propagation window ({@link com.jujin.freeway.cloud.discovery.ServiceRegistry#drainWindow()}): the built-in
-         * in-process registry answers zero — an endpoint disappears the moment it
-         * is unregistered, there is nothing to wait for — while an adapter backed
-         * by Nacos or Kubernetes endpoints answers the window that backend needs.
-         * A deployment therefore does not have to know its registry's number, and
-         * an explicit duration still wins.</p>
-         */
-        public static final String REGISTRY_SHUTDOWN_DRAIN = "freeway.cloud.registry.shutdown-drain";
-        /** Value of {@link #REGISTRY_SHUTDOWN_DRAIN} that asks the registry. */
-        public static final String REGISTRY_SHUTDOWN_DRAIN_AUTO = "auto";
-        /** Window used when {@link #REGISTRY_SHUTDOWN_DRAIN} is unset and the
-         *  registry answers nothing: the in-process default. */
-        public static final Duration REGISTRY_SHUTDOWN_DRAIN_DEFAULT = Duration.ZERO;
-        /** Registry shared secret, one key for both sides — a node requires it
-         *  and a client presents it, so the two values must match (the same
-         *  shape as {@link #EVENT_TOKEN}). Blank = no credential: an open
-         *  surface on a node, no header from a client. A node reachable beyond
-         *  localhost should set it. */
-        public static final String REGISTRY_TOKEN = "freeway.cloud.registry.token";
-        /** The token being retired: a node accepts it alongside
-         *  {@link #REGISTRY_TOKEN} so credentials can rotate without stopping.
-         *  Rotation: move the current value here, put the new one in
-         *  {@code registry.token}, roll the writers over, clear this. Accepted
-         *  by a node only — a client never sends it. Blank = no grace window. */
-        public static final String REGISTRY_TOKEN_PREVIOUS =
-            "freeway.cloud.registry.token-previous";
-        /** Registry node addresses to dial ({@code host:port} or a full URL),
-         *  comma-separated — the native backend's own wiring. */
-        public static final String REGISTRY_NODES = "freeway.cloud.registry.nodes";
-        /** Connect/request timeout for one node exchange, in milliseconds. */
-        public static final String REGISTRY_TIMEOUT_MS = "freeway.cloud.registry.timeout-ms";
-        public static final long REGISTRY_TIMEOUT_MS_DEFAULT = 3000;
-        /** How long a discovery answer may be reused before the backend is
-         *  asked again (a caching discovery implementation's own policy). Five
-         *  seconds is half the 10s heartbeat: the cache never lags a whole
-         *  heartbeat, and it sits far inside the 30s eviction window. Zero
-         *  disables caching (every call asks). Per-service overrides spell
-         *  {@code freeway.cloud.registry.cache-ttl.<serviceId>}. */
-        public static final String REGISTRY_CACHE_TTL = "freeway.cloud.registry.cache-ttl";
-        public static final Duration REGISTRY_CACHE_TTL_DEFAULT = Duration.ofSeconds(5);
-        /** Prefix of the per-service overrides; the family is admitted as a
-         *  prefix vocabulary because its names cannot be listed. */
-        public static final String REGISTRY_CACHE_TTL_PREFIX = "freeway.cloud.registry.cache-ttl.";
-
         // ── Advanced: timeouts (NOT governed by resilience — they always apply) ──
         // Listed first because they are the one pair in this block that
         // RPC_RESILIENCE=off does not cover.

@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.jujin.freeway.boot.AppRuntime;
+import com.jujin.freeway.cloud.registration.RegistrationModule;
 import com.jujin.freeway.boot.FreewayApp;
 import com.jujin.freeway.cloud.discovery.ServiceDiscovery;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
@@ -68,7 +69,7 @@ class ReadinessGateTest {
     void a_warming_instance_is_registered_but_not_discoverable() throws Exception {
         AtomicBoolean warm = new AtomicBoolean(false);
         app = FreewayApp.create(
-                new HttpModule(), new LocalDiscoveryModule(),
+                new HttpModule(), new RegistrationModule(), new LocalDiscoveryModule(),
                 slowDependency(warm))
             .start();
 
@@ -89,7 +90,7 @@ class ReadinessGateTest {
     void a_fast_starting_app_is_ready_immediately() throws Exception {
         AtomicBoolean warm = new AtomicBoolean(true);
         app = FreewayApp.create(
-                new HttpModule(), new LocalDiscoveryModule(),
+                new HttpModule(), new RegistrationModule(), new LocalDiscoveryModule(),
                 slowDependency(warm))
             .start();
 

@@ -1,6 +1,6 @@
 package com.jujin.freeway.cloud.secret;
 
-import com.jujin.freeway.cloud.CloudHooks;
+import com.jujin.freeway.cloud.CloudHookIds;
 import com.jujin.freeway.cloud.annotation.Local;
 import com.jujin.freeway.cloud.internal.BackendTypeGuard;
 import com.jujin.freeway.ioc.Binder;
@@ -41,7 +41,7 @@ public final class SecretModule implements ModuleEx {
         // would instantiate SecretSymbolSource (which depends on SecretStore)
         // while SecretStore is mid-construction.
         b.contribute(RuntimeHook.class).add(
-            CloudHooks.SECRET,
+            CloudHookIds.SECRET,
             BackendTypeGuard.warnHook(
                 SecretStore.class, ConfigKeys.SECRET_TYPE, "secret"));
     }

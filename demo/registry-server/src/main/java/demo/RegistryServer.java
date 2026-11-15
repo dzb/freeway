@@ -9,7 +9,7 @@ import java.util.concurrent.CountDownLatch;
 /**
  * Standalone node: a freeway process whose job is to BE the fleet registry server.
  *
- * <p>It starts with a local {@code FleetStore} and exposes it over HTTP;
+ * <p>It starts with a local {@code LeaseStore} and exposes it over HTTP;
  * nothing else registers into it — if a second freeway app hits its
  * endpoints, it finds them. Read {@code README.md} for the walk-through.
  */

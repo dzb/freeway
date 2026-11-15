@@ -1,7 +1,9 @@
 package com.jujin.freeway.fleet;
 
 import com.jujin.freeway.cloud.CloudModule;
+import com.jujin.freeway.cloud.registration.RegistrationModule;
 import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
+import com.jujin.freeway.cloud.registration.RegistrationModule;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -36,7 +38,7 @@ class ServiceIdentityFallbackTest {
     @AfterEach
     void clearProperties() {
         System.clearProperty(HttpModule.ConfigKeys.SERVER_PORT);
-        System.clearProperty(ConfigKeys.REGISTRY_SERVICE_ID);
+        System.clearProperty(RegistrationModule.ConfigKeys.REGISTRY_SERVICE_ID);
         System.clearProperty(ConfigKeys.APP_NAME);
         System.clearProperty(ConfigKeys.EVENT_ENABLED);
     }
@@ -55,7 +57,7 @@ class ServiceIdentityFallbackTest {
     @Test
     void registryServiceIdOverridesAppNameForBothIdentities() {
         System.setProperty(ConfigKeys.APP_NAME, "myapp");
-        System.setProperty(ConfigKeys.REGISTRY_SERVICE_ID, "custom");
+        System.setProperty(RegistrationModule.ConfigKeys.REGISTRY_SERVICE_ID, "custom");
         try (AppRuntime app = appWithEvents()) {
             assertEquals("custom", app.get(PeerHub.class).serviceId(),
                 "explicit registry service-id must win for the mesh origin");
@@ -74,13 +76,13 @@ class ServiceIdentityFallbackTest {
     /** Events enabled so the lifecycle hook wires the hub with the mesh origin. */
     private static AppRuntime appWithEvents() {
         System.setProperty(ConfigKeys.EVENT_ENABLED, "true");
-        return FreewayApp.create(new HttpModule()).add(CloudModule.class).add(new LocalDiscoveryModule()).add(new EventMeshModule()).start();
+        return FreewayApp.create(new HttpModule()).add(CloudModule.class).add(new RegistrationModule()).add(new LocalDiscoveryModule()).add(new EventMeshModule()).start();
     }
 
     /** Reads the identity HttpServiceDeclaration registered for this app. */
     private static String registeredServiceId(AppRuntime app, String serviceId) {
-        FleetStore store = app.get(FleetStore.class);
-        List<ServiceInstance> instances = store.liveReady(serviceId, Duration.ofMinutes(1));
+        LeaseStore store = app.get(LeaseStore.class);
+        List<ServiceInstance> instances = store.liveReadyInstances(serviceId, Duration.ofMinutes(1));
         assertFalse(instances.isEmpty(),
             "no instance registered under '" + serviceId + "' — registration identity diverged");
         assertEquals(1, instances.size(), "one HTTP declaration registers one instance");

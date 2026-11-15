@@ -16,7 +16,7 @@ import org.junit.jupiter.api.Test;
  * Without this the contract's "ready" half was decorative — every registration
  * asserted {@code ServiceHealth.up()}.
  */
-class FleetStoreReadinessTest {
+class InMemoryLeaseStoreReadinessTest {
 
     private static final Duration TTL = Duration.ofSeconds(30);
     private static final ServiceInstance INSTANCE =
@@ -24,36 +24,36 @@ class FleetStoreReadinessTest {
 
     @Test
     void a_starting_instance_is_not_discoverable_until_it_is_ready() {
-        FleetStore store = new FleetStore();
+        InMemoryLeaseStore store = new InMemoryLeaseStore();
 
         store.register(INSTANCE, ServiceHealth.starting());
 
-        assertEquals(0, store.liveReady("svc", TTL).size(),
+        assertEquals(0, store.liveReadyInstances("svc", TTL).size(),
             "a warming instance must not be handed to callers");
         assertEquals(1, store.instanceCount(), "but it is registered, not missing");
 
         assertTrue(store.markReady("svc", "i1", true));
-        assertEquals(1, store.liveReady("svc", TTL).size(),
+        assertEquals(1, store.liveReadyInstances("svc", TTL).size(),
             "the flip is what makes it discoverable");
     }
 
     @Test
     void a_heartbeat_carries_the_readiness_it_observed() {
-        FleetStore store = new FleetStore();
+        InMemoryLeaseStore store = new InMemoryLeaseStore();
         store.register(INSTANCE, ServiceHealth.starting());
 
         assertTrue(store.renew("svc", "i1", true), "the heartbeat lands");
-        assertEquals(1, store.liveReady("svc", TTL).size(),
+        assertEquals(1, store.liveReadyInstances("svc", TTL).size(),
             "readiness on the heartbeat flips the instance without a second call");
 
         assertTrue(store.renew("svc", "i1", false), "and back");
-        assertEquals(0, store.liveReady("svc", TTL).size(),
+        assertEquals(0, store.liveReadyInstances("svc", TTL).size(),
             "a heartbeat that reports not-ready takes it out of rotation again");
     }
 
     @Test
     void readiness_for_an_unknown_instance_is_refused_not_invented() {
-        FleetStore store = new FleetStore();
+        InMemoryLeaseStore store = new InMemoryLeaseStore();
         assertEquals(false, store.markReady("svc", "ghost", true),
             "the store must not create an entry from a readiness publish");
         assertEquals(0, store.instanceCount());

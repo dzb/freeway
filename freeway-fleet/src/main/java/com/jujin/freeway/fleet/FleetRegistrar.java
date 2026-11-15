@@ -9,7 +9,7 @@ import java.util.Objects;
  * The fleet as a {@link ServiceRegistry}: every write fans out to all nodes.
  * The lifecycle around these calls — register on start, heartbeat in between,
  * unregister on stop, re-register on a lost lease — is the discovery module's
- * {@code FleetLifecycleHook}, driven through this interface, never copied.
+ * {@code RegistrationLifecycleHook}, driven through this interface, never copied.
  */
 final class FleetRegistrar implements ServiceRegistry {
 

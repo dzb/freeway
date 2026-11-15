@@ -12,7 +12,7 @@ import java.util.Objects;
  *
  * <p>It intentionally binds no {@code ServiceRegistry}. Static membership has
  * no registration or heartbeat; an application that requires those should
- * install {@code LocalDiscoveryModule} (in-process) or {@code FleetModule}
+ * install {@code LocalDiscoveryModule} (in-process) or {@code FleetDiscoveryModule}
  * (dynamic), not a no-op that would make registration look successful.</p>
  */
 public final class StaticDiscoveryModule implements ModuleEx {

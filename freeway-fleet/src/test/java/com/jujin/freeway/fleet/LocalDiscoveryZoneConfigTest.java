@@ -2,7 +2,7 @@ package com.jujin.freeway.fleet;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
+import com.jujin.freeway.fleet.LocalDiscoveryModule.ConfigKeys;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.cloud.discovery.LoadBalancer;
 import com.jujin.freeway.cloud.discovery.ServiceEndpoint;

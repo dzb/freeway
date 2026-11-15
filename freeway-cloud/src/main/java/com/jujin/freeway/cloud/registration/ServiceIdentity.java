@@ -1,4 +1,4 @@
-package com.jujin.freeway.cloud.internal;
+package com.jujin.freeway.cloud.registration;
 
 
 import java.net.Inet4Address;
@@ -12,7 +12,7 @@ import java.util.Locale;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
+
 
 /**
  * The externally visible identity this node presents: the scheme and host the
@@ -43,14 +43,14 @@ final class ServiceIdentity {
      * dial (the mesh derives {@code ws}/{@code wss} from this same answer).
      */
     public static String scheme(String raw, boolean serverSecure, String serviceId) {
-        boolean derived = isAuto(raw, ConfigKeys.REGISTRY_SERVICE_SCHEME_AUTO);
+        boolean derived = isAuto(raw, RegistrationModule.ConfigKeys.REGISTRY_SERVICE_SCHEME_AUTO);
         String scheme = derived
             ? (serverSecure ? "https" : "http")
             : raw.trim().toLowerCase(Locale.ROOT);
         if (!scheme.equals("http") && !scheme.equals("https")) {
             throw new IllegalArgumentException(
-                ConfigKeys.REGISTRY_SERVICE_SCHEME + " must be "
-                    + ConfigKeys.REGISTRY_SERVICE_SCHEME_AUTO
+                RegistrationModule.ConfigKeys.REGISTRY_SERVICE_SCHEME + " must be "
+                    + RegistrationModule.ConfigKeys.REGISTRY_SERVICE_SCHEME_AUTO
                     + ", http or https: " + raw);
         }
         LOG.info("Service '{}' registers scheme {} — {}",
@@ -81,7 +81,7 @@ final class ServiceIdentity {
      * know which address belongs to the mesh, so the deployment decides.</p>
      */
     public static String host(String raw, String bindHost, String serviceId) {
-        if (!isAuto(raw, ConfigKeys.REGISTRY_SERVICE_HOST_AUTO)) {
+        if (!isAuto(raw, RegistrationModule.ConfigKeys.REGISTRY_SERVICE_HOST_AUTO)) {
             return raw.trim();
         }
         return deriveHost(bindHost, podIp(), firstRoutableAddress(), serviceId);

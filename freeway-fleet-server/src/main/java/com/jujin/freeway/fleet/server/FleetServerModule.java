@@ -1,11 +1,15 @@
 package com.jujin.freeway.fleet.server;
 
-import com.jujin.freeway.fleet.FleetStore;
+import com.jujin.freeway.fleet.InMemoryLeaseStore;
+import com.jujin.freeway.fleet.LeaseStore;
+import com.jujin.freeway.cloud.CloudModule;
+import com.jujin.freeway.fleet.FleetDiscoveryModule;
 import com.jujin.freeway.fleet.FleetProtocol;
 import com.jujin.freeway.http.route.Route;
 import com.jujin.freeway.http.route.RouteHandler;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.ModuleEx;
+import com.jujin.freeway.ioc.symbol.KnownKeys;
 import java.util.List;
 
 /**
@@ -14,7 +18,7 @@ import java.util.List;
  *
  * <p>This is the control plane, not an application runtime: it owns the
  * registry surface and its store, and it never registers itself into the fleet
- * it serves. The module binds a {@link FleetStore}; the app composes the HTTP
+ * it serves. The module binds a {@link LeaseStore}; the app composes the HTTP
  * listener and chooses the deployment's node discovery separately (static
  * seed list, an external load balancer, or the database the store will grow
  * into).</p>
@@ -40,7 +44,7 @@ public final class FleetServerModule implements ModuleEx {
         new Surface("ready", "freeway.cloud.registry.ready", "POST",
             FleetProtocol.READY, FleetApi.class),
         new Surface("index", "freeway.cloud.registry.index", "GET",
-            FleetProtocol.INDEX, FleetIndexHandler.class)
+            FleetProtocol.SELF_DESCRIPTION, FleetIndexHandler.class)
     );
 
     /** One served route: the index label, the contribution id, and how to route it. */
@@ -49,7 +53,10 @@ public final class FleetServerModule implements ModuleEx {
 
     @Override
     public void bind(Binder b) {
-        b.bind(FleetStore.class).to(FleetStore.class);
+        b.contribute(KnownKeys.class)
+            .add(KnownKeys.of(FleetDiscoveryModule.ConfigKeys.class,
+                CloudModule.ConfigKeys.PREFIX, CloudModule.ConfigKeys.APP_PREFIX));
+        b.bind(LeaseStore.class).to(InMemoryLeaseStore.class);
         for (Surface surface : SURFACE) {
             b.contribute(Route.class).add(surface.id(), route(surface));
         }

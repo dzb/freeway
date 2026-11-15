@@ -5,7 +5,7 @@ import com.jujin.freeway.cloud.rpc.TransportSecurity;
 import com.jujin.freeway.cloud.discovery.ServiceDiscovery;
 import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
-import com.jujin.freeway.cloud.internal.HttpServiceDeclaration;
+import com.jujin.freeway.cloud.registration.HttpServiceDeclaration;
 import com.jujin.freeway.ioc.MissingBindingException;
 import com.jujin.freeway.ioc.symbol.SymbolSpec;
 import com.jujin.freeway.commons.json.JsonCodec;

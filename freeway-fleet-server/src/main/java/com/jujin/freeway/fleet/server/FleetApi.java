@@ -1,6 +1,7 @@
 package com.jujin.freeway.fleet.server;
 
-import com.jujin.freeway.fleet.FleetStore;
+import com.jujin.freeway.fleet.InMemoryLeaseStore;
+import com.jujin.freeway.fleet.LeaseStore;
 import com.jujin.freeway.cloud.discovery.ServiceHealth;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.cloud.internal.ConstantTime;
@@ -12,7 +13,7 @@ import com.jujin.freeway.http.HttpExchange;
 import com.jujin.freeway.http.route.RouteHandler;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 import com.jujin.freeway.ioc.symbol.SymbolSpec;
-import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
+import com.jujin.freeway.fleet.FleetDiscoveryModule.ConfigKeys;
 import com.jujin.freeway.fleet.FleetProtocol;
 import com.jujin.freeway.http.HttpStatus;
 import java.io.IOException;
@@ -22,7 +23,7 @@ import java.util.Objects;
 /**
  * The HTTP surface of a Fleet Server.
  *
- * <p>It is written against the {@link FleetStore}: the server publishes its
+ * <p>It is written against the {@link LeaseStore}: the server publishes its
  * own lease store, and the store is the one subject these routes describe.
  * The discovery view is not a substitute — it returns ready instances only, so
  * a warming instance could not be deregistered through it.</p>
@@ -36,14 +37,14 @@ final class FleetApi implements RouteHandler {
     private static final SymbolSpec<String> TOKEN_PREVIOUS =
         SymbolSpec.of(ConfigKeys.REGISTRY_TOKEN_PREVIOUS, String.class, "");
 
-    private final FleetStore store;
+    private final LeaseStore store;
     private final JsonCodec codec;
     /** Read per request, not captured at construction: the token is the one
      *  setting an operator rotates on a live node — a rotate-by-restart rule
      *  would make every secret change an outage. */
     private final SymbolSource symbols;
 
-    FleetApi(FleetStore store, JsonCodec codec, SymbolSource symbols) {
+    FleetApi(LeaseStore store, JsonCodec codec, SymbolSource symbols) {
         this.store = Objects.requireNonNull(store, "store");
         this.codec = Objects.requireNonNull(codec, "codec");
         this.symbols = Objects.requireNonNull(symbols, "symbols");
@@ -52,7 +53,7 @@ final class FleetApi implements RouteHandler {
     /** True when {@code announced} is a protocol this node speaks: older or equal. */
     private static boolean supports(String announced) {
         try {
-            return Integer.parseInt(announced.trim()) <= FleetProtocol.PROTO;
+            return Integer.parseInt(announced.trim()) <= FleetProtocol.PROTOCOL;
         } catch (NumberFormatException notANumber) {
             return false;
         }
@@ -64,17 +65,17 @@ final class FleetApi implements RouteHandler {
         // 426 here instead of a 404 on whichever route moved. Older protocols
         // are accepted — the documented promise is "a server keeps accepting
         // older clients", and equality made a proto-0 client a 426.
-        String announced = ctx.header(FleetProtocol.PROTO_HEADER).orElse("");
+        String announced = ctx.header(FleetProtocol.PROTOCOL_HEADER).orElse("");
         if (!announced.isEmpty() && !supports(announced)) {
-            ctx.setHeader(FleetProtocol.PROTO_HEADER,
-                String.valueOf(FleetProtocol.PROTO));
+            ctx.setHeader(FleetProtocol.PROTOCOL_HEADER,
+                String.valueOf(FleetProtocol.PROTOCOL));
             ctx.sendJson(HttpStatus.UPGRADE_REQUIRED, Map.of(
                 "error", "unsupported registry protocol " + announced,
-                "supported", FleetProtocol.PROTO));
+                "supported", FleetProtocol.PROTOCOL));
             return;
         }
-        ctx.setHeader(FleetProtocol.PROTO_HEADER,
-            String.valueOf(FleetProtocol.PROTO));
+        ctx.setHeader(FleetProtocol.PROTOCOL_HEADER,
+            String.valueOf(FleetProtocol.PROTOCOL));
 
         if (!authorized(ctx)) {
             // A shared-secret check, not an identity system: the node is
@@ -126,7 +127,7 @@ final class FleetApi implements RouteHandler {
     }
 
     private void discover(HttpExchange ctx, String serviceId) throws IOException {
-        ctx.sendJson(HttpStatus.OK, store.liveReady(serviceId, FleetStore.DEFAULT_EVICTION));
+        ctx.sendJson(HttpStatus.OK, store.liveReadyInstances(serviceId, LeaseStore.DEFAULT_EVICTION));
     }
 
     private void register(HttpExchange ctx) throws IOException {
@@ -136,7 +137,7 @@ final class FleetApi implements RouteHandler {
         // write (`?ready=false`), instead of registering as ready and being
         // marked not-ready a moment later — a window in which discovery could
         // route traffic to it. Absent means ready, the pre-existing contract.
-        Boolean ready = readinessOf(ctx);
+        Boolean ready = requestedReadiness(ctx);
         store.register(instance, ready != null && !ready
             ? ServiceHealth.starting()
             : ServiceHealth.up());
@@ -149,7 +150,7 @@ final class FleetApi implements RouteHandler {
      * trip. A node that ignores the body keeps the plain heartbeat.
      */
     private void renew(HttpExchange ctx, String serviceId, String instanceId) throws IOException {
-        Boolean ready = readinessOf(ctx);
+        Boolean ready = requestedReadiness(ctx);
         boolean alive = ready == null
             ? store.renew(serviceId, instanceId)
             : store.renew(serviceId, instanceId, ready);
@@ -159,7 +160,7 @@ final class FleetApi implements RouteHandler {
     /** Explicit readiness flip, so a starting instance becomes discoverable at
      *  the moment it is ready rather than at the next heartbeat. */
     private void ready(HttpExchange ctx, String serviceId, String instanceId) throws IOException {
-        Boolean ready = readinessOf(ctx);
+        Boolean ready = requestedReadiness(ctx);
         boolean applied = ready != null && store.markReady(serviceId, instanceId, ready);
         ctx.sendJson(applied ? HttpStatus.OK : HttpStatus.NOT_FOUND,
             Map.of("ready", Boolean.TRUE.equals(ready)));
@@ -175,7 +176,7 @@ final class FleetApi implements RouteHandler {
     }
 
     /** Reads {@code {"ready":…}} from the body, or {@code ?ready=} from the query. */
-    private Boolean readinessOf(HttpExchange ctx) throws IOException {
+    private Boolean requestedReadiness(HttpExchange ctx) throws IOException {
         String body = ctx.bodyText();
         if (body != null && !body.isBlank()) {
             JsonObject node = JsonUtils.parseObject(body);

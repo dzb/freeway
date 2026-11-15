@@ -209,8 +209,8 @@ final class FleetClient implements AutoCloseable {
             .uri(node.resolve(path))
             .timeout(nodes.timeout())
             .header("Content-Type", MediaTypes.JSON)
-            .header(FleetProtocol.PROTO_HEADER,
-                String.valueOf(FleetProtocol.PROTO));
+            .header(FleetProtocol.PROTOCOL_HEADER,
+                String.valueOf(FleetProtocol.PROTOCOL));
         if (!nodes.token().isBlank()) {
             request.header(FleetProtocol.TOKEN_HEADER, nodes.token());
         }
@@ -225,7 +225,7 @@ final class FleetClient implements AutoCloseable {
             // once, with both numbers, instead of letting it read as "refused".
             throw new IllegalStateException("registry node " + node
                 + " speaks protocol " + response.body() + " but this client speaks "
-                + FleetProtocol.PROTO + " — upgrade the client");
+                + FleetProtocol.PROTOCOL + " — upgrade the client");
         }
         return response;
     }

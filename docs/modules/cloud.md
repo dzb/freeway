@@ -37,14 +37,14 @@ These modules are reached through exactly three layers:
 
 ## Service Registry and Discovery
 
-The same seam (`ServiceRegistry` / `ServiceDiscovery`), three backends; switching = changing the module + changing the keys,
+The same seam (`ServiceRegistry` / `ServiceDiscovery`), four backends; switching = changing the module + changing the keys,
 with zero changes to business code:
 
 | Backend | Placement | Infrastructure |
 |---|---|---|
-| In-process | `CloudModule` + `LocalDiscoveryModule` | None — single instance / fixed topology |
+| In-process | `CloudModule` + `RegistrationModule` + `LocalDiscoveryModule` | None — single instance / fixed topology |
 | Static | `StaticDiscoveryModule` | None — fixed endpoint list or VIP, no registration |
-| **Fleet** | `CloudModule` + `LocalDiscoveryModule` + `FleetModule` | Self-deployed `freeway-fleet-server` nodes (1–N freeway applications) |
+| **Fleet** | `CloudModule` + `RegistrationModule` + `FleetDiscoveryModule` | Self-deployed `freeway-fleet-server` nodes (1–N freeway applications) |
 | Consul | `CloudModule` + ext `ConsulModule` | Consul cluster |
 
 Static discovery needs no registry process: `StaticServiceDiscovery` (or
@@ -62,7 +62,7 @@ A node is just an ordinary freeway application; assembly is all there is:
 public static void main(String[] args) {
     FreewayApp.run(Launch.of(args),
         new HttpModule(),          // HTTP face: six routes — register/renew/deregister/discover/ready/index
-        new FleetServerModule());  // FleetStore + registry surface; no discovery module
+        new FleetServerModule());  // LeaseStore + registry surface; no discovery module
 }
 ```
 
@@ -77,8 +77,8 @@ freeway.cloud.registry.token=s3cret      # required off-machine: both reads and 
 FreewayApp.run(Launch.of(args),
     new HttpModule(),
     new CloudModule(),
-    new LocalDiscoveryModule(), // registration/heartbeat lifecycle
-    new FleetModule());      // binds the Fleet as this process's registry and discovery
+    new RegistrationModule(),   // register, renew, readiness, drain
+    new FleetDiscoveryModule()); // Fleet client + client-side load balancer
 ```
 
 ```properties

@@ -12,7 +12,7 @@ import com.jujin.freeway.cloud.resilience.RateLimiter;
 import com.jujin.freeway.cloud.resilience.RetryBudget;
 import com.jujin.freeway.cloud.resilience.Retryer;
 import com.jujin.freeway.commons.metrics.Metrics;
-import com.jujin.freeway.cloud.CloudHooks;
+import com.jujin.freeway.cloud.CloudHookIds;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.http.route.Route;
 import com.jujin.freeway.ioc.RuntimeHook;
@@ -164,9 +164,9 @@ public final class RpcModule implements ModuleEx {
         b.contribute(Route.class)
             .add("freeway.cloud.rpc", RpcEndpoint.exportsRoute(exportHook));
         b.contribute(RuntimeHook.class)
-            .add(CloudHooks.RPC, exportHook)
+            .add(CloudHookIds.RPC, exportHook)
             // Conditional: a pure RPC client has no server to precede.
-            .beforeIfPresent(CloudHooks.HTTP_SERVER);
+            .beforeIfPresent(CloudHookIds.HTTP_SERVER);
     }
 
 

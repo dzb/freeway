@@ -1,4 +1,4 @@
-package com.jujin.freeway.fleet;
+package com.jujin.freeway.cloud.registration;
 
 import com.jujin.freeway.cloud.discovery.ServiceDeclaration;
 import com.jujin.freeway.cloud.discovery.ServiceHealth;
@@ -21,7 +21,6 @@ import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
 
 /**
  * Registry lifecycle hook: runs AFTER {@code freeway.http.server} so
@@ -34,23 +33,23 @@ import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
  * and re-registers it when it does not: an entry lost to eviction (a long
  * pause, a registry restart, an adapter that dropped its lease) would otherwise
  * leave the process running and invisible until someone restarted it. Outcomes
- * are published to {@link FleetRenewal}, which {@code /health/ready} reads —
+ * are published to {@link RegistrationRenewal}, which {@code /health/ready} reads —
  * so readiness reflects the registration instead of assuming it.</p>
  */
-public final class FleetLifecycleHook implements RuntimeHook {
+final class RegistrationLifecycleHook implements RuntimeHook {
 
-    private static final Logger LOG = LoggerFactory.getLogger(FleetLifecycleHook.class);
+    private static final Logger LOG = LoggerFactory.getLogger(RegistrationLifecycleHook.class);
     private static final Duration RENEW_INTERVAL = Duration.ofSeconds(10);
     /** Raw drain token: {@code auto} (the default) defers to the registry. */
     private static final SymbolSpec<String> SHUTDOWN_DRAIN_RAW = SymbolSpec.of(
-        ConfigKeys.REGISTRY_SHUTDOWN_DRAIN, String.class,
-        ConfigKeys.REGISTRY_SHUTDOWN_DRAIN_AUTO, Function.identity());
+        RegistrationModule.ConfigKeys.REGISTRY_SHUTDOWN_DRAIN, String.class,
+        RegistrationModule.ConfigKeys.REGISTRY_SHUTDOWN_DRAIN_AUTO, Function.identity());
     /** Explicit drain window — resolved only when the token is not {@code auto}. */
     private static final SymbolSpec<Duration> SHUTDOWN_DRAIN = SymbolSpec.of(
-        ConfigKeys.REGISTRY_SHUTDOWN_DRAIN, Duration.class,
-        ConfigKeys.REGISTRY_SHUTDOWN_DRAIN_DEFAULT);
+        RegistrationModule.ConfigKeys.REGISTRY_SHUTDOWN_DRAIN, Duration.class,
+        RegistrationModule.ConfigKeys.REGISTRY_SHUTDOWN_DRAIN_DEFAULT);
 
-    private final FleetRenewal renewal;
+    private final RegistrationRenewal renewal;
     private final Duration renewInterval;
     /** Time to keep serving after deregistering (see the config key). */
     private volatile Duration shutdownDrain = Duration.ZERO;
@@ -68,12 +67,12 @@ public final class FleetLifecycleHook implements RuntimeHook {
      *  are none (an ordinary fast-starting service is ready as registered). */
     private volatile ReadinessGate readinessGate;
 
-    public FleetLifecycleHook(FleetRenewal renewal) {
+    public RegistrationLifecycleHook(RegistrationRenewal renewal) {
         this(renewal, RENEW_INTERVAL);
     }
 
     /** Test seam: a shorter cadence than the production 10 seconds. */
-    FleetLifecycleHook(FleetRenewal renewal, Duration renewInterval) {
+    RegistrationLifecycleHook(RegistrationRenewal renewal, Duration renewInterval) {
         this.renewal = Objects.requireNonNull(renewal, "renewal");
         this.renewInterval = Objects.requireNonNull(renewInterval, "renewInterval");
     }
@@ -140,17 +139,17 @@ public final class FleetLifecycleHook implements RuntimeHook {
      */
     static Duration resolveDrain(String raw, ServiceRegistry registry, SymbolSource symbols) {
         if (raw == null || raw.isBlank()
-                || ConfigKeys.REGISTRY_SHUTDOWN_DRAIN_AUTO.equalsIgnoreCase(raw.trim())) {
+                || RegistrationModule.ConfigKeys.REGISTRY_SHUTDOWN_DRAIN_AUTO.equalsIgnoreCase(raw.trim())) {
             Duration answered = registry.drainWindow();
             Duration window = answered == null
-                ? ConfigKeys.REGISTRY_SHUTDOWN_DRAIN_DEFAULT : answered;
+                ? RegistrationModule.ConfigKeys.REGISTRY_SHUTDOWN_DRAIN_DEFAULT : answered;
             LOG.info("registry.shutdown-drain=auto → {} (answered by {})",
                 window, registryName(registry));
             return window;
         }
         Duration explicit = symbols.resolve(SHUTDOWN_DRAIN);
         if (explicit.isNegative()) {
-            throw new IllegalArgumentException(ConfigKeys.REGISTRY_SHUTDOWN_DRAIN
+            throw new IllegalArgumentException(RegistrationModule.ConfigKeys.REGISTRY_SHUTDOWN_DRAIN
                 + " must not be negative: " + raw);
         }
         LOG.info("registry.shutdown-drain={} (explicit)", explicit);

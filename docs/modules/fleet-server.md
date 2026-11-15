@@ -7,7 +7,7 @@
 FreewayApp.run(new HttpModule(), new FleetServerModule());
 ```
 
-It is a control plane: it owns the registry surface and a `FleetStore`, and it
+It is a control plane: it owns the registry surface and a `LeaseStore` (currently `InMemoryLeaseStore`), and it
 does not register itself into the Fleet it serves. Applications depend on
 `freeway-fleet` (client), never on this module.
 
@@ -40,7 +40,7 @@ The module is a deployable starting point, not a production control plane yet:
 - no durable leases or HA coordination.
 
 Those are server responsibilities and belong here, not in `freeway-cloud`.
-The intended first production step is a lease store backed by PostgreSQL. Node
+The intended first production step is a PostgreSQL implementation of `LeaseStore`. Node
 discovery for the Fleet itself must be independent of the Fleet (static seed
 list, an external load balancer, or the shared database) — never self-registration.
 

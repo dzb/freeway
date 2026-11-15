@@ -1,37 +1,30 @@
 package com.jujin.freeway.fleet;
 
-import com.jujin.freeway.cloud.CloudHooks;
-import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
+import com.jujin.freeway.cloud.CloudModule;
 import com.jujin.freeway.cloud.annotation.Local;
-import com.jujin.freeway.cloud.health.CloudHealthContributor;
-import com.jujin.freeway.cloud.internal.ActiveBindingProbe;
-import com.jujin.freeway.cloud.discovery.ServiceDeclaration;
 import com.jujin.freeway.cloud.discovery.LoadBalancer;
 import com.jujin.freeway.cloud.discovery.LoadBalancerDefault;
 import com.jujin.freeway.cloud.discovery.ServiceDiscovery;
 import com.jujin.freeway.cloud.discovery.ServiceRegistry;
-import com.jujin.freeway.cloud.internal.HttpServiceDeclaration;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.ModuleEx;
-import com.jujin.freeway.ioc.RuntimeHook;
+import com.jujin.freeway.ioc.symbol.KnownKeys;
 import com.jujin.freeway.ioc.annotation.Builtin;
 import com.jujin.freeway.ioc.annotation.Marker;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 import com.jujin.freeway.ioc.symbol.SymbolSpec;
 
 /**
- * IoC wiring for discovery: {@link ServiceRegistry} / {@link ServiceDiscovery}
- * (in-process registry store, {@code @Local} marker) and
- * {@link LoadBalancer} (round-robin default).
+ * The in-process discovery backend: an in-memory lease store, local
+ * {@code ServiceRegistry}/{@code ServiceDiscovery} defaults and the default
+ * client-side load balancer.
  *
- * <p>Lifecycle: {@link CloudHooks#DISCOVERY} (before the HTTP server when one
- * exists — registry client connection, no-op for the local backend) and
- * {@link CloudHooks#REGISTRY} (after the HTTP server when one exists —
- * collects {@link ServiceDeclaration} contributions and registers; stops
- * first on shutdown). Both orderings are conditional: without the HTTP
- * module the constraints are vacuous and the HTTP declaration resolves to
- * null and is skipped.
+ * <p>Registration is not part of this module. Install
+ * {@code RegistrationModule} from {@code freeway-cloud} when the application
+ * should register its own endpoint, renew it and publish readiness. Keeping the
+ * lifecycle out of the backend is what lets the same lifecycle drive the local,
+ * Fleet and Consul backends.</p>
  */
 @Marker(Builtin.class)
 public final class LocalDiscoveryModule implements ModuleEx {
@@ -41,46 +34,26 @@ public final class LocalDiscoveryModule implements ModuleEx {
 
     @Override
     public void bind(Binder b) {
-        b.bind(FleetStore.class).to(FleetStore.class);
+        b.contribute(KnownKeys.class)
+            .add(KnownKeys.of(ConfigKeys.class, CloudModule.ConfigKeys.PREFIX,
+                CloudModule.ConfigKeys.APP_PREFIX));
+        b.bind(LeaseStore.class).to(InMemoryLeaseStore.class);
         b.bind(ServiceRegistry.class)
-            .to((Container container) -> new LocalServiceRegistry(container.get(FleetStore.class)))
-            .marker(Local.class)
-            ;
+            .to((Container container) -> new LocalRegistrar(container.get(LeaseStore.class)))
+            .marker(Local.class);
         b.bind(ServiceDiscovery.class)
-            .to((Container container) -> new LocalServiceDiscovery(container.get(FleetStore.class)))
-            .marker(Local.class)
-            ;
+            .to((Container container) -> new LocalDiscovery(container.get(LeaseStore.class)))
+            .marker(Local.class);
         b.bind(LoadBalancer.class)
             .to((Container container) -> new LoadBalancerDefault(
                 container.get(SymbolSource.class).resolve(LOCAL_ZONE)))
-            .marker(Local.class)
-            ;
-        // Lets container-created health contributions ask whether the @Local
-        // defaults are still selected without injecting Container itself.
-        b.bind(ActiveBindingProbe.class)
-            .to((Container container) -> new ActiveBindingProbe(container))
-            ;
+            .marker(Local.class);
+    }
 
-        // Shared heartbeat state: the hook publishes it, the readiness
-        // contributor reads it. The module assembles both and hands them the
-        // same instance, so neither collaborator needs the other.
-        FleetRenewal renewal = new FleetRenewal();
-        b.bind(FleetRenewal.class).to(container -> renewal);
+    /** Keys read by the local discovery backend. */
+    public static final class ConfigKeys {
+        private ConfigKeys() {}
 
-        b.contribute(ServiceDeclaration.class)
-            .add("freeway.cloud.declaration.http", new HttpServiceDeclaration());
-        // Readiness contributor for /health/ready — belongs here, not in the
-        // health module: it probes the registry store, so standalone health
-        // installs (without discovery) stay dependency-free. It stays active
-        // whichever registry is bound (an extension adapter's own contributor
-        // adds to it rather than replacing it): registration, renewal and
-        // draining are this module's state, not the backend's.
-        b.contribute(CloudHealthContributor.class).addDeferred(FleetHealthContributor.class);
-        b.contribute(RuntimeHook.class)
-            .add(CloudHooks.DISCOVERY, new FleetConnectionHook())
-            .beforeIfPresent(CloudHooks.HTTP_SERVER);
-        b.contribute(RuntimeHook.class)
-            .add(CloudHooks.REGISTRY, new FleetLifecycleHook(renewal))
-            .afterIfPresent(CloudHooks.HTTP_SERVER);
+        public static final String DISCOVERY_LOCAL_ZONE = "freeway.cloud.discovery.local-zone";
     }
 }
