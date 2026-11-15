@@ -57,7 +57,7 @@ class HttpExchangeSupportTest {
     void requestHeaderNamesAreCanonicalLowercaseWhateverTheEngine() {
         // HTTP/2 keeps the first letter of an inbound field name upper-case
         // while HTTP/1.1 lowercases it, so a map consumer such as cloud's
-        // PropagationFilter saw `Traceparent` on h2 and `traceparent` on h1 —
+        // ContextFilter saw `Traceparent` on h2 and `traceparent` on h1 —
         // and the W3C trace was silently dropped on h2. The transport
         // canonicalizes names once, at this boundary.
         var ctx = exchange("GET", "/");

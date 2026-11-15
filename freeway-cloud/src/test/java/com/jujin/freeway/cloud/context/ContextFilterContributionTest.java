@@ -7,7 +7,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.Test;
 
-import com.jujin.freeway.cloud.context.internal.PropagationFilter;
+import com.jujin.freeway.cloud.context.internal.ContextFilter;
 import com.jujin.freeway.http.HttpExchange;
 import com.jujin.freeway.http.filter.HttpFilter;
 import com.jujin.freeway.http.route.RouteHandler;
@@ -18,11 +18,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * {@code PropagationFilter} is itself a deferred contribution. Resolving its
+ * {@code ContextFilter} is itself a deferred contribution. Resolving its
  * codec list in the constructor used to freeze the modules that happened
  * to publish before it; the lazy supplier reads the sealed store instead.
  */
-class PropagationFilterContributionTest {
+class ContextFilterContributionTest {
 
     public static final class LateContextCodec implements ContextCodec {
         static final AtomicInteger DECODED = new AtomicInteger();
@@ -57,9 +57,9 @@ class PropagationFilterContributionTest {
             binder -> binder.contribute(ContextCodec.class).addDeferred(LateContextCodec.class)
         );
         try {
-            PropagationFilter filter = (PropagationFilter)
+            ContextFilter filter = (ContextFilter)
                 container.extension(HttpFilter.class).all().stream()
-                    .filter(PropagationFilter.class::isInstance)
+                    .filter(ContextFilter.class::isInstance)
                     .findFirst()
                     .orElseThrow();
 

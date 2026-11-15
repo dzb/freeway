@@ -19,7 +19,7 @@ import java.util.function.Supplier;
  * encoding happens in the {@code RpcHttpClient} layer — the same context, the
  * same codecs, one pipeline.
  */
-public final class PropagationFilter implements HttpFilter {
+public final class ContextFilter implements HttpFilter {
 
     private final Supplier<List<ContextCodec>> codecs;
 
@@ -30,7 +30,7 @@ public final class PropagationFilter implements HttpFilter {
      * prefix; {@code doFilter} reads it after composition, when the store is
      * complete.
      */
-    public PropagationFilter(Supplier<List<ContextCodec>> codecs) {
+    public ContextFilter(Supplier<List<ContextCodec>> codecs) {
         this.codecs = Objects.requireNonNull(codecs, "codecs");
     }
 

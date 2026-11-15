@@ -578,7 +578,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (construct plus field injection) → `@PostConstruct` → `ext.add`; a service
   realized midway through a field-injection chain would freeze the then-partial
   extension view into a singleton, silently losing cross-module contributions (the
-  `List<ContextCodec>` constructor of `PropagationFilter` was exactly that shape).
+  `List<ContextCodec>` constructor of `ContextFilter` was exactly that shape).
   Now the config layer is constructed-only, published and initialized first; the
   remaining deferred entries are constructed-only and published, and after `seal`
   field injection and `@PostConstruct` run uniformly; a field-injection chain sees
@@ -593,7 +593,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     way for a construction-time consumer to read the complete view after startup;
     an eager `List`/`Map` injection in a constructor fails startup while pending
     entries remain.
-  - `PropagationFilter`'s constructor takes `Supplier<List<ContextCodec>>`, so a
+  - `ContextFilter`'s constructor takes `Supplier<List<ContextCodec>>`, so a
     `ContextCodec` from a late module cannot be silently missed.
   - `@PostConstruct` no longer runs while the store is publishing: the config
     layer initializes after its own entries are constructed/published, and the

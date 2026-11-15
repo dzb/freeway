@@ -21,7 +21,7 @@ import java.util.Set;
  * <p>Contributed by {@code ObserveModule}, which owns the {@link Tracer};
  * a context-only install therefore gets propagation without spans, and an
  * observe-only install gets root spans without propagation. Order puts it
- * immediately inside {@link PropagationFilter} ({@code -110} vs {@code -105}):
+ * immediately inside {@link ContextFilter} ({@code -110} vs {@code -105}):
  * the span must be a child of the context extracted from the request, and it
  * covers every filter and handler downstream of it.</p>
  *

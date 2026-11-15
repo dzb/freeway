@@ -125,7 +125,7 @@ com.jujin.freeway.cloud
 │                 StorageException, ObjectStoredEvent/ObjectDeletedEvent,
 │                 StorageModule
 ├── context/internal/   AuthCodec, BaggageCodec, TraceCodec,
-│                       PropagationFilter
+│                       ContextFilter
 ├── health/internal/    ReadyHandler
 ├── observe/internal/   MetricsHandler, TracingFilter
 └── internal/           BackendTypeGuard
@@ -227,7 +227,7 @@ public record ServiceHealth(boolean live, boolean ready, Instant lastSeen) {
   (owned by the application). It carries no business data, configuration snapshot or object cache. In-process asynchronous context carrying uses
   `ContextExecutor`; **MDC is display-only** (ThreadLocal-based, not cross-thread).
 - Context crossing always goes through `ContextCodec`: inbound `decode(headers)` returns a partial context,
-  merged by `PropagationFilter` with "non-empty wins"; outbound `encode(ctx, headers)`.
+  merged by `ContextFilter` with "non-empty wins"; outbound `encode(ctx, headers)`.
   Built in: `TraceCodec` (W3C `traceparent`/`tracestate`), `AuthCodec`
   (`x-principal` / `x-principal-roles`) and `BaggageCodec` (W3C
   `baggage`). A new concern = contribute a `ContextCodec`; core does not change.
@@ -454,7 +454,7 @@ inert (installing the module alone produces no side effects). At shutdown the di
   bound into `InvocationContext` (`Tracer.Span.context()`) — a span attached only to the ambient
   layer is shadowed by the scope layer, a point that has really failed before. Probe/metrics paths
   (`/healthz`, `/health/live`, `/health/ready`, `/metrics`) create no span.
-- Inbound `PropagationFilter` (order `-110`) performs decode → merge → `runWith`,
+- Inbound `ContextFilter` (order `-110`) performs decode → merge → `runWith`,
   and writes the inbound traceId into MDC.
 - `Metrics` is a commons SPI; `ObserveModule` binds the module's own
   `MetricsDefault` registry **in three roles**: the concrete class (singleton), the `Metrics` SPI

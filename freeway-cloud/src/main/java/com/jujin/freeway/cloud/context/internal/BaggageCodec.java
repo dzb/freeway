@@ -18,7 +18,7 @@ import org.slf4j.LoggerFactory;
  * W3C {@code baggage} encoding (RFC 7071 semantics): encodes the current
  * {@link Baggage} as a {@code baggage} header ({@code k=v,k2=v2}), decodes
  * it back on the receiving side. Inbound decoding returns {@code null} when
- * the header is absent or empty, so the merge in {@link PropagationFilter}
+ * the header is absent or empty, so the merge in {@link ContextFilter}
  * keeps any baggage established by earlier codecs.
  *
  * <p>Keys and values are percent-encoded (UTF-8) — unreserved characters

@@ -20,7 +20,7 @@ import java.util.ArrayDeque;
  * parent → child instead of producing sibling roots, and outbound propagation
  * ({@code RpcHttpClient}) sees the active trace on such threads. The ambient
  * tier is same-thread only; cross-thread propagation still requires
- * {@code PropagationFilter}/{@code runWith}.
+ * {@code ContextFilter}/{@code runWith}.
  *
  * <p><b>Restore semantics.</b> A span must not restore the snapshot it saved
  * at start: under out-of-order closes that resurrects a stale context on

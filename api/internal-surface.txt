@@ -14,7 +14,7 @@ freeway-boot/src/main/java/com/jujin/freeway/boot/internal/ConfigCascade.java#Co
 freeway-boot/src/main/java/com/jujin/freeway/boot/internal/ConfigSources.java#ConfigSources
 freeway-cloud/src/main/java/com/jujin/freeway/cloud/context/internal/AuthCodec.java#AuthCodec
 freeway-cloud/src/main/java/com/jujin/freeway/cloud/context/internal/BaggageCodec.java#BaggageCodec
-freeway-cloud/src/main/java/com/jujin/freeway/cloud/context/internal/PropagationFilter.java#PropagationFilter
+freeway-cloud/src/main/java/com/jujin/freeway/cloud/context/internal/ContextFilter.java#ContextFilter
 freeway-cloud/src/main/java/com/jujin/freeway/cloud/context/internal/TraceCodec.java#TraceCodec
 freeway-cloud/src/main/java/com/jujin/freeway/cloud/health/internal/ReadyHandler.java#ReadyHandler
 freeway-cloud/src/main/java/com/jujin/freeway/cloud/internal/BackendTypeGuard.java#BackendTypeGuard
