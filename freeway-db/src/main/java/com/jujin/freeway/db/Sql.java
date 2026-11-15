@@ -2,6 +2,7 @@ package com.jujin.freeway.db;
 
 import com.jujin.freeway.db.dialect.Dialect;
 import com.jujin.freeway.db.dialect.PostgresDialect;
+import com.jujin.freeway.db.dialect.Upsert;
 import com.jujin.freeway.db.util.SqlTextParser;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -854,9 +855,16 @@ public final class Sql {
                     "INSERT requires at least one column — call value(\"column\", value) before building"
                 );
             }
-            var cols = String.join(", ", dmlTargets);
             var placeholders = renderInsertValues(dmlValues);
-            return withClause + "INSERT INTO " + dmlTable + " (" + cols + ") VALUES ("
+            if (clauses.conflictColumns() != null && !clauses.conflictColumns().isEmpty()) {
+                String upsert = dialect.upsertStatement(new Upsert(
+                    dmlTable, dmlTargets, placeholders,
+                    clauses.conflictColumns(), clauses.conflictUpdates(),
+                    clauses.conflictDoNothing()));
+                return withClause + upsert + returningClause();
+            }
+            return withClause + "INSERT INTO " + dmlTable + " ("
+                + String.join(", ", dmlTargets) + ") VALUES ("
                 + placeholders + ")" + renderClauses(dialect);
         }
         if (isUpdate() && dmlTargets.isEmpty()) {
@@ -1016,6 +1024,10 @@ public final class Sql {
             dmlTable, dmlTargets, dmlValues, headArgs);
     }
 
+    private String returningClause() {
+        return clauses.returning() == null ? "" : " RETURNING " + clauses.returning();
+    }
+
     /**
      * The clauses after the statement body, in SQL order — not in the order the
      * caller happened to declare them. Fields that were never set render
@@ -1039,16 +1051,6 @@ public final class Sql {
             out.append(' ').append(dialect.limitClause(clauses.limit()));
         } else if (clauses.offset() != null) {
             out.append(' ').append(dialect.offsetOnlyClause(clauses.offset()));
-        }
-        if (clauses.conflictColumns() != null) {
-            if (clauses.conflictDoNothing()) {
-                // Same target quoting as DO UPDATE's upsertClause: a reserved
-                // word or a mixed-case column is not a raw name on the wire.
-                out.append(dialect.conflictDoNothingClause(clauses.conflictColumns()));
-            } else {
-                out.append(dialect.upsertClause(
-                    clauses.conflictColumns(), clauses.conflictUpdates()));
-            }
         }
         if (clauses.returning() != null) {
             out.append(" RETURNING ").append(clauses.returning());

@@ -151,22 +151,21 @@ public final class H2Dialect implements Dialect {
     }
 
     @Override
-    public boolean supportsMergeUpsert() {
-        return true;
+    public String upsertStatement(Upsert upsert) {
+        if (upsert.doNothing()) {
+            throw new SqlException(
+                "H2 does not support ON CONFLICT DO NOTHING; use doUpdateSet(...)");
+        }
+        String cols = upsert.columns().stream().map(this::identifier)
+            .collect(Collectors.joining(", "));
+        String keys = upsert.conflictColumns().stream().map(this::quoteName)
+            .collect(Collectors.joining(", "));
+        return "MERGE INTO " + identifier(upsert.table()) + " (" + cols + ") KEY ("
+            + keys + ") VALUES (" + upsert.placeholders() + ")";
     }
 
-    @Override
-    public String mergeUpsertStatement(String table, List<String> columns,
-            List<String> keyColumns, String placeholders) {
-        if (columns.isEmpty() || keyColumns.isEmpty()) {
-            throw new SqlException("H2 MERGE requires columns and key columns");
-        }
-        String cols = columns.stream().map(this::quoteName)
-            .collect(Collectors.joining(", "));
-        String keys = keyColumns.stream().map(this::quoteName)
-            .collect(Collectors.joining(", "));
-        return "MERGE INTO " + quoteName(table) + " (" + cols + ") KEY (" + keys
-            + ") VALUES (" + placeholders + ")";
+    private String identifier(String value) {
+        return value.startsWith("\"") ? value : quoteName(value);
     }
 
     @Override

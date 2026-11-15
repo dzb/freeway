@@ -179,8 +179,8 @@ public final class Orm {
         }
 
         // insertColumns() excludes @Generated properties, so the id column(s)
-        // would be missing from the INSERT and the ON CONFLICT could never fire
-        // (silently creating duplicate rows). Include the id properties as well.
+        // would be missing from the INSERT and the conflict action could never
+        // fire (silently creating duplicate rows). Include the id properties too.
         ColumnInfo baseColumns = insertColumns(plan);
         List<String> names = new ArrayList<>(baseColumns.names);
         List<String> rawNames = new ArrayList<>(baseColumns.rawNames);
@@ -197,20 +197,9 @@ public final class Orm {
         requireInsertable(columns, plan.type());
         Object[] insertValues = extractValues(plan, entity, columns.properties);
 
-        if (dialect.supportsMergeUpsert()) {
-            String merge = dialect.mergeUpsertStatement(
-                SqlTypeMapping.tableName(plan.type()),
-                columns.rawNames,
-                idCols,
-                placeholders(columns.names.size()));
-            ExecuteResult result = db.execute(merge, insertValues);
-            writeBackGeneratedKey(result, columns, entity, plan);
-            return result;
-        }
-
-        // One upsert builder for the whole layer: the conflict clause is declared as
-        // the id columns plus the columns to refresh, and the dialect renders the
-        // grammar (ON CONFLICT / ON DUPLICATE KEY) when the statement is executed.
+        // One upsert builder for the whole layer: the conflict action is declared
+        // here, and Dialect.upsertStatement renders the complete MERGE or
+        // INSERT-suffix grammar when the statement is executed.
         Sql upsert = Sql.insert(table);
         for (int i = 0; i < columns.names.size(); i++) {
             upsert = upsert.value(columns.names.get(i), insertValues[i]);
@@ -405,9 +394,7 @@ public final class Orm {
         return values;
     }
 
-    private static String placeholders(int count) {
-        return String.join(", ", Collections.nCopies(count, "?"));
-    }
+
 
     private record ColumnInfo(List<String> names, List<String> rawNames, List<BeanProperty> properties, BeanProperty generated) {}
 }

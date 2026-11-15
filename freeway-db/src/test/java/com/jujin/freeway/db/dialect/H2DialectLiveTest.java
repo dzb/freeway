@@ -43,24 +43,28 @@ class H2DialectLiveTest {
     }
 
     @Test
-    void postgresModeRejectsPreparedConflictSuffixes() {
+    void postgresModeUsesMergeForPreparedConflict() {
         H2Dialect dialect = new H2Dialect(H2Mode.POSTGRESQL);
         try (Database db = h2(H2Mode.POSTGRESQL)) {
             db.execute("CREATE TABLE h2_live (id BIGINT PRIMARY KEY, name VARCHAR(32))");
-            // H2 accepts ON CONFLICT only with literal VALUES; Freeway's
-            // parameterized statements are rejected by H2, so the dialect
-            // must not advertise this surface.
+            // H2 has no prepared ON CONFLICT; doUpdateSet is rendered as MERGE.
+            // DO NOTHING remains unsupported and must say so.
             assertThrows(SqlException.class, () -> Sql.insert("h2_live")
                 .value("id", 1L).value("name", "a")
                 .onConflict("id").doNothing().toSql(dialect));
-            assertThrows(SqlException.class, () -> Sql.insert("h2_live")
+            db.execute(Sql.insert("h2_live")
                 .value("id", 2L).value("name", "b")
-                .onConflict("id").doUpdateSet("name").toSql(dialect));
+                .onConflict("id").doUpdateSet("name"));
+            db.execute(Sql.insert("h2_live")
+                .value("id", 2L).value("name", "c")
+                .onConflict("id").doUpdateSet("name"));
+            assertEquals("c", db.query("SELECT name FROM h2_live WHERE id = 2")
+                .one(String.class).orElse(null));
         }
     }
 
     @Test
-    void mysqlModeUsesOnDuplicateKey() {
+    void mysqlModeUsesTheSharedMergeRenderer() {
         H2Dialect dialect = new H2Dialect(H2Mode.MYSQL);
         try (Database db = h2(H2Mode.MYSQL)) {
             db.execute("CREATE TABLE h2_live (id BIGINT PRIMARY KEY, name VARCHAR(32))");
@@ -76,11 +80,17 @@ class H2DialectLiveTest {
     }
 
     @Test
-    void nativeModeRejectsConflictSuffix() {
+    void nativeModeUsesMergeForPreparedConflict() {
         try (Database db = h2(H2Mode.NATIVE)) {
-            assertThrows(SqlException.class, () -> Sql.insert("h2_live")
+            db.execute("CREATE TABLE h2_live (id BIGINT PRIMARY KEY, name VARCHAR(32))");
+            db.execute(Sql.insert("h2_live")
                 .value("id", 1L).value("name", "a")
-                .onConflict("id").doUpdateSet("name").toSql(db.dialect()));
+                .onConflict("id").doUpdateSet("name"));
+            db.execute(Sql.insert("h2_live")
+                .value("id", 1L).value("name", "b")
+                .onConflict("id").doUpdateSet("name"));
+            assertEquals("b", db.query("SELECT name FROM h2_live WHERE id = 1")
+                .one(String.class).orElse(null));
         }
     }
 

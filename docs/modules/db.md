@@ -300,7 +300,8 @@ orm.save(u);
 // so save() still treats it as "unset" → INSERT goes through the identity sequence and writes back the generated key (it will not upsert with 0)
 
 // id=existing value → upsert; the clause is determined by the dialect:
-//   PostgreSQL / SQLite / H2 → INSERT ... ON CONFLICT (id) DO UPDATE
+//   PostgreSQL / SQLite → INSERT ... ON CONFLICT (id) DO UPDATE
+//   H2                   → MERGE INTO ... KEY (id) ...
 //   MySQL / MariaDB         → INSERT ... ON DUPLICATE KEY UPDATE
 ```
 
@@ -529,7 +530,7 @@ The `Dialect` interface defines the complete contract of an SQL dialect. This do
 
 ## Overview
 
-The `Dialect` interface is located in `com.jujin.freeway.db.dialect` and **only declares syntax features**: identifier quoting (`quoteName`/`identifierQuoteChars`), identity clauses (`generatedClause`/`generatedTypeOverride`), type mapping defaults, single-clause mappings (`upsertClause`/`forUpdateClause`/`offsetOnlyClause`/`truncateTable`), capability flags (`supportsTransactionalDdl`/`supportsIndexIfNotExists`/`supportsReturning`/`supportsOnConflict`, plus `generatedPrimaryKeyInline`/`dropTableCascade`/`alterAddColumnNotNull`), lexical capabilities (`hashLineComments`/`dollarQuoting`/`escapeStringPrefix`/`backslashEscapesStrings`/`bracketQuoting`) and metadata queries.
+The `Dialect` interface is located in `com.jujin.freeway.db.dialect` and **only declares syntax features**: identifier quoting (`quoteName`/`identifierQuoteChars`), identity clauses (`generatedClause`/`generatedTypeOverride`), type mapping defaults, single-clause mappings (`upsertClause`/`forUpdateClause`/`offsetOnlyClause`/`truncateTable`) plus the complete `upsertStatement(Upsert)` seam, capability flags (`supportsTransactionalDdl`/`supportsIndexIfNotExists`/`supportsReturning`/`supportsOnConflict`, plus `generatedPrimaryKeyInline`/`dropTableCascade`/`alterAddColumnNotNull`), lexical capabilities (`hashLineComments`/`dollarQuoting`/`escapeStringPrefix`/`backslashEscapesStrings`/`bracketQuoting`) and metadata queries.
 
 **DDL assembly (CREATE TABLE / CREATE INDEX / ALTER / DROP) is not part of Dialect**—that is the responsibility of the `com.jujin.freeway.db.schema` package (`Schema`/`SchemaGenerator`), which consume Dialect primitives to generate dialect-correct DDL. The Dialect package is self-contained: `dialect` depends only on `com.jujin.freeway.db.Database` and does not depend back on `schema`, so adding a dialect requires changing only the `dialect` package.
 
@@ -736,6 +737,9 @@ The default implementation uses `ON CONFLICT (target) DO UPDATE SET col = EXCLUD
 **Notes**:
 - The column names passed in are **raw names** (unquoted); the method must call `quoteName()` internally.
 - The return value **must start with a space**.
+- When a dialect cannot express upsert as an INSERT suffix, override
+  `upsertStatement(Upsert)` instead and render the complete statement (H2 uses
+  `MERGE`). `Orm.save()` and `Sql.onConflict(...)` both call that seam.
 
 ### 4.2 `truncateTable(String tableName)`
 

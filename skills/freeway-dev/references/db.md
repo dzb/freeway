@@ -263,10 +263,10 @@ Standalone: `Database.create(Database.Wiring.defaults(config).withDialect(new Co
 | `supportsTransactionalDdl()` | yes | no | no | yes |
 | `supportsReturning()` | yes | no | no | yes |
 | `supportsOnConflict()` | yes | no | no | yes |
-| `supportsMergeUpsert()` | no | no | yes | no |
+| `upsertStatement(...)` override | no | no | yes (MERGE) | no |
 | `supportsIndexIfNotExists()` | yes | no | yes | yes |
 
-H2 uses `MERGE INTO ... KEY (...)` for `Orm.save()`; MySQL and MariaDB render `ON DUPLICATE KEY UPDATE`; PostgreSQL and SQLite use `ON CONFLICT`.
+`Orm.save()` and `Sql.onConflict(...)` share one `Dialect.upsertStatement(...)` entry point. H2 renders `MERGE INTO ... KEY (...)`; MySQL and MariaDB render `ON DUPLICATE KEY UPDATE`; PostgreSQL and SQLite use `ON CONFLICT`.
 
 ## Schema and Migrations
 

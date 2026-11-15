@@ -393,21 +393,20 @@ public interface Dialect {
     }
 
     /**
-     * Whether this dialect can render upsert as a complete MERGE-style
-     * statement instead of an INSERT suffix. H2 uses this for every mode.
+     * Renders the complete INSERT/upsert statement. The default is the
+     * INSERT-suffix grammar shared by PostgreSQL, MySQL and SQLite; H2
+     * overrides it with MERGE because H2's usable upsert is not a suffix.
      */
-    default boolean supportsMergeUpsert() {
-        return false;
-    }
-
-    /**
-     * Renders a complete upsert statement. Only called when
-     * {@link #supportsMergeUpsert()} is true.
-     */
-    default String mergeUpsertStatement(String table, List<String> columns,
-            List<String> keyColumns, String placeholders) {
-        throw new UnsupportedOperationException(
-            "Dialect '" + dialectId() + "' does not support MERGE upsert");
+    default String upsertStatement(Upsert upsert) {
+        String conflict;
+        if (upsert.doNothing()) {
+            conflict = conflictDoNothingClause(upsert.conflictColumns());
+        } else {
+            conflict = upsertClause(upsert.conflictColumns(), upsert.updateColumns());
+        }
+        return "INSERT INTO " + upsert.table() + " ("
+            + String.join(", ", upsert.columns()) + ") VALUES ("
+            + upsert.placeholders() + ")" + conflict;
     }
 
     /** Returns the FOR UPDATE clause for row-level locking (without leading space). */

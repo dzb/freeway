@@ -119,10 +119,10 @@ class DialectSyntaxTest {
         assertFalse(h2.supportsTransactionalDdl());
         assertFalse(h2.generatedPrimaryKeyInline());
         assertEquals("FOR UPDATE", h2.forUpdateClause());
-        assertTrue(h2.supportsMergeUpsert());
         assertEquals(
             "MERGE INTO \"order\" (id, \"key\") KEY (id) VALUES (?, ?)",
-            h2.mergeUpsertStatement("order", List.of("id", "key"), List.of("id"), "?, ?"));
+            h2.upsertStatement(new Upsert(
+                "order", List.of("id", "key"), "?, ?", List.of("id"), List.of("key"), false)));
         assertThrows(SqlException.class,
             () -> h2.upsertClause(List.of("id"), List.of("key")));
         assertTrue(h2.needsQuoting("dual"));
