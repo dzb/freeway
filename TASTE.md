@@ -521,6 +521,32 @@ The reason is not "later", but:
 class rename; `HttpClients` is a shared helper across RPC / Fleet / event,
 not an RPC type. A name's ownership follows facts, not string prefixes.
 
+### 9.8 Plain words, in the local context
+
+Naming applies at every level — module, class, method, variable. Use the
+shortest word that states the local act without ambiguity, and prefer the word
+a caller would use at that call site over a borrowed term from another domain.
+
+- `propagation` became a warning case: it sounded precise because tracing,
+  transactions and networking all use it, but it described an inbound filter, a
+  codec, an executor wrapper and a message switch at the same time. It is now
+  reserved for a real protocol term (W3C trace context propagation) or an
+  established external semantic (Spring transaction propagation).
+- `ContextCodec` / `TraceCodec` / `AuthCodec` / `BaggageCodec` name the
+  encode/decode act; `ContextFilter` names the inbound decode → merge → bind
+  act; `ScopeSession.wrap` / `ContextExecutor.wrap` name the imperative wrapper;
+  `RpcExport.forwardMessage` names the message-forwarding switch.
+- A term is not better because it is standard somewhere else. If a reader needs
+  a glossary to know what this unit does, the name is borrowing authority it
+  has not earned.
+- Short does not mean cryptic: abbreviate only unambiguous domain words, never
+  by removing the part that states direction or ownership.
+- Runtime identity follows the same rule. A code term and a contribution id,
+  key or registry name in a different vocabulary are two answers for one fact;
+  rename them together, and let only historical release notes keep the old
+  spelling.
+- A word that can describe every layer describes none of them.
+
 ## 10. The naming ledger of this round
 
 | Decision | Taste |
@@ -539,6 +565,10 @@ not an RPC type. A name's ownership follows facts, not string prefixes.
 | `MeshEventBus` / `MeshEnvelope` / `MeshSubscription` | the mesh plane has its own vocabulary and does not mix names with the local EventBus |
 | `RpcRequest/RpcResponse/RpcException/RpcHttpClient` | within the RPC subdomain the package carries cloud and the class carries the role |
 | `RpcModule/RegistrationModule/StaticModule/...` | module types no longer repeat the package name |
+| `ContextCodec` / `TraceCodec` / `AuthCodec` / `BaggageCodec` | encode/decode names the act; the old propagation vocabulary is not kept |
+| `ContextFilter` | inbound decode → merge → bind, not a broad "propagation filter" role |
+| `ScopeSession.wrap` / `ContextExecutor.wrap` | imperative wrapper verb, not the gerund `wrapping` |
+| `RpcExport.forwardMessage` | forwarding the exception message, not propagating process context |
 | `ServiceHealth/ServiceEndpoint` | discovery public types use the `service` qualifier |
 | `freeway.fleet.*` | the Fleet client/server and its protocol state the same domain in every artifact |
 | `CloudHttpClient` rename includes `CloudHttpClientDefault` | an interface and its default implementation are one type family; half a naming set is not kept |
@@ -587,6 +617,12 @@ Before submitting a "refactor/cleanup", ask in order:
 11. Did this rename complete the whole family?
     Renaming an `output`, a `Stats` or a Default must bring the interface,
     implementation, tests, docs and every companion type with it.
+
+12. Is the name the plain local act, not borrowed jargon?
+    Prefer the shortest unambiguous word for this unit's direction and
+    ownership. If a protocol/standard term is reused outside its exact
+    semantic, replace it; if a runtime id or test still speaks the old
+    vocabulary, the rename is incomplete.
 
 ---
 
