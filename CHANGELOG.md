@@ -144,7 +144,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hatch and wins. Log output displays SLF4J level names (`WARN`/`ERROR`/`DEBUG`/`TRACE`) even for
   JUL-originated records; configuration keeps accepting JUL names (`WARNING`, `SEVERE`, `FINE`).
 
-- **`ScopeSession.propagate(Executor, ScopedValue...)`** (freeway-commons): wraps an executor so each
+- **`ScopeSession.wrap(Executor, ScopedValue...)`** (freeway-commons): wraps an executor so each
   task runs with the submitting thread's `Defer`/`ScopedCache` scope, plus caller-supplied context
   keys. This is the mechanism `ScopeFilter`'s async guidance referred to but could not name, because
   the scope keys were package-private. Deferred actions registered on the worker join the submitting

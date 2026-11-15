@@ -13,7 +13,7 @@ import java.util.Objects;
  * <p>It is not a transaction boundary — commit/rollback and deferred events
  * remain {@code Defer}'s job. It is also not async propagation: work handed to
  * another thread must run on an executor wrapped with
- * {@code ScopeSession.propagate(...)}, otherwise the worker sees no request
+ * {@code ScopeSession.wrap(...)}, otherwise the worker sees no request
  * scope (and must not outlive it).</p>
  *
  * <p>Contribute it directly for an application-owned ordering, or enable

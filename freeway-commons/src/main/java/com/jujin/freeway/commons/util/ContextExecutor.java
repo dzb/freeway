@@ -16,7 +16,7 @@ import java.util.concurrent.Executor;
  * who DO want a context value to reach the worker name the keys once:
  *
  * <pre>{@code
- * Executor ctxExecutor = ContextExecutor.wrapping(pool, TX_ID);
+ * Executor ctxExecutor = ContextExecutor.wrap(pool, TX_ID);
  * // inside ScopedValue.where(TX_ID, "tx-1", ...):
  * ctxExecutor.execute(() -> workerSees("tx-1"));
  * }</pre>
@@ -37,7 +37,7 @@ public final class ContextExecutor {
      * API) is package-private, so propagation is key-explicit by design.
      */
     @SafeVarargs
-    public static Executor wrapping(Executor delegate, ScopedValue<?>... keys) {
+    public static Executor wrap(Executor delegate, ScopedValue<?>... keys) {
         Objects.requireNonNull(delegate, "delegate");
         Objects.requireNonNull(keys, "keys");
         return task -> {

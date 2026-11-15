@@ -95,15 +95,15 @@ public final class ScopeSession {
      * task submitted outside any scope inherits nothing, which is the same
      * "no propagation by default" rule the framework follows elsewhere.
      */
-    public static Executor propagate(Executor delegate, ScopedValue<?>... extra) {
+    public static Executor wrap(Executor delegate, ScopedValue<?>... extra) {
         Objects.requireNonNull(delegate, "delegate");
         if (extra == null || extra.length == 0) {
-            return ContextExecutor.wrapping(delegate, CURRENT);
+            return ContextExecutor.wrap(delegate, CURRENT);
         }
         ScopedValue<?>[] keys = new ScopedValue<?>[extra.length + 1];
         keys[0] = CURRENT;
         System.arraycopy(extra, 0, keys, 1, extra.length);
-        return ContextExecutor.wrapping(delegate, keys);
+        return ContextExecutor.wrap(delegate, keys);
     }
 
     /** True for an action scope, including while it closes (values may still attach). */
@@ -134,7 +134,7 @@ public final class ScopeSession {
     // ==================== actions ====================
 
     void addAction(DeferAction action) {
-        // A propagated scope can register from its worker: the id set and the
+        // A wrapped scope can register from its worker: the id set and the
         // pending list are one structure, and both live under the same lock.
         synchronized (lock) {
             if (action.id() != null && !ids.add(action.id())) {

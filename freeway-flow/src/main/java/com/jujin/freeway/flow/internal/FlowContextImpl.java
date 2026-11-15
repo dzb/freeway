@@ -77,7 +77,7 @@ public final class FlowContextImpl implements FlowContext, FlowBranching {
      * frame instead of starting at the root, and nested forks compose.
      */
     public static Executor capturing(Executor delegate) {
-        return ContextExecutor.wrapping(delegate, FRAME);
+        return ContextExecutor.wrap(delegate, FRAME);
     }
     private final LazyValue<FlowEventBus> eventBus = LazyValue.of(FlowEventBus::new);
     private volatile boolean stopped;

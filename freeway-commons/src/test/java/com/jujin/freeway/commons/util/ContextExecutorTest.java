@@ -22,7 +22,7 @@ class ContextExecutorTest {
     void taskRunsWithSubmittingThreadSnapshot() throws Exception {
         ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor();
         try {
-            var executor = ContextExecutor.wrapping(pool, CTX);
+            var executor = ContextExecutor.wrap(pool, CTX);
             AtomicReference<String> seen = new AtomicReference<>();
             CountDownLatch done = new CountDownLatch(1);
 

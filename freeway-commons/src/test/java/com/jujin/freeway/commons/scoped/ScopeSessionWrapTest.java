@@ -16,12 +16,12 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@link ScopeSession#propagate} makes a scope's binding reachable from another
+ * {@link ScopeSession#wrap} makes a scope's binding reachable from another
  * thread: the advice {@code ScopeFilter} gives ("async work must use
  * {@code ContextExecutor}") becomes followable, and a deferred action registered
  * on the worker joins the submitting scope.
  */
-class ScopeSessionPropagateTest {
+class ScopeSessionWrapTest {
 
     private static final ScopedValue<String> KEY = ScopedValue.newInstance();
 
@@ -29,13 +29,13 @@ class ScopeSessionPropagateTest {
     void deferredActionFromWorkerJoinsTheSubmittingScope() throws Exception {
         ExecutorService pool = Executors.newSingleThreadExecutor();
         try {
-            Executor propagated = ScopeSession.propagate(pool);
+            Executor wrapped = ScopeSession.wrap(pool);
             AtomicBoolean workerSawScope = new AtomicBoolean();
             AtomicBoolean actionRan = new AtomicBoolean();
             CountDownLatch submitted = new CountDownLatch(1);
 
             Defer.within(() -> {
-                propagated.execute(() -> {
+                wrapped.execute(() -> {
                     workerSawScope.set(Defer.isActive());
                     Defer.defer(() -> actionRan.set(true));
                     submitted.countDown();
@@ -51,20 +51,20 @@ class ScopeSessionPropagateTest {
     }
 
     @Test
-    void outsideAnyScopeNothingIsPropagated() throws Exception {
+    void outsideAnyScopeNothingIsWrapd() throws Exception {
         ExecutorService pool = Executors.newSingleThreadExecutor();
         try {
-            Executor propagated = ScopeSession.propagate(pool);
+            Executor wrapped = ScopeSession.wrap(pool);
             AtomicBoolean workerSawScope = new AtomicBoolean(true);
             CountDownLatch done = new CountDownLatch(1);
 
-            propagated.execute(() -> {
+            wrapped.execute(() -> {
                 workerSawScope.set(Defer.isActive());
                 done.countDown();
             });
             await(done);
 
-            assertFalse(workerSawScope.get(), "no submitting scope means no propagated scope");
+            assertFalse(workerSawScope.get(), "no submitting scope means no wrapped scope");
         } finally {
             pool.shutdownNow();
         }
@@ -74,12 +74,12 @@ class ScopeSessionPropagateTest {
     void extraKeysRideAlongWithTheScope() throws Exception {
         ExecutorService pool = Executors.newSingleThreadExecutor();
         try {
-            Executor propagated = ScopeSession.propagate(pool, KEY);
+            Executor wrapped = ScopeSession.wrap(pool, KEY);
             AtomicReference<String> seen = new AtomicReference<>();
             CountDownLatch done = new CountDownLatch(1);
 
             ScopedValue.where(KEY, "frame-1").run(() -> {
-                propagated.execute(() -> {
+                wrapped.execute(() -> {
                     seen.set(KEY.isBound() ? KEY.get() : null);
                     done.countDown();
                 });
@@ -96,11 +96,11 @@ class ScopeSessionPropagateTest {
     void unboundExtraKeyStaysUnbound() throws Exception {
         ExecutorService pool = Executors.newSingleThreadExecutor();
         try {
-            Executor propagated = ScopeSession.propagate(pool, KEY);
+            Executor wrapped = ScopeSession.wrap(pool, KEY);
             AtomicReference<String> seen = new AtomicReference<>("not-run");
             CountDownLatch done = new CountDownLatch(1);
 
-            propagated.execute(() -> {
+            wrapped.execute(() -> {
                 seen.set(KEY.isBound() ? KEY.get() : null);
                 done.countDown();
             });
