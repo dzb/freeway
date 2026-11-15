@@ -1141,6 +1141,13 @@ class SqlTest {
     }
 
     @Test
+    void referenceGrammarUsesThePostgresOffsetSpelling() {
+        assertEquals("SELECT * FROM t " + new PostgresDialect().offsetOnlyClause(5),
+            Sql.select("*").from("t").offset(5).toSql(),
+            "toSql() must render the reference dialect's pagination clause, not a second spelling");
+    }
+
+    @Test
     void offsetWithoutLimitUsesTheDialectSpelling() {
         Sql query = Sql.select("*").from("t").offset(5);
 

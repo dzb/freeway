@@ -338,6 +338,17 @@ public interface Dialect {
         return " ON CONFLICT " + target + " DO UPDATE SET " + String.join(", ", updates);
     }
 
+    /**
+     * Renders the {@code ON CONFLICT ... DO NOTHING} suffix. One owner for the
+     * clause, beside {@link #upsertClause}; callers only name the target.
+     */
+    default String conflictDoNothingClause(List<String> conflictColumns) {
+        String target = conflictColumns.stream()
+            .map(this::quoteName)
+            .collect(Collectors.joining(", "));
+        return " ON CONFLICT (" + target + ") DO NOTHING";
+    }
+
     /** Whether {@code CREATE INDEX IF NOT EXISTS} is supported. */
     default boolean supportsIndexIfNotExists() {
         return true;

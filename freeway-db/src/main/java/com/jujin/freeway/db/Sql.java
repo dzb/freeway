@@ -823,7 +823,7 @@ public final class Sql {
     /** Produces the complete SQL string, rendered in the reference (PostgreSQL) grammar. */
     public String toSql() {
         requireNoPendingJoin("render SQL");
-        return buildSql(null);
+        return buildSql(DEFAULT_DIALECT);
     }
 
     /**
@@ -1032,15 +1032,7 @@ public final class Sql {
         if (clauses.orderBy() != null) {
             out.append(" ORDER BY ").append(clauses.orderBy());
         }
-        if (dialect == null) {
-            // Reference grammar: no dialect selected yet.
-            if (clauses.limit() != null) {
-                out.append(" LIMIT ").append(clauses.limit());
-            }
-            if (clauses.offset() != null) {
-                out.append(" OFFSET ").append(clauses.offset());
-            }
-        } else if (clauses.limit() != null && clauses.offset() != null) {
+        if (clauses.limit() != null && clauses.offset() != null) {
             out.append(' ').append(dialect.limitOffsetClause(
                 clauses.limit(), clauses.offset()));
         } else if (clauses.limit() != null) {
@@ -1052,16 +1044,10 @@ public final class Sql {
             if (clauses.conflictDoNothing()) {
                 // Same target quoting as DO UPDATE's upsertClause: a reserved
                 // word or a mixed-case column is not a raw name on the wire.
-                Dialect targetDialect = dialect == null ? DEFAULT_DIALECT : dialect;
-                out.append(" ON CONFLICT (")
-                    .append(String.join(", ",
-                        clauses.conflictColumns().stream()
-                            .map(targetDialect::quoteName)
-                            .toList()))
-                    .append(") DO NOTHING");
+                out.append(dialect.conflictDoNothingClause(clauses.conflictColumns()));
             } else {
-                out.append((dialect == null ? DEFAULT_DIALECT : dialect)
-                    .upsertClause(clauses.conflictColumns(), clauses.conflictUpdates()));
+                out.append(dialect.upsertClause(
+                    clauses.conflictColumns(), clauses.conflictUpdates()));
             }
         }
         if (clauses.returning() != null) {
