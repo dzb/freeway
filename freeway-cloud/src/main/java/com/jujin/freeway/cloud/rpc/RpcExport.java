@@ -32,12 +32,12 @@ import java.util.Objects;
  * @param mapping           call-topic prefix, e.g. {@code "user"} — one path
  *                          segment, {@code [A-Za-z0-9_.]} only
  * @param type              the handler type to resolve from the container
- * @param propagateMessage  send the handler's exception message to the caller
+ * @param forwardMessage   forward the handler's exception message to the caller
  *                          (the exception <em>class</em> always crosses; the
  *                          message is free text and routinely carries SQL, host
  *                          names and identifiers, so it stays local by default)
  */
-public record RpcExport(String mapping, Class<?> type, boolean propagateMessage) {
+public record RpcExport(String mapping, Class<?> type, boolean forwardMessage) {
 
     public RpcExport {
         // Fail at the declaration site: a mapping names a path segment, so a bad
@@ -55,7 +55,7 @@ public record RpcExport(String mapping, Class<?> type, boolean propagateMessage)
      * The same export, additionally forwarding the handler's exception message
      * to the caller. Opt in only on a mesh you control end to end.
      */
-    public RpcExport withPropagatedMessages() {
+    public RpcExport withForwardedMessages() {
         return new RpcExport(mapping, type, true);
     }
 }

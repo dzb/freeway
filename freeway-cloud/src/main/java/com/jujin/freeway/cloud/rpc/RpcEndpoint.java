@@ -105,7 +105,7 @@ public final class RpcEndpoint {
         } catch (Throwable e) {
             // Handler failures (business or otherwise) never escape as a 500:
             // the class crosses the boundary, the message only on request.
-            encodeBusinessFailure(ctx, mapping, target.propagateMessage(), e);
+            encodeBusinessFailure(ctx, mapping, target.forwardMessage(), e);
         }
     }
 
@@ -180,7 +180,7 @@ public final class RpcEndpoint {
     }
 
     private static void encodeBusinessFailure(
-            HttpExchange ctx, String mapping, boolean propagateMessage, Throwable ex)
+            HttpExchange ctx, String mapping, boolean forwardMessage, Throwable ex)
             throws IOException {
         // The detail is always available to operators on THIS side; what
         // crosses the boundary is the class (the contract) and, only on
@@ -191,7 +191,7 @@ public final class RpcEndpoint {
         LOG.warn("RPC handler failed for mapping '{}': {}", mapping, ex.toString());
         LOG.debug("RPC handler failure detail for mapping '{}'", mapping, ex);
         String className = ex.getClass().getName();
-        String message = propagateMessage
+        String message = forwardMessage
             ? String.valueOf(ex.getMessage())
             : "remote handler failed";
         ctx.setHeader(RemoteCaller.EXCEPTION_CLASS_HEADER, headerText(className));

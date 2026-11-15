@@ -443,7 +443,7 @@ name; only module types whose package already covered their semantics changed.
 - `Query.param(...)` → `bind(...)`: it is the act of writing a parameter, not a
   getter.
 - `CloudRequest.idempotentWith(...)` → `withIdempotent(...)`;
-  `RpcExport.propagateMessages()` → `withPropagatedMessages()`;
+  `RpcExport.propagateMessages()` → `withForwardedMessages()`;
   `RemoteProxyFactory`'s `serviceId/mapping/timeout` →
   `withServiceId/withMapping/withTimeout`. `withX` means a new value is
   returned, so a reader does not mistake it for a mutation of the caller.

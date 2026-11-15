@@ -108,7 +108,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `CloudResponse` / `CloudHttpClient` / `CloudHttpClientDefault` → `RpcRequest` /
   `RpcResponse` / `RpcHttpClient` / `RpcHttpClientDefault`; `idempotentWith` →
   `withIdempotent`, `idempotentVerb` → `isIdempotentMethod`, `is2xx` →
-  `isSuccess`, `propagateMessages` → `withPropagatedMessages`;
+  `isSuccess`, `propagateMessages` → `withForwardedMessages`;
   `RemoteProxyFactory`'s `serviceId/mapping/timeout` →
   `withServiceId/withMapping/withTimeout`.
 - **Cloud event mesh**: `CloudEventEnvelope` / `CloudEventBus` /

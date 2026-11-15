@@ -284,9 +284,9 @@ not hidden at runtime.
 **Export (server side)**
 
 ```java
-public record RpcExport(String mapping, Class<?> type, boolean propagateMessage) {
+public record RpcExport(String mapping, Class<?> type, boolean forwardMessage) {
     public static RpcExport of(String mapping, Class<?> type);
-    public RpcExport withPropagatedMessages();   // allow the exception message across the boundary
+    public RpcExport withForwardedMessages();   // allow the exception message across the boundary
 }
 ```
 
@@ -325,7 +325,7 @@ is the raw transport surface: `invoke(serviceId, mapping, method, args, returnTy
 Success: `200` + `application/json`; handler returns `null` → `200` with an empty body, and the consumer
 gets `null`.
 
-Business failure: `400`, **the class always crosses the boundary**, the message crosses only with `.withPropagatedMessages()`.
+Business failure: `400`, **the class always crosses the boundary**, the message crosses only with `.withForwardedMessages()`.
 
 | Header/body | Content |
 |---|---|

@@ -81,8 +81,8 @@ final class RpcTarget {
         return handler;
     }
 
-    boolean propagateMessage() {
-        return export.propagateMessage();
+    boolean forwardMessage() {
+        return export.forwardMessage();
     }
 
     /** The named method, or {@code null} when this mapping does not serve it. */
