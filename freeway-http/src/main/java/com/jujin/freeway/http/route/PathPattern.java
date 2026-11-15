@@ -264,14 +264,21 @@ public final class PathPattern {
         return segs;
     }
 
-    static boolean containsPathTraversal(String path) {
+    /** True when any segment carries a traversal spelling, including nested encoding. */
+    public static boolean containsPathTraversal(String path) {
         for (String seg : path.split("/")) {
             if (isPathTraversalSegment(seg)) return true;
         }
         return false;
     }
 
-    static boolean isPathTraversalSegment(String seg) {
+    /**
+     * One decoded-segment check shared by route validation and static mounts:
+     * {@code ..}, NUL, malformed percent-encoding and encoded traversal are
+     * refused. Route templates may legitimately carry regex backslashes, so
+     * the file-path variant adds the backslash rule separately.
+     */
+    public static boolean isPathTraversalSegment(String seg) {
         if ("..".equals(seg) || seg.startsWith("..\\")) return true;
         if (seg.contains("\0")) return true;
         try {
@@ -281,5 +288,10 @@ public final class PathPattern {
             return true;
         }
         return false;
+    }
+
+    /** File-path variant: a backslash is a separator on Windows, so refuse it everywhere. */
+    public static boolean isFilePathTraversalSegment(String seg) {
+        return seg.contains("\\") || isPathTraversalSegment(seg);
     }
 }

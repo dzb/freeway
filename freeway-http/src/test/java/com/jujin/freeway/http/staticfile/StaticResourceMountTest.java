@@ -103,6 +103,22 @@ class StaticResourceMountTest {
     }
 
     @Test
+    void doublyEncodedTraversalAndBackslashVariantsReturnNotFound() throws Exception {
+        Path root = Files.createDirectory(tempDir.resolve("encoded-traversal"));
+        Files.writeString(root.resolve("secret.txt"), "secret");
+
+        StaticResourceMount mount = StaticResourceMount.directory("/static", root);
+        for (String path : new String[] {
+                "/static/%252e%252e/secret.txt",
+                "/static/..%5csecret.txt",
+                "/static/%2e%2e%5csecret.txt"}) {
+            TestExchange ctx = new TestExchange("GET", path);
+            mount.serve(ctx, ctx);
+            assertEquals(404, ctx.status(), path + " must be refused");
+        }
+    }
+
+    @Test
     void byteRangeServesPartialContent() throws Exception {
         Path root = Files.createDirectory(tempDir.resolve("range"));
         Files.writeString(root.resolve("data.txt"), "0123456789");

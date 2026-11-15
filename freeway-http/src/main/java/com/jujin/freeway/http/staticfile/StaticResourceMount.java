@@ -456,7 +456,7 @@ public final class StaticResourceMount {
             return "index.html";
         }
         for (String segment : normalized.split("/")) {
-            if (segment.isBlank() || "..".equals(segment) || segment.contains("\\") || segment.contains("\0")) {
+            if (segment.isBlank() || PathPattern.isFilePathTraversalSegment(segment)) {
                 return null;
             }
         }
