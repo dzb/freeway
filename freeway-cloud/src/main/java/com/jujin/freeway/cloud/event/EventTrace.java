@@ -1,7 +1,7 @@
 package com.jujin.freeway.cloud.event;
 
 import com.jujin.freeway.cloud.context.InvocationContext;
-import com.jujin.freeway.cloud.context.internal.TraceBridge;
+import com.jujin.freeway.cloud.context.internal.TraceCodec;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -10,7 +10,7 @@ import java.util.Map;
  * outbound envelopes and restores the inbound trace around local dispatch, so
  * an event crossing a JVM boundary does not break the causal chain.
  *
- * <p>Both directions reuse {@link TraceBridge} — the same inject/extract
+ * <p>Both directions reuse {@link TraceCodec} — the same encode/decode
  * the HTTP path uses — instead of re-implementing W3C parsing. The carrier
  * differs per transport (JSON frame extensions on the mesh, {@code ce-}
  * headers on Kafka), so this helper speaks plain header maps in both
@@ -31,7 +31,7 @@ public final class EventTrace {
     public static final String TRACEPARENT = "traceparent";
     public static final String TRACESTATE = "tracestate";
 
-    private static final TraceBridge TRACE = new TraceBridge();
+    private static final TraceCodec TRACE = new TraceCodec();
 
     private EventTrace() {}
 
@@ -40,9 +40,9 @@ public final class EventTrace {
      * {@code tracestate} when the context carries vendor state) — empty when
      * no trace is bound, in which case the caller stamps nothing.
      */
-    public static Map<String, String> injectCurrent() {
+    public static Map<String, String> encodeCurrent() {
         Map<String, String> headers = new LinkedHashMap<>();
-        InvocationContext.current().ifPresent(ctx -> TRACE.inject(ctx, headers));
+        InvocationContext.current().ifPresent(ctx -> TRACE.encode(ctx, headers));
         return headers;
     }
 
@@ -54,7 +54,7 @@ public final class EventTrace {
      * (pooled poll threads outlive any single event).
      */
     public static void runWithTrace(Map<String, String> headers, Runnable work) {
-        InvocationContext extracted = TRACE.extract(headers);
+        InvocationContext extracted = TRACE.decode(headers);
         if (extracted.trace() == null) {
             work.run();
             return;

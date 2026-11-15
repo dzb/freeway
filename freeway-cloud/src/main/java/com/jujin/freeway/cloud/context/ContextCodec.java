@@ -7,20 +7,20 @@ import java.util.Map;
  *
  * <p>Contributed like {@code Route}/{@code HttpFilter} (same extension-point
  * pattern). Adding a new cross-boundary concern = contributing a
- * {@code ContextBridge}, never touching core: inbound {@code extract} →
+ * {@code ContextCodec}, never touching core: inbound {@code decode} →
  * {@code InvocationContext.runWith} (that is the only write face), outbound
- * {@code inject} of the current context.
+ * {@code encode} of the current context.
  */
-public interface ContextBridge {
+public interface ContextCodec {
 
-    /** Writes the current context into outbound headers. */
-    void inject(InvocationContext ctx, Map<String, String> headers);
+    /** Encodes the current context into outbound headers. */
+    void encode(InvocationContext ctx, Map<String, String> headers);
 
     /**
-     * Reads an inbound context from request headers, leaving absent sub-contexts unset ({@code null})
+     * Decodes an inbound context from request headers, leaving absent sub-contexts unset ({@code null})
      * rather than substituting empty ones. A context that carries nothing at all is equivalent to
      * finding nothing: the propagation filter then binds no context for the request, so "the header
      * was absent" stays distinguishable from "the header was present and empty".
      */
-    InvocationContext extract(Map<String, String> headers);
+    InvocationContext decode(Map<String, String> headers);
 }

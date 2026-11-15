@@ -1,7 +1,7 @@
 package com.jujin.freeway.cloud.context.internal;
 
 import com.jujin.freeway.cloud.context.InvocationContext;
-import com.jujin.freeway.cloud.context.ContextBridge;
+import com.jujin.freeway.cloud.context.ContextCodec;
 import com.jujin.freeway.cloud.context.TraceContext;
 
 import java.util.Map;
@@ -9,8 +9,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * W3C Trace Context propagation: injects the current trace as the
- * {@code traceparent} and {@code tracestate} headers, and extracts both from an
+ * W3C Trace Context encoding: encodes the current trace as the
+ * {@code traceparent} and {@code tracestate} headers, and decodes both from an
  * inbound request. {@code tracestate} is treated as opaque vendor state — it is
  * passed through unchanged, because rewriting it would break the sampling and
  * routing decisions of the tracer that produced it.
@@ -20,15 +20,15 @@ import org.slf4j.LoggerFactory;
  * request, while locally constructed contexts reject it in the record's
  * constructor.</p>
  */
-public final class TraceBridge implements ContextBridge {
+public final class TraceCodec implements ContextCodec {
 
     public static final String HEADER_TRACEPARENT = "traceparent";
     public static final String HEADER_TRACESTATE = "tracestate";
 
-    private static final Logger LOG = LoggerFactory.getLogger(TraceBridge.class);
+    private static final Logger LOG = LoggerFactory.getLogger(TraceCodec.class);
 
     @Override
-    public void inject(InvocationContext ctx, Map<String, String> headers) {
+    public void encode(InvocationContext ctx, Map<String, String> headers) {
         TraceContext trace = ctx.trace();
         if (trace != null) {
             headers.put(HEADER_TRACEPARENT, trace.toTraceparent());
@@ -39,12 +39,12 @@ public final class TraceBridge implements ContextBridge {
     }
 
     @Override
-    public InvocationContext extract(Map<String, String> headers) {
+    public InvocationContext decode(Map<String, String> headers) {
         TraceContext trace = TraceContext.fromTraceparent(headers.get(HEADER_TRACEPARENT))
             .map(t -> t.withTraceState(inboundTraceState(headers)))
             .orElse(null);
         // Unset baggage is null (not Baggage.empty()): the propagation filter
-        // merges parts by "non-null wins", so a later bridge's baggage
+        // merges parts by "non-null wins", so a later codec's baggage
         // must not be clobbered by an empty value here.
         return InvocationContext.of(trace, null, null);
     }

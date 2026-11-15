@@ -8,7 +8,7 @@ import com.jujin.freeway.boot.FreewayApp;
 import com.jujin.freeway.cloud.discovery.ServiceEndpoint;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.cloud.discovery.ServiceRegistry;
-import com.jujin.freeway.cloud.context.internal.AuthBridge;
+import com.jujin.freeway.cloud.context.internal.AuthCodec;
 import com.jujin.freeway.cloud.rpc.RpcHttpClient;
 import com.jujin.freeway.cloud.rpc.RpcRequest;
 import com.jujin.freeway.http.HttpExchange;
@@ -38,7 +38,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * header binds the principal for the request scope, and the outbound
  * RpcHttpClient call re-injects it so the callee sees the same identity.
  */
-class PrincipalPropagationTest {
+class AuthCodecTest {
 
     @BeforeEach
     void randomPort() {
@@ -53,7 +53,7 @@ class PrincipalPropagationTest {
     }
 
     @Test
-    void principalPropagatesAcrossTheCall() throws Exception {
+    void authCodecCarriesPrincipalAcrossTheCall() throws Exception {
         try (AppRuntime app = FreewayApp.create(new IdentityModule(), new HttpModule()).add(CloudModule.class).add(new TestDiscoveryModule()).start()) {
             HttpServer server = app.get(HttpServer.class);
             app.get(ServiceRegistry.class).register(
@@ -62,8 +62,8 @@ class PrincipalPropagationTest {
             HttpClient client = HttpClient.newHttpClient();
             HttpRequest request = HttpRequest.newBuilder(
                     URI.create("http://127.0.0.1:" + server.port() + "/api/call"))
-                .header(AuthBridge.HEADER_PRINCIPAL, "alice")
-                .header(AuthBridge.HEADER_ROLES, "admin,user")
+                .header(AuthCodec.HEADER_PRINCIPAL, "alice")
+                .header(AuthCodec.HEADER_ROLES, "admin,user")
                 .GET()
                 .build();
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
@@ -89,8 +89,8 @@ class PrincipalPropagationTest {
             HttpClient client = HttpClient.newHttpClient();
             HttpRequest request = HttpRequest.newBuilder(
                     URI.create("http://127.0.0.1:" + server.port() + "/api/call"))
-                .header(AuthBridge.HEADER_PRINCIPAL, "alice")
-                .header(AuthBridge.HEADER_ROLES, "admin%2Croot,dev")
+                .header(AuthCodec.HEADER_PRINCIPAL, "alice")
+                .header(AuthCodec.HEADER_ROLES, "admin%2Croot,dev")
                 .GET()
                 .build();
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());

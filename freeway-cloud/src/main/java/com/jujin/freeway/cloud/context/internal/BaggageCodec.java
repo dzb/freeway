@@ -2,7 +2,7 @@ package com.jujin.freeway.cloud.context.internal;
 
 import com.jujin.freeway.cloud.context.Baggage;
 import com.jujin.freeway.cloud.context.InvocationContext;
-import com.jujin.freeway.cloud.context.ContextBridge;
+import com.jujin.freeway.cloud.context.ContextCodec;
 import com.jujin.freeway.ioc.symbol.SymbolSpec;
 
 import java.io.ByteArrayOutputStream;
@@ -15,11 +15,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * W3C {@code baggage} propagation (RFC 7071 semantics): injects the current
- * {@link Baggage} as a {@code baggage} header ({@code k=v,k2=v2}), extracts
- * it back on the receiving side. Inbound extraction returns {@code null} when
+ * W3C {@code baggage} encoding (RFC 7071 semantics): encodes the current
+ * {@link Baggage} as a {@code baggage} header ({@code k=v,k2=v2}), decodes
+ * it back on the receiving side. Inbound decoding returns {@code null} when
  * the header is absent or empty, so the merge in {@link PropagationFilter}
- * keeps any baggage established by earlier bridges.
+ * keeps any baggage established by earlier codecs.
  *
  * <p>Keys and values are percent-encoded (UTF-8) — unreserved characters
  * verbatim, everything else escaped — so a value containing {@code ,},
@@ -27,9 +27,9 @@ import org.slf4j.LoggerFactory;
  * structure. The codec is symmetric, so arbitrary application baggage
  * round-trips byte-for-byte.
  */
-public final class BaggageBridge implements ContextBridge {
+public final class BaggageCodec implements ContextCodec {
 
-    private static final Logger LOG = LoggerFactory.getLogger(BaggageBridge.class);
+    private static final Logger LOG = LoggerFactory.getLogger(BaggageCodec.class);
 
     public static final String HEADER_BAGGAGE = "baggage";
 
@@ -41,7 +41,7 @@ public final class BaggageBridge implements ContextBridge {
     public static final int MAX_ENCODED_LENGTH = 4096;
 
     @Override
-    public void inject(InvocationContext ctx, Map<String, String> headers) {
+    public void encode(InvocationContext ctx, Map<String, String> headers) {
         Baggage baggage = ctx.baggage();
         if (baggage == null || baggage.values().isEmpty()) {
             return;
@@ -49,8 +49,8 @@ public final class BaggageBridge implements ContextBridge {
         StringBuilder sb = new StringBuilder();
         int entries = 0;
         for (Map.Entry<String, String> entry : baggage.values().entrySet()) {
-            String encodedKey = encode(entry.getKey());
-            String encodedValue = encode(entry.getValue());
+            String encodedKey = encodeValue(entry.getKey());
+            String encodedValue = encodeValue(entry.getValue());
             int grew = sb.length() == 0 ? 0 : 1;
             grew += encodedKey.length() + 1 + encodedValue.length();
             if (entries >= MAX_ENTRIES || sb.length() + grew > MAX_ENCODED_LENGTH) {
@@ -70,7 +70,7 @@ public final class BaggageBridge implements ContextBridge {
     }
 
     @Override
-    public InvocationContext extract(Map<String, String> headers) {
+    public InvocationContext decode(Map<String, String> headers) {
         String raw = headers.get(HEADER_BAGGAGE);
         if (raw == null || raw.isBlank()) {
             return null;
@@ -84,8 +84,8 @@ public final class BaggageBridge implements ContextBridge {
             }
             int eq = pair.indexOf('=');
             if (eq > 0) {
-                values.put(decode(pair.substring(0, eq).trim()),
-                    decode(pair.substring(eq + 1).trim()));
+                values.put(decodeValue(pair.substring(0, eq).trim()),
+                    decodeValue(pair.substring(eq + 1).trim()));
                 entries++;
             }
         }
@@ -99,8 +99,8 @@ public final class BaggageBridge implements ContextBridge {
 
     /** RFC 3986 unreserved characters survive verbatim; every other byte is
      *  percent-encoded, so it can never be mistaken for wire structure.
-     *  Package-visible so the other header bridges share one codec. */
-    static String encode(String raw) {
+     *  Package-visible so the other header codecs share one codec. */
+    static String encodeValue(String raw) {
         StringBuilder out = new StringBuilder(raw.length());
         for (byte b : raw.getBytes(StandardCharsets.UTF_8)) {
             char c = (char) (b & 0xFF);
@@ -118,12 +118,12 @@ public final class BaggageBridge implements ContextBridge {
             || c == '-' || c == '.' || c == '_' || c == '~';
     }
 
-    /** Lenient inverse of {@link #encode}: a malformed escape (a bare
+    /** Lenient inverse of {@link #encodeValue}: a malformed escape (a bare
      *  {@code %}) degrades to its literal text instead of failing extraction
      *  — a foreign peer's bad value must not change the failure type the
-     *  caller sees. Package-visible so the other header bridges share
+     *  caller sees. Package-visible so the other header codecs share
      *  one codec. */
-    static String decode(String value) {
+    static String decodeValue(String value) {
         if (value.indexOf('%') < 0) {
             return value;
         }

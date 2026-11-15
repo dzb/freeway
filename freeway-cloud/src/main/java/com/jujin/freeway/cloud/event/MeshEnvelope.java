@@ -110,7 +110,7 @@ public final class MeshEnvelope {
         frame.put(EXT_ORIGIN, origin);
         // The ambient trace, when the sending thread holds one — absent
         // otherwise, so traceless publishes stay byte-identical to before.
-        frame.putAll(EventTrace.injectCurrent());
+        frame.putAll(EventTrace.encodeCurrent());
 
         frame.put("datacontenttype", "application/json");
         // The payload may be null (signal semantics — the topic carries the

@@ -5,7 +5,7 @@ import java.util.List;
 /**
  * Verified caller identity carried across service boundaries. Holds the
  * authenticated principal, never raw credentials — propagation rules follow
- * the security subsystem (see AuthBridge).
+ * the security subsystem (see AuthCodec).
  *
  * @param name  verified principal name
  * @param roles roles granted to the principal

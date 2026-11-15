@@ -118,7 +118,7 @@ class EventTraceTest {
 
     @Test
     void malformedTraceparentRunsBare() {
-        // Lenient where the wire is untrusted (mirrors TraceBridge): a bad
+        // Lenient where the wire is untrusted (mirrors TraceCodec): a bad
         // traceparent degrades to traceless delivery, never a failed dispatch.
         var seen = new AtomicReference<Optional<InvocationContext>>();
         PeerHub hub = planeWith(seen);

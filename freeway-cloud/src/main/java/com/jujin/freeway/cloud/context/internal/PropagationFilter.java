@@ -1,7 +1,7 @@
 package com.jujin.freeway.cloud.context.internal;
 
 import com.jujin.freeway.cloud.context.InvocationContext;
-import com.jujin.freeway.cloud.context.ContextBridge;
+import com.jujin.freeway.cloud.context.ContextCodec;
 import com.jujin.freeway.http.HttpExchange;
 import com.jujin.freeway.http.filter.HttpFilter;
 import com.jujin.freeway.http.route.RouteHandler;
@@ -13,25 +13,25 @@ import java.util.Objects;
 import java.util.function.Supplier;
 
 /**
- * Inbound propagation filter: extracts the invocation context from request
- * headers via every contributed {@link ContextBridge}, merges the parts, and
- * binds the result for the request scope (ScopedValue, virtual-thread safe).
- * Outbound injection happens in the {@code RpcHttpClient} layer — the same
- * context, the same bridges, one pipeline.
+ * Inbound context filter: decodes the invocation context from request headers
+ * via every contributed {@link ContextCodec}, merges the parts, and binds the
+ * result for the request scope (ScopedValue, virtual-thread safe). Outbound
+ * encoding happens in the {@code RpcHttpClient} layer — the same context, the
+ * same codecs, one pipeline.
  */
 public final class PropagationFilter implements HttpFilter {
 
-    private final Supplier<List<ContextBridge>> bridges;
+    private final Supplier<List<ContextCodec>> codecs;
 
     /**
      * Takes the contributed view lazily: this filter is itself a deferred
-     * contribution, so its constructor runs while other modules' bridges
+     * contribution, so its constructor runs while other modules' codecs
      * may still be unpublished. Resolving the list here would freeze that
      * prefix; {@code doFilter} reads it after composition, when the store is
      * complete.
      */
-    public PropagationFilter(Supplier<List<ContextBridge>> bridges) {
-        this.bridges = Objects.requireNonNull(bridges, "bridges");
+    public PropagationFilter(Supplier<List<ContextCodec>> codecs) {
+        this.codecs = Objects.requireNonNull(codecs, "codecs");
     }
 
     /** Outermost built-in filter: every later filter and handler must see the
@@ -45,10 +45,10 @@ public final class PropagationFilter implements HttpFilter {
     public void doFilter(HttpExchange ctx, RouteHandler next) throws Exception {
         Map<String, String> headers = flatten(ctx.headers());
         InvocationContext inbound = null;
-        for (ContextBridge bridge : bridges.get()) {
-            inbound = merge(inbound, bridge.extract(headers));
+        for (ContextCodec codec : codecs.get()) {
+            inbound = merge(inbound, codec.decode(headers));
         }
-        // A blank merge means every bridge found nothing (they report absent parts as an
+        // A blank merge means every codec found nothing (they report absent parts as an
         // all-unset context): binding it would invent a context the request never carried — the
         // same rule the async carrier applies to a blank captured context.
         if (inbound == null || inbound.carriesNothing()) {

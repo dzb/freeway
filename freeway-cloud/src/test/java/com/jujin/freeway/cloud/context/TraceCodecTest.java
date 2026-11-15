@@ -36,7 +36,7 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
  * request scope; the RpcHttpClient outbound call re-injects it, so the
  * callee sees the same trace.
  */
-class TracePropagationTest {
+class TraceCodecTest {
 
     private static final String TRACE_ID = "a".repeat(32);
     private static final String SPAN_ID = "b".repeat(16);

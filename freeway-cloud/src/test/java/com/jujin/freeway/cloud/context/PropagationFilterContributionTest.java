@@ -23,15 +23,15 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  */
 class PropagationFilterContributionTest {
 
-    public static final class LateContextBridge implements ContextBridge {
+    public static final class LateContextCodec implements ContextCodec {
         static final AtomicInteger EXTRACTED = new AtomicInteger();
 
         @Override
-        public void inject(InvocationContext ctx, Map<String, String> headers) {
+        public void encode(InvocationContext ctx, Map<String, String> headers) {
         }
 
         @Override
-        public InvocationContext extract(Map<String, String> headers) {
+        public InvocationContext decode(Map<String, String> headers) {
             EXTRACTED.incrementAndGet();
             return null;
         }
@@ -39,10 +39,10 @@ class PropagationFilterContributionTest {
 
     @Test
     void bridgeContributedAfterTheModuleReachesTheFilter() throws Exception {
-        LateContextBridge.EXTRACTED.set(0);
+        LateContextCodec.EXTRACTED.set(0);
         Container container = Freeway.create(
             new ContextModule(),
-            binder -> binder.contribute(ContextBridge.class).addDeferred(LateContextBridge.class)
+            binder -> binder.contribute(ContextCodec.class).addDeferred(LateContextCodec.class)
         );
         try {
             PropagationFilter filter = (PropagationFilter)
@@ -72,8 +72,8 @@ class PropagationFilterContributionTest {
             RouteHandler handler = ctx -> next.incrementAndGet();
             filter.doFilter(context, handler);
 
-            assertEquals(1, LateContextBridge.EXTRACTED.get(),
-                "a ContextBridge contributed after ContextModule must reach the filter");
+            assertEquals(1, LateContextCodec.EXTRACTED.get(),
+                "a ContextCodec contributed after ContextModule must reach the filter");
             assertEquals(1, next.get());
         } finally {
             container.close();

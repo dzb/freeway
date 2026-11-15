@@ -4,7 +4,7 @@ import com.jujin.freeway.cloud.context.Baggage;
 import com.jujin.freeway.cloud.context.InvocationContext;
 import com.jujin.freeway.cloud.context.PrincipalContext;
 import com.jujin.freeway.cloud.context.TraceContext;
-import com.jujin.freeway.cloud.context.internal.TraceBridge;
+import com.jujin.freeway.cloud.context.internal.TraceCodec;
 import org.junit.jupiter.api.Test;
 import org.slf4j.MDC;
 
@@ -163,8 +163,8 @@ class ObserveTest {
                 // Outbound propagation must see the ambient context (the same
                 // lookup RpcHttpClient uses before injecting traceparent).
                 Map<String, String> headers = new HashMap<>();
-                new TraceBridge().inject(InvocationContext.current().orElseThrow(), headers);
-                assertTrue(headers.containsKey(TraceBridge.HEADER_TRACEPARENT),
+                new TraceCodec().encode(InvocationContext.current().orElseThrow(), headers);
+                assertTrue(headers.containsKey(TraceCodec.HEADER_TRACEPARENT),
                     "outbound injection sees the active trace outside any scoped binding");
             }
         }

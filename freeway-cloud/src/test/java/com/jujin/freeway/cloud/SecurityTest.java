@@ -5,7 +5,7 @@ import com.jujin.freeway.boot.FreewayApp;
 import com.jujin.freeway.cloud.context.Baggage;
 import com.jujin.freeway.cloud.context.InvocationContext;
 import com.jujin.freeway.cloud.context.PrincipalContext;
-import com.jujin.freeway.cloud.context.internal.AuthBridge;
+import com.jujin.freeway.cloud.context.internal.AuthCodec;
 import com.jujin.freeway.cloud.rpc.TransportSecurity;
 import com.jujin.freeway.cloud.rpc.TransportSecurityDefault;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
@@ -49,19 +49,19 @@ class SecurityTest {
     }
 
     @Test
-    void authContextBridgeRoundTripsPrincipalAndRolesWhenEnabled() {
+    void authContextCodecRoundTripsPrincipalAndRolesWhenEnabled() {
         System.setProperty(ContextModule.ConfigKeys.AUTH_EXTRACT_ENABLED, "true");
         try {
-            AuthBridge bridge = new AuthBridge(sysProps());
+            AuthCodec codec = new AuthCodec(sysProps());
             PrincipalContext principal = PrincipalContext.of("alice", List.of("admin", "user"));
             InvocationContext ctx = InvocationContext.of(null, principal, Baggage.empty());
 
             Map<String, String> headers = new HashMap<>();
-            bridge.inject(ctx, headers);
-            assertEquals("alice", headers.get(AuthBridge.HEADER_PRINCIPAL));
-            assertEquals("admin,user", headers.get(AuthBridge.HEADER_ROLES));
+            codec.encode(ctx, headers);
+            assertEquals("alice", headers.get(AuthCodec.HEADER_PRINCIPAL));
+            assertEquals("admin,user", headers.get(AuthCodec.HEADER_ROLES));
 
-            InvocationContext extracted = bridge.extract(headers);
+            InvocationContext extracted = codec.decode(headers);
             assertNotNull(extracted.principal());
             assertEquals("alice", extracted.principal().name());
             assertTrue(extracted.principal().hasRole("admin"));
@@ -71,15 +71,15 @@ class SecurityTest {
     }
 
     @Test
-    void authContextBridgeIgnoresInboundIdentityByDefault() {
+    void authContextCodecIgnoresInboundIdentityByDefault() {
         // Security default: a client-supplied x-principal must NOT be trusted
         // unless extraction was explicitly enabled.
-        AuthBridge bridge = new AuthBridge(sysProps());
+        AuthCodec codec = new AuthCodec(sysProps());
         Map<String, String> forged = Map.of(
-            AuthBridge.HEADER_PRINCIPAL, "admin",
-            AuthBridge.HEADER_ROLES, "admin,superuser");
+            AuthCodec.HEADER_PRINCIPAL, "admin",
+            AuthCodec.HEADER_ROLES, "admin,superuser");
 
-        InvocationContext extracted = bridge.extract(forged);
+        InvocationContext extracted = codec.decode(forged);
         assertNull(extracted.principal(),
             "inbound identity headers must be ignored when extraction is disabled");
     }
@@ -165,7 +165,7 @@ class SecurityTest {
         assertEquals(0, exit, "keytool failed: " + new String(process.getInputStream().readAllBytes()));
     }
     /** SymbolSource backed by system properties with ${name:default} expansion
-     *  (mirrors the framework contract AuthBridge relies on: a miss
+     *  (mirrors the framework contract AuthCodec relies on: a miss
      *  carries {@link com.jujin.freeway.ioc.symbol.UnknownSymbolException},
      *  which is what makes resolve(name, default) and typed get(spec) work). */
     private static com.jujin.freeway.ioc.symbol.SymbolSource sysProps() {

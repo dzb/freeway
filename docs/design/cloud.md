@@ -103,7 +103,7 @@ com.jujin.freeway.cloud
 ├── CloudModule (contains nested ConfigKeys) / CloudHookIds
 ├── annotation/   @Local backend marker
 ├── context/      InvocationContext, TraceContext, PrincipalContext, Baggage,
-│                 ContextBridge, ContextModule
+│                 ContextCodec, ContextModule
 ├── discovery/    ServiceEndpoint, ServiceHealth, ServiceInstance, ServiceDiscovery,
 │                 ServiceRegistry, ServiceDeclaration,
 │                 LoadBalancer(+Default), StaticDiscovery,
@@ -124,7 +124,7 @@ com.jujin.freeway.cloud
 ├── storage/      ObjectStorage(+Default), ObjectMetadata/ObjectEntry/PutResult,
 │                 StorageException, ObjectStoredEvent/ObjectDeletedEvent,
 │                 StorageModule
-├── context/internal/   AuthBridge, BaggageBridge, TraceBridge,
+├── context/internal/   AuthCodec, BaggageCodec, TraceCodec,
 │                       PropagationFilter
 ├── health/internal/    ReadyHandler
 ├── observe/internal/   MetricsHandler, TracingFilter
@@ -224,13 +224,13 @@ public record ServiceHealth(boolean live, boolean ready, Instant lastSeen) {
   stale.
 - `InvocationContext` is a `ScopedValue` slot with exactly three kinds of sub-context: `TraceContext`
   (owned by infrastructure), `PrincipalContext` (owned by security, unforgeable) and `Baggage`
-  (owned by the application). It carries no business data, configuration snapshot or object cache. In-process asynchronous propagation uses
+  (owned by the application). It carries no business data, configuration snapshot or object cache. In-process asynchronous context carrying uses
   `ContextExecutor`; **MDC is display-only** (ThreadLocal-based, not cross-thread).
-- Propagation always goes through `ContextBridge`: inbound `extract(headers)` returns a partial context,
-  merged by `PropagationFilter` with "non-empty wins"; outbound `inject(ctx, headers)`.
-  Built in: `TraceBridge` (W3C `traceparent`/`tracestate`), `AuthBridge`
-  (`x-principal` / `x-principal-roles`) and `BaggageBridge` (W3C
-  `baggage`). A new concern = contribute a `ContextBridge`; core does not change.
+- Context crossing always goes through `ContextCodec`: inbound `decode(headers)` returns a partial context,
+  merged by `PropagationFilter` with "non-empty wins"; outbound `encode(ctx, headers)`.
+  Built in: `TraceCodec` (W3C `traceparent`/`tracestate`), `AuthCodec`
+  (`x-principal` / `x-principal-roles`) and `BaggageCodec` (W3C
+  `baggage`). A new concern = contribute a `ContextCodec`; core does not change.
 
 ## 5. Capability Design
 
@@ -448,13 +448,13 @@ inert (installing the module alone produces no side effects). At shutdown the di
 
 - `Tracer` generates traceId/spanId, propagated across boundaries through `InvocationContext`
   (with `ContextExecutor` for async); MDC is display-only.
-- Outbound injection and inbound extraction of the **W3C `traceparent`**, passed through together with this node's existing
+- Outbound encoding and inbound decoding of the **W3C `traceparent`**, passed through together with this node's existing
   `tracestate` (`TraceContext.traceState`), interoperating with OTel.
 - The inbound span is created by `TracingFilter` (`HttpFilter`, order `-105`) and explicitly
   bound into `InvocationContext` (`Tracer.Span.context()`) — a span attached only to the ambient
   layer is shadowed by the scope layer, a point that has really failed before. Probe/metrics paths
   (`/healthz`, `/health/live`, `/health/ready`, `/metrics`) create no span.
-- Inbound `PropagationFilter` (order `-110`) performs extract → merge → `runWith`,
+- Inbound `PropagationFilter` (order `-110`) performs decode → merge → `runWith`,
   and writes the inbound traceId into MDC.
 - `Metrics` is a commons SPI; `ObserveModule` binds the module's own
   `MetricsDefault` registry **in three roles**: the concrete class (singleton), the `Metrics` SPI
@@ -482,7 +482,7 @@ Three SPIs; the default implementations use only JDK concurrency primitives:
 rateLimiter.tryAcquire()
   → breaker.allowRequest()
   → transport attempt: discovery.instances → loadBalancer.choose → build URL
-              → inject InvocationContext → httpClient.send
+              → encode InvocationContext → httpClient.send
   → RpcResponse / RpcException
 (retry restarts from the rate-limit step, re-selecting an instance on every attempt)
 ```
@@ -588,12 +588,12 @@ Scope boundary: **service-to-service cloud-native security**, not an application
   and the event mesh (`wss://`)**: the mesh is not a second configuration surface. The capability is decided by runtime configuration,
   and a static marker cannot express a conditional capability, so core does not pre-provision `@Mtls` / `@None`; a custom
   implementation (Vault dynamic certificates, etc.) can simply bind.
-- **Identity propagation**: `PrincipalContext` is injected/extracted via `InvocationContext` + `AuthBridge`
+- **Identity encoding**: `PrincipalContext` is encoded/decoded via `InvocationContext` + `AuthCodec`
   as `x-principal` / `x-principal-roles`, on the same pipeline as `traceparent`.
-  What is propagated is the **verified identity**, not raw credentials.
-  **Trust boundary**: inbound extraction trusts the propagation headers and is **off by default**
+  What crosses the boundary is the **verified identity**, not raw credentials.
+  **Trust boundary**: inbound decoding trusts the context headers and is **off by default**
   (`freeway.cloud.auth.extract.enabled=false`), enabled explicitly only inside a trusted service network;
-  outbound injection is always on (it forwards only the locally verified identity). Production token validation (JWT/Opaque) is
+  outbound encoding is always on (it forwards only the locally verified identity). Production token validation (JWT/Opaque) is
   the responsibility of a custom security module; core does not include it.
 - **Mesh admission**: `freeway.cloud.event.token` is compared in constant time, applied to hello.
   When a token is configured but dialing uses plaintext `ws://`, it **warns at startup rather than refusing** — terminating TLS in a sidecar

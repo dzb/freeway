@@ -70,7 +70,7 @@ public final class TracerDefault implements Tracer {
         // starting a span never drops identity/business context; only the
         // trace is replaced by the child. An absent ambient leaves both unset
         // (null, never Baggage.empty()): an empty baggage would read downstream
-        // as fabricated — the convention TraceBridge states for the wire.
+        // as fabricated — the convention TraceCodec states for the wire.
         InvocationContext ambient = InvocationContext.current().orElse(null);
         InvocationContext childContext = InvocationContext.of(
             child,

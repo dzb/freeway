@@ -5,7 +5,7 @@ import java.util.Optional;
 
 /**
  * Cross-boundary propagation carrier: the single {@link ScopedValue} slot that
- * crosses process boundaries via {@link ContextBridge}s.
+ * crosses process boundaries via {@link ContextCodec}s.
  *
  * <p>Carries exactly three typed sub-contexts — {@link TraceContext}
  * (infrastructure-owned), {@link PrincipalContext} (security-owned, never

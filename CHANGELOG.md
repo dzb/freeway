@@ -60,9 +60,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Renamed / API vocabulary
 
 - **Cloud context vocabulary** (`freeway-cloud`): `CloudContextModule` →
-  `ContextModule`; `Propagator` → `ContextBridge`, with `TracePropagator` →
-  `TraceBridge`, `AuthPropagator` → `AuthBridge`, and `BaggagePropagator` →
-  `BaggageBridge`. The `freeway.cloud.propagation.*` ids and wire headers are
+  `ContextModule`; `Propagator` → `ContextCodec`, with `TracePropagator` →
+  `TraceCodec`, `AuthPropagator` → `AuthCodec`, and `BaggagePropagator` →
+  `BaggageCodec`; `inject/extract` became `encode/decode`. The `freeway.cloud.propagation.*` ids and wire headers are
   unchanged.
 - **`AsyncCarrier` → `ContextCarrier`** (`freeway-commons`): the ambient
   work-context carrier moved out of `ioc.event` into
@@ -577,7 +577,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (construct plus field injection) → `@PostConstruct` → `ext.add`; a service
   realized midway through a field-injection chain would freeze the then-partial
   extension view into a singleton, silently losing cross-module contributions (the
-  `List<ContextBridge>` constructor of `PropagationFilter` was exactly that shape).
+  `List<ContextCodec>` constructor of `PropagationFilter` was exactly that shape).
   Now the config layer is constructed-only, published and initialized first; the
   remaining deferred entries are constructed-only and published, and after `seal`
   field injection and `@PostConstruct` run uniformly; a field-injection chain sees
@@ -592,8 +592,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     way for a construction-time consumer to read the complete view after startup;
     an eager `List`/`Map` injection in a constructor fails startup while pending
     entries remain.
-  - `PropagationFilter`'s constructor takes `Supplier<List<ContextBridge>>`, so a
-    `ContextBridge` from a late module cannot be silently missed.
+  - `PropagationFilter`'s constructor takes `Supplier<List<ContextCodec>>`, so a
+    `ContextCodec` from a late module cannot be silently missed.
   - `@PostConstruct` no longer runs while the store is publishing: the config
     layer initializes after its own entries are constructed/published, and the
     remaining entries initialize uniformly after the global seal; no extension can

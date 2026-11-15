@@ -1,7 +1,7 @@
 package com.jujin.freeway.cloud.rpc;
 
 import com.jujin.freeway.cloud.context.InvocationContext;
-import com.jujin.freeway.cloud.context.ContextBridge;
+import com.jujin.freeway.cloud.context.ContextCodec;
 import com.jujin.freeway.cloud.discovery.LoadBalancer;
 import com.jujin.freeway.cloud.discovery.ServiceDiscovery;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
@@ -69,7 +69,7 @@ public final class RpcHttpClientDefault implements RpcHttpClient {
     private final ServiceDiscovery discovery;
     private final LoadBalancer loadBalancer;
     private final Duration requestTimeout;
-    private final List<ContextBridge> bridges;
+    private final List<ContextCodec> codecs;
     private final CircuitBreaker injectedBreaker;
     private final RateLimiter injectedRateLimiter;
     private final TransportSecurity transport;
@@ -127,7 +127,7 @@ public final class RpcHttpClientDefault implements RpcHttpClient {
      * {@link #defaults()}.
      */
     public record Wiring(
-        List<ContextBridge> bridges,
+        List<ContextCodec> codecs,
         Retryer retryer,
         CircuitBreaker breaker,
         RateLimiter rateLimiter,
@@ -151,73 +151,73 @@ public final class RpcHttpClientDefault implements RpcHttpClient {
             RpcModule.ConfigKeys.RPC_SHUTDOWN_GRACE_DEFAULT;
 
         public Wiring {
-            bridges = bridges == null ? List.of() : List.copyOf(bridges);
+            codecs = codecs == null ? List.of() : List.copyOf(codecs);
             requestTimeout = requestTimeout == null ? DEFAULT_REQUEST_TIMEOUT : requestTimeout;
             connectTimeout = connectTimeout == null ? DEFAULT_CONNECT_TIMEOUT : connectTimeout;
             shutdownGrace = shutdownGrace == null ? DEFAULT_SHUTDOWN_GRACE : shutdownGrace;
         }
 
-        /** All-default wiring: no bridges, built-in resilience, plaintext. */
+        /** All-default wiring: no codecs, built-in resilience, plaintext. */
         public static Wiring defaults() {
             return new Wiring(null, null, null, null, null, null, null, null, null, null);
         }
 
         public Wiring withTracer(Tracer value) {
-            return new Wiring(bridges, retryer, breaker, rateLimiter, transport,
+            return new Wiring(codecs, retryer, breaker, rateLimiter, transport,
                 value, metrics, requestTimeout, connectTimeout,
                 shutdownGrace);
         }
 
         public Wiring withMetrics(Metrics value) {
-            return new Wiring(bridges, retryer, breaker, rateLimiter, transport,
+            return new Wiring(codecs, retryer, breaker, rateLimiter, transport,
                 tracer, value, requestTimeout, connectTimeout,
                 shutdownGrace);
         }
 
-        public Wiring withContextBridges(List<ContextBridge> value) {
+        public Wiring withContextCodecs(List<ContextCodec> value) {
             return new Wiring(value, retryer, breaker, rateLimiter, transport,
                 tracer, metrics, requestTimeout, connectTimeout,
                 shutdownGrace);
         }
 
         public Wiring withRetryer(Retryer value) {
-            return new Wiring(bridges, value, breaker, rateLimiter, transport,
+            return new Wiring(codecs, value, breaker, rateLimiter, transport,
                 tracer, metrics, requestTimeout, connectTimeout,
                 shutdownGrace);
         }
 
         public Wiring withBreaker(CircuitBreaker value) {
-            return new Wiring(bridges, retryer, value, rateLimiter, transport,
+            return new Wiring(codecs, retryer, value, rateLimiter, transport,
                 tracer, metrics, requestTimeout, connectTimeout,
                 shutdownGrace);
         }
 
         public Wiring withRateLimiter(RateLimiter value) {
-            return new Wiring(bridges, retryer, breaker, value, transport,
+            return new Wiring(codecs, retryer, breaker, value, transport,
                 tracer, metrics, requestTimeout, connectTimeout,
                 shutdownGrace);
         }
 
         public Wiring withTransport(TransportSecurity value) {
-            return new Wiring(bridges, retryer, breaker, rateLimiter, value,
+            return new Wiring(codecs, retryer, breaker, rateLimiter, value,
                 tracer, metrics, requestTimeout, connectTimeout,
                 shutdownGrace);
         }
 
         public Wiring withRequestTimeout(Duration value) {
-            return new Wiring(bridges, retryer, breaker, rateLimiter, transport,
+            return new Wiring(codecs, retryer, breaker, rateLimiter, transport,
                 tracer, metrics, value, connectTimeout,
                 shutdownGrace);
         }
 
         public Wiring withShutdownGrace(Duration value) {
-            return new Wiring(bridges, retryer, breaker, rateLimiter, transport,
+            return new Wiring(codecs, retryer, breaker, rateLimiter, transport,
                 tracer, metrics, requestTimeout, connectTimeout,
                 value);
         }
 
         public Wiring withConnectTimeout(Duration value) {
-            return new Wiring(bridges, retryer, breaker, rateLimiter, transport,
+            return new Wiring(codecs, retryer, breaker, rateLimiter, transport,
                 tracer, metrics, requestTimeout, value,
                 shutdownGrace);
         }
@@ -243,7 +243,7 @@ public final class RpcHttpClientDefault implements RpcHttpClient {
         Objects.requireNonNull(wiring, "wiring");
         this.discovery = Objects.requireNonNull(discovery, "discovery");
         this.loadBalancer = Objects.requireNonNull(loadBalancer, "loadBalancer");
-        this.bridges = wiring.bridges();
+        this.codecs = wiring.codecs();
         // A default-implementation breaker/limiter is used as the per-service
         // shard configuration template; any other implementation (or NOOP) is
         // shared verbatim — see the computeIfAbsent factories in call().
@@ -534,8 +534,8 @@ public final class RpcHttpClientDefault implements RpcHttpClient {
         String url = instance.endpoint().uri() + request.path();
         Map<String, String> outbound = new HashMap<>(request.headers());
         InvocationContext.current().ifPresent(ctx -> {
-            for (ContextBridge bridge : bridges) {
-                bridge.inject(ctx, outbound);
+            for (ContextCodec codec : codecs) {
+                codec.encode(ctx, outbound);
             }
         });
         // The deadline owns this attempt: a fixed request timeout let a send

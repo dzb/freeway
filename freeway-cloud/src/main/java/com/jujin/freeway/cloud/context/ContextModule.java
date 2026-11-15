@@ -1,10 +1,10 @@
 package com.jujin.freeway.cloud.context;
 
 import com.jujin.freeway.cloud.CloudKeys;
-import com.jujin.freeway.cloud.context.internal.AuthBridge;
-import com.jujin.freeway.cloud.context.internal.BaggageBridge;
+import com.jujin.freeway.cloud.context.internal.AuthCodec;
+import com.jujin.freeway.cloud.context.internal.BaggageCodec;
 import com.jujin.freeway.cloud.context.internal.PropagationFilter;
-import com.jujin.freeway.cloud.context.internal.TraceBridge;
+import com.jujin.freeway.cloud.context.internal.TraceCodec;
 import com.jujin.freeway.commons.util.ContextCarrier;
 import com.jujin.freeway.http.filter.HttpFilter;
 import com.jujin.freeway.ioc.Binder;
@@ -17,7 +17,7 @@ import org.slf4j.MDC;
 
 /**
  * IoC wiring for the context subsystem: {@code InvocationContext} (ScopedValue
- * carrier), {@code ContextBridge} chain, and the inbound {@code PropagationFilter}.
+ * carrier), {@code ContextCodec} chain, and the inbound {@code PropagationFilter}.
  */
 @Marker(Builtin.class)
 public final class ContextModule implements ModuleEx {
@@ -68,13 +68,13 @@ public final class ContextModule implements ModuleEx {
                 }
             };
         });
-        b.contribute(ContextBridge.class).add("freeway.cloud.propagation.trace", new TraceBridge());
-        // Container-created so the auth bridge can read the
+        b.contribute(ContextCodec.class).add("freeway.cloud.propagation.trace", new TraceCodec());
+        // Container-created so the auth codec can read the
         // freeway.cloud.auth.extract.enabled switch from the SymbolSource.
-        b.contribute(ContextBridge.class).addDeferred(AuthBridge.class);
+        b.contribute(ContextCodec.class).addDeferred(AuthCodec.class);
         // After trace/auth: their extract() leaves unset baggage as null, so
         // the merge keeps the baggage parsed here (null wins only when absent).
-        b.contribute(ContextBridge.class).add("freeway.cloud.propagation.baggage", new BaggageBridge());
+        b.contribute(ContextCodec.class).add("freeway.cloud.propagation.baggage", new BaggageCodec());
         b.contribute(HttpFilter.class).addDeferred(PropagationFilter.class);
     }
     /** Keys read by context propagation. */
