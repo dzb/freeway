@@ -258,6 +258,41 @@ location.
 
 ---
 
+## 16. A broad domain word is not a design
+
+**Symptom.** `PropagationFilter`, `Propagator`, `ScopeSession.propagate`,
+`RpcExport.propagateMessage` and the `freeway.cloud.propagation.*` ids all used
+one word for different acts: an inbound context filter, a bidirectional codec,
+an executor wrapper and a message-forwarding switch. Renaming the codec left
+the runtime ids and comments saying `propagation`, and the commit message
+translated the old class name as "propagation filter" instead of naming the new
+symbol.
+
+**Cause.** `propagation` is a high-frequency term in tracing, transactions,
+network and exception prose. It sounded precise because it is standard
+somewhere else, so it was reused without asking what the local unit actually
+does. Once one use existed, consistency pressure reproduced it in ids, tests,
+docs and changelog text. Keeping the old id "for compatibility" then made the
+runtime vocabulary disagree with the code, which is harder to notice than a
+compile error.
+
+**Rule.**
+
+> Name the local act and direction: `ContextFilter` for inbound
+> decode → merge → bind, `ContextCodec` for encode/decode, `wrap` for an
+> executor wrapper, `forwardMessage` for a message switch. Reserve
+> `propagation` for a genuine protocol term (W3C trace context propagation) or
+> an established external semantic (Spring transaction propagation).
+>
+> A rename includes its runtime identity: contribution ids, registry keys and
+> test assertions change in the same commit; two vocabularies for one fact are
+> a latent failure. A commit message names the old and new symbols
+> (`PropagationFilter` → `ContextFilter`), never a translated role.
+>
+> If a word can describe every layer, it describes none of them.
+
+---
+
 ## Review checklist
 
 Before declaring a boundary refactor done:
@@ -272,3 +307,5 @@ Before declaring a boundary refactor done:
 8. Every renamed wire/config namespace has zero surviving old spellings.
 9. Deleted modules leave no orphan helper/adaptor behind.
 10. Publishing and release order are explicit for moved artifacts.
+11. A rename covers code, current docs, contribution ids and tests; only
+    historical release notes keep the historical spelling.
