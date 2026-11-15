@@ -1,4 +1,4 @@
-package com.jujin.freeway.cloud.internal;
+package com.jujin.freeway.cloud.http;
 
 import java.net.http.HttpClient;
 import java.time.Duration;
@@ -13,9 +13,9 @@ import javax.net.ssl.SSLContext;
  * ({@code PeerConnector}) — and each had its own builder with the same two
  * rules. They differ in what they add afterwards; the base is shared.</p>
  */
-public final class CloudHttpClients {
+public final class HttpClients {
 
-    private CloudHttpClients() {}
+    private HttpClients() {}
 
     public static HttpClient.Builder builder(Duration connectTimeout, SSLContext sslContext) {
         HttpClient.Builder builder = HttpClient.newBuilder();

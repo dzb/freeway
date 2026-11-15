@@ -1,4 +1,4 @@
-package com.jujin.freeway.cloud.internal;
+package com.jujin.freeway.commons.util;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;

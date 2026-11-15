@@ -5,7 +5,7 @@ import com.jujin.freeway.cloud.context.Propagator;
 import com.jujin.freeway.cloud.discovery.LoadBalancer;
 import com.jujin.freeway.cloud.discovery.ServiceDiscovery;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
-import com.jujin.freeway.cloud.internal.CloudHttpClients;
+import com.jujin.freeway.cloud.http.HttpClients;
 import com.jujin.freeway.cloud.observe.Tracer;
 import com.jujin.freeway.cloud.resilience.CircuitBreaker;
 import com.jujin.freeway.cloud.resilience.CircuitBreakerDefault;
@@ -265,7 +265,7 @@ public final class RpcHttpClientDefault implements RpcHttpClient {
             resolvedRetryer, this.tracer, this.metrics, this::retryBudgetFor);
         this.shutdownGrace = wiring.shutdownGrace();
         this.requestTimeout = wiring.requestTimeout();
-        this.http = CloudHttpClients
+        this.http = HttpClients
             .builder(wiring.connectTimeout(), this.transport.sslContext())
             .version(HttpClient.Version.HTTP_1_1)
             .build();

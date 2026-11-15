@@ -1,7 +1,5 @@
-package com.jujin.freeway.cloud.internal;
+package com.jujin.freeway.ioc;
 
-import com.jujin.freeway.ioc.Container;
-import com.jujin.freeway.ioc.MissingBindingException;
 
 import java.util.Objects;
 

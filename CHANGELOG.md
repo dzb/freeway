@@ -42,6 +42,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `FleetServiceDiscovery` → `FleetDiscovery`, `FleetServiceRegistry` →
   `FleetRegistrar`. The in-process local backend was removed; tests use a
   test-scope registry fixture.
+- **Public transport/comparison helpers**: `CloudHttpClients` → `cloud.http.HttpClients`,
+  `ConstantTime` → `commons.util.ConstantTime`, and `OptionalBinding` →
+  `ioc.OptionalBinding`. Ext modules no longer import `cloud.internal`.
 - **Fleet wire/config vocabulary**: Fleet is now `/fleet` with `X-Fleet-Token` /
   `X-Fleet-Proto`, and its keys are `freeway.fleet.*`. A shared
   `freeway-fleet-protocol` module owns routes, headers, version and keys, so the

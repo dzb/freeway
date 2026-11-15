@@ -126,8 +126,7 @@ com.jujin.freeway.cloud
 │                       PropagationFilter
 ├── health/internal/    ReadyHandler
 ├── observe/internal/   MetricsHandler, TracingFilter
-└── internal/           cross-domain shared mechanisms: BackendTypeGuard,
-                        OptionalBinding, CloudHttpClients, ConstantTime
+└── internal/           BackendTypeGuard
 ```
 
 Fleet moved out of this repository in 2.0: the client/protocol

@@ -375,15 +375,15 @@ compatibility alias was added.
 ### Cloud packages and names describe their plane
 
 - Implementation types moved to `cloud.<domain>.internal`; top-level
-  `cloud.internal` now contains only cross-domain support such as
-  `CloudHttpClients`, `Identity` and `BackendTypeGuard`.
+  `cloud.internal` now contains only `BackendTypeGuard`; shared HTTP-client
+  construction lives in `cloud.http.HttpClients`.
 - RPC and event mesh use `Rpc*` / `Mesh*` vocabulary; Fleet lives in freeway-ext.
   The event mesh is explicitly `MeshEventBus`, not a second `EventBus`.
 - `RpcModule`, `HealthModule`, `EventMeshModule` and the other
   domain modules no longer repeat the `Cloud` prefix already supplied by the
   package.
-- `Proxies.objectMethod(...)`, `OptionalBinding.get(...)` and shared HTTP-client
-  construction remove duplicated Object-method/optional/transport logic.
+- `Proxies.objectMethod(...)`, `ioc.OptionalBinding.get(...)` and `cloud.http.HttpClients`
+  remove duplicated Object-method/optional/transport logic.
 
 ### Public vocabulary is now consistent
 

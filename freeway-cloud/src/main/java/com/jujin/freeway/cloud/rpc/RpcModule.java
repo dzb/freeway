@@ -3,7 +3,7 @@ package com.jujin.freeway.cloud.rpc;
 import com.jujin.freeway.cloud.CloudKeys;
 import com.jujin.freeway.cloud.annotation.Local;
 import com.jujin.freeway.cloud.discovery.LoadBalancerDefault;
-import com.jujin.freeway.cloud.internal.OptionalBinding;
+import com.jujin.freeway.ioc.OptionalBinding;
 import com.jujin.freeway.cloud.context.Propagator;
 import com.jujin.freeway.cloud.discovery.LoadBalancer;
 import com.jujin.freeway.cloud.discovery.ServiceDiscovery;

@@ -1,6 +1,6 @@
 package com.jujin.freeway.cloud.event;
 
-import com.jujin.freeway.cloud.internal.ConstantTime;
+import com.jujin.freeway.commons.util.ConstantTime;
 import com.jujin.freeway.commons.json.JsonArray;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.http.websocket.WebSocketEndpoint;
