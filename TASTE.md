@@ -223,7 +223,7 @@ composition-time store, not to consumers:
   compile at all".
 
 See [Extension.java](freeway-ioc/src/main/java/com/jujin/freeway/ioc/extension/Extension.java),
-[ExtensionStore.java](freeway-ioc/src/main/java/com/jujin/freeway/ioc/extension/ExtensionStore.java).
+[ExtensionStore.java](freeway-ioc/src/main/java/com/jujin/freeway/ioc/internal/ExtensionStore.java).
 
 ---
 
@@ -381,7 +381,7 @@ and verifiability matter more than "writing a few fewer lines".
 | RequestHead + RequestViewSupport | the four request facts are declared once |
 | ErrorResponse + pure ErrorMapper | error shape is data, not a side effect |
 | Shared HealthResult | a health result does not differ by module |
-| Read-only Extension + writing ExtensionStore | a read interface carries no write capability |
+| Read-only Extension + internal ExtensionStore | a read interface carries no write capability |
 | Scope.BOUNDARY | the name describes the lifetime, not the implementation detail |
 | Container-built-in JsonCodec | a foundational capability does not belong to the HTTP module |
 | Standalone H2Dialect + H2Mode | a compatibility mode is not a target dialect |

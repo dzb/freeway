@@ -101,7 +101,7 @@ public interface Container extends AutoCloseable {
      * the store is complete (the final-build phase or later): a
      * container-created store refuses {@code all()}/{@code asMap()} while any
      * declared contribution of that type is still unpublished, so a
-     * composition-time reader cannot freeze a partial view. Contributions
+     * composition-time reader cannot freeze a partial view. ContributionStore
      * themselves are accepted only during composition — the store is sealed
      * once the container is built.
      *

@@ -1,7 +1,10 @@
-package com.jujin.freeway.ioc.extension;
+package com.jujin.freeway.ioc.internal;
 
 import com.jujin.freeway.commons.util.TopologicalOrder;
 import com.jujin.freeway.ioc.RuntimeDescription;
+import com.jujin.freeway.ioc.extension.Contribution;
+import com.jujin.freeway.ioc.extension.Extension;
+import com.jujin.freeway.ioc.extension.Ordering;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -81,7 +84,7 @@ public final class ExtensionStore<T> implements Extension<T> {
     /**
      * The container's form: reads are refused until {@code complete} answers
      * true, so a composition-time reader can never freeze a partial view.
-     * The two-arg constructor is public because the registry lives in another
+     * The two-arg constructor is public for extension tests and internal
      * package; application code should use the one-arg form.
      */
     public ExtensionStore(Class<T> entryType, BooleanSupplier complete) {

@@ -3,7 +3,7 @@ import java.util.logging.Handler;
 import java.util.logging.LogRecord;
 
 import com.jujin.freeway.ioc.annotation.*;
-import com.jujin.freeway.ioc.extension.ExtensionStore;
+import com.jujin.freeway.ioc.internal.ExtensionStore;
 import com.jujin.freeway.ioc.extension.Ordering;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -218,7 +218,7 @@ class ExtensionAggregationTest {
     void extensionOrderingWarnsOnMissingIds() {
         var records = new ArrayList<LogRecord>();
         java.util.logging.Logger jul = java.util.logging.Logger.getLogger(
-            "com.jujin.freeway.ioc.extension.ExtensionStore");
+            "com.jujin.freeway.ioc.internal.ExtensionStore");
         Handler handler = new Handler() {
             @Override
             public void publish(LogRecord record) {

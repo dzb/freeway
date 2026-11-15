@@ -6,9 +6,7 @@ import com.jujin.freeway.commons.util.Strings;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.RuntimeDescription;
 import com.jujin.freeway.ioc.extension.Contribution;
-import com.jujin.freeway.ioc.extension.ExtensionStore;
 import com.jujin.freeway.ioc.extension.Ordering;
-import com.jujin.freeway.ioc.extension.OrderingSupport;
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
 
 import java.util.ArrayList;
@@ -46,7 +44,7 @@ import java.util.function.Supplier;
  * replaced by a module reads the same view. Those two entry types are exempt
  * from the completeness gate for the same reason.
  */
-final class Contributions {
+final class ContributionStore {
 
     private final ContainerImpl container;
     private final CoercerDefault coercer;
@@ -85,7 +83,7 @@ final class Contributions {
         }
     }
 
-    Contributions(ContainerImpl container, CoercerDefault coercer, Set<Class<?>> earlyTypes) {
+    ContributionStore(ContainerImpl container, CoercerDefault coercer, Set<Class<?>> earlyTypes) {
         this.container = Objects.requireNonNull(container, "container");
         this.coercer = Objects.requireNonNull(coercer, "coercer");
         // The entry types whose deferred creations are constructed, published and

@@ -163,7 +163,7 @@ pendingCreates.add(() -> {
 });
 
 // Bindings are registered per module (flushPending), then after the last
-// module's bind() the class contributions drain (Contributions.constructEntries):
+// module's bind() the class contributions drain (ContributionStore.constructEntries):
 for (var action : pendingCreates) action.run();
 ```
 
@@ -258,9 +258,9 @@ RouteHandler resolve(Supplier<RouteHandler> factory) {
 
 **Decision:** A lightweight `DeferredOrdering` stores `before/after` ordering constraints during `bind()` and applies them post-instantiation.
 
-**Why:** `addDeferred(Class)` defers instantiation until after all modules have bound (`Contributions.constructEntries()`), but the caller specifies ordering at `bind()` time. `DeferredOrdering` captures those ordering constraints eagerly and replays them onto the real `Ordering` (from `ext.add(id, instance)`) once the instance is created. This matches `Extension.Entry`'s behavior (append-only `before`/`after` lists). After composition the stores are sealed, so a deferred handle used later fails loudly instead of buffering constraints nothing will replay.
+**Why:** `addDeferred(Class)` defers instantiation until after all modules have bound (`ContributionStore.constructEntries()`), but the caller specifies ordering at `bind()` time. `DeferredOrdering` captures those ordering constraints eagerly and replays them onto the real `Ordering` (from `ext.add(id, instance)`) once the instance is created. This matches `Extension.Entry`'s behavior (append-only `before`/`after` lists). After composition the stores are sealed, so a deferred handle used later fails loudly instead of buffering constraints nothing will replay.
 
-**See also:** `Contributions.DeferredOrdering`
+**See also:** `ContributionStore.DeferredOrdering`
 
 ---
 

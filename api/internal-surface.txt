@@ -33,3 +33,4 @@ freeway-http/src/main/java/com/jujin/freeway/http/internal/ResolvableValue.java#
 freeway-http/src/main/java/com/jujin/freeway/http/internal/ResponseFraming.java#ResponseFraming
 freeway-http/src/main/java/com/jujin/freeway/http/internal/WebSocketCloseReason.java#WebSocketCloseReason
 freeway-ioc/src/main/java/com/jujin/freeway/ioc/internal/ContainerImpl.java#ContainerImpl
+freeway-ioc/src/main/java/com/jujin/freeway/ioc/internal/ExtensionStore.java#ExtensionStore

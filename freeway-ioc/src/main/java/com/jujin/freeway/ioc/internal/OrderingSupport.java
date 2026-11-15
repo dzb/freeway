@@ -1,8 +1,9 @@
-package com.jujin.freeway.ioc.extension;
+package com.jujin.freeway.ioc.internal;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import com.jujin.freeway.ioc.extension.Ordering;
 import java.util.function.Consumer;
 
 /**
@@ -16,11 +17,10 @@ import java.util.function.Consumer;
  * "accepted only during composition" diagnostics stay at the call site that
  * knows the phase.</p>
  *
- * <p>Framework support, public because the container's deferred-contribution
- * registry lives in a sibling package. Applications consume the returned
- * {@link Ordering} interface, not this type.</p>
+ * <p>Framework support inside {@code ioc.internal}: applications consume the
+ * returned {@link Ordering} interface, not this type.</p>
  */
-public final class OrderingSupport implements Ordering {
+final class OrderingSupport implements Ordering {
 
     private final Consumer<String> requireMutable;
     private final List<String> beforeIds = new ArrayList<>();
@@ -33,7 +33,7 @@ public final class OrderingSupport implements Ordering {
      *                       mutation; throws when constraints may no longer be
      *                       declared
      */
-    public OrderingSupport(Consumer<String> requireMutable) {
+    OrderingSupport(Consumer<String> requireMutable) {
         this.requireMutable = Objects.requireNonNull(requireMutable, "requireMutable");
     }
 
