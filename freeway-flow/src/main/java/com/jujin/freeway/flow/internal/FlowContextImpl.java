@@ -5,7 +5,7 @@ import com.jujin.freeway.commons.json.JsonUtils;
 import com.jujin.freeway.commons.util.ContextExecutor;
 import com.jujin.freeway.commons.util.LazyValue;
 import com.jujin.freeway.flow.FlowContext;
-import com.jujin.freeway.flow.FlowContext.Branch;
+import com.jujin.freeway.flow.FlowBranching;
 import com.jujin.freeway.flow.FlowEventBus;
 import com.jujin.freeway.flow.FlowException;
 
@@ -25,7 +25,7 @@ import java.util.concurrent.Executor;
  *
  * <p>Branch isolation is a {@link ScopedValue} frame, not a thread-local
  * stack: {@link #beginBranch()} creates an immutable child of the current
- * frame, and {@link FlowContext.Branch#run} binds it for the branch body.
+ * frame, and {@link FlowBranching.Branch#run} binds it for the branch body.
  * Nested PARALLEL branches inherit the enclosing frame through
  * {@link #capturing(Executor)}, so an inner branch writes into its outer
  * branch's buffer instead of escaping to the root — the frame is carried by
@@ -43,7 +43,7 @@ import java.util.concurrent.Executor;
  * {@code containsKey} (the backing map forbids null values, so a sentinel
  * stores the clearing inside a layer).</p>
  */
-public final class FlowContextImpl implements FlowContext {
+public final class FlowContextImpl implements FlowContext, FlowBranching {
     /** Sentinel for "cleared in this layer" (the CHM root simply drops the key). */
     private static final Object REMOVED = new Object();
 
@@ -118,7 +118,7 @@ public final class FlowContextImpl implements FlowContext {
     }
 
     @Override
-    public Branch beginBranch() {
+    public FlowBranching.Branch beginBranch() {
         BranchFrame parent = FRAME.isBound() ? FRAME.get() : null;
         if (parent != null) {
             parent.layer().openChildren.incrementAndGet();

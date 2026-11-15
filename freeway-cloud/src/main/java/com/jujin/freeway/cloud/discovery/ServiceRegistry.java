@@ -43,6 +43,14 @@ public interface ServiceRegistry {
     void unregister(ServiceInstance instance);
 
     /**
+     * Whether this backend can publish readiness before the instance is
+     * discoverable. The default is false: an adapter that has no such concept
+     * must not be given a gate that can never flip. Fleet and Consul implement
+     * it; a custom adapter opts in explicitly.
+     */
+    default boolean supportsReadiness() { return false; }
+
+    /**
      * Publishes this instance's readiness, so a slow-starting process is not
      * discoverable before it can serve. Discovery only returns live
      * <em>and ready</em> instances ({@link ServiceDiscovery#instances}), so an

@@ -87,7 +87,8 @@ final class RegistrationHook implements RuntimeHook {
         // Whether a readiness gate will arm is known before the first write:
         // an application with health checks registers as starting, so "in the
         // registry, not in discovery" is one write rather than a window.
-        boolean warming = !container.extension(CloudHealthContributor.class).all().isEmpty();
+        boolean warming = registry.supportsReadiness()
+            && !container.extension(CloudHealthContributor.class).all().isEmpty();
         ServiceHealth initialHealth = warming ? ServiceHealth.starting() : ServiceHealth.up();
         try {
             for (ServiceDeclaration declaration : container.extension(ServiceDeclaration.class).all()) {
@@ -116,9 +117,11 @@ final class RegistrationHook implements RuntimeHook {
         }
 
         if (!registered.isEmpty()) {
-            readinessGate = ReadinessGate.arm(container, registryRef, registered);
-            if (readinessGate != null) {
-                readinessGate.start();
+            if (registry.supportsReadiness()) {
+                readinessGate = ReadinessGate.arm(container, registryRef, registered);
+                if (readinessGate != null) {
+                    readinessGate.start();
+                }
             }
             renewal.track();
             long intervalMillis = renewInterval.toMillis();

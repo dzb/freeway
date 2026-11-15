@@ -21,33 +21,39 @@ public final class FlowExecution {
     private final FlowContext context;
     final ExecState execState;
     /** True when this execution runs a sub-graph (created by {@link #runGraph}). */
-    private volatile boolean subgraphExecution = false;
+    private final boolean subgraphExecution;
     /** Graphs whose END node was reached in this execution. */
     private final Set<String> graphEnded = ConcurrentHashMap.newKeySet();
 
     public FlowExecution(Graph graph, FlowEngine engine, FlowDriver driver,
             FlowContext context) {
-        this(graph, engine, driver, context, new ExecState());
+        this(graph, engine, driver, context, new ExecState(), false);
     }
 
     FlowExecution(Graph graph, FlowEngine engine, FlowDriver driver,
             FlowContext context, ExecState execState) {
+        this(graph, engine, driver, context, execState, false);
+    }
+
+    private FlowExecution(Graph graph, FlowEngine engine, FlowDriver driver,
+            FlowContext context, ExecState execState, boolean subgraphExecution) {
         this.graph = Objects.requireNonNull(graph, "graph");
         this.engine = Objects.requireNonNull(engine, "engine");
         this.driver = Objects.requireNonNull(driver, "driver");
         this.context = Objects.requireNonNull(context, "context");
         this.execState = Objects.requireNonNull(execState, "execState");
+        this.subgraphExecution = subgraphExecution;
     }
 
     /** The same evaluation continued on another graph, sharing the run state. */
     public FlowExecution copy(Graph graphNew) {
-        return new FlowExecution(graphNew, engine, driver, context, execState);
+        return new FlowExecution(graphNew, engine, driver, context, execState, subgraphExecution);
     }
 
     /** The same evaluation continued on another graph and context (e.g. a
      *  sub-graph run with isolated variables). */
     public FlowExecution copy(Graph graphNew, FlowContext contextNew) {
-        return new FlowExecution(graphNew, engine, driver, contextNew, execState);
+        return new FlowExecution(graphNew, engine, driver, contextNew, execState, subgraphExecution);
     }
 
     public Graph graph() { return graph; }
@@ -65,8 +71,7 @@ public final class FlowExecution {
      */
     public void runGraph(Graph graph) {
         FlowExecution subExecution = new FlowExecution(
-            graph, engine, engine.driver(graph), context, execState);
-        subExecution.markSubgraphExecution();
+            graph, engine, engine.driver(graph), context, execState, true);
         engine.run(graph, subExecution);
         if (!isStopped() && !subExecution.isGraphEnded(graph.id())) {
             throw new FlowException(
@@ -98,8 +103,6 @@ public final class FlowExecution {
 
     /** True when this execution runs a sub-graph (created by {@link #runGraph}). */
     boolean isSubgraphExecution() { return subgraphExecution; }
-
-    void markSubgraphExecution() { this.subgraphExecution = true; }
 
     /** Marks a graph as having reached its END node (see the END dispatch). */
     void markEnded(Graph graph) {

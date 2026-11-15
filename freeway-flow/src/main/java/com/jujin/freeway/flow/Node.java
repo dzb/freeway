@@ -31,11 +31,11 @@ public final class Node {
     private volatile List<Node> nextNodes;
     private volatile List<Link> prevLinks;
 
-    public Node(Graph graph, NodeSpec spec, List<Link> links) {
+    Node(Graph graph, NodeSpec spec, List<Link> links) {
         this(graph, spec, spec.type(), links);
     }
 
-    public Node(Graph graph, NodeSpec spec, NodeType type, List<Link> links) {
+    Node(Graph graph, NodeSpec spec, NodeType type, List<Link> links) {
         this.graph = graph;
         this.id = spec.id();
         this.title = spec.title();

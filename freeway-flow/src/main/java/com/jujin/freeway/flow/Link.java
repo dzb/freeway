@@ -23,7 +23,7 @@ public final class Link implements Comparable<Link> {
     private volatile Node prevNode;
     private volatile Node nextNode;
 
-    public Link(Graph graph, String prevId, LinkSpec spec) {
+    Link(Graph graph, String prevId, LinkSpec spec) {
         this.graph = graph;
         this.prevId = prevId;
 

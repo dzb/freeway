@@ -602,7 +602,13 @@ public final class FlowEngineDefault implements FlowEngine {
         // behind on this thread. The javadoc's "a stopped or failed branch
         // contributes nothing" is now what the shape does, not what the code
         // around it remembers to do.
-        try (FlowContext.Branch scope = execution.context().beginBranch()) {
+        if (!(execution.context() instanceof FlowBranching branching)) {
+            throw new FlowException(
+                "PARALLEL node '" + fork.id() + "' needs a FlowContext implementing "
+                    + FlowBranching.class.getName() + "; the supplied context has no "
+                    + "branch isolation capability");
+        }
+        try (FlowBranching.Branch scope = branching.beginBranch()) {
             scope.run(() -> walk(execution, branch));
             scope.commit();
         }

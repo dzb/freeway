@@ -103,44 +103,4 @@ public interface FlowContext {
 
     /** The data map as JSON. */
     String toJson();
-
-    // --- engine-internal ---
-
-    /**
-     * @hidden Opens a branch-local write buffer: every write made while
-     *  {@link Branch#run} executes the branch body lands in the buffer, reads
-     *  see buffer-then-parent. The PARALLEL dispatcher wraps each branch with
-     *  this and carries the enclosing frame to the worker ({@code ScopedValue}
-     *  propagation), so a fork nested inside a branch writes into that branch
-     *  instead of the root; committing folds the buffer into the parent
-     *  (conflict if a key this branch wrote was written differently
-     *  meanwhile), and closing without committing discards it.
-     *
-     *  <p>The scope is the shape: a branch cannot forget to either commit or
-     *  discard, because try-with-resources closes it on every exit path —
-     *  including the one where the branch threw.</p>
-     */
-    Branch beginBranch();
-
-    /**
-     * @hidden One branch's write buffer. Commit exactly once; the closing
-     *  scope discards whatever was not committed.
-     */
-    interface Branch extends AutoCloseable {
-
-        /**
-         * Runs {@code body} with this branch as the current scope: writes land
-         * in its buffer, and nested PARALLEL branches that inherit the scope
-         * write there too. Call before {@link #commit()}; a branch whose body
-         * is not run this way has nothing to fold.
-         */
-        void run(Runnable body);
-
-        /** Folds the buffer into the parent; fails on a write-write conflict. */
-        void commit();
-
-        /** Discards the buffer unless it was committed. Idempotent. */
-        @Override
-        void close();
-    }
 }

@@ -9,11 +9,11 @@ package com.jujin.freeway.flow;
 public final class TaskDesc {
     private final Ref<Node, TaskHandler> ref;
 
-    public TaskDesc(Node node, String description) {
+    TaskDesc(Node node, String description) {
         this(node, description, null);
     }
 
-    public TaskDesc(Node node, String description, TaskHandler handler) {
+    TaskDesc(Node node, String description, TaskHandler handler) {
         this.ref = new Ref<>(node, description, handler);
     }
 

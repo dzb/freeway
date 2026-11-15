@@ -6,11 +6,11 @@ package com.jujin.freeway.flow;
 public final class ConditionDesc {
     private final Ref<Graph, ConditionHandler> ref;
 
-    public ConditionDesc(Graph graph, String description) {
+    ConditionDesc(Graph graph, String description) {
         this(graph, description, null);
     }
 
-    public ConditionDesc(Graph graph, String description, ConditionHandler handler) {
+    ConditionDesc(Graph graph, String description, ConditionHandler handler) {
         this.ref = new Ref<>(graph, description, handler);
     }
 

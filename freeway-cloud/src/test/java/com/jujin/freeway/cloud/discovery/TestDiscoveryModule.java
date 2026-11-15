@@ -58,6 +58,9 @@ public final class TestDiscoveryModule implements ModuleEx {
         }
 
         @Override
+        public boolean supportsReadiness() { return true; }
+
+        @Override
         public void markReady(ServiceInstance instance, boolean ready) {
             Entry entry = entries.get(instance.instanceId());
             if (entry != null) {

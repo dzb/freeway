@@ -433,11 +433,13 @@ final class InjectionResolver {
         if (id == null) {
             return null;
         }
-        try {
-            return container.get(targetType, id);
-        } catch (MissingBindingException e) {
-            return null; // no bound service with this id — use contributions
+        // Selection first: only an absent type/id falls back to contributions.
+        // A provider's own MissingBindingException must propagate, exactly as
+        // OptionalBinding now does.
+        if (container.bindingIndex().find(targetType, id) == null) {
+            return null;
         }
+        return container.get(targetType, id);
     }
 
     private static AnnotationLookup of(BeanProperty property) {

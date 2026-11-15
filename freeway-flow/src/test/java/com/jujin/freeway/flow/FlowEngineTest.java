@@ -2022,7 +2022,7 @@ class FlowEngineTest {
         FlowContextImpl ctx = new FlowContextImpl();
         ctx.put("base", "1");
 
-        FlowContext.Branch merge = ctx.beginBranch();
+        FlowBranching.Branch merge = ctx.beginBranch();
         ctx.put("k", "A");
         ctx.remove("base");
         assertEquals("A", ctx.get("k"), "a branch reads back its own write");
@@ -2041,7 +2041,7 @@ class FlowEngineTest {
         // parent — the parent could not read them. Retrying a flow on the same
         // thread is exactly when that happens.
         FlowContextImpl ctx = new FlowContextImpl();
-        try (FlowContext.Branch failed = ctx.beginBranch()) {
+        try (FlowBranching.Branch failed = ctx.beginBranch()) {
             failed.run(() -> {
                 ctx.put("abandoned", "v");
                 throw new IllegalStateException("branch failed");
@@ -2050,7 +2050,7 @@ class FlowEngineTest {
             // the branch failed; its buffer must not survive the binding
         }
 
-        try (FlowContext.Branch retry = ctx.beginBranch()) {
+        try (FlowBranching.Branch retry = ctx.beginBranch()) {
             retry.run(() -> ctx.put("after-retry", "visible"));
             retry.commit();
         }
@@ -2195,8 +2195,8 @@ class FlowEngineTest {
         // out-of-order merge would fold an inner layer over a live outer
         // branch and is refused loudly instead.
         FlowContextImpl ctx = new FlowContextImpl();
-        FlowContext.Branch outer = ctx.beginBranch();
-        FlowContext.Branch[] inner = new FlowContext.Branch[1];
+        FlowBranching.Branch outer = ctx.beginBranch();
+        FlowBranching.Branch[] inner = new FlowBranching.Branch[1];
         outer.run(() -> {
             // Nested branch: its frame chains onto outer's.
             inner[0] = ctx.beginBranch();
@@ -2252,7 +2252,7 @@ class FlowEngineTest {
         FlowContextImpl ctx = new FlowContextImpl();
         ctx.put("base", "1");
 
-        FlowContext.Branch merge = ctx.beginBranch();
+        FlowBranching.Branch merge = ctx.beginBranch();
         ctx.put("own", "w");
         assertEquals("w", ctx.get("own"), "a branch reads back its own write");
         assertEquals("1", ctx.get("base"), "parent values are readable");
@@ -2268,28 +2268,28 @@ class FlowEngineTest {
         FlowContextImpl ctx = new FlowContextImpl();
         ctx.put("base", "1");
 
-        FlowContext.Branch merge = ctx.beginBranch();
+        FlowBranching.Branch merge = ctx.beginBranch();
         ctx.put("k", "A");
         // Parent changed under the branch's feet: the value the branch based
         // its write on (null) moved before merge — conflict.
         merge.commit();
         assertEquals("A", ctx.get("k"), "clean merge lands in the parent");
 
-        FlowContext.Branch second = ctx.beginBranch();
+        FlowBranching.Branch second = ctx.beginBranch();
         ctx.put("base", "2"); // write outside the branch (root thread continues)
         second.commit();
         assertEquals("2", ctx.get("base"));
     }
 
     /** The public FlowContext contract must be enough to run a graph. */
-    static final class DelegatingContext implements FlowContext {
+    static final class DelegatingContext implements FlowContext, FlowBranching {
         private final FlowContext delegate = FlowContext.of();
         @Override public void stop() { delegate.stop(); }
         @Override public boolean isStopped() { return delegate.isStopped(); }
         @Override public FlowEventBus eventBus() { return delegate.eventBus(); }
         @Override public Map<String, Object> data() { return delegate.data(); }
         @Override public String toJson() { return delegate.toJson(); }
-        @Override public Branch beginBranch() { return delegate.beginBranch(); }
+        @Override public FlowBranching.Branch beginBranch() { return ((FlowBranching) delegate).beginBranch(); }
     }
 
     @Test
