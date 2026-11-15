@@ -367,17 +367,7 @@ final class JULEnhancer {
      * {@code max-size} with {@code max.size}.
      */
     static String envToConfigKey(String envName) {
-        String prefix = EnvKeys.prefix();
-        String candidate;
-        if (EnvKeys.DEFAULT_PREFIX.equals(prefix)) {
-            candidate = envName;
-        } else {
-            if (!envName.startsWith(prefix)) {
-                return null;
-            }
-            candidate = envName.substring(prefix.length());
-        }
-        return candidate.toLowerCase(Locale.ROOT).replace('_', '.');
+        return EnvKeys.fromName(envName);
     }
 
     /**

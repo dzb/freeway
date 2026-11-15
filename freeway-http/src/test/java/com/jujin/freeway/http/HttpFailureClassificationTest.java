@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.jujin.freeway.commons.error.Failure;
 import com.jujin.freeway.commons.validation.ValidationResult;
+import java.util.List;
 import com.jujin.freeway.http.body.BodyTooLargeException;
 import com.jujin.freeway.http.body.MultipartException;
 import com.jujin.freeway.http.body.UnsupportedMediaTypeException;
@@ -15,8 +16,9 @@ class HttpFailureClassificationTest {
 
     @Test
     void requestRejectionsHaveAKnownOutcomeAndAreNotRetried() {
-        ValidationResult result = new ValidationResult();
-        result.addError("name", "required", null);
+        ValidationResult result = ValidationResult.of(List.of(
+            new com.jujin.freeway.commons.validation.ValidationError(
+                "name", "required", null)));
         assertKnown(new ValidationException(result));
         assertKnown(new BodyTooLargeException(16));
         assertKnown(new MultipartException("bad", new IllegalArgumentException("x")));

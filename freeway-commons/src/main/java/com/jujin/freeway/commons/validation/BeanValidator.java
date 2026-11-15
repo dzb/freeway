@@ -50,19 +50,19 @@ public final class BeanValidator {
     }
 
     public static ValidationResult validate(Object bean) {
-        ValidationResult result = new ValidationResult();
+        ValidationResult.Collector result = new ValidationResult.Collector();
         if (bean == null) {
             result.addError("(root)", "must not be null", null);
-            return result;
+            return result.build();
         }
         validateBean(bean, "", result, new ValidationContext());
-        return result;
+        return result.build();
     }
 
     private static void validateBean(
         Object bean,
         String prefix,
-        ValidationResult result,
+        ValidationResult.Collector result,
         ValidationContext context
     ) {
         if (!context.withinDepth()) {

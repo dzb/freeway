@@ -84,7 +84,6 @@ public final class BootModule implements ModuleEx {
         /** The env-mapping prefix. The key is boot's (it reads it as a bootstrap
          *  setting); the mapping mechanism and its default live in {@link EnvKeys},
          *  which is where this spelling comes from. */
-        public static final String ENV_PREFIX = EnvKeys.PREFIX_KEY;
 
         private ConfigKeys() {}
     }

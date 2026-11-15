@@ -59,7 +59,7 @@ public final class ConfigCascade {
     private static final String PROFILE_KEY = ConfigKeys.PROFILE;
 
     /** The env-prefix bootstrap key. */
-    private static final String ENV_PREFIX_KEY = ConfigKeys.ENV_PREFIX;
+    private static final String ENV_PREFIX_KEY = EnvKeys.PREFIX_KEY;
 
     /** The extra-config-file bootstrap key ({@code -D} or {@code FREEWAY_CONFIG_FILE}). */
     private static final String CONFIG_FILE_KEY = ConfigKeys.CONFIG_FILE;
@@ -270,29 +270,17 @@ public final class ConfigCascade {
      */
     static Map<String, String> loadEnvironment(Map<String, String> environment) {
         String prefix = EnvKeys.prefix();
-        boolean freewayNamespace = EnvKeys.DEFAULT_PREFIX.equals(prefix);
         Map<String, String> values = new LinkedHashMap<>();
         for (Map.Entry<String, String> entry : environment.entrySet()) {
             String key = entry.getKey();
             if (key.startsWith(prefix)) {
-                values.put(convertEnvKey(key, prefix, freewayNamespace), entry.getValue());
+                values.put(EnvKeys.fromPrefixedName(prefix, key), entry.getValue());
             }
         }
         return values;
     }
 
-    /**
-     * Converts a prefixed env var name to a config key.
-     * The default {@code FREEWAY_} prefix maps into the {@code freeway.*}
-     * namespace ({@code "FREEWAY_SERVER_PORT"} → {@code "freeway.server.port"});
-     * a custom prefix passes through ({@code "APP_SERVER_PORT"} → {@code "server.port"}).
-     */
-    static String convertEnvKey(String envKey, String prefix, boolean freewayNamespace) {
-        String base = envKey.substring(prefix.length())
-            .toLowerCase(Locale.ROOT)
-            .replace('_', '.');
-        return freewayNamespace ? "freeway." + base : base;
-    }
+
 
     /** Loads a classpath config resource; a missing resource is "no config".
      *  Parsing and the read cap live inside {@link ConfigFileReader#read}, so

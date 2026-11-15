@@ -2,6 +2,7 @@ package com.jujin.freeway.boot.internal;
 import java.util.Arrays;
 
 import com.jujin.freeway.boot.AppConfig;
+import com.jujin.freeway.commons.util.EnvKeys;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -291,14 +292,14 @@ class ConfigCascadeTest {
     void envVarNamesConvertToFreewayConfigKeys() {
         // Default FREEWAY_ prefix maps into the freeway.* namespace.
         assertEquals("freeway.server.port",
-            ConfigCascade.convertEnvKey("FREEWAY_SERVER_PORT", "FREEWAY_", true));
+            EnvKeys.fromPrefixedName("FREEWAY_", "FREEWAY_SERVER_PORT"));
         assertEquals("freeway.log.level",
-            ConfigCascade.convertEnvKey("FREEWAY_LOG_LEVEL", "FREEWAY_", true));
+            EnvKeys.fromPrefixedName("FREEWAY_", "FREEWAY_LOG_LEVEL"));
         assertEquals("freeway.db.url",
-            ConfigCascade.convertEnvKey("FREEWAY_DB_URL", "FREEWAY_", true));
+            EnvKeys.fromPrefixedName("FREEWAY_", "FREEWAY_DB_URL"));
         // Underscores inside a key segment become dots.
         assertEquals("freeway.log.file.max.size",
-            ConfigCascade.convertEnvKey("FREEWAY_LOG_FILE_MAX_SIZE", "FREEWAY_", true));
+            EnvKeys.fromPrefixedName("FREEWAY_", "FREEWAY_LOG_FILE_MAX_SIZE"));
     }
 
     @Test
@@ -309,17 +310,17 @@ class ConfigCascadeTest {
         // freeway.http.port) and its own keys directly (APP_SERVER_PORT →
         // server.port).
         assertEquals("server.port",
-            ConfigCascade.convertEnvKey("APP_SERVER_PORT", "APP_", false));
+            EnvKeys.fromPrefixedName("APP_", "APP_SERVER_PORT"));
         assertEquals("name",
-            ConfigCascade.convertEnvKey("APP_NAME", "APP_", false),
+            EnvKeys.fromPrefixedName("APP_", "APP_NAME"),
             "passthrough strips only the prefix — no namespace inference");
         assertEquals("freeway.http.port",
-            ConfigCascade.convertEnvKey("APP_FREEWAY_HTTP_PORT", "APP_", false),
+            EnvKeys.fromPrefixedName("APP_", "APP_FREEWAY_HTTP_PORT"),
             "freeway.* keys remain reachable under a custom prefix");
-        // The freeway.* namespace is bound to the FREEWAY_ prefix itself.
-        assertEquals("freeway.server.port",
-            ConfigCascade.convertEnvKey("APP_SERVER_PORT", "APP_", true),
-            "namespace choice is explicit, not inferred from the prefix");
+        // A custom prefix does not infer the freeway.* namespace.
+        assertEquals("server.port",
+            EnvKeys.fromPrefixedName("APP_", "APP_SERVER_PORT"),
+            "the prefix is stripped; no namespace is inferred");
     }
 
     @Test
@@ -329,16 +330,16 @@ class ConfigCascadeTest {
         // carried through verbatim. Folding '-' to '.' would merge two
         // distinct keys ('key-store-password' vs 'key.store.password').
         assertEquals("freeway.http.ssl.key-store-password",
-            ConfigCascade.convertEnvKey(
-                "FREEWAY_HTTP_SSL_KEY-STORE-PASSWORD", "FREEWAY_", true));
+            EnvKeys.fromPrefixedName(
+                "FREEWAY_", "FREEWAY_HTTP_SSL_KEY-STORE-PASSWORD"));
         assertEquals("freeway.log.file.max-size",
-            ConfigCascade.convertEnvKey("FREEWAY_LOG_FILE_MAX-SIZE", "FREEWAY_", true),
+            EnvKeys.fromPrefixedName("FREEWAY_", "FREEWAY_LOG_FILE_MAX-SIZE"),
             "the dashed key is reachable only through its exact env spelling");
         // The underscore spelling can therefore only produce dot segments: it
         // addresses a DIFFERENT key, it does not alias the hyphenated one.
         assertEquals("freeway.http.ssl.key.store.password",
-            ConfigCascade.convertEnvKey(
-                "FREEWAY_HTTP_SSL_KEY_STORE_PASSWORD", "FREEWAY_", true));
+            EnvKeys.fromPrefixedName(
+                "FREEWAY_", "FREEWAY_HTTP_SSL_KEY_STORE_PASSWORD"));
     }
 
     @Test

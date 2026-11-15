@@ -67,6 +67,57 @@ public final class EnvKeys {
     }
 
     /**
+     * Inverse for the boot cascade: a prefixed variable becomes the config key
+     * it spells. The default prefix adds the {@code freeway.} namespace; a
+     * custom prefix passes the remainder through verbatim.
+     *
+     * @return {@code null} when the name is outside {@code prefix}
+     */
+    public static String fromPrefixedName(String prefix, String envName) {
+        if (prefix == null || envName == null || !envName.startsWith(prefix)) {
+            return null;
+        }
+        String base = envName.substring(prefix.length());
+        if (base.isEmpty()) {
+            return null;
+        }
+        String key = base.toLowerCase(Locale.ROOT).replace('_', '.');
+        return DEFAULT_PREFIX.equals(prefix) ? "freeway." + key : key;
+    }
+
+    /**
+     * Inverse for the logging bootstrap: with the default prefix a
+     * {@code FREEWAY_*} name maps into {@code freeway.*}, while any other name
+     * is a logger name and maps by lowercasing dots; with a custom prefix the
+     * name must carry that prefix first. Mirrors {@link #name}.
+     *
+     * @return {@code null} when a custom-prefixed name does not start with it
+     */
+    public static String fromName(String envName) {
+        if (envName == null || envName.isEmpty()) {
+            return null;
+        }
+        String prefix = prefix();
+        if (!DEFAULT_PREFIX.equals(prefix)) {
+            if (!envName.startsWith(prefix)) {
+                return null;
+            }
+            envName = envName.substring(prefix.length());
+            if (envName.isEmpty()) {
+                return null;
+            }
+        }
+        if (DEFAULT_PREFIX.equals(prefix) && envName.startsWith(DEFAULT_PREFIX)) {
+            envName = envName.substring(DEFAULT_PREFIX.length());
+            if (envName.isEmpty()) {
+                return null;
+            }
+            return "freeway." + envName.toLowerCase(Locale.ROOT).replace('_', '.');
+        }
+        return envName.toLowerCase(Locale.ROOT).replace('_', '.');
+    }
+
+    /**
      * The declared value of a bootstrap key: the system property first, then
      * the {@code FREEWAY_}-prefixed environment variable. Blank counts as
      * unset and the value is stripped; {@code null} when neither channel set
