@@ -56,8 +56,9 @@ applications and tools, not only third-party adapters.
 
 Boundary rules:
 
-- Core depends on no external library beyond SLF4J and test-scope JUnit. H2,
-  Hikari, Jetty, Undertow, Kafka and similar belong to ext.
+- Core main code depends on no external library beyond SLF4J. Test scope may use
+  JUnit and H2 (`freeway-db`'s dialect tests); runtime H2, Hikari, Jetty,
+  Undertow, Kafka and similar belong to ext.
 - A shared contract is its own artifact: `freeway-fleet-protocol` is shared by
   Fleet client and server; the server never depends on the client to learn the
   wire shape.
