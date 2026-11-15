@@ -50,7 +50,7 @@ public final class ContainerImpl implements Container {
     /** The composition this container bound — see {@link #moduleTree()}. */
     private final ModuleNode moduleTree;
     /** The contribution side of composition: DSL, stores, deferral, seal. */
-    private final ContributionRegistry contributions;
+    private final Contributions contributions;
 
     /**
      * Instances post-constructed during the realize operation currently running
@@ -126,7 +126,7 @@ public final class ContainerImpl implements Container {
     ContainerImpl(ModuleNode moduleTree) {
         this.moduleTree = Objects.requireNonNull(moduleTree, "moduleTree");
         this.coercer = new CoercerDefault();
-        this.contributions = new ContributionRegistry(
+        this.contributions = new Contributions(
             this, coercer, Set.of(SymbolProvider.class, CoerceRule.class));
         this.injectResolver = new InjectionResolver(this);
         this.serviceRuntime = new ServiceRuntime(this);

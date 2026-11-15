@@ -46,7 +46,7 @@ import java.util.function.Supplier;
  * replaced by a module reads the same view. Those two entry types are exempt
  * from the completeness gate for the same reason.
  */
-final class ContributionRegistry {
+final class Contributions {
 
     private final ContainerImpl container;
     private final CoercerDefault coercer;
@@ -85,7 +85,7 @@ final class ContributionRegistry {
         }
     }
 
-    ContributionRegistry(ContainerImpl container, CoercerDefault coercer, Set<Class<?>> earlyTypes) {
+    Contributions(ContainerImpl container, CoercerDefault coercer, Set<Class<?>> earlyTypes) {
         this.container = Objects.requireNonNull(container, "container");
         this.coercer = Objects.requireNonNull(coercer, "coercer");
         // The entry types whose deferred creations are constructed, published and
