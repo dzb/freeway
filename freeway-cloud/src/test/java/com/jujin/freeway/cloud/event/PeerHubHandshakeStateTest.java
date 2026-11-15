@@ -66,16 +66,16 @@ class PeerHubHandshakeStateTest {
             node.close();
         }
         System.clearProperty(HttpModule.ConfigKeys.SERVER_PORT);
-        System.clearProperty(ConfigKeys.EVENT_ENABLED);
-        System.clearProperty(ConfigKeys.EVENT_PEERS);
-        System.clearProperty(ConfigKeys.EVENT_TOKEN);
+        System.clearProperty(EventMeshModule.ConfigKeys.EVENT_ENABLED);
+        System.clearProperty(EventMeshModule.ConfigKeys.EVENT_PEERS);
+        System.clearProperty(EventMeshModule.ConfigKeys.EVENT_TOKEN);
     }
 
     /** A real event node; mesh interest is declared as subscriptions, not config. */
     private AppRuntime startEventsNode(String subscriptions, String token) {
-        System.setProperty(ConfigKeys.EVENT_ENABLED, "true");
+        System.setProperty(EventMeshModule.ConfigKeys.EVENT_ENABLED, "true");
         if (token != null) {
-            System.setProperty(ConfigKeys.EVENT_TOKEN, token);
+            System.setProperty(EventMeshModule.ConfigKeys.EVENT_TOKEN, token);
         }
         List<ModuleEx> mods = new ArrayList<>(List.of(new HttpModule(), new EventMeshModule()));
         for (String prefix : subscriptions.split(",")) {
@@ -141,8 +141,8 @@ class PeerHubHandshakeStateTest {
         MisbehavingServer fake = new MisbehavingServer();
         AppRuntime fakeNode = FreewayApp.run(new HttpModule(), new MisbehavingServerModule(fake));
         try {
-            System.setProperty(ConfigKeys.EVENT_ENABLED, "true");
-            System.setProperty(ConfigKeys.EVENT_PEERS,
+            System.setProperty(EventMeshModule.ConfigKeys.EVENT_ENABLED, "true");
+            System.setProperty(EventMeshModule.ConfigKeys.EVENT_PEERS,
                 "127.0.0.1:" + fakeNode.get(HttpServer.class).port());
             node = FreewayApp.run(new HttpModule(), new EventMeshModule());
             PeerHub hub = node.get(PeerHub.class);

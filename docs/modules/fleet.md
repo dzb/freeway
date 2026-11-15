@@ -2,16 +2,16 @@
 
 `freeway-fleet` contains the discovery implementations:
 
-- `LocalDiscoveryModule` — in-process lease store, `LocalRegistrar`,
+- `LocalModule` — in-process lease store, `LocalRegistrar`,
   `LocalDiscovery` and the default client-side load balancer;
-- `FleetDiscoveryModule` — Fleet client, `FleetDiscovery`, `FleetRegistrar`
+- `FleetModule` — Fleet client, `FleetDiscovery`, `FleetRegistrar`
   and the wire protocol;
-- `LeaseStore` / `InMemoryLeaseStore` — the storage seam shared by the local
+- `LeaseStore` / `MemLeaseStore` — the storage seam shared by the local
   backend and the Fleet Server.
 
 The registration lifecycle is not in this module. Install
 `RegistrationModule` from `freeway-cloud` to register the HTTP endpoint, renew
-it and publish readiness. Static discovery (`StaticDiscoveryModule`) does not
+it and publish readiness. Static discovery (`StaticModule`) does not
 use that lifecycle.
 
 ## Assembly
@@ -23,7 +23,7 @@ FreewayApp.run(
     new HttpModule(),
     new CloudModule(),          // runtime: health, metrics, RPC, ...
     new RegistrationModule(),   // register, renew, readiness, drain
-    new FleetDiscoveryModule()); // Fleet client + client-side load balancer
+    new FleetModule()); // Fleet client + client-side load balancer
 ```
 
 Local single-process backend:
@@ -33,18 +33,18 @@ FreewayApp.run(
     new HttpModule(),
     new CloudModule(),
     new RegistrationModule(),
-    new LocalDiscoveryModule());
+    new LocalModule());
 ```
 
 Applications depend on `freeway-fleet`; they never depend on
 `freeway-fleet-server`. The client module is inert until installed: a dependency
-alone does not require a Fleet process. Once `FleetDiscoveryModule` is placed,
+alone does not require a Fleet process. Once `FleetModule` is placed,
 `freeway.cloud.registry.nodes` must name at least one node, or startup fails
 with the key in the message.
 
 ## Configuration
 
-`FleetDiscoveryModule.ConfigKeys` owns the client keys:
+`FleetModule.ConfigKeys` owns the client keys:
 
 | Key | Meaning |
 |---|---|
@@ -54,7 +54,7 @@ with the key in the message.
 
 `RegistrationModule.ConfigKeys` owns the endpoint identity and drain keys
 (`service-id`, `service-host`, `service-scheme`, `service-port`,
-`service-instance-id`, `shutdown-drain`). `LocalDiscoveryModule.ConfigKeys` owns
+`service-instance-id`, `shutdown-drain`). `LocalModule.ConfigKeys` owns
 `freeway.cloud.discovery.local-zone`.
 
 An empty node list fails startup naming the key. A running Fleet that becomes
@@ -69,7 +69,7 @@ remains under `/registry` for compatibility with earlier Fleet clients.
 
 Writes fan out to every configured node; reads union their answers and
 deduplicate by instance id. A node that answers a heartbeat with 404 makes the
-client report the lost lease so `RegistrationLifecycleHook` can re-register.
+client report the lost lease so `RegistrationHook` can re-register.
 
 ## Load balancing
 

@@ -1,6 +1,6 @@
 package com.jujin.freeway.fleet;
 
-import com.jujin.freeway.cloud.CloudModule;
+import com.jujin.freeway.cloud.CloudKeys;
 import com.jujin.freeway.cloud.annotation.Local;
 import com.jujin.freeway.cloud.discovery.LoadBalancer;
 import com.jujin.freeway.cloud.discovery.LoadBalancerDefault;
@@ -27,7 +27,7 @@ import com.jujin.freeway.ioc.symbol.SymbolSpec;
  * Fleet and Consul backends.</p>
  */
 @Marker(Builtin.class)
-public final class LocalDiscoveryModule implements ModuleEx {
+public final class LocalModule implements ModuleEx {
 
     private static final SymbolSpec<String> LOCAL_ZONE = SymbolSpec.of(
         ConfigKeys.DISCOVERY_LOCAL_ZONE, String.class, "");
@@ -35,9 +35,9 @@ public final class LocalDiscoveryModule implements ModuleEx {
     @Override
     public void bind(Binder b) {
         b.contribute(KnownKeys.class)
-            .add(KnownKeys.of(ConfigKeys.class, CloudModule.ConfigKeys.PREFIX,
-                CloudModule.ConfigKeys.APP_PREFIX));
-        b.bind(LeaseStore.class).to(InMemoryLeaseStore.class);
+            .add(KnownKeys.of(ConfigKeys.class, CloudKeys.PREFIX,
+                CloudKeys.APP_PREFIX));
+        b.bind(LeaseStore.class).to(MemLeaseStore.class);
         b.bind(ServiceRegistry.class)
             .to((Container container) -> new LocalRegistrar(container.get(LeaseStore.class)))
             .marker(Local.class);

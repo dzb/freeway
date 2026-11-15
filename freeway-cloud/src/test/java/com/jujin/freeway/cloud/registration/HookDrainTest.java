@@ -78,36 +78,36 @@ class FleetDrainTest {
     @Test
     void autoAndUnsetBothAskTheRegistry() {
         assertEquals(Duration.ofSeconds(5),
-            RegistrationLifecycleHook.resolveDrain("auto", registry(Duration.ofSeconds(5)), symbols(Map.of())));
+            RegistrationHook.resolveDrain("auto", registry(Duration.ofSeconds(5)), symbols(Map.of())));
         assertEquals(Duration.ofSeconds(5),
-            RegistrationLifecycleHook.resolveDrain(null, registry(Duration.ofSeconds(5)), symbols(Map.of())));
+            RegistrationHook.resolveDrain(null, registry(Duration.ofSeconds(5)), symbols(Map.of())));
         assertEquals(Duration.ofSeconds(5),
-            RegistrationLifecycleHook.resolveDrain(" AUTO ", registry(Duration.ofSeconds(5)), symbols(Map.of())));
+            RegistrationHook.resolveDrain(" AUTO ", registry(Duration.ofSeconds(5)), symbols(Map.of())));
     }
 
     @Test
     void inProcessRegistryAnswersZero() {
         assertEquals(Duration.ZERO,
-            RegistrationLifecycleHook.resolveDrain("auto", registry(Duration.ZERO), symbols(Map.of())));
+            RegistrationHook.resolveDrain("auto", registry(Duration.ZERO), symbols(Map.of())));
     }
 
     @Test
     void registryWithNoOpinionFallsBackToZero() {
         assertEquals(RegistrationModule.ConfigKeys.REGISTRY_SHUTDOWN_DRAIN_DEFAULT,
-            RegistrationLifecycleHook.resolveDrain("auto", registry(null), symbols(Map.of())));
+            RegistrationHook.resolveDrain("auto", registry(null), symbols(Map.of())));
     }
 
     @Test
     void explicitDurationWinsOverTheRegistry() {
         assertEquals(Duration.ofSeconds(2),
-            RegistrationLifecycleHook.resolveDrain("2s", registry(Duration.ofSeconds(30)),
+            RegistrationHook.resolveDrain("2s", registry(Duration.ofSeconds(30)),
                 symbols(Map.of(RegistrationModule.ConfigKeys.REGISTRY_SHUTDOWN_DRAIN, "2s"))));
     }
 
     @Test
     void negativeExplicitDurationFailsNamingTheKey() {
         IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
-            () -> RegistrationLifecycleHook.resolveDrain("-1s", registry(Duration.ZERO),
+            () -> RegistrationHook.resolveDrain("-1s", registry(Duration.ZERO),
                 symbols(Map.of(RegistrationModule.ConfigKeys.REGISTRY_SHUTDOWN_DRAIN, "-1s"))));
         assertTrue(failure.getMessage().contains("registry.shutdown-drain"),
             "the failure must name the key: " + failure.getMessage());

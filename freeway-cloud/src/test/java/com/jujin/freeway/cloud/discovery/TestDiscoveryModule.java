@@ -9,7 +9,7 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Test-only mutable discovery: cloud tests register the app's own provider
  * endpoints without depending on freeway-fleet. Production code uses
- * LocalDiscoveryModule/FleetDiscoveryModule/StaticDiscoveryModule instead.
+ * LocalModule/FleetModule/StaticModule instead.
  */
 public final class TestDiscoveryModule implements ModuleEx {
 

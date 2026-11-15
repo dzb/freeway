@@ -17,7 +17,7 @@ import org.junit.jupiter.api.Test;
  * failing backend is bridged by the last answer within the grace window, and the
  * per-service override can shorten the window or opt out entirely.
  */
-class CachingServiceDiscoveryTest {
+class CachingDiscoveryTest {
 
     private static final ServiceInstance INSTANCE =
         ServiceInstance.of("svc", "i1", ServiceEndpoint.of("http", "127.0.0.1", 8080));
@@ -46,8 +46,8 @@ class CachingServiceDiscoveryTest {
         }
     }
 
-    private static CachingServiceDiscovery caching(ServiceDiscovery delegate, Duration ttl) {
-        return new CachingServiceDiscovery(delegate, serviceId -> ttl, null);
+    private static CachingDiscovery caching(ServiceDiscovery delegate, Duration ttl) {
+        return new CachingDiscovery(delegate, serviceId -> ttl, null);
     }
 
     /** Records counter increments without a metrics backend. */
@@ -84,7 +84,7 @@ class CachingServiceDiscoveryTest {
     void the_freshness_outcomes_are_counted() {
         Backend backend = new Backend();
         CountingMetrics metrics = new CountingMetrics();
-        CachingServiceDiscovery cache = new CachingServiceDiscovery(
+        CachingDiscovery cache = new CachingDiscovery(
             backend, serviceId -> Duration.ofMillis(20), metrics);
 
         cache.instances("svc");                          // refresh
@@ -97,7 +97,7 @@ class CachingServiceDiscoveryTest {
             Thread.currentThread().interrupt();
         }
         backend.failure = null;                          // the backend recovers
-        CachingServiceDiscovery bypass = new CachingServiceDiscovery(
+        CachingDiscovery bypass = new CachingDiscovery(
             backend, serviceId -> Duration.ZERO, metrics);
         bypass.instances("other");                       // bypass (ttl 0)
 
@@ -115,7 +115,7 @@ class CachingServiceDiscoveryTest {
     @Test
     void an_answer_is_reused_within_the_ttl() {
         Backend backend = new Backend();
-        CachingServiceDiscovery cache = caching(backend, Duration.ofSeconds(5));
+        CachingDiscovery cache = caching(backend, Duration.ofSeconds(5));
 
         cache.instances("svc");
         cache.instances("svc");
@@ -128,7 +128,7 @@ class CachingServiceDiscoveryTest {
     void an_expired_answer_is_refreshed_once_for_every_waiting_caller() throws Exception {
         Backend backend = new Backend();
         backend.delayMillis = 50;   // widen the window so waiters pile up
-        CachingServiceDiscovery cache = caching(backend, Duration.ofMillis(30));
+        CachingDiscovery cache = caching(backend, Duration.ofMillis(30));
 
         cache.instances("svc");     // prime, then let it expire
         Thread.sleep(60);
@@ -158,7 +158,7 @@ class CachingServiceDiscoveryTest {
     @Test
     void a_failing_backend_is_bridged_by_the_last_answer() {
         Backend backend = new Backend();
-        CachingServiceDiscovery cache = caching(backend, Duration.ofMillis(50));
+        CachingDiscovery cache = caching(backend, Duration.ofMillis(50));
         cache.instances("svc");
 
         backend.failure = new IllegalStateException("registry fleet unreachable");
@@ -174,7 +174,7 @@ class CachingServiceDiscoveryTest {
         // answer still stands". This pins the second half: past the TTL and
         // inside the 30s grace, a failing backend still serves the old answer.
         Backend backend = new Backend();
-        CachingServiceDiscovery cache = new CachingServiceDiscovery(backend, serviceId -> Duration.ofMillis(5), null);
+        CachingDiscovery cache = new CachingDiscovery(backend, serviceId -> Duration.ofMillis(5), null);
         cache.instances("svc");
 
         backend.failure = new IllegalStateException("registry fleet unreachable");
@@ -189,7 +189,7 @@ class CachingServiceDiscoveryTest {
         // the instance (30s eviction): a short TTL must not make the cache
         // stricter than the registry about what "gone" means.
         java.lang.reflect.Method grace =
-            CachingServiceDiscovery.class.getDeclaredMethod("graceMillis", Duration.class);
+            CachingDiscovery.class.getDeclaredMethod("graceMillis", Duration.class);
         grace.setAccessible(true);
         assertEquals(30_000L, (long) (Long) grace.invoke(null, Duration.ofMillis(100)));
         assertEquals(60_000L, (long) (Long) grace.invoke(null, Duration.ofSeconds(6)));
@@ -199,7 +199,7 @@ class CachingServiceDiscoveryTest {
     void an_empty_answer_is_cached_like_any_other() {
         Backend backend = new Backend();
         backend.answer = List.of();
-        CachingServiceDiscovery cache = caching(backend, Duration.ofSeconds(5));
+        CachingDiscovery cache = caching(backend, Duration.ofSeconds(5));
 
         assertTrue(cache.instances("svc").isEmpty());
         assertTrue(cache.instances("svc").isEmpty());
@@ -211,7 +211,7 @@ class CachingServiceDiscoveryTest {
     @Test
     void a_zero_ttl_asks_the_backend_every_time() {
         Backend backend = new Backend();
-        CachingServiceDiscovery cache = caching(backend, Duration.ZERO);
+        CachingDiscovery cache = caching(backend, Duration.ZERO);
 
         cache.instances("svc");
         cache.instances("svc");
@@ -222,7 +222,7 @@ class CachingServiceDiscoveryTest {
     @Test
     void ttl_is_resolved_per_service() {
         Backend backend = new Backend();
-        CachingServiceDiscovery cache = new CachingServiceDiscovery(backend,
+        CachingDiscovery cache = new CachingDiscovery(backend,
             serviceId -> serviceId.equals("fresh") ? Duration.ZERO : Duration.ofSeconds(5), null);
 
         cache.instances("fresh");
@@ -238,7 +238,7 @@ class CachingServiceDiscoveryTest {
     void a_backend_failure_with_no_previous_answer_propagates() {
         Backend backend = new Backend();
         backend.failure = new IllegalStateException("registry fleet unreachable");
-        CachingServiceDiscovery cache = caching(backend, Duration.ofSeconds(5));
+        CachingDiscovery cache = caching(backend, Duration.ofSeconds(5));
 
         assertThrows(IllegalStateException.class, () -> cache.instances("svc"),
             "with nothing to fall back to, the failure must be the answer");

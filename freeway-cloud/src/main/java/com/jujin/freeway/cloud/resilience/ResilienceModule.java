@@ -1,8 +1,10 @@
 package com.jujin.freeway.cloud.resilience;
 
+import com.jujin.freeway.cloud.CloudKeys;
 import com.jujin.freeway.cloud.CloudHookIds;
 import com.jujin.freeway.cloud.annotation.Local;
 import com.jujin.freeway.ioc.Binder;
+import com.jujin.freeway.ioc.symbol.KnownKeys;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.RuntimeHook;
@@ -14,7 +16,7 @@ import com.jujin.freeway.ioc.symbol.SymbolSpec;
 
 import java.time.Duration;
 import java.util.function.Function;
-import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
+
 
 /**
  * IoC wiring for resilience: {@link Retryer} / {@link CircuitBreaker} /
@@ -41,39 +43,42 @@ public final class ResilienceModule implements ModuleEx {
      * the fine-grained rpc.* resilience keys.
      */
     private static final SymbolSpec<String> RESILIENCE_MODE = SymbolSpec.of(
-        ConfigKeys.RPC_RESILIENCE, String.class,
-        ConfigKeys.RPC_RESILIENCE_AUTO, Function.identity());
+        ResilienceModule.ConfigKeys.RPC_RESILIENCE, String.class,
+        ResilienceModule.ConfigKeys.RPC_RESILIENCE_AUTO, Function.identity());
     private static final SymbolSpec<Integer> RETRY_MAX_ATTEMPTS = SymbolSpec.of(
-        ConfigKeys.RPC_RETRY_MAX_ATTEMPTS, Integer.class,
-        ConfigKeys.RPC_RETRY_MAX_ATTEMPTS_DEFAULT, Integer::parseInt);
+        ResilienceModule.ConfigKeys.RPC_RETRY_MAX_ATTEMPTS, Integer.class,
+        ResilienceModule.ConfigKeys.RPC_RETRY_MAX_ATTEMPTS_DEFAULT, Integer::parseInt);
     private static final SymbolSpec<Long> RETRY_BACKOFF_BASE = SymbolSpec.of(
-        ConfigKeys.RPC_RETRY_BACKOFF_BASE, Long.class,
-        ConfigKeys.RPC_RETRY_BACKOFF_BASE_DEFAULT, Long::parseLong);
+        ResilienceModule.ConfigKeys.RPC_RETRY_BACKOFF_BASE, Long.class,
+        ResilienceModule.ConfigKeys.RPC_RETRY_BACKOFF_BASE_DEFAULT, Long::parseLong);
     private static final SymbolSpec<Long> RETRY_BACKOFF_MAX = SymbolSpec.of(
-        ConfigKeys.RPC_RETRY_BACKOFF_MAX, Long.class,
-        ConfigKeys.RPC_RETRY_BACKOFF_MAX_DEFAULT, Long::parseLong);
+        ResilienceModule.ConfigKeys.RPC_RETRY_BACKOFF_MAX, Long.class,
+        ResilienceModule.ConfigKeys.RPC_RETRY_BACKOFF_MAX_DEFAULT, Long::parseLong);
     private static final SymbolSpec<Integer> RETRY_BUDGET = SymbolSpec.of(
-        ConfigKeys.RPC_RETRY_BUDGET, Integer.class,
-        ConfigKeys.RPC_RETRY_BUDGET_DEFAULT, Integer::parseInt);
+        ResilienceModule.ConfigKeys.RPC_RETRY_BUDGET, Integer.class,
+        ResilienceModule.ConfigKeys.RPC_RETRY_BUDGET_DEFAULT, Integer::parseInt);
     private static final SymbolSpec<Boolean> CB_ENABLED = SymbolSpec.of(
-        ConfigKeys.RPC_CB_ENABLED, Boolean.class, true);
+        ResilienceModule.ConfigKeys.RPC_CB_ENABLED, Boolean.class, true);
     private static final SymbolSpec<Integer> CB_FAILURE_THRESHOLD = SymbolSpec.of(
-        ConfigKeys.RPC_CB_FAILURE_THRESHOLD, Integer.class,
-        ConfigKeys.RPC_CB_FAILURE_THRESHOLD_DEFAULT, Integer::parseInt);
+        ResilienceModule.ConfigKeys.RPC_CB_FAILURE_THRESHOLD, Integer.class,
+        ResilienceModule.ConfigKeys.RPC_CB_FAILURE_THRESHOLD_DEFAULT, Integer::parseInt);
     private static final SymbolSpec<Long> CB_FAILURE_WINDOW = SymbolSpec.of(
-        ConfigKeys.RPC_CB_FAILURE_WINDOW, Long.class,
-        ConfigKeys.RPC_CB_FAILURE_WINDOW_DEFAULT, Long::parseLong);
+        ResilienceModule.ConfigKeys.RPC_CB_FAILURE_WINDOW, Long.class,
+        ResilienceModule.ConfigKeys.RPC_CB_FAILURE_WINDOW_DEFAULT, Long::parseLong);
     private static final SymbolSpec<Long> CB_OPEN_WINDOW = SymbolSpec.of(
-        ConfigKeys.RPC_CB_OPEN_WINDOW, Long.class,
-        ConfigKeys.RPC_CB_OPEN_WINDOW_DEFAULT, Long::parseLong);
+        ResilienceModule.ConfigKeys.RPC_CB_OPEN_WINDOW, Long.class,
+        ResilienceModule.ConfigKeys.RPC_CB_OPEN_WINDOW_DEFAULT, Long::parseLong);
     private static final SymbolSpec<Boolean> RATE_LIMIT_ENABLED = SymbolSpec.of(
-        ConfigKeys.RPC_RATE_LIMIT_ENABLED, Boolean.class, false);
+        ResilienceModule.ConfigKeys.RPC_RATE_LIMIT_ENABLED, Boolean.class, false);
     private static final SymbolSpec<Double> RATE_LIMIT_PER_SECOND = SymbolSpec.of(
-        ConfigKeys.RPC_RATE_LIMIT_PER_SECOND, Double.class,
-        ConfigKeys.RPC_RATE_LIMIT_PER_SECOND_DEFAULT, Double::parseDouble);
+        ResilienceModule.ConfigKeys.RPC_RATE_LIMIT_PER_SECOND, Double.class,
+        ResilienceModule.ConfigKeys.RPC_RATE_LIMIT_PER_SECOND_DEFAULT, Double::parseDouble);
 
     @Override
     public void bind(Binder b) {
+        b.contribute(KnownKeys.class)
+            .add(KnownKeys.of(ConfigKeys.class, CloudKeys.PREFIX,
+                CloudKeys.APP_PREFIX));
         // Fail startup on an invalid aggregate mode — the binder lambdas run
         // lazily behind the container's proxies, so without this hook a typo
         // would surface at the first RPC call instead of at startup.
@@ -145,13 +150,38 @@ public final class ResilienceModule implements ModuleEx {
     /** The aggregate mode, validated eagerly: an unknown value fails startup
      *  with the key name instead of degrading silently. */
     private static Mode mode(SymbolSource symbols) {
-        return SymbolSpec.mode(ConfigKeys.RPC_RESILIENCE,
+        return SymbolSpec.mode(ResilienceModule.ConfigKeys.RPC_RESILIENCE,
             symbols.resolve(RESILIENCE_MODE), BY_TOKEN, Mode.AUTO);
     }
 
     private static final java.util.Map<String, Mode> BY_TOKEN = java.util.Map.of(
-        ConfigKeys.RPC_RESILIENCE_AUTO, Mode.AUTO,
-        ConfigKeys.RPC_RESILIENCE_OFF, Mode.OFF);
+        ResilienceModule.ConfigKeys.RPC_RESILIENCE_AUTO, Mode.AUTO,
+        ResilienceModule.ConfigKeys.RPC_RESILIENCE_OFF, Mode.OFF);
 
     private enum Mode { AUTO, OFF }
+    /** Keys read by the resilience bundle. */
+    public static final class ConfigKeys {
+        private ConfigKeys() {}
+        public static final String RPC_RESILIENCE = "freeway.cloud.rpc.resilience";
+        public static final String RPC_RESILIENCE_AUTO = "auto";
+        public static final String RPC_RESILIENCE_OFF = "off";
+        public static final String RPC_RETRY_MAX_ATTEMPTS = "freeway.cloud.rpc.retry.max-attempts";
+        public static final int RPC_RETRY_MAX_ATTEMPTS_DEFAULT = 3;
+        public static final String RPC_RETRY_BACKOFF_BASE = "freeway.cloud.rpc.retry.backoff-base";
+        public static final long RPC_RETRY_BACKOFF_BASE_DEFAULT = 100;
+        public static final String RPC_RETRY_BACKOFF_MAX = "freeway.cloud.rpc.retry.backoff-max";
+        public static final long RPC_RETRY_BACKOFF_MAX_DEFAULT = 5000;
+        public static final String RPC_RETRY_BUDGET = "freeway.cloud.rpc.retry.budget";
+        public static final int RPC_RETRY_BUDGET_DEFAULT = 20;
+        public static final String RPC_CB_ENABLED = "freeway.cloud.rpc.circuit-breaker.enabled";
+        public static final String RPC_CB_FAILURE_THRESHOLD = "freeway.cloud.rpc.circuit-breaker.failure-threshold";
+        public static final int RPC_CB_FAILURE_THRESHOLD_DEFAULT = 5;
+        public static final String RPC_CB_FAILURE_WINDOW = "freeway.cloud.rpc.circuit-breaker.failure-window";
+        public static final long RPC_CB_FAILURE_WINDOW_DEFAULT = 60;
+        public static final String RPC_CB_OPEN_WINDOW = "freeway.cloud.rpc.circuit-breaker.open-window";
+        public static final long RPC_CB_OPEN_WINDOW_DEFAULT = 30;
+        public static final String RPC_RATE_LIMIT_ENABLED = "freeway.cloud.rpc.rate-limit.enabled";
+        public static final String RPC_RATE_LIMIT_PER_SECOND = "freeway.cloud.rpc.rate-limit.per-second";
+        public static final double RPC_RATE_LIMIT_PER_SECOND_DEFAULT = 100;
+    }
 }

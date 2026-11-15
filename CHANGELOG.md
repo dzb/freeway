@@ -9,8 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Static discovery for fixed deployments**: `StaticServiceDiscovery` and
-  `StaticDiscoveryModule` in `freeway-cloud`. A list with several instances lets
+- **Static discovery for fixed deployments**: `StaticDiscovery` and
+  `StaticModule` in `freeway-cloud`. A list with several instances lets
   the client-side load balancer distribute per call; a single endpoint is the
   VIP form, where an external load balancer owns selection. No registry process
   or registration lifecycle is required.
@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now owns registration, heartbeat, readiness and drain for any
   `ServiceRegistry` backend. Local, Fleet and Consul discovery install the same
   lifecycle instead of each backend carrying it.
-- **LeaseStore seam**: `LeaseStore` and `InMemoryLeaseStore` in `freeway-fleet`
+- **LeaseStore seam**: `LeaseStore` and `MemLeaseStore` in `freeway-fleet`
   are shared by local discovery and the Fleet Server; a durable server store can
   replace the in-memory implementation without changing the HTTP surface.
 
@@ -29,25 +29,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `freeway-fleet-server` owns the registry server module. `freeway-cloud` keeps
   the discovery contracts, static discovery and `LoadBalancer`. `CloudModule` no
   longer installs a discovery implementation; install `RegistrationModule` plus
-  `LocalDiscoveryModule`, `StaticDiscoveryModule`, `FleetDiscoveryModule` or a
+  `LocalModule`, `StaticModule`, `FleetModule` or a
   Fleet/Consul adapter explicitly. `RpcModule` assembles without discovery and
   fails a call with "no instances" instead of preventing the bundle from
   starting.
 - **Fleet vocabulary**: `FleetRegistryClient` → `FleetClient`,
-  `FleetRegistryModule` → `FleetDiscoveryModule`, `RegistryNodes` → `FleetNodes`,
+  `FleetRegistryModule` → `FleetModule`, `RegistryNodes` → `FleetNodes`,
   `RegistryApi` → `FleetApi`, `RegistryIndexHandler` → `FleetIndexHandler`,
   `RegistryServerModule` → `FleetServerModule`, `RegistryStore` →
-  `LeaseStore`/`InMemoryLeaseStore`, `RegistryLifecycleHook` →
-  `RegistrationLifecycleHook`, `RegistryRenewal` → `RegistrationRenewal`,
-  `RegistryHealthContributor` → `RegistrationHealthContributor`,
-  `DiscoveryModule` → `LocalDiscoveryModule`, `FleetServiceDiscovery` →
+  `LeaseStore`/`MemLeaseStore`, `RegistryLifecycleHook` →
+  `RegistrationHook`, `RegistryRenewal` → `Renewal`,
+  `RegistryHealthContributor` → `RegistrationHealth`,
+  `DiscoveryModule` → `LocalModule`, `FleetServiceDiscovery` →
   `FleetDiscovery`, `FleetServiceRegistry` → `FleetRegistrar`, and
   `ServiceRegistryDefault` / `ServiceDiscoveryDefault` → `LocalRegistrar` /
   `LocalDiscovery`.
-- **Config ownership**: registration/Fleet/local-discovery keys moved out of
-  `CloudModule.ConfigKeys` into `RegistrationModule.ConfigKeys`,
-  `FleetDiscoveryModule.ConfigKeys` and `LocalDiscoveryModule.ConfigKeys`;
-  `CloudHookIds` (formerly `CloudHooks`) holds hook ids.
+- **Config ownership**: feature keys moved out of `CloudModule.ConfigKeys` into
+  the modules that read them — `RegistrationModule` / `LocalModule` /
+  `FleetModule`, `RpcModule`, `ResilienceModule`, `EventMeshModule`,
+  `SecretModule`, `StorageModule`, `CloudContextModule`. `CloudModule.ConfigKeys`
+  now owns only the application identity keys; `CloudKeys` owns the two
+  namespaces. `CloudHookIds` (formerly `CloudHooks`) holds hook ids.
 
 ### Renamed / API vocabulary
 
@@ -109,7 +111,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ServiceHealth` / `ServiceEndpoint`; `cloud.registry` →
   `cloud.discovery.registry`, and `RegistryNodeClient` /
   `RegistryNodeServiceRegistry` / `RegistryNodeServiceDiscovery` /
-  `RegistryFleetDiscoveryModule` → `FleetRegistryClient` / `FleetServiceRegistry` /
+  `RegistryFleetModule` → `FleetRegistryClient` / `FleetServiceRegistry` /
   `FleetDiscovery` / `FleetRegistryModule`.
 
   - `ErrorHandler` → `ErrorMapper`: error mapping no longer writes the response.
@@ -789,7 +791,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Discovery result caching (implementation-internal, 5 s default)**
   (`freeway-cloud`): the fleet's discovery implementations of
   `ServiceRegistry`/`ServiceDiscovery` wrap themselves in the framework-provided
-  `CachingServiceDiscovery` — TTL + single-flight refresh + stale-on-failure +
+  `CachingDiscovery` — TTL + single-flight refresh + stale-on-failure +
   per-service overrides. The cache is a **freshness policy of the discovery
   implementation**, so it lives in the implementation, not the caller: RPC, the
   mesh feeder and an application's own `@Inject ServiceDiscovery` all benefit, and
@@ -841,13 +843,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `CloudEventBus.stats()`) — present even when the mesh is not wired, because
   "no peers" is a fact that must be visible, not a missing series.
 
-- **freeway's own registry backend takes shape: node + `RegistryFleetDiscoveryModule`
+- **freeway's own registry backend takes shape: node + `RegistryFleetModule`
   client** (`freeway-cloud`): `RegistryServerModule`'s HTTP surface was plaintext,
   unauthenticated and written by no freeway client — "standalone registry node"
   was half a feature. Both ends now exist, inside freeway-cloud: the node can set
   a shared secret (when non-empty, writers must carry `X-Registry-Token`; both
   reads and writes check it — a readiness table filled in by strangers is an
-  attack surface too); `RegistryFleetDiscoveryModule` binds a **set** of registry nodes as
+  attack surface too); `RegistryFleetModule` binds a **set** of registry nodes as
   `ServiceRegistry`/`ServiceDiscovery` (keys `freeway.cloud.registry.*`): writes
   fan out to the node list, discovery takes the union of the nodes' answers, a 404
   heartbeat re-registers in place (re-registering only what this process
@@ -1648,7 +1650,7 @@ with the content; the compiler is the migration path):
 
 ### Fixed
 
-- **cloud registered the wrong scheme**: `HttpServiceDeclaration` used
+- **cloud registered the wrong scheme**: `HttpDeclaration` used
   `WebServer.secure()` to decide `http`/`https`, and that read freeway's own
   `freeway.http.ssl.*` keys — when TLS was terminated by an Undertow/Jetty adapter
   that may ignore those keys, an https node registered as `http://`. The criterion
@@ -2240,7 +2242,7 @@ Behaviour changes (no call sites need changing, but worth knowing):
     the same kind of constructor removed in earlier rounds; 21 test call sites
     switch to passing `JULFileHandler.DEFAULT_FLUSH_INTERVAL_MS` (semantically
     identical, just stating the default at the call site).
-  - `HookLifecycle`, `ConfigFileReader` (boot) and `ServiceIdentity` (cloud)
+  - `HookLifecycle`, `ConfigFileReader` (boot) and `Identity` (cloud)
     narrow from public to package-private: by `AGENTS.md`'s criterion ("another
     package must assemble or substitute it to justify public"), they had only
     same-package users — the earlier reference count had mistaken a **comment**
@@ -2686,7 +2688,7 @@ Behaviour changes (no call sites need changing, but worth knowing):
     `SSLContext` was provided), and `auto` (the default) follows whether the HTTP
     server has TLS. The registration's `http/https` and the event mesh's dial
     `ws/wss` now come from **one derivation** (the mesh reads the instance
-    endpoint resolved by `HttpServiceDeclaration`) — the default used to be
+    endpoint resolved by `HttpDeclaration`) — the default used to be
     hard-coded `http`, so enabling TLS and forgetting this key registered
     `http://` and dialed the mesh in plaintext, with only the "token configured
     but using ws" combination warning. Explicit values accept only
@@ -3313,7 +3315,7 @@ Behaviour changes (no call sites need changing, but worth knowing):
   (derived once the HTTP server was up), while the event mesh's origin was
   `service-id@<random UUID>` (the mesh wires up before the HTTP server and does
   not know the port) — yet the comments and the design doc claimed the two were
-  the same. `HttpServiceDeclaration.of(container)` is now the only definition
+  the same. `HttpDeclaration.of(container)` is now the only definition
   site: registration and the mesh both consume the same `ServiceInstance` it
   returns, and the mesh wires with `.after(HTTP_SERVER)` to get the real port;
   the cost is that a hello arriving before wiring receives 1013 and reconnects
@@ -3743,7 +3745,7 @@ Behaviour changes (no call sites need changing, but worth knowing):
   sanitizes itself), so CRLF forgeries and overlong values cannot enter logs via
   the cause chain; and `CloudEventLifecycleHook` resolves the mesh's own identity
   through the same registry service-id → `freeway.app.name` → freeway-app
-  fallback chain as `HttpServiceDeclaration`, keeping the registered identity and
+  fallback chain as `HttpDeclaration`, keeping the registered identity and
   the event source identity consistent.
 - **TLS hot reload follows the effective engine (freeway-http)** — `SslReloader`
   was assembled onto the built-in `FreewayHttpEngine` unconditionally: once an ext
@@ -4165,7 +4167,7 @@ Behaviour changes (no call sites need changing, but worth knowing):
   blocked by slow listeners. `CloudObserveModule`: a primary `Metrics` not
   implementing `MetricsSnapshot` errors at startup with a named error (previously
   a bare ClassCastException). `ReadyHandler`: duplicate contributor names fail at
-  construction (previously every health probe 500ed). `HttpServiceDeclaration`:
+  construction (previously every health probe 500ed). `HttpDeclaration`:
   registering a bind-all address (`0.0.0.0`/`::`) warns at startup suggesting a
   service-host override; and the server-missing check catches
   `MissingBindingException` precisely.

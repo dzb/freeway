@@ -16,7 +16,7 @@ import org.junit.jupiter.api.Test;
  * Without this the contract's "ready" half was decorative — every registration
  * asserted {@code ServiceHealth.up()}.
  */
-class InMemoryLeaseStoreReadinessTest {
+class MemLeaseStoreReadinessTest {
 
     private static final Duration TTL = Duration.ofSeconds(30);
     private static final ServiceInstance INSTANCE =
@@ -24,7 +24,7 @@ class InMemoryLeaseStoreReadinessTest {
 
     @Test
     void a_starting_instance_is_not_discoverable_until_it_is_ready() {
-        InMemoryLeaseStore store = new InMemoryLeaseStore();
+        MemLeaseStore store = new MemLeaseStore();
 
         store.register(INSTANCE, ServiceHealth.starting());
 
@@ -39,7 +39,7 @@ class InMemoryLeaseStoreReadinessTest {
 
     @Test
     void a_heartbeat_carries_the_readiness_it_observed() {
-        InMemoryLeaseStore store = new InMemoryLeaseStore();
+        MemLeaseStore store = new MemLeaseStore();
         store.register(INSTANCE, ServiceHealth.starting());
 
         assertTrue(store.renew("svc", "i1", true), "the heartbeat lands");
@@ -53,7 +53,7 @@ class InMemoryLeaseStoreReadinessTest {
 
     @Test
     void readiness_for_an_unknown_instance_is_refused_not_invented() {
-        InMemoryLeaseStore store = new InMemoryLeaseStore();
+        MemLeaseStore store = new MemLeaseStore();
         assertEquals(false, store.markReady("svc", "ghost", true),
             "the store must not create an entry from a readiness publish");
         assertEquals(0, store.instanceCount());

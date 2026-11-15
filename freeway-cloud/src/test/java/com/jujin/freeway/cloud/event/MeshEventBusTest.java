@@ -48,9 +48,9 @@ class MeshEventBusTest extends MeshTestSupport {
 
     /** Starts a node dialing nobody (pure listener side unless given peers). */
     private AppRuntime start(String peers, ModuleEx... extra) {
-        System.setProperty(ConfigKeys.EVENT_ENABLED, "true");
+        System.setProperty(EventMeshModule.ConfigKeys.EVENT_ENABLED, "true");
         if (peers != null) {
-            System.setProperty(ConfigKeys.EVENT_PEERS, peers);
+            System.setProperty(EventMeshModule.ConfigKeys.EVENT_PEERS, peers);
         }
         List<ModuleEx> mods = new ArrayList<>();
         mods.add(new HttpModule());
@@ -219,7 +219,7 @@ class MeshEventBusTest extends MeshTestSupport {
 
     @Test
     void disabledModuleIsInert() {
-        System.setProperty(ConfigKeys.EVENT_ENABLED, "false");
+        System.setProperty(EventMeshModule.ConfigKeys.EVENT_ENABLED, "false");
         nodeA = FreewayApp.run(new HttpModule(), new EventMeshModule());
         var mesh = nodeA.get(MeshEventBus.class);
         // Publish against an unwired mesh: a counted, debug-logged no-op.

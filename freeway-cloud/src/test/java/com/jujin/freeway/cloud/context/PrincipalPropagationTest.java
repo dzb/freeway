@@ -43,13 +43,13 @@ class PrincipalPropagationTest {
     @BeforeEach
     void randomPort() {
         System.setProperty(HttpModule.ConfigKeys.SERVER_PORT, "0");
-        System.setProperty(ConfigKeys.AUTH_EXTRACT_ENABLED, "true");
+        System.setProperty(CloudContextModule.ConfigKeys.AUTH_EXTRACT_ENABLED, "true");
     }
 
     @AfterEach
     void clearProperties() {
         System.clearProperty(HttpModule.ConfigKeys.SERVER_PORT);
-        System.clearProperty(ConfigKeys.AUTH_EXTRACT_ENABLED);
+        System.clearProperty(CloudContextModule.ConfigKeys.AUTH_EXTRACT_ENABLED);
     }
 
     @Test

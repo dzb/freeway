@@ -1,9 +1,11 @@
 package com.jujin.freeway.cloud.secret;
 
+import com.jujin.freeway.cloud.CloudKeys;
 import com.jujin.freeway.cloud.CloudHookIds;
 import com.jujin.freeway.cloud.annotation.Local;
 import com.jujin.freeway.cloud.internal.BackendTypeGuard;
 import com.jujin.freeway.ioc.Binder;
+import com.jujin.freeway.ioc.symbol.KnownKeys;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.RuntimeHook;
@@ -12,7 +14,7 @@ import com.jujin.freeway.ioc.annotation.Marker;
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
 
 import java.nio.file.Path;
-import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
+import com.jujin.freeway.cloud.secret.SecretModule.ConfigKeys;
 
 /**
  * IoC wiring for the secret subsystem: {@link SecretStore} →
@@ -30,6 +32,9 @@ public final class SecretModule implements ModuleEx {
 
     @Override
     public void bind(Binder b) {
+        b.contribute(KnownKeys.class)
+            .add(KnownKeys.of(ConfigKeys.class, CloudKeys.PREFIX,
+                CloudKeys.APP_PREFIX));
         b.bind(SecretStore.class)
             .to((Container container) -> new SecretStoreDefault(secretFile()))
             .marker(Local.class)
@@ -43,7 +48,7 @@ public final class SecretModule implements ModuleEx {
         b.contribute(RuntimeHook.class).add(
             CloudHookIds.SECRET,
             BackendTypeGuard.warnHook(
-                SecretStore.class, ConfigKeys.SECRET_TYPE, "secret"));
+                SecretStore.class, SecretModule.ConfigKeys.SECRET_TYPE, "secret"));
     }
 
     /**
@@ -53,7 +58,14 @@ public final class SecretModule implements ModuleEx {
      * through it would recurse (same rule as the config module).
      */
     private static Path secretFile() {
-        String path = System.getProperty(ConfigKeys.SECRET_FILE);
+        String path = System.getProperty(SecretModule.ConfigKeys.SECRET_FILE);
         return Path.of(path == null ? "application-secrets.properties" : path);
+    }
+    /** Keys read by the secret backend. */
+    public static final class ConfigKeys {
+        private ConfigKeys() {}
+        public static final String SECRET_FILE = "freeway.cloud.secret.file";
+        public static final String SECRET_KEYS = "freeway.cloud.secret.keys";
+        public static final String SECRET_TYPE = "freeway.cloud.secret.type";
     }
 }

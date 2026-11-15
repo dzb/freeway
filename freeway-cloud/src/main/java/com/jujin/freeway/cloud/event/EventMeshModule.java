@@ -1,13 +1,14 @@
 package com.jujin.freeway.cloud.event;
 
+import com.jujin.freeway.cloud.CloudKeys;
 import com.jujin.freeway.cloud.CloudHookIds;
 import com.jujin.freeway.ioc.Binder;
+import com.jujin.freeway.ioc.symbol.KnownKeys;
 import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.RuntimeHook;
 import com.jujin.freeway.ioc.annotation.Builtin;
 import com.jujin.freeway.ioc.annotation.Marker;
 import com.jujin.freeway.http.websocket.WebSocketRoute;
-import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
 
 /**
  * Assembles the {@link MeshEventBus} — the cloud-native broadcast plane:
@@ -53,6 +54,9 @@ public final class EventMeshModule implements ModuleEx {
 
     @Override
     public void bind(Binder binder) {
+        binder.contribute(KnownKeys.class)
+            .add(KnownKeys.of(ConfigKeys.class, CloudKeys.PREFIX,
+                CloudKeys.APP_PREFIX));
         var hub = new PeerHub();
 
         binder.bind(PeerHub.class).to(container -> hub);
@@ -79,5 +83,22 @@ public final class EventMeshModule implements ModuleEx {
             // during the short window before wiring is closed with 1013 and
             // reconnects on its backoff — the mesh treats that as normal.
             .after(CloudHookIds.HTTP_SERVER);
+    }
+    /** Keys read by the event mesh. */
+    public static final class ConfigKeys {
+        private ConfigKeys() {}
+        public static final String EVENT_PEERS = "freeway.cloud.event.peers";
+        public static final String EVENT_DISCOVERY_FEED_MS = "freeway.cloud.event.discovery-feed-ms";
+        public static final String EVENT_KEEPALIVE_MS = "freeway.cloud.event.keepalive-ms";
+        public static final String EVENT_TOKEN = "freeway.cloud.event.token";
+        public static final String EVENT_ENABLED = "freeway.cloud.event.enabled";
+        public static final String EVENT_CONNECT_TIMEOUT_MS = "freeway.cloud.event.connect-timeout-ms";
+        public static final long EVENT_CONNECT_TIMEOUT_MS_DEFAULT = 3000;
+        public static final String EVENT_HANDSHAKE_TIMEOUT_MS = "freeway.cloud.event.handshake-timeout-ms";
+        public static final long EVENT_HANDSHAKE_TIMEOUT_MS_DEFAULT = 10000;
+        public static final String EVENT_BACKOFF_BASE_MS = "freeway.cloud.event.backoff-base-ms";
+        public static final long EVENT_BACKOFF_BASE_MS_DEFAULT = 1000;
+        public static final String EVENT_BACKOFF_MAX_MS = "freeway.cloud.event.backoff-max-ms";
+        public static final long EVENT_BACKOFF_MAX_MS_DEFAULT = 30000;
     }
 }

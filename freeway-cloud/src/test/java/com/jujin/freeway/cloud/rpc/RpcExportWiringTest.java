@@ -114,7 +114,7 @@ class RpcExportWiringTest {
             app = null;
         }
         System.clearProperty(HttpModule.ConfigKeys.SERVER_PORT);
-        System.clearProperty(ConfigKeys.RPC_REQUEST_TIMEOUT);
+        System.clearProperty(RpcModule.ConfigKeys.RPC_REQUEST_TIMEOUT);
     }
 
     private AppRuntime run(ModuleEx... modules) {

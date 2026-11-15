@@ -17,7 +17,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
 import com.jujin.freeway.cloud.internal.CloudHttpClients;
 import com.jujin.freeway.cloud.resilience.Backoff;
 
@@ -42,24 +41,24 @@ final class PeerConnector implements AutoCloseable {
      *  {@link ConfigKeys#EVENT_BACKOFF_MAX_MS_DEFAULT}), so this library
      *  fallback cannot drift from the lifecycle hook's specs. */
     private static final long BACKOFF_BASE_MS =
-        ConfigKeys.EVENT_BACKOFF_BASE_MS_DEFAULT;
+        EventMeshModule.ConfigKeys.EVENT_BACKOFF_BASE_MS_DEFAULT;
     /** WebSocket 1001: the peer is going away (RFC 6455 §7.4.1). */
     private static final int GOING_AWAY = 1001;
     /** How long a close frame may take to leave before the socket is aborted. */
     private static final long CLOSE_FRAME_TIMEOUT_MS = 200;
     private static final long BACKOFF_MAX_MS =
-        ConfigKeys.EVENT_BACKOFF_MAX_MS_DEFAULT;
+        EventMeshModule.ConfigKeys.EVENT_BACKOFF_MAX_MS_DEFAULT;
     /** A peer that accepts the socket but never answers the hello must not
      *  pin a half-open connection forever — abort and let the dial loop
      *  retry with backoff. One source with the config layer
      *  ({@link ConfigKeys#EVENT_HANDSHAKE_TIMEOUT_MS_DEFAULT}); the
      *  ms→Duration conversion happens at this boundary. */
     private static final Duration HANDSHAKE_TIMEOUT =
-        Duration.ofMillis(ConfigKeys.EVENT_HANDSHAKE_TIMEOUT_MS_DEFAULT);
+        Duration.ofMillis(EventMeshModule.ConfigKeys.EVENT_HANDSHAKE_TIMEOUT_MS_DEFAULT);
     /** Dial timeout; the config key's own default, so a bare
      *  {@link Wiring#defaults()} behaves exactly like an unconfigured app. */
     private static final Duration CONNECT_TIMEOUT =
-        Duration.ofMillis(ConfigKeys.EVENT_CONNECT_TIMEOUT_MS_DEFAULT);
+        Duration.ofMillis(EventMeshModule.ConfigKeys.EVENT_CONNECT_TIMEOUT_MS_DEFAULT);
     /** Fragment reassembly must not turn a peer that never sets FIN into
      *  unbounded memory. Counted in <em>characters</em>, because the JDK's
      *  client listener hands over already-decoded {@code CharSequence}

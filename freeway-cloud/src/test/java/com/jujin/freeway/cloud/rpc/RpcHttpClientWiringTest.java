@@ -10,7 +10,6 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
-import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
 import com.jujin.freeway.cloud.CloudModule;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -22,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
  * wither replaces exactly its own field and leaves the others at their
  * defaults, so direct callers never need the nine-argument constructor. Also
  * pins the library-fallback timeout defaults to the shared
- * {@link ConfigKeys} sources (P1-5) — if the two layers drift apart,
+ * {@link RpcModule.ConfigKeys} sources (P1-5) — if the two layers drift apart,
  * this fails.
  */
 class RpcHttpClientWiringTest {
@@ -83,9 +82,9 @@ class RpcHttpClientWiringTest {
 
     @Test
     void defaultTimeoutsStayPinnedToTheSharedConfigKeysValues() {
-        assertEquals(Duration.ofMillis(ConfigKeys.RPC_REQUEST_TIMEOUT_DEFAULT),
+        assertEquals(Duration.ofMillis(RpcModule.ConfigKeys.RPC_REQUEST_TIMEOUT_DEFAULT),
             RpcHttpClientDefault.Wiring.DEFAULT_REQUEST_TIMEOUT);
-        assertEquals(Duration.ofMillis(ConfigKeys.RPC_CONNECT_TIMEOUT_DEFAULT),
+        assertEquals(Duration.ofMillis(RpcModule.ConfigKeys.RPC_CONNECT_TIMEOUT_DEFAULT),
             RpcHttpClientDefault.Wiring.DEFAULT_CONNECT_TIMEOUT);
     }
 }

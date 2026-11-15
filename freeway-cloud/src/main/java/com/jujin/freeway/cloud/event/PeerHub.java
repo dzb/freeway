@@ -17,7 +17,6 @@ import org.slf4j.LoggerFactory;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.LongConsumer;
-import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
 
 /**
  * The hub: registry of live peer connections + the server-side WS endpoint
@@ -112,7 +111,7 @@ public final class PeerHub implements WebSocketEndpoint {
         if (token.isBlank()) {
             LOG.warn("MeshEventBus has no mesh token — any peer that can reach the "
                 + "endpoint may connect; set {} to require one",
-                ConfigKeys.EVENT_TOKEN);
+                EventMeshModule.ConfigKeys.EVENT_TOKEN);
         }
     }
 

@@ -69,7 +69,7 @@ class ReadinessGateTest {
     void a_warming_instance_is_registered_but_not_discoverable() throws Exception {
         AtomicBoolean warm = new AtomicBoolean(false);
         app = FreewayApp.create(
-                new HttpModule(), new RegistrationModule(), new LocalDiscoveryModule(),
+                new HttpModule(), new RegistrationModule(), new LocalModule(),
                 slowDependency(warm))
             .start();
 
@@ -90,7 +90,7 @@ class ReadinessGateTest {
     void a_fast_starting_app_is_ready_immediately() throws Exception {
         AtomicBoolean warm = new AtomicBoolean(true);
         app = FreewayApp.create(
-                new HttpModule(), new RegistrationModule(), new LocalDiscoveryModule(),
+                new HttpModule(), new RegistrationModule(), new LocalModule(),
                 slowDependency(warm))
             .start();
 

@@ -1,6 +1,6 @@
 package com.jujin.freeway.fleet.server;
 
-import com.jujin.freeway.fleet.InMemoryLeaseStore;
+import com.jujin.freeway.fleet.MemLeaseStore;
 import com.jujin.freeway.fleet.LeaseStore;
 import com.jujin.freeway.cloud.discovery.ServiceHealth;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
@@ -13,7 +13,7 @@ import com.jujin.freeway.http.HttpExchange;
 import com.jujin.freeway.http.route.RouteHandler;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 import com.jujin.freeway.ioc.symbol.SymbolSpec;
-import com.jujin.freeway.fleet.FleetDiscoveryModule.ConfigKeys;
+import com.jujin.freeway.fleet.FleetModule.ConfigKeys;
 import com.jujin.freeway.fleet.FleetProtocol;
 import com.jujin.freeway.http.HttpStatus;
 import java.io.IOException;

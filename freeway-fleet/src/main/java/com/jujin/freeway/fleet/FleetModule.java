@@ -1,8 +1,8 @@
 package com.jujin.freeway.fleet;
 
-import com.jujin.freeway.cloud.CloudModule;
+import com.jujin.freeway.cloud.CloudKeys;
 import com.jujin.freeway.cloud.internal.OptionalBinding;
-import com.jujin.freeway.cloud.discovery.CachingServiceDiscovery;
+import com.jujin.freeway.cloud.discovery.CachingDiscovery;
 import com.jujin.freeway.cloud.discovery.ServiceDiscovery;
 import com.jujin.freeway.cloud.discovery.LoadBalancer;
 import com.jujin.freeway.cloud.discovery.LoadBalancerDefault;
@@ -35,16 +35,16 @@ import org.slf4j.LoggerFactory;
  * (a renew that answers 404 re-asserts the instance on the spot).</p>
  *
  * <p>Place this module <em>alongside</em> {@code CloudModule} (or at least
- * {@code LocalDiscoveryModule}) and name the fleet with
+ * {@code LocalModule}) and name the fleet with
  * {@code freeway.cloud.registry.nodes}; a token shared with the nodes
  * goes in {@code freeway.cloud.registry.token}. It is one of the
  * alternatives for the same seam — the in-process store is the default, and
  * third-party backends (Consul and friends) ship as ext adapters; switching is
  * swapping the module and its keys, never application code.</p>
  */
-public final class FleetDiscoveryModule implements ModuleEx {
+public final class FleetModule implements ModuleEx {
 
-    private static final Logger LOG = LoggerFactory.getLogger(FleetDiscoveryModule.class);
+    private static final Logger LOG = LoggerFactory.getLogger(FleetModule.class);
 
     private static final SymbolSpec<Duration> CACHE_TTL = SymbolSpec.of(
         ConfigKeys.REGISTRY_CACHE_TTL, Duration.class,
@@ -52,14 +52,14 @@ public final class FleetDiscoveryModule implements ModuleEx {
 
     @Override
     public void bind(Binder b) {
-        b.bind(FleetNodes.class).to(FleetDiscoveryModule::nodes);
+        b.bind(FleetNodes.class).to(FleetModule::nodes);
         b.bind(FleetClient.class).to(
             container -> new FleetClient(container.get(FleetNodes.class)));
         b.bind(ServiceRegistry.class)
             .to(container -> new FleetRegistrar(container.get(FleetClient.class)))
             .primary();
         b.bind(ServiceDiscovery.class)
-            .to(container -> CachingServiceDiscovery.around(
+            .to(container -> CachingDiscovery.around(
                 new FleetDiscovery(container.get(FleetClient.class)),
                 cacheTtl(container),
                 OptionalBinding.get(container, com.jujin.freeway.commons.metrics.Metrics.class)))
@@ -76,7 +76,7 @@ public final class FleetDiscoveryModule implements ModuleEx {
             // The Fleet keys are declared here; the namespace itself belongs to
             // CloudModule, and the per-service TTL family is admitted as a prefix.
             .add(KnownKeys.of(ConfigKeys.class,
-                CloudModule.ConfigKeys.PREFIX, CloudModule.ConfigKeys.APP_PREFIX))
+                CloudKeys.PREFIX, CloudKeys.APP_PREFIX))
             .add(KnownKeys.admit(ConfigKeys.REGISTRY_CACHE_TTL_PREFIX));
     }
 
@@ -86,7 +86,7 @@ public final class FleetDiscoveryModule implements ModuleEx {
      * the first time it is discovered, not on every refresh, and an absent
      * override inherits the global value (configuring one is never required).
      */
-    private static CachingServiceDiscovery.TtlPolicy cacheTtl(Container container) {
+    private static CachingDiscovery.TtlPolicy cacheTtl(Container container) {
         SymbolSource symbols = container.get(SymbolSource.class);
         Duration fallback = symbols.resolve(CACHE_TTL);
         ConcurrentHashMap<String, Duration> resolved = new ConcurrentHashMap<>();

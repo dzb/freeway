@@ -36,25 +36,25 @@ class MeshKeepaliveEndToEndTest {
             nodeB.close();
         }
         System.clearProperty(HttpModule.ConfigKeys.SERVER_PORT);
-        System.clearProperty(ConfigKeys.EVENT_ENABLED);
-        System.clearProperty(ConfigKeys.EVENT_PEERS);
-        System.clearProperty(ConfigKeys.EVENT_KEEPALIVE_MS);
-        System.clearProperty(ConfigKeys.EVENT_BACKOFF_BASE_MS);
-        System.clearProperty(ConfigKeys.EVENT_BACKOFF_MAX_MS);
+        System.clearProperty(EventMeshModule.ConfigKeys.EVENT_ENABLED);
+        System.clearProperty(EventMeshModule.ConfigKeys.EVENT_PEERS);
+        System.clearProperty(EventMeshModule.ConfigKeys.EVENT_KEEPALIVE_MS);
+        System.clearProperty(EventMeshModule.ConfigKeys.EVENT_BACKOFF_BASE_MS);
+        System.clearProperty(EventMeshModule.ConfigKeys.EVENT_BACKOFF_MAX_MS);
     }
 
     private static AppRuntime startNode(String peers) {
         System.setProperty(HttpModule.ConfigKeys.SERVER_PORT, "0");
-        System.setProperty(ConfigKeys.EVENT_ENABLED, "true");
-        System.setProperty(ConfigKeys.EVENT_PEERS, peers);
-        System.setProperty(ConfigKeys.EVENT_BACKOFF_BASE_MS, "100");
-        System.setProperty(ConfigKeys.EVENT_BACKOFF_MAX_MS, "300");
+        System.setProperty(EventMeshModule.ConfigKeys.EVENT_ENABLED, "true");
+        System.setProperty(EventMeshModule.ConfigKeys.EVENT_PEERS, peers);
+        System.setProperty(EventMeshModule.ConfigKeys.EVENT_BACKOFF_BASE_MS, "100");
+        System.setProperty(EventMeshModule.ConfigKeys.EVENT_BACKOFF_MAX_MS, "300");
         return FreewayApp.run(new HttpModule(), new EventMeshModule());
     }
 
     @Test
     void a_healthy_mesh_survives_keepalive_cycles() throws Exception {
-        System.setProperty(ConfigKeys.EVENT_KEEPALIVE_MS, "50");
+        System.setProperty(EventMeshModule.ConfigKeys.EVENT_KEEPALIVE_MS, "50");
         nodeB = startNode("");
         int bPort = nodeB.get(HttpServer.class).port();
         nodeA = startNode("127.0.0.1:" + bPort);

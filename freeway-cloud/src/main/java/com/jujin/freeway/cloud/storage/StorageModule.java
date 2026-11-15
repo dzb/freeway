@@ -1,9 +1,11 @@
 package com.jujin.freeway.cloud.storage;
 
+import com.jujin.freeway.cloud.CloudKeys;
 import com.jujin.freeway.cloud.CloudHookIds;
 import com.jujin.freeway.cloud.annotation.Local;
 import com.jujin.freeway.cloud.internal.BackendTypeGuard;
 import com.jujin.freeway.ioc.Binder;
+import com.jujin.freeway.ioc.symbol.KnownKeys;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.event.EventBus;
 import com.jujin.freeway.ioc.ModuleEx;
@@ -15,7 +17,7 @@ import com.jujin.freeway.ioc.symbol.SymbolSource;
 
 import java.nio.file.Path;
 import java.util.function.Function;
-import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
+
 
 /**
  * IoC wiring for the optional object storage subsystem: {@link ObjectStorage}
@@ -31,11 +33,14 @@ public final class StorageModule implements ModuleEx {
     // Default comes from the shared ConfigKeys source so the documented
     // value cannot drift from the code that applies it.
     private static final SymbolSpec<String> STORAGE_BASE_PATH = SymbolSpec.of(
-        ConfigKeys.STORAGE_BASE_PATH, String.class,
-        ConfigKeys.STORAGE_BASE_PATH_DEFAULT, Function.identity());
+        StorageModule.ConfigKeys.STORAGE_BASE_PATH, String.class,
+        StorageModule.ConfigKeys.STORAGE_BASE_PATH_DEFAULT, Function.identity());
 
     @Override
     public void bind(Binder b) {
+        b.contribute(KnownKeys.class)
+            .add(KnownKeys.of(ConfigKeys.class, CloudKeys.PREFIX,
+                CloudKeys.APP_PREFIX));
         b.bind(ObjectStorage.class)
             .to((Container container) -> {
                 SymbolSource symbols = container.get(SymbolSource.class);
@@ -49,6 +54,13 @@ public final class StorageModule implements ModuleEx {
         b.contribute(RuntimeHook.class).add(
             CloudHookIds.STORAGE,
             BackendTypeGuard.warnHook(
-                ObjectStorage.class, ConfigKeys.STORAGE_TYPE, "storage"));
+                ObjectStorage.class, StorageModule.ConfigKeys.STORAGE_TYPE, "storage"));
+    }
+    /** Keys read by the storage backend. */
+    public static final class ConfigKeys {
+        private ConfigKeys() {}
+        public static final String STORAGE_TYPE = "freeway.cloud.storage.type";
+        public static final String STORAGE_BASE_PATH = "freeway.cloud.storage.base-path";
+        public static final String STORAGE_BASE_PATH_DEFAULT = "cloud-storage";
     }
 }

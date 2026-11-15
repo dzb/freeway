@@ -1,6 +1,6 @@
 package com.jujin.freeway.cloud.resilience;
 
-import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
+
 
 /**
  * Exponential-backoff {@link Retryer}: {@code maxRetries} attempts beyond the
@@ -45,9 +45,9 @@ public final class RetryerDefault implements Retryer {
      *  the same source the config layer falls back to. */
     public static RetryerDefault withDefaults() {
         return new RetryerDefault(
-            ConfigKeys.RPC_RETRY_MAX_ATTEMPTS_DEFAULT,
-            ConfigKeys.RPC_RETRY_BACKOFF_BASE_DEFAULT,
-            ConfigKeys.RPC_RETRY_BACKOFF_MAX_DEFAULT);
+            ResilienceModule.ConfigKeys.RPC_RETRY_MAX_ATTEMPTS_DEFAULT,
+            ResilienceModule.ConfigKeys.RPC_RETRY_BACKOFF_BASE_DEFAULT,
+            ResilienceModule.ConfigKeys.RPC_RETRY_BACKOFF_MAX_DEFAULT);
     }
 
     @Override

@@ -104,11 +104,11 @@ com.jujin.freeway.cloud
 │                 Propagator, CloudContextModule
 ├── discovery/    ServiceEndpoint, ServiceHealth, ServiceInstance, ServiceDiscovery,
 │                 ServiceRegistry, ServiceDeclaration,
-│                 LoadBalancer(+Default), StaticServiceDiscovery,
-│                 StaticDiscoveryModule
-├── registration/ RegistrationModule, RegistrationLifecycleHook,
-│                 RegistrationRenewal, RegistrationHealthContributor,
-│                 HttpServiceDeclaration, ServiceIdentity, ReadinessGate
+│                 LoadBalancer(+Default), StaticDiscovery,
+│                 StaticModule
+├── registration/ RegistrationModule, RegistrationHook,
+│                 Renewal, RegistrationHealth,
+│                 HttpDeclaration, Identity, ReadinessGate
 ├── rpc/          RpcHttpClient(+Default), RpcRequest/RpcResponse,
 │                 RpcException, TransportSecurity(+Default), RemoteCaller,
 │                 RemoteProxyFactory, Idempotent, RpcExport, RpcEndpoint,
@@ -132,8 +132,8 @@ com.jujin.freeway.cloud
 ```
 
 Fleet moved out of this module in 2.0: `freeway-fleet` holds the local
-`LeaseStore`/`LocalDiscoveryModule` backend and the Fleet client/protocol
-(`FleetDiscoveryModule`); `freeway-fleet-server` holds `FleetServerModule` and
+`LeaseStore`/`LocalModule` backend and the Fleet client/protocol
+(`FleetModule`); `freeway-fleet-server` holds `FleetServerModule` and
 the HTTP surface. `freeway-cloud` depends on neither. `RegistrationModule` is
 the backend-neutral lifecycle in cloud.
 
@@ -247,7 +247,7 @@ public record ServiceHealth(boolean live, boolean ready, Instant lastSeen) {
   lease expired, backend restarted), and the caller should `register` again. Heartbeat self-healing follows from
   this — a registry returning `true` for an instance it does not hold would make the caller believe it is reachable.
 - `ServiceDeclaration.resolve(container)` is called after the HTTP server starts
-  (host:port is settled); the built-in `HttpServiceDeclaration` registers the `HttpServer` address;
+  (host:port is settled); the built-in `HttpDeclaration` registers the `HttpServer` address;
   other protocols/multiple ports are contributed by their own modules. Backend adapters for cross-process discovery (Nacos/K8s
   endpoints, etc.) go through `.primary()` (**not delivered**, §8.1).
 - serviceId resolves from `freeway.cloud.registry.service-id` → `freeway.app.name`;
@@ -270,7 +270,7 @@ public record ServiceHealth(boolean live, boolean ready, Instant lastSeen) {
   `ServiceInstance.weight()` (default 1), and the weight sum is taken modulo the call sequence. zone/canary
   remain metadata only; a custom policy just binds a primary implementation (the interface is a
   `@FunctionalInterface`).
-- **Reusing discovery results is the discovery implementation's own policy** (`CachingServiceDiscovery`, default
+- **Reusing discovery results is the discovery implementation's own policy** (`CachingDiscovery`, default
   `registry.cache-ttl=5s`): TTL + single-flight refresh + keep-stale-on-failure. The implementation wraps the cache itself,
   so every consumer (RPC, the mesh feeder, the application reading for itself) gets it while the seam still has a single method;
   keep-stale-on-failure also lands in the layer that knows about the failure. The in-process store does not wrap it (a table lookup itself costs 0),
@@ -501,7 +501,8 @@ rateLimiter.tryAcquire()
   `rpc.request-timeout`).
 - Without `ResilienceModule` installed, the client degrades to built-in defaults (3 retries / backoff starting at 100ms
   / threshold 5 / unlimited rate limiting), and the default values share one source with the configuration layer: the
-  `*_DEFAULT` constants in `CloudModule.ConfigKeys` — one number, one source.
+  `*_DEFAULT` constants in `ResilienceModule.ConfigKeys` / `RpcModule.ConfigKeys` —
+  one number, one source.
 - The `@Retry` / `@CircuitBreak` / `@RateLimit` annotations + `Advisor` weaving are **not delivered**
   (§8.2).
 
@@ -513,7 +514,7 @@ rateLimiter.tryAcquire()
 - `/health/ready` — aggregates the `CloudHealthContributor` set (contribute mode);
   all healthy `200`, otherwise `503`.
 
-Registry readiness is provided by `RegistrationHealthContributor` (delivered with `RegistrationModule` in `freeway-cloud`),
+Registry readiness is provided by `RegistrationHealth` (delivered with `RegistrationModule` in `freeway-cloud`),
 and its semantics declare only facts the framework **can verify**:
 
 - Never registered (no HTTP module, no service declaration) → reports `not registered`, rather than a
@@ -611,8 +612,8 @@ only fixes how keys are read and the three shapes, so the same list does not dri
   Values that genuinely need hot reload at runtime go through boot's configuration cascade; the secrets file is the only exception
   (§5.7).
 - **Shape one: behaviour keys** — ordinary values (timeouts, thresholds, addresses, allowlists, tokens). They have defaults,
-  with the `*_DEFAULT` constants in `CloudModule.ConfigKeys` as the single source, shared by the module configuration layer and the
-  library-level fallback. **Boolean keys always go through the container `Coercer`** (accepting `true/false`,
+  with the owning module's `*_DEFAULT` constants as the single source, shared by the
+  module configuration layer and the library-level fallback. **Boolean keys always go through the container `Coercer`** (accepting `true/false`,
   `yes/no`, `on/off`, `1/0`); an unrecognized value fails at startup and names the key and value — silently becoming
   `false` would quietly turn off switches like `auth.extract.enabled`.
 - **Special case of shape one: `auto`** — used only when the value must be derived and cannot be written down, and the derived result must be
@@ -693,7 +694,7 @@ bring your own backend marker and type-key consumption when needed, and it must 
 
 | Capability | Seam | Minimal closing action |
 |---|---|---|
-| Registry / discovery backend (Nacos, K8s endpoints are adapted by ext; **freeway's own backend is already delivered in the main body**: a node = a `FleetServerModule` composition, the client = `FleetDiscoveryModule`, write fan-out / discovery union, zero third-party dependencies; **Consul is in ext**) | `ServiceRegistry` + `ServiceDiscovery` | One adapter module + real-backend tests; `renew` already returns boolean, so the self-healing contract is ready |
+| Registry / discovery backend (Nacos, K8s endpoints are adapted by ext; **freeway's own backend is already delivered in the main body**: a node = a `FleetServerModule` composition, the client = `FleetModule`, write fan-out / discovery union, zero third-party dependencies; **Consul is in ext**) | `ServiceRegistry` + `ServiceDiscovery` | One adapter module + real-backend tests; `renew` already returns boolean, so the self-healing contract is ready |
 | Secrets backend (Vault, KMS) | `SecretStore` | The adapter owns leases/TTLs (the SPI has no `reload()`); file rotation semantics are settled |
 | Object storage backend (S3-compatible) | `ObjectStorage` | Schedule version capability together with version-addressed read/delete; do not deliver only half |
 | Metrics export (OTel/Prometheus push) | Do not install `ObserveModule`; primary-bind `Metrics` + provide your own export route | Design the label dimension of §8.2 along with it |

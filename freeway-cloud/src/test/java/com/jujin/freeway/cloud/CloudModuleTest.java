@@ -2,7 +2,8 @@ package com.jujin.freeway.cloud;
 
 import com.jujin.freeway.cloud.annotation.Local;
 import com.jujin.freeway.cloud.context.CloudContextModule;
-import com.jujin.freeway.cloud.discovery.StaticDiscoveryModule;
+import com.jujin.freeway.cloud.discovery.StaticModule;
+import com.jujin.freeway.cloud.event.EventMeshModule;
 import com.jujin.freeway.cloud.health.HealthModule;
 import com.jujin.freeway.cloud.rpc.RpcHttpClient;
 import com.jujin.freeway.cloud.rpc.RemoteCaller;
@@ -64,8 +65,7 @@ class CloudModuleTest {
                 .flatMap(vocabulary -> vocabulary.keys().stream())
                 .collect(java.util.stream.Collectors.toSet());
 
-            assertTrue(known.contains(ConfigKeys.EVENT_TOKEN), "freeway.cloud.* is declared");
-            assertTrue(known.contains(ConfigKeys.APP_NAME), "freeway.app.* is declared too");
+            assertTrue(known.contains(ConfigKeys.APP_NAME), "freeway.app.* is declared");
         }
     }
 
@@ -117,7 +117,7 @@ class CloudModuleTest {
         // The client subset documented by RpcModule: discovery + RPC, no
         // Freeway HttpModule. Static discovery is the no-registry default.
         try (Container container = Freeway.create(
-                new RpcModule(), StaticDiscoveryModule.of(Map.of()))) {
+                new RpcModule(), StaticModule.of(Map.of()))) {
             assertNotNull(container.get(RemoteCaller.class));
         }
     }

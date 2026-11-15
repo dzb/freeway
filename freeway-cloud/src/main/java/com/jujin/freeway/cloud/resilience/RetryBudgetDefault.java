@@ -1,6 +1,6 @@
 package com.jujin.freeway.cloud.resilience;
 
-import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
+
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -32,7 +32,7 @@ public final class RetryBudgetDefault implements RetryBudget {
 
     /** The framework default: {@link #DEFAULT_CAPACITY} tokens per service. */
     public static RetryBudgetDefault withDefaults() {
-        return new RetryBudgetDefault(ConfigKeys.RPC_RETRY_BUDGET_DEFAULT);
+        return new RetryBudgetDefault(ResilienceModule.ConfigKeys.RPC_RETRY_BUDGET_DEFAULT);
     }
 
     @Override

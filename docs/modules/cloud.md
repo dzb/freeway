@@ -42,13 +42,13 @@ with zero changes to business code:
 
 | Backend | Placement | Infrastructure |
 |---|---|---|
-| In-process | `CloudModule` + `RegistrationModule` + `LocalDiscoveryModule` | None — single instance / fixed topology |
-| Static | `StaticDiscoveryModule` | None — fixed endpoint list or VIP, no registration |
-| **Fleet** | `CloudModule` + `RegistrationModule` + `FleetDiscoveryModule` | Self-deployed `freeway-fleet-server` nodes (1–N freeway applications) |
+| In-process | `CloudModule` + `RegistrationModule` + `LocalModule` | None — single instance / fixed topology |
+| Static | `StaticModule` | None — fixed endpoint list or VIP, no registration |
+| **Fleet** | `CloudModule` + `RegistrationModule` + `FleetModule` | Self-deployed `freeway-fleet-server` nodes (1–N freeway applications) |
 | Consul | `CloudModule` + ext `ConsulModule` | Consul cluster |
 
-Static discovery needs no registry process: `StaticServiceDiscovery` (or
-`StaticDiscoveryModule`) binds a service-id → instance-list map. Several
+Static discovery needs no registry process: `StaticDiscovery` (or
+`StaticModule`) binds a service-id → instance-list map. Several
 instances let the client-side load balancer distribute per call; a single
 endpoint is the VIP form, where an external load balancer owns selection. It
 never registers or renews, so it is the right mode for fixed endpoints and the
@@ -78,7 +78,7 @@ FreewayApp.run(Launch.of(args),
     new HttpModule(),
     new CloudModule(),
     new RegistrationModule(),   // register, renew, readiness, drain
-    new FleetDiscoveryModule()); // Fleet client + client-side load balancer
+    new FleetModule()); // Fleet client + client-side load balancer
 ```
 
 ```properties
@@ -104,7 +104,7 @@ are all the same shape; push-style ones such as the K8s informer need no TTL). T
 (`…cache-ttl.checkout=1s`, `0` = do not cache that service). When the backend fails, the oldest answer keeps being used within the window
 (grace = max(10×ttl, 30s)); only beyond the window does it throw.
 
-**Policy** (a default the framework provides, not a mandate): a discovery implementation that goes over the network is wrapped with `CachingServiceDiscovery.around(delegate, ttl, metrics)`
+**Policy** (a default the framework provides, not a mandate): a discovery implementation that goes over the network is wrapped with `CachingDiscovery.around(delegate, ttl, metrics)`
 — that is what the fleet does; the in-process store is **not wrapped** (a table lookup already costs 0, and caching would only make it slower);
 adapters that bring their own push freshness (the K8s informer) are not wrapped either — they answer `TtlPolicy` with `0`. In other words: **a caching discovery implementation is
 a default the framework provides; whether to wrap is the backend's decision**.

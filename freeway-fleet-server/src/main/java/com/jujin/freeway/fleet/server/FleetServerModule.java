@@ -1,9 +1,9 @@
 package com.jujin.freeway.fleet.server;
 
-import com.jujin.freeway.fleet.InMemoryLeaseStore;
+import com.jujin.freeway.cloud.CloudKeys;
+import com.jujin.freeway.fleet.MemLeaseStore;
 import com.jujin.freeway.fleet.LeaseStore;
-import com.jujin.freeway.cloud.CloudModule;
-import com.jujin.freeway.fleet.FleetDiscoveryModule;
+import com.jujin.freeway.fleet.FleetModule;
 import com.jujin.freeway.fleet.FleetProtocol;
 import com.jujin.freeway.http.route.Route;
 import com.jujin.freeway.http.route.RouteHandler;
@@ -54,9 +54,9 @@ public final class FleetServerModule implements ModuleEx {
     @Override
     public void bind(Binder b) {
         b.contribute(KnownKeys.class)
-            .add(KnownKeys.of(FleetDiscoveryModule.ConfigKeys.class,
-                CloudModule.ConfigKeys.PREFIX, CloudModule.ConfigKeys.APP_PREFIX));
-        b.bind(LeaseStore.class).to(InMemoryLeaseStore.class);
+            .add(KnownKeys.of(FleetModule.ConfigKeys.class,
+                CloudKeys.PREFIX, CloudKeys.APP_PREFIX));
+        b.bind(LeaseStore.class).to(MemLeaseStore.class);
         for (Surface surface : SURFACE) {
             b.contribute(Route.class).add(surface.id(), route(surface));
         }

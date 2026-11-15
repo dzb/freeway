@@ -1,5 +1,6 @@
 package com.jujin.freeway.cloud.rpc;
 
+import com.jujin.freeway.cloud.resilience.ResilienceModule;
 import com.jujin.freeway.cloud.CloudModule;
 import com.jujin.freeway.cloud.discovery.TestDiscoveryModule;
 import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
@@ -34,20 +35,20 @@ class ResilienceKillSwitchTest {
     @AfterEach
     void clearProperties() {
         System.clearProperty(HttpModule.ConfigKeys.SERVER_PORT);
-        System.clearProperty(ConfigKeys.RPC_RESILIENCE);
-        System.clearProperty(ConfigKeys.RPC_RETRY_MAX_ATTEMPTS);
-        System.clearProperty(ConfigKeys.RPC_RETRY_BACKOFF_BASE);
-        System.clearProperty(ConfigKeys.RPC_RATE_LIMIT_ENABLED);
-        System.clearProperty(ConfigKeys.RPC_RATE_LIMIT_PER_SECOND);
+        System.clearProperty(ResilienceModule.ConfigKeys.RPC_RESILIENCE);
+        System.clearProperty(ResilienceModule.ConfigKeys.RPC_RETRY_MAX_ATTEMPTS);
+        System.clearProperty(ResilienceModule.ConfigKeys.RPC_RETRY_BACKOFF_BASE);
+        System.clearProperty(ResilienceModule.ConfigKeys.RPC_RATE_LIMIT_ENABLED);
+        System.clearProperty(ResilienceModule.ConfigKeys.RPC_RATE_LIMIT_PER_SECOND);
         RpcHttpClientTest.CountingFailModule.reset();
     }
 
     @Test
     void offOverridesFineGrainedRetryKeys() {
-        System.setProperty(ConfigKeys.RPC_RESILIENCE, "off");
+        System.setProperty(ResilienceModule.ConfigKeys.RPC_RESILIENCE, "off");
         // A generous retry budget that the kill switch must ignore.
-        System.setProperty(ConfigKeys.RPC_RETRY_MAX_ATTEMPTS, "5");
-        System.setProperty(ConfigKeys.RPC_RETRY_BACKOFF_BASE, "10");
+        System.setProperty(ResilienceModule.ConfigKeys.RPC_RETRY_MAX_ATTEMPTS, "5");
+        System.setProperty(ResilienceModule.ConfigKeys.RPC_RETRY_BACKOFF_BASE, "10");
         try (AppRuntime app = FreewayApp.create(new RpcHttpClientTest.CountingFailModule(), new HttpModule()).add(CloudModule.class).add(new TestDiscoveryModule()).start()) {
             WebServerHolder.register(app, "failing");
 
@@ -60,11 +61,11 @@ class ResilienceKillSwitchTest {
 
     @Test
     void offKeepsBreakerAndLimiterInert() {
-        System.setProperty(ConfigKeys.RPC_RESILIENCE, "off");
+        System.setProperty(ResilienceModule.ConfigKeys.RPC_RESILIENCE, "off");
         // Both would reject rapid calls on their own (1/s limiter, breaker
         // counting successes/failures) — under the kill switch neither fires.
-        System.setProperty(ConfigKeys.RPC_RATE_LIMIT_ENABLED, "true");
-        System.setProperty(ConfigKeys.RPC_RATE_LIMIT_PER_SECOND, "1");
+        System.setProperty(ResilienceModule.ConfigKeys.RPC_RATE_LIMIT_ENABLED, "true");
+        System.setProperty(ResilienceModule.ConfigKeys.RPC_RATE_LIMIT_PER_SECOND, "1");
         try (AppRuntime app = FreewayApp.create(new RpcHttpClientTest.EchoModule(), new HttpModule()).add(CloudModule.class).add(new TestDiscoveryModule()).start()) {
             WebServerHolder.register(app, "echo");
             RpcHttpClient client = app.get(RpcHttpClient.class);
@@ -79,7 +80,7 @@ class ResilienceKillSwitchTest {
 
     @Test
     void unknownModeValueFailsStartupNamingTheKey() {
-        System.setProperty(ConfigKeys.RPC_RESILIENCE, "yolo");
+        System.setProperty(ResilienceModule.ConfigKeys.RPC_RESILIENCE, "yolo");
         // The startup hook validates the mode before anything can use it —
         // run() itself must fail, naming the key and the offending value.
         IllegalStateException failure = assertThrows(IllegalStateException.class, () ->

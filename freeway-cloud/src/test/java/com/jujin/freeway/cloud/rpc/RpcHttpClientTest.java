@@ -1,5 +1,6 @@
 package com.jujin.freeway.cloud.rpc;
 
+import com.jujin.freeway.cloud.resilience.ResilienceModule;
 import com.jujin.freeway.cloud.CloudModule;
 import com.jujin.freeway.cloud.discovery.TestDiscoveryModule;
 
@@ -46,7 +47,7 @@ class RpcHttpClientTest {
     @AfterEach
     void clearProperties() {
         System.clearProperty(HttpModule.ConfigKeys.SERVER_PORT);
-        System.clearProperty(ConfigKeys.RPC_REQUEST_TIMEOUT);
+        System.clearProperty(RpcModule.ConfigKeys.RPC_REQUEST_TIMEOUT);
     }
 
     @Test
@@ -129,7 +130,7 @@ class RpcHttpClientTest {
 
     @Test
     void slowEndpointTimesOut() {
-        System.setProperty(ConfigKeys.RPC_REQUEST_TIMEOUT, "200");
+        System.setProperty(RpcModule.ConfigKeys.RPC_REQUEST_TIMEOUT, "200");
         try (AppRuntime app = FreewayApp.create(new SlowModule(), new HttpModule()).add(CloudModule.class).add(new TestDiscoveryModule()).start()) {
             HttpServer server = app.get(HttpServer.class);
             app.get(ServiceRegistry.class).register(
@@ -138,14 +139,14 @@ class RpcHttpClientTest {
                 () -> app.get(RpcHttpClient.class).call("slow", RpcRequest.get("/api/slow")));
             assertTrue(ex.retryable(), "request timeout is retryable");
         } finally {
-            System.clearProperty(ConfigKeys.RPC_REQUEST_TIMEOUT);
+            System.clearProperty(RpcModule.ConfigKeys.RPC_REQUEST_TIMEOUT);
         }
     }
 
     @Test
     void retriesWithANewInstanceWhenTheFirstIsDown() {
-        System.setProperty(ConfigKeys.RPC_RETRY_MAX_ATTEMPTS, "2");
-        System.setProperty(ConfigKeys.RPC_RETRY_BACKOFF_BASE, "10");
+        System.setProperty(ResilienceModule.ConfigKeys.RPC_RETRY_MAX_ATTEMPTS, "2");
+        System.setProperty(ResilienceModule.ConfigKeys.RPC_RETRY_BACKOFF_BASE, "10");
         try (AppRuntime app = FreewayApp.create(new EchoModule(), new HttpModule()).add(CloudModule.class).add(new TestDiscoveryModule()).start()) {
             HttpServer server = app.get(HttpServer.class);
             ServiceRegistry registry = app.get(ServiceRegistry.class);
@@ -157,16 +158,16 @@ class RpcHttpClientTest {
                 .call("retry-svc", RpcRequest.get("/api/echo"));
             assertTrue(resp.isSuccess(), "a retry must re-choose the live instance");
         } finally {
-            System.clearProperty(ConfigKeys.RPC_RETRY_MAX_ATTEMPTS);
-            System.clearProperty(ConfigKeys.RPC_RETRY_BACKOFF_BASE);
+            System.clearProperty(ResilienceModule.ConfigKeys.RPC_RETRY_MAX_ATTEMPTS);
+            System.clearProperty(ResilienceModule.ConfigKeys.RPC_RETRY_BACKOFF_BASE);
         }
     }
 
     @Test
     void serverErrorsRetriedAndOpenTheCircuit() {
-        System.setProperty(ConfigKeys.RPC_RETRY_MAX_ATTEMPTS, "0");
-        System.setProperty(ConfigKeys.RPC_CB_FAILURE_THRESHOLD, "2");
-        System.setProperty(ConfigKeys.RPC_CB_OPEN_WINDOW, "60");
+        System.setProperty(ResilienceModule.ConfigKeys.RPC_RETRY_MAX_ATTEMPTS, "0");
+        System.setProperty(ResilienceModule.ConfigKeys.RPC_CB_FAILURE_THRESHOLD, "2");
+        System.setProperty(ResilienceModule.ConfigKeys.RPC_CB_OPEN_WINDOW, "60");
         try (AppRuntime app = FreewayApp.create(new FailModule(), new HttpModule()).add(CloudModule.class).add(new TestDiscoveryModule()).start()) {
             HttpServer server = app.get(HttpServer.class);
             app.get(ServiceRegistry.class).register(
@@ -184,16 +185,16 @@ class RpcHttpClientTest {
             assertFalse(opened.retryable(), "circuit open is a local rejection");
             assertTrue(opened.getMessage().contains("Circuit"));
         } finally {
-            System.clearProperty(ConfigKeys.RPC_RETRY_MAX_ATTEMPTS);
-            System.clearProperty(ConfigKeys.RPC_CB_FAILURE_THRESHOLD);
-            System.clearProperty(ConfigKeys.RPC_CB_OPEN_WINDOW);
+            System.clearProperty(ResilienceModule.ConfigKeys.RPC_RETRY_MAX_ATTEMPTS);
+            System.clearProperty(ResilienceModule.ConfigKeys.RPC_CB_FAILURE_THRESHOLD);
+            System.clearProperty(ResilienceModule.ConfigKeys.RPC_CB_OPEN_WINDOW);
         }
     }
 
     @Test
     void serverErrorIsNotReplayedForNonIdempotentRequests() {
-        System.setProperty(ConfigKeys.RPC_RETRY_MAX_ATTEMPTS, "2");
-        System.setProperty(ConfigKeys.RPC_RETRY_BACKOFF_BASE, "10");
+        System.setProperty(ResilienceModule.ConfigKeys.RPC_RETRY_MAX_ATTEMPTS, "2");
+        System.setProperty(ResilienceModule.ConfigKeys.RPC_RETRY_BACKOFF_BASE, "10");
         try (AppRuntime app = FreewayApp.create(new CountingFailModule(), new HttpModule()).add(CloudModule.class).add(new TestDiscoveryModule()).start()) {
             HttpServer server = app.get(HttpServer.class);
             app.get(ServiceRegistry.class).register(
@@ -207,19 +208,19 @@ class RpcHttpClientTest {
             assertEquals(1, CountingFailModule.posts.get(),
                 "an ambiguous outcome must not be replayed for a POST");
         } finally {
-            System.clearProperty(ConfigKeys.RPC_RETRY_MAX_ATTEMPTS);
-            System.clearProperty(ConfigKeys.RPC_RETRY_BACKOFF_BASE);
+            System.clearProperty(ResilienceModule.ConfigKeys.RPC_RETRY_MAX_ATTEMPTS);
+            System.clearProperty(ResilienceModule.ConfigKeys.RPC_RETRY_BACKOFF_BASE);
             CountingFailModule.reset();
         }
     }
 
     @Test
     void markedIdempotentRequestsReplayAmbiguousOutcomes() {
-        System.setProperty(ConfigKeys.RPC_RETRY_MAX_ATTEMPTS, "2");
-        System.setProperty(ConfigKeys.RPC_RETRY_BACKOFF_BASE, "10");
+        System.setProperty(ResilienceModule.ConfigKeys.RPC_RETRY_MAX_ATTEMPTS, "2");
+        System.setProperty(ResilienceModule.ConfigKeys.RPC_RETRY_BACKOFF_BASE, "10");
         // The retries below must not trip the default breaker (threshold 5)
         // mid-test — this test pins retry counts, not breaker accounting.
-        System.setProperty(ConfigKeys.RPC_CB_FAILURE_THRESHOLD, "50");
+        System.setProperty(ResilienceModule.ConfigKeys.RPC_CB_FAILURE_THRESHOLD, "50");
         try (AppRuntime app = FreewayApp.create(new CountingFailModule(), new HttpModule()).add(CloudModule.class).add(new TestDiscoveryModule()).start()) {
             HttpServer server = app.get(HttpServer.class);
             app.get(ServiceRegistry.class).register(
@@ -237,17 +238,17 @@ class RpcHttpClientTest {
             assertEquals(3, CountingFailModule.gets.get(),
                 "GET derives to idempotent and is replayed without a marker");
         } finally {
-            System.clearProperty(ConfigKeys.RPC_RETRY_MAX_ATTEMPTS);
-            System.clearProperty(ConfigKeys.RPC_RETRY_BACKOFF_BASE);
-            System.clearProperty(ConfigKeys.RPC_CB_FAILURE_THRESHOLD);
+            System.clearProperty(ResilienceModule.ConfigKeys.RPC_RETRY_MAX_ATTEMPTS);
+            System.clearProperty(ResilienceModule.ConfigKeys.RPC_RETRY_BACKOFF_BASE);
+            System.clearProperty(ResilienceModule.ConfigKeys.RPC_CB_FAILURE_THRESHOLD);
             CountingFailModule.reset();
         }
     }
 
     @Test
     void rateLimiterRejectsExcessCalls() {
-        System.setProperty(ConfigKeys.RPC_RATE_LIMIT_ENABLED, "true");
-        System.setProperty(ConfigKeys.RPC_RATE_LIMIT_PER_SECOND, "1");
+        System.setProperty(ResilienceModule.ConfigKeys.RPC_RATE_LIMIT_ENABLED, "true");
+        System.setProperty(ResilienceModule.ConfigKeys.RPC_RATE_LIMIT_PER_SECOND, "1");
         try (AppRuntime app = FreewayApp.create(new EchoModule(), new HttpModule()).add(CloudModule.class).add(new TestDiscoveryModule()).start()) {
             HttpServer server = app.get(HttpServer.class);
             app.get(ServiceRegistry.class).register(
@@ -260,8 +261,8 @@ class RpcHttpClientTest {
             assertFalse(ex.retryable(), "rate limited is a local rejection");
             assertTrue(ex.getMessage().contains("Rate limit"));
         } finally {
-            System.clearProperty(ConfigKeys.RPC_RATE_LIMIT_ENABLED);
-            System.clearProperty(ConfigKeys.RPC_RATE_LIMIT_PER_SECOND);
+            System.clearProperty(ResilienceModule.ConfigKeys.RPC_RATE_LIMIT_ENABLED);
+            System.clearProperty(ResilienceModule.ConfigKeys.RPC_RATE_LIMIT_PER_SECOND);
         }
     }
 
@@ -270,9 +271,9 @@ class RpcHttpClientTest {
         // Full breaker lifecycle over the wire: failures open the circuit,
         // the OPEN window elapses, the next call is the half-open probe, and
         // a recovered service closes the circuit again.
-        System.setProperty(ConfigKeys.RPC_RETRY_MAX_ATTEMPTS, "0");
-        System.setProperty(ConfigKeys.RPC_CB_FAILURE_THRESHOLD, "2");
-        System.setProperty(ConfigKeys.RPC_CB_OPEN_WINDOW, "1");
+        System.setProperty(ResilienceModule.ConfigKeys.RPC_RETRY_MAX_ATTEMPTS, "0");
+        System.setProperty(ResilienceModule.ConfigKeys.RPC_CB_FAILURE_THRESHOLD, "2");
+        System.setProperty(ResilienceModule.ConfigKeys.RPC_CB_OPEN_WINDOW, "1");
         try (AppRuntime app = FreewayApp.create(new FlippingModule(), new HttpModule()).add(CloudModule.class).add(new TestDiscoveryModule()).start()) {
             HttpServer server = app.get(HttpServer.class);
             app.get(ServiceRegistry.class).register(
@@ -300,9 +301,9 @@ class RpcHttpClientTest {
             assertTrue(client.call("flip", RpcRequest.get("/api/flip")).isSuccess(),
                 "after recovery the circuit stays closed and serves normally");
         } finally {
-            System.clearProperty(ConfigKeys.RPC_RETRY_MAX_ATTEMPTS);
-            System.clearProperty(ConfigKeys.RPC_CB_FAILURE_THRESHOLD);
-            System.clearProperty(ConfigKeys.RPC_CB_OPEN_WINDOW);
+            System.clearProperty(ResilienceModule.ConfigKeys.RPC_RETRY_MAX_ATTEMPTS);
+            System.clearProperty(ResilienceModule.ConfigKeys.RPC_CB_FAILURE_THRESHOLD);
+            System.clearProperty(ResilienceModule.ConfigKeys.RPC_CB_OPEN_WINDOW);
             FlippingModule.fail.set(true);
         }
     }
@@ -344,9 +345,9 @@ class RpcHttpClientTest {
         // standard injection path (ResilienceModule binds one breaker):
         // exhausting the failure window on "failing" must leave "healthy"
         // fully servable.
-        System.setProperty(ConfigKeys.RPC_RETRY_MAX_ATTEMPTS, "0");
-        System.setProperty(ConfigKeys.RPC_CB_FAILURE_THRESHOLD, "2");
-        System.setProperty(ConfigKeys.RPC_CB_OPEN_WINDOW, "60");
+        System.setProperty(ResilienceModule.ConfigKeys.RPC_RETRY_MAX_ATTEMPTS, "0");
+        System.setProperty(ResilienceModule.ConfigKeys.RPC_CB_FAILURE_THRESHOLD, "2");
+        System.setProperty(ResilienceModule.ConfigKeys.RPC_CB_OPEN_WINDOW, "60");
         try (AppRuntime app = FreewayApp.create(new TwoRouteModule(), new HttpModule()).add(CloudModule.class).add(new TestDiscoveryModule()).start()) {
             HttpServer server = app.get(HttpServer.class);
             ServiceRegistry registry = app.get(ServiceRegistry.class);
@@ -366,16 +367,16 @@ class RpcHttpClientTest {
             assertTrue(client.call("healthy", RpcRequest.get("/api/echo")).isSuccess(),
                 "a healthy service must not be rejected by another service's open circuit");
         } finally {
-            System.clearProperty(ConfigKeys.RPC_RETRY_MAX_ATTEMPTS);
-            System.clearProperty(ConfigKeys.RPC_CB_FAILURE_THRESHOLD);
-            System.clearProperty(ConfigKeys.RPC_CB_OPEN_WINDOW);
+            System.clearProperty(ResilienceModule.ConfigKeys.RPC_RETRY_MAX_ATTEMPTS);
+            System.clearProperty(ResilienceModule.ConfigKeys.RPC_CB_FAILURE_THRESHOLD);
+            System.clearProperty(ResilienceModule.ConfigKeys.RPC_CB_OPEN_WINDOW);
         }
     }
 
     @Test
     void rateLimitIsPerService() {
-        System.setProperty(ConfigKeys.RPC_RATE_LIMIT_ENABLED, "true");
-        System.setProperty(ConfigKeys.RPC_RATE_LIMIT_PER_SECOND, "1");
+        System.setProperty(ResilienceModule.ConfigKeys.RPC_RATE_LIMIT_ENABLED, "true");
+        System.setProperty(ResilienceModule.ConfigKeys.RPC_RATE_LIMIT_PER_SECOND, "1");
         try (AppRuntime app = FreewayApp.create(new TwoRouteModule(), new HttpModule()).add(CloudModule.class).add(new TestDiscoveryModule()).start()) {
             HttpServer server = app.get(HttpServer.class);
             ServiceRegistry registry = app.get(ServiceRegistry.class);
@@ -390,8 +391,8 @@ class RpcHttpClientTest {
             assertTrue(client.call("svc-b", RpcRequest.get("/api/echo")).isSuccess(),
                 "svc-b has its own limiter shard and is not throttled by svc-a");
         } finally {
-            System.clearProperty(ConfigKeys.RPC_RATE_LIMIT_ENABLED);
-            System.clearProperty(ConfigKeys.RPC_RATE_LIMIT_PER_SECOND);
+            System.clearProperty(ResilienceModule.ConfigKeys.RPC_RATE_LIMIT_ENABLED);
+            System.clearProperty(ResilienceModule.ConfigKeys.RPC_RATE_LIMIT_PER_SECOND);
         }
     }
 

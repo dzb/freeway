@@ -4,22 +4,22 @@ import com.jujin.freeway.cloud.health.CloudHealthContributor;
 import com.jujin.freeway.http.HealthResult;
 
 /**
- * Readiness for registration: reports what {@link RegistrationRenewal}
+ * Readiness for registration: reports what {@link Renewal}
  * observed rather than assuming registration worked.
  *
  * <p>The verdict is per-instance state, decided in {@link #check()} rather
  * than at construction: the contributor is built before the lifecycle hook
  * runs, so it cannot know yet whether this boot registers anything. Unhealthy
- * only after {@link RegistrationRenewal#UNHEALTHY_AFTER} consecutive failed
+ * only after {@link Renewal#UNHEALTHY_AFTER} consecutive failed
  * heartbeats, so a single blip does not pull the pod out of rotation. An
  * instance that never registered reports healthy with
  * {@code not registered}, not a vacuous all-clear.</p>
  */
-final class RegistrationHealthContributor implements CloudHealthContributor {
+final class RegistrationHealth implements CloudHealthContributor {
 
-    private final RegistrationRenewal renewal;
+    private final Renewal renewal;
 
-    public RegistrationHealthContributor(RegistrationRenewal renewal) {
+    public RegistrationHealth(Renewal renewal) {
         this.renewal = renewal;
     }
 

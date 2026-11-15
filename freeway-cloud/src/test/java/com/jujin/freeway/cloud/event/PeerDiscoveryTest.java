@@ -53,11 +53,11 @@ class PeerDiscoveryTest {
             nodeB.close();
         }
         System.clearProperty(HttpModule.ConfigKeys.SERVER_PORT);
-        System.clearProperty(ConfigKeys.EVENT_ENABLED);
-        System.clearProperty(ConfigKeys.EVENT_PEERS);
-        System.clearProperty(ConfigKeys.EVENT_BACKOFF_BASE_MS);
-        System.clearProperty(ConfigKeys.EVENT_BACKOFF_MAX_MS);
-        System.clearProperty(ConfigKeys.EVENT_DISCOVERY_FEED_MS);
+        System.clearProperty(EventMeshModule.ConfigKeys.EVENT_ENABLED);
+        System.clearProperty(EventMeshModule.ConfigKeys.EVENT_PEERS);
+        System.clearProperty(EventMeshModule.ConfigKeys.EVENT_BACKOFF_BASE_MS);
+        System.clearProperty(EventMeshModule.ConfigKeys.EVENT_BACKOFF_MAX_MS);
+        System.clearProperty(EventMeshModule.ConfigKeys.EVENT_DISCOVERY_FEED_MS);
     }
 
     /**
@@ -186,7 +186,7 @@ class PeerDiscoveryTest {
         int bPort = nodeB.get(HttpServer.class).port();
 
         Map<String, ServiceInstance> directory = new ConcurrentHashMap<>();
-        System.setProperty(ConfigKeys.EVENT_DISCOVERY_FEED_MS, "100");
+        System.setProperty(EventMeshModule.ConfigKeys.EVENT_DISCOVERY_FEED_MS, "100");
         nodeA = startNode("", new StaticDiscovery(directory));
         awaitWired(nodeA);
 
@@ -229,10 +229,10 @@ class PeerDiscoveryTest {
 
     private static AppRuntime startNode(String peers) {
         System.setProperty(HttpModule.ConfigKeys.SERVER_PORT, "0");
-        System.setProperty(ConfigKeys.EVENT_ENABLED, "true");
-        System.setProperty(ConfigKeys.EVENT_BACKOFF_BASE_MS, FAST_BACKOFF_BASE_MS);
-        System.setProperty(ConfigKeys.EVENT_BACKOFF_MAX_MS, FAST_BACKOFF_MAX_MS);
-        System.setProperty(ConfigKeys.EVENT_PEERS, peers);
+        System.setProperty(EventMeshModule.ConfigKeys.EVENT_ENABLED, "true");
+        System.setProperty(EventMeshModule.ConfigKeys.EVENT_BACKOFF_BASE_MS, FAST_BACKOFF_BASE_MS);
+        System.setProperty(EventMeshModule.ConfigKeys.EVENT_BACKOFF_MAX_MS, FAST_BACKOFF_MAX_MS);
+        System.setProperty(EventMeshModule.ConfigKeys.EVENT_PEERS, peers);
         List<ModuleEx> modules = List.of(new HttpModule(), new EventMeshModule());
         return FreewayApp.run(modules.toArray(new ModuleEx[0]));
     }

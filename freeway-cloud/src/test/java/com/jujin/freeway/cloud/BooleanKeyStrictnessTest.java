@@ -1,6 +1,7 @@
 package com.jujin.freeway.cloud;
 
-import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
+import com.jujin.freeway.cloud.context.CloudContextModule;
+import com.jujin.freeway.cloud.rpc.RpcModule;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -23,13 +24,13 @@ class BooleanKeyStrictnessTest {
 
     @AfterEach
     void clearProperties() {
-        System.clearProperty(ConfigKeys.AUTH_EXTRACT_ENABLED);
-        System.clearProperty(ConfigKeys.RPC_TRACE_ENABLED);
+        System.clearProperty(CloudContextModule.ConfigKeys.AUTH_EXTRACT_ENABLED);
+        System.clearProperty(RpcModule.ConfigKeys.RPC_TRACE_ENABLED);
     }
 
     @Test
     void unreadableBooleanFailsStartupNamingTheKey() {
-        System.setProperty(ConfigKeys.AUTH_EXTRACT_ENABLED, "maybe");
+        System.setProperty(CloudContextModule.ConfigKeys.AUTH_EXTRACT_ENABLED, "maybe");
         RuntimeException failure = assertThrows(RuntimeException.class,
             () -> FreewayApp.create().add(CloudModule.class).start());
         assertTrue(chainMessages(failure).contains("auth.extract.enabled"),
@@ -40,8 +41,8 @@ class BooleanKeyStrictnessTest {
 
     @Test
     void readableBooleanSpellingsAreAccepted() {
-        System.setProperty(ConfigKeys.AUTH_EXTRACT_ENABLED, "yes");
-        System.setProperty(ConfigKeys.RPC_TRACE_ENABLED, "off");
+        System.setProperty(CloudContextModule.ConfigKeys.AUTH_EXTRACT_ENABLED, "yes");
+        System.setProperty(RpcModule.ConfigKeys.RPC_TRACE_ENABLED, "off");
         try (AppRuntime app = FreewayApp.create().add(CloudModule.class).start()) {
             assertNotNull(app, "the framework's boolean vocabulary (yes/off) boots");
         }

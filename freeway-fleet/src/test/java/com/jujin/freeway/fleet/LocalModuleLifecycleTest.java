@@ -25,7 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * IP; without the HTTP module the HTTP declaration resolves to null and is
  * skipped instead of failing startup.
  */
-class LocalDiscoveryLifecycleTest {
+class LocalModuleLifecycleTest {
 
     @BeforeEach
     void randomPort() {
@@ -46,11 +46,11 @@ class LocalDiscoveryLifecycleTest {
         System.setProperty(ConfigKeys.REGISTRY_SERVICE_ID, "lifecycle-svc");
         // Bind the store directly so the post-close assertion can inspect the
         // table after the container (and its proxy) is gone.
-        InMemoryLeaseStore store = new InMemoryLeaseStore();
+        MemLeaseStore store = new MemLeaseStore();
         try (AppRuntime app = FreewayApp.create(new HttpModule())
                 .add(CloudModule.class)
                 .add(new RegistrationModule())
-                .add(new LocalDiscoveryModule())
+                .add(new LocalModule())
                 .add(binder -> binder.bind(LeaseStore.class)
                     .to(container -> store).primary())
                 .start()) {
@@ -66,7 +66,7 @@ class LocalDiscoveryLifecycleTest {
     void serviceHostOverrideWinsOverBoundAddress() {
         System.setProperty(ConfigKeys.REGISTRY_SERVICE_ID, "host-svc");
         System.setProperty(ConfigKeys.REGISTRY_SERVICE_HOST, "myhost.example");
-        try (AppRuntime app = FreewayApp.create(new HttpModule()).add(CloudModule.class).add(new RegistrationModule()).add(new LocalDiscoveryModule()).start()) {
+        try (AppRuntime app = FreewayApp.create(new HttpModule()).add(CloudModule.class).add(new RegistrationModule()).add(new LocalModule()).start()) {
             LeaseStore store = app.get(LeaseStore.class);
             List<ServiceInstance> instances = store.liveReadyInstances("host-svc", Duration.ofMinutes(1));
             assertEquals("myhost.example", instances.get(0).endpoint().host());
@@ -75,7 +75,7 @@ class LocalDiscoveryLifecycleTest {
 
     @Test
     void customServiceDeclarationIsCollected() {
-        try (AppRuntime app = FreewayApp.create(new AdminDeclarationModule(), new HttpModule()).add(CloudModule.class).add(new RegistrationModule()).add(new LocalDiscoveryModule()).start()) {
+        try (AppRuntime app = FreewayApp.create(new AdminDeclarationModule(), new HttpModule()).add(CloudModule.class).add(new RegistrationModule()).add(new LocalModule()).start()) {
             LeaseStore store = app.get(LeaseStore.class);
             List<ServiceInstance> instances = store.liveReadyInstances("admin-svc", Duration.ofMinutes(1));
             assertEquals(1, instances.size());
@@ -90,7 +90,7 @@ class LocalDiscoveryLifecycleTest {
         // module, the registry hook's conditional ordering reference is
         // vacuous — startup succeeds and the HTTP declaration resolves to
         // null (nothing to register) instead of failing.
-        try (AppRuntime app = FreewayApp.create(CloudModule.class, RegistrationModule.class, LocalDiscoveryModule.class).autoDiscovery(false).start()) {
+        try (AppRuntime app = FreewayApp.create(CloudModule.class, RegistrationModule.class, LocalModule.class).autoDiscovery(false).start()) {
             LeaseStore store = app.get(LeaseStore.class);
             assertTrue(store.liveReadyInstances("lifecycle-svc", Duration.ofMinutes(1)).isEmpty(),
                 "without an HTTP server there is no endpoint to register");

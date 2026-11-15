@@ -7,7 +7,7 @@
 FreewayApp.run(new HttpModule(), new FleetServerModule());
 ```
 
-It is a control plane: it owns the registry surface and a `LeaseStore` (currently `InMemoryLeaseStore`), and it
+It is a control plane: it owns the registry surface and a `LeaseStore` (currently `MemLeaseStore`), and it
 does not register itself into the Fleet it serves. Applications depend on
 `freeway-fleet` (client), never on this module.
 

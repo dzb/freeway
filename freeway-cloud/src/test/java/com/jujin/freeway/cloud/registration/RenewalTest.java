@@ -24,7 +24,7 @@ import org.junit.jupiter.api.Test;
  * registry actually knows, and a registration lost to eviction must come back
  * without a restart.
  */
-class RegistrationRenewalTest {
+class RenewalTest {
 
     private static final ServiceInstance INSTANCE =
         ServiceInstance.of("svc", "i1", ServiceEndpoint.of("http", "127.0.0.1", 8080));
@@ -43,17 +43,17 @@ class RegistrationRenewalTest {
 
             @Override public void unregister(ServiceInstance instance) { }
         };
-        RegistrationRenewal renewal = new RegistrationRenewal();
+        Renewal renewal = new Renewal();
         try (Container container = Freeway.create(binder -> {
             binder.bind(ServiceRegistry.class).to(c -> registry);
             binder.contribute(ServiceDeclaration.class)
                 .add("test", (ServiceDeclaration) c -> INSTANCE);
         })) {
-            RegistrationLifecycleHook hook =
-                new RegistrationLifecycleHook(renewal, Duration.ofMillis(20));
+            RegistrationHook hook =
+                new RegistrationHook(renewal, Duration.ofMillis(20));
             hook.start(container);
             try {
-                assertTrue(await(() -> renewal.consecutiveFailures() >= RegistrationRenewal.UNHEALTHY_AFTER),
+                assertTrue(await(() -> renewal.consecutiveFailures() >= Renewal.UNHEALTHY_AFTER),
                     "a heartbeat that cannot verify the entry must count against readiness");
                 assertFalse(renewal.isHealthy());
                 assertTrue(registrations.size() >= 2,
@@ -78,13 +78,13 @@ class RegistrationRenewalTest {
             @Override public void unregister(ServiceInstance instance) { }
         };
 
-        RegistrationRenewal renewal = new RegistrationRenewal();
+        Renewal renewal = new Renewal();
         try (Container container = Freeway.create(binder -> {
             binder.bind(ServiceRegistry.class).to(c -> registry);
             binder.contribute(ServiceDeclaration.class).add("test", (ServiceDeclaration) c -> INSTANCE);
         })) {
-            RegistrationLifecycleHook hook =
-                new RegistrationLifecycleHook(renewal, Duration.ofMillis(20));
+            RegistrationHook hook =
+                new RegistrationHook(renewal, Duration.ofMillis(20));
             hook.start(container);
             try {
                 assertTrue(await(() -> renewal.isTracking()), "the hook must publish that it tracks");
@@ -120,12 +120,12 @@ class RegistrationRenewalTest {
 
             @Override public void unregister(ServiceInstance instance) { unregistered.add(instance); }
         };
-        RegistrationRenewal renewal = new RegistrationRenewal();
+        Renewal renewal = new Renewal();
         try (Container container = Freeway.create(binder -> {
             binder.bind(ServiceRegistry.class).to(c -> registry);
             binder.contribute(ServiceDeclaration.class).add("test", (ServiceDeclaration) c -> INSTANCE);
         })) {
-            RegistrationLifecycleHook hook = new RegistrationLifecycleHook(renewal, Duration.ofHours(1));
+            RegistrationHook hook = new RegistrationHook(renewal, Duration.ofHours(1));
             hook.start(container);
 
             Thread heartbeat = Thread.ofVirtual().start(hook::heartbeat);
@@ -158,7 +158,7 @@ class RegistrationRenewalTest {
                 events.add("unregistered");
             }
         };
-        RegistrationRenewal renewal = new RegistrationRenewal();
+        Renewal renewal = new Renewal();
         try (Container container = Freeway.create(binder -> {
             binder.bind(ServiceRegistry.class).to(c -> registry);
             binder.contribute(ServiceDeclaration.class).add("test", (ServiceDeclaration) c -> INSTANCE);
@@ -167,8 +167,8 @@ class RegistrationRenewalTest {
                 .to(c -> symbols(RegistrationModule.ConfigKeys.REGISTRY_SHUTDOWN_DRAIN, "60ms"))
                 .primary();
         })) {
-            RegistrationLifecycleHook hook =
-                new RegistrationLifecycleHook(renewal, Duration.ofMillis(20));
+            RegistrationHook hook =
+                new RegistrationHook(renewal, Duration.ofMillis(20));
             hook.start(container);
             assertTrue(await(() -> renewal.isTracking()));
             // Wait until the drain window is demonstrably open.
@@ -189,7 +189,7 @@ class RegistrationRenewalTest {
     void nothingRegisteredMeansNothingToGuard() {
         // No declaration resolved: the contributor must not claim a healthy
         // registry it never registered with.
-        RegistrationRenewal renewal = new RegistrationRenewal();
+        Renewal renewal = new Renewal();
         assertFalse(renewal.isTracking());
         assertTrue(renewal.isHealthy(), "an untracked renewal is not a failure");
     }

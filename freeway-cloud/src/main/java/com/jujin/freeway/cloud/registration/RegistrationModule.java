@@ -1,7 +1,7 @@
 package com.jujin.freeway.cloud.registration;
 
+import com.jujin.freeway.cloud.CloudKeys;
 import com.jujin.freeway.cloud.CloudHookIds;
-import com.jujin.freeway.cloud.CloudModule;
 import com.jujin.freeway.ioc.symbol.KnownKeys;
 import com.jujin.freeway.cloud.discovery.ServiceDeclaration;
 import com.jujin.freeway.cloud.health.CloudHealthContributor;
@@ -15,8 +15,8 @@ import com.jujin.freeway.ioc.RuntimeHook;
  * publish readiness, and unregister during shutdown.
  *
  * <p>This module is deliberately backend-neutral. Install it with
- * {@code LocalDiscoveryModule} for the in-process registry, with
- * {@code FleetDiscoveryModule} for a Fleet backend, or with a third-party
+ * {@code LocalModule} for the in-process registry, with
+ * {@code FleetModule} for a Fleet backend, or with a third-party
  * adapter. Static discovery does not need it: fixed endpoints have no
  * registration lifecycle.</p>
  *
@@ -28,21 +28,21 @@ public final class RegistrationModule implements ModuleEx {
     @Override
     public void bind(Binder b) {
         b.contribute(KnownKeys.class)
-            .add(KnownKeys.of(ConfigKeys.class, CloudModule.ConfigKeys.PREFIX,
-                CloudModule.ConfigKeys.APP_PREFIX));
-        RegistrationRenewal renewal = new RegistrationRenewal();
-        b.bind(RegistrationRenewal.class).to(container -> renewal);
+            .add(KnownKeys.of(ConfigKeys.class, CloudKeys.PREFIX,
+                CloudKeys.APP_PREFIX));
+        Renewal renewal = new Renewal();
+        b.bind(Renewal.class).to(container -> renewal);
 
         b.contribute(ServiceDeclaration.class)
-            .add("freeway.cloud.declaration.http", new HttpServiceDeclaration());
+            .add("freeway.cloud.declaration.http", new HttpDeclaration());
         b.contribute(CloudHealthContributor.class)
-            .addDeferred(RegistrationHealthContributor.class);
+            .addDeferred(RegistrationHealth.class);
 
         b.contribute(RuntimeHook.class)
-            .add(CloudHookIds.DISCOVERY, new RegistrationConnectionHook())
+            .add(CloudHookIds.DISCOVERY, new TypeGuardHook())
             .beforeIfPresent(CloudHookIds.HTTP_SERVER);
         b.contribute(RuntimeHook.class)
-            .add(CloudHookIds.REGISTRY, new RegistrationLifecycleHook(renewal))
+            .add(CloudHookIds.REGISTRY, new RegistrationHook(renewal))
             .afterIfPresent(CloudHookIds.HTTP_SERVER);
     }
 

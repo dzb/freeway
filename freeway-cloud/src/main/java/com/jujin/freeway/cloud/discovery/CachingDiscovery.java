@@ -34,7 +34,7 @@ import org.slf4j.LoggerFactory;
  *
  * <ul>
  *   <li>an implementation that talks to the network wraps itself —
- *       {@code FleetDiscoveryModule} does it for the fleet, and an adapter such
+ *       {@code FleetModule} does it for the fleet, and an adapter such
  *       as Consul does the same in its own module;</li>
  *   <li>the in-process store ({@code LocalDiscovery}) does not wrap:
  *       its answer is a map read, and cache bookkeeping would make it
@@ -46,15 +46,15 @@ import org.slf4j.LoggerFactory;
  * <pre>{@code
  * // an adapter binding its own discovery, at the adapter's composition root
  * b.bind(ServiceDiscovery.class)
- *     .to(c -> CachingServiceDiscovery.around(
+ *     .to(c -> CachingDiscovery.around(
  *             new ConsulDiscovery(c.get(ConsulClient.class)),
  *             serviceId -> ttlFrom(c, serviceId)))   // TtlPolicy
  *     .primary();
  * }</pre>
  */
-public final class CachingServiceDiscovery implements ServiceDiscovery {
+public final class CachingDiscovery implements ServiceDiscovery {
 
-    private static final Logger LOG = LoggerFactory.getLogger(CachingServiceDiscovery.class);
+    private static final Logger LOG = LoggerFactory.getLogger(CachingDiscovery.class);
 
     /** Per-service freshness; {@link Duration#ZERO} means "cache nothing". */
     @FunctionalInterface
@@ -80,17 +80,17 @@ public final class CachingServiceDiscovery implements ServiceDiscovery {
      * itself once, at its own binding, so every consumer sees the caching view
      * without knowing about it.
      */
-    public static CachingServiceDiscovery around(
+    public static CachingDiscovery around(
             ServiceDiscovery delegate, TtlPolicy ttl, Metrics metrics) {
-        return new CachingServiceDiscovery(delegate, ttl, metrics);
+        return new CachingDiscovery(delegate, ttl, metrics);
     }
 
     /** Same, without metrics. */
-    public static CachingServiceDiscovery around(ServiceDiscovery delegate, TtlPolicy ttl) {
-        return new CachingServiceDiscovery(delegate, ttl, null);
+    public static CachingDiscovery around(ServiceDiscovery delegate, TtlPolicy ttl) {
+        return new CachingDiscovery(delegate, ttl, null);
     }
 
-    CachingServiceDiscovery(ServiceDiscovery delegate, TtlPolicy ttl, Metrics metrics) {
+    CachingDiscovery(ServiceDiscovery delegate, TtlPolicy ttl, Metrics metrics) {
         this.delegate = Objects.requireNonNull(delegate, "delegate");
         this.ttl = Objects.requireNonNull(ttl, "ttl");
         this.metrics = metrics;

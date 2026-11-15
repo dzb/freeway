@@ -306,7 +306,7 @@ nothing.
   carries no key names; data about specific keys moves up to their owner.
 - **Keys live in a `ConfigKeys` nested in the module that reads them, spelled as
   full literals**: `HttpModule.ConfigKeys`, `DbModule.ConfigKeys`,
-  `CloudModule.ConfigKeys` (both namespaces it spells) and — for the cascade's own
+  `CloudModule.ConfigKeys` / `RpcModule.ConfigKeys` / `ResilienceModule.ConfigKeys` (each module owns its keys) and — for the cascade's own
   activation keys — `BootModule.ConfigKeys`. A key is never composed from
   `PREFIX + "…"`, so the table answers "what is the exact key?" on its own line;
   `PREFIX` survives only as the namespace the vocabulary is fenced to, and the

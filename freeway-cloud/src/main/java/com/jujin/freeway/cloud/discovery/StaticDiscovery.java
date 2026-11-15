@@ -18,16 +18,16 @@ import java.util.Objects;
  * rescheduling. The instances still carry their id, endpoint and metadata, so
  * weights and zones work exactly as they do with dynamic discovery.</p>
  */
-public final class StaticServiceDiscovery implements ServiceDiscovery {
+public final class StaticDiscovery implements ServiceDiscovery {
 
     private final Map<String, List<ServiceInstance>> services;
 
-    private StaticServiceDiscovery(Map<String, List<ServiceInstance>> services) {
+    private StaticDiscovery(Map<String, List<ServiceInstance>> services) {
         this.services = services;
     }
 
     /** Builds a static discovery from a service-id → instance-list map. */
-    public static StaticServiceDiscovery of(Map<String, List<ServiceInstance>> services) {
+    public static StaticDiscovery of(Map<String, List<ServiceInstance>> services) {
         Objects.requireNonNull(services, "services");
         Map<String, List<ServiceInstance>> copy = new LinkedHashMap<>();
         services.forEach((serviceId, instances) -> {
@@ -35,11 +35,11 @@ public final class StaticServiceDiscovery implements ServiceDiscovery {
             Objects.requireNonNull(instances, "instances");
             copy.put(serviceId, List.copyOf(instances));
         });
-        return new StaticServiceDiscovery(Map.copyOf(copy));
+        return new StaticDiscovery(Map.copyOf(copy));
     }
 
     /** Single-service convenience; one instance is the VIP form. */
-    public static StaticServiceDiscovery of(String serviceId, ServiceInstance... instances) {
+    public static StaticDiscovery of(String serviceId, ServiceInstance... instances) {
         Objects.requireNonNull(serviceId, "serviceId");
         return of(Map.of(serviceId, List.of(instances)));
     }

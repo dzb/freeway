@@ -33,12 +33,12 @@ import org.slf4j.LoggerFactory;
  * and re-registers it when it does not: an entry lost to eviction (a long
  * pause, a registry restart, an adapter that dropped its lease) would otherwise
  * leave the process running and invisible until someone restarted it. Outcomes
- * are published to {@link RegistrationRenewal}, which {@code /health/ready} reads —
+ * are published to {@link Renewal}, which {@code /health/ready} reads —
  * so readiness reflects the registration instead of assuming it.</p>
  */
-final class RegistrationLifecycleHook implements RuntimeHook {
+final class RegistrationHook implements RuntimeHook {
 
-    private static final Logger LOG = LoggerFactory.getLogger(RegistrationLifecycleHook.class);
+    private static final Logger LOG = LoggerFactory.getLogger(RegistrationHook.class);
     private static final Duration RENEW_INTERVAL = Duration.ofSeconds(10);
     /** Raw drain token: {@code auto} (the default) defers to the registry. */
     private static final SymbolSpec<String> SHUTDOWN_DRAIN_RAW = SymbolSpec.of(
@@ -49,7 +49,7 @@ final class RegistrationLifecycleHook implements RuntimeHook {
         RegistrationModule.ConfigKeys.REGISTRY_SHUTDOWN_DRAIN, Duration.class,
         RegistrationModule.ConfigKeys.REGISTRY_SHUTDOWN_DRAIN_DEFAULT);
 
-    private final RegistrationRenewal renewal;
+    private final Renewal renewal;
     private final Duration renewInterval;
     /** Time to keep serving after deregistering (see the config key). */
     private volatile Duration shutdownDrain = Duration.ZERO;
@@ -67,12 +67,12 @@ final class RegistrationLifecycleHook implements RuntimeHook {
      *  are none (an ordinary fast-starting service is ready as registered). */
     private volatile ReadinessGate readinessGate;
 
-    public RegistrationLifecycleHook(RegistrationRenewal renewal) {
+    public RegistrationHook(Renewal renewal) {
         this(renewal, RENEW_INTERVAL);
     }
 
     /** Test seam: a shorter cadence than the production 10 seconds. */
-    RegistrationLifecycleHook(RegistrationRenewal renewal, Duration renewInterval) {
+    RegistrationHook(Renewal renewal, Duration renewInterval) {
         this.renewal = Objects.requireNonNull(renewal, "renewal");
         this.renewInterval = Objects.requireNonNull(renewInterval, "renewInterval");
     }

@@ -2188,7 +2188,7 @@ classification and its HTTP boundary.
 
 **Service registration & discovery ships with four backends behind one seam:**
 static discovery (fixed endpoints/VIP), the in-process store (single-process),
-the freeway-native fleet (`FleetDiscoveryModule` pointing at deployable
+the freeway-native fleet (`FleetModule` pointing at deployable
 registry nodes — each an ordinary freeway application running
 `FleetServerModule`; writes fan out to every node, reads union the answers),
 and third-party ext adapters (Consul). The registration lifecycle is shared:

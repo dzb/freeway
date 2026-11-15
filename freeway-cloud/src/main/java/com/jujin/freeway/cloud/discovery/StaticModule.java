@@ -12,26 +12,26 @@ import java.util.Objects;
  *
  * <p>It intentionally binds no {@code ServiceRegistry}. Static membership has
  * no registration or heartbeat; an application that requires those should
- * install {@code LocalDiscoveryModule} (in-process) or {@code FleetDiscoveryModule}
+ * install {@code LocalModule} (in-process) or {@code FleetModule}
  * (dynamic), not a no-op that would make registration look successful.</p>
  */
-public final class StaticDiscoveryModule implements ModuleEx {
+public final class StaticModule implements ModuleEx {
 
-    private final StaticServiceDiscovery discovery;
+    private final StaticDiscovery discovery;
 
-    private StaticDiscoveryModule(StaticServiceDiscovery discovery) {
+    private StaticModule(StaticDiscovery discovery) {
         this.discovery = Objects.requireNonNull(discovery, "discovery");
     }
 
     /** Builds a static module from the service map; each list may hold a full
      *  replica set (client-side balancing) or one VIP endpoint (external LB). */
-    public static StaticDiscoveryModule of(Map<String, List<ServiceInstance>> services) {
-        return new StaticDiscoveryModule(StaticServiceDiscovery.of(services));
+    public static StaticModule of(Map<String, List<ServiceInstance>> services) {
+        return new StaticModule(StaticDiscovery.of(services));
     }
 
     /** Single-service convenience; one instance is the VIP form. */
-    public static StaticDiscoveryModule of(String serviceId, ServiceInstance... instances) {
-        return new StaticDiscoveryModule(StaticServiceDiscovery.of(serviceId, instances));
+    public static StaticModule of(String serviceId, ServiceInstance... instances) {
+        return new StaticModule(StaticDiscovery.of(serviceId, instances));
     }
 
     @Override

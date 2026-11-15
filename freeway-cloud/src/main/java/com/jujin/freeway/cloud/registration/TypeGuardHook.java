@@ -16,7 +16,7 @@ import com.jujin.freeway.ioc.RuntimeHook;
  * External-backend lifecycle is owned by the custom adapter's own hooks
  * (bound primary).
  */
-final class RegistrationConnectionHook implements RuntimeHook {
+final class TypeGuardHook implements RuntimeHook {
 
     @Override
     public void start(Container container) {

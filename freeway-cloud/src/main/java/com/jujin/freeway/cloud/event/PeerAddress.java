@@ -2,7 +2,6 @@ package com.jujin.freeway.cloud.event;
 
 
 import java.net.URI;
-import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
 
 /**
  * A parsed mesh peer address ({@code host:port}), rendered as

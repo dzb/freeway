@@ -378,7 +378,7 @@ compatibility alias was added.
 
 - Implementation types moved to `cloud.<domain>.internal`; top-level
   `cloud.internal` now contains only cross-domain support such as
-  `CloudHttpClients`, `ServiceIdentity` and `BackendTypeGuard`.
+  `CloudHttpClients`, `Identity` and `BackendTypeGuard`.
 - RPC, event mesh and fleet registry use `Rpc*`, `Mesh*` and `Fleet*` vocabulary.
   The event mesh is explicitly `MeshEventBus`, not a second `EventBus`.
 - `RpcModule`, `HealthModule`, `EventMeshModule` and the other

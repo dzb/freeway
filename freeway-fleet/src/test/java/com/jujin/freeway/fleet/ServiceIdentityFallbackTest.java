@@ -22,13 +22,13 @@ import org.junit.jupiter.api.Test;
 
 /**
  * P1-3 regression (service-id default chain): the registry identity resolved
- * by {@code HttpServiceDeclaration} and the event-mesh origin resolved by
+ * by {@code HttpDeclaration} and the event-mesh origin resolved by
  * {@code MeshEventLifecycleHook} must walk the same fallback chain —
  * {@code freeway.cloud.registry.service-id} → {@code freeway.app.name} →
  * {@code "freeway-app"} — so a node configured only with
  * {@code freeway.app.name} registers and broadcasts under the SAME name.
  */
-class ServiceIdentityFallbackTest {
+class IdentityFallbackTest {
 
     @BeforeEach
     void randomPort() {
@@ -40,7 +40,7 @@ class ServiceIdentityFallbackTest {
         System.clearProperty(HttpModule.ConfigKeys.SERVER_PORT);
         System.clearProperty(RegistrationModule.ConfigKeys.REGISTRY_SERVICE_ID);
         System.clearProperty(ConfigKeys.APP_NAME);
-        System.clearProperty(ConfigKeys.EVENT_ENABLED);
+        System.clearProperty(com.jujin.freeway.cloud.event.EventMeshModule.ConfigKeys.EVENT_ENABLED);
     }
 
     @Test
@@ -75,11 +75,11 @@ class ServiceIdentityFallbackTest {
 
     /** Events enabled so the lifecycle hook wires the hub with the mesh origin. */
     private static AppRuntime appWithEvents() {
-        System.setProperty(ConfigKeys.EVENT_ENABLED, "true");
-        return FreewayApp.create(new HttpModule()).add(CloudModule.class).add(new RegistrationModule()).add(new LocalDiscoveryModule()).add(new EventMeshModule()).start();
+        System.setProperty(com.jujin.freeway.cloud.event.EventMeshModule.ConfigKeys.EVENT_ENABLED, "true");
+        return FreewayApp.create(new HttpModule()).add(CloudModule.class).add(new RegistrationModule()).add(new LocalModule()).add(new EventMeshModule()).start();
     }
 
-    /** Reads the identity HttpServiceDeclaration registered for this app. */
+    /** Reads the identity HttpDeclaration registered for this app. */
     private static String registeredServiceId(AppRuntime app, String serviceId) {
         LeaseStore store = app.get(LeaseStore.class);
         List<ServiceInstance> instances = store.liveReadyInstances(serviceId, Duration.ofMinutes(1));

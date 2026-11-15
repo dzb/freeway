@@ -24,22 +24,22 @@ import java.util.function.Function;
  *
  * <p>Returns {@code null} when no {@link HttpServer} is bound (HTTP module not
  * installed) — the registry hook skips it. Scheme and host default to
- * {@code auto} ({@link ServiceIdentity}): the scheme follows the server's
+ * {@code auto} ({@link Identity}): the scheme follows the server's
  * transport, the host prefers {@code POD_IP} and then a routable local
  * address, so a container does not register a bind-all endpoint by omission.
  * The instance id defaults to a derived key and can be pinned via
  * {@code freeway.cloud.registry.service-instance-id}.
  */
-public final class HttpServiceDeclaration implements ServiceDeclaration {
+public final class HttpDeclaration implements ServiceDeclaration {
 
-    private static final Logger LOG = LoggerFactory.getLogger(HttpServiceDeclaration.class);
+    private static final Logger LOG = LoggerFactory.getLogger(HttpDeclaration.class);
 
     /** Malformed values fail with the key named; unset falls back to the live server port. */
     private static final SymbolSpec<Integer> SERVICE_PORT = SymbolSpec.of(
         RegistrationModule.ConfigKeys.REGISTRY_SERVICE_PORT, Integer.class, null, Integer::parseInt);
 
     /** Scheme/host defaults are the {@code auto} token; the derivation lives in
-     *  {@link ServiceIdentity}, shared with the event mesh. */
+     *  {@link Identity}, shared with the event mesh. */
     private static final SymbolSpec<String> SERVICE_SCHEME = SymbolSpec.of(
         RegistrationModule.ConfigKeys.REGISTRY_SERVICE_SCHEME, String.class,
         RegistrationModule.ConfigKeys.REGISTRY_SERVICE_SCHEME_DEFAULT, Function.identity());
@@ -71,9 +71,9 @@ public final class HttpServiceDeclaration implements ServiceDeclaration {
         SymbolSource symbols = container.get(SymbolSource.class);
         String serviceId = symbols.resolve(RegistrationModule.ConfigKeys.REGISTRY_SERVICE_ID,
             symbols.resolve(CloudModule.ConfigKeys.APP_NAME, CloudModule.ConfigKeys.APP_NAME_DEFAULT));
-        String scheme = ServiceIdentity.scheme(
+        String scheme = Identity.scheme(
             symbols.resolve(SERVICE_SCHEME), server.isSecure(), serviceId);
-        String host = ServiceIdentity.host(
+        String host = Identity.host(
             symbols.resolve(SERVICE_HOST), server.host(), serviceId);
         // The default port is the live server's port, not a static value —
         // resolve raw and fall back manually.
@@ -81,7 +81,7 @@ public final class HttpServiceDeclaration implements ServiceDeclaration {
         int port = configuredPort != null ? configuredPort : server.port();
         String instanceId = symbols.resolve(RegistrationModule.ConfigKeys.REGISTRY_SERVICE_INSTANCE_ID,
             serviceId + "@" + host + ":" + port);
-        if (ServiceIdentity.isBindAll(host)) {
+        if (Identity.isBindAll(host)) {
             LOG.warn("Registering unroutable host '{}' for service '{}' — peers cannot call it;"
                     + " set {} to the address other nodes should use (e.g. a Pod IP)",
                 host, serviceId, RegistrationModule.ConfigKeys.REGISTRY_SERVICE_HOST);

@@ -76,7 +76,7 @@ class RemoteCallerTest {
     @BeforeEach
     void startApps() {
         System.setProperty(HttpModule.ConfigKeys.SERVER_PORT, "0");
-        System.setProperty(ConfigKeys.RPC_REQUEST_TIMEOUT, "2000");
+        System.setProperty(RpcModule.ConfigKeys.RPC_REQUEST_TIMEOUT, "2000");
         server = FreewayApp.create(new HttpModule()).add(CloudModule.class).add(new TestDiscoveryModule()).add(new RpcExportModule()).start();
         var webServer = server.get(com.jujin.freeway.http.HttpServer.class);
         caller = server.get(RemoteCaller.class);   // framework-bound, not hand-wired
@@ -93,7 +93,7 @@ class RemoteCallerTest {
     void stopApps() {
         if (server != null) server.close();
         System.clearProperty(HttpModule.ConfigKeys.SERVER_PORT);
-        System.clearProperty(ConfigKeys.RPC_REQUEST_TIMEOUT);
+        System.clearProperty(RpcModule.ConfigKeys.RPC_REQUEST_TIMEOUT);
     }
 
     @Test

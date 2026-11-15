@@ -25,9 +25,9 @@ abstract class MeshTestSupport {
         if (nodeA != null) nodeA.close();
         if (nodeB != null) nodeB.close();
         System.clearProperty(HttpModule.ConfigKeys.SERVER_PORT);
-        System.clearProperty(CloudModule.ConfigKeys.EVENT_PEERS);
-        System.clearProperty(CloudModule.ConfigKeys.EVENT_ENABLED);
-        System.clearProperty(CloudModule.ConfigKeys.EVENT_DISCOVERY_FEED_MS);
+        System.clearProperty(EventMeshModule.ConfigKeys.EVENT_PEERS);
+        System.clearProperty(EventMeshModule.ConfigKeys.EVENT_ENABLED);
+        System.clearProperty(EventMeshModule.ConfigKeys.EVENT_DISCOVERY_FEED_MS);
     }
 
     /**

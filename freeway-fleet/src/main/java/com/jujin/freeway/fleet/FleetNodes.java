@@ -1,7 +1,7 @@
 package com.jujin.freeway.fleet;
 
 import com.jujin.freeway.cloud.CloudModule;
-import com.jujin.freeway.fleet.FleetDiscoveryModule.ConfigKeys;
+import com.jujin.freeway.fleet.FleetModule.ConfigKeys;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 import com.jujin.freeway.ioc.symbol.SymbolSpec;
 import java.net.URI;

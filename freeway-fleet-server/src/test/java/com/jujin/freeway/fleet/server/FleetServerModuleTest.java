@@ -4,7 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
-import com.jujin.freeway.fleet.FleetDiscoveryModule;
+import com.jujin.freeway.fleet.FleetModule;
 import com.jujin.freeway.fleet.FleetProtocol;
 import com.jujin.freeway.http.HttpModule;
 import com.jujin.freeway.http.HttpModule.ConfigKeys;
@@ -17,7 +17,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * The registry server is real: it serves the SAME {@code InMemoryLeaseStore} that
+ * The registry server is real: it serves the SAME {@code MemLeaseStore} that
  * the in-process defaults wrap, so registering here makes the process's own
  * discovery side see it, and deregistering via the wire removes it.
  */
@@ -153,7 +153,7 @@ class FleetServerModuleTest {
 
     @Test
     void the_index_describes_the_protocol_before_any_credential() throws Exception {
-        System.setProperty(FleetDiscoveryModule.ConfigKeys.REGISTRY_TOKEN, "s3cret");
+        System.setProperty(FleetModule.ConfigKeys.REGISTRY_TOKEN, "s3cret");
         try (AppRuntime app = FreewayApp.create(
                 new HttpModule(), new FleetServerModule()).start()) {
             HttpResponse<String> index = http(app, HttpRequest.newBuilder(
@@ -174,7 +174,7 @@ class FleetServerModuleTest {
                 "responses echo the protocol, got header "
                     + index.headers().map());
         } finally {
-            System.clearProperty(FleetDiscoveryModule.ConfigKeys.REGISTRY_TOKEN);
+            System.clearProperty(FleetModule.ConfigKeys.REGISTRY_TOKEN);
         }
     }
 
@@ -212,8 +212,8 @@ class FleetServerModuleTest {
 
     @Test
     void the_previous_token_is_accepted_during_rotation() throws Exception {
-        System.setProperty(FleetDiscoveryModule.ConfigKeys.REGISTRY_TOKEN, "new-secret");
-        System.setProperty(FleetDiscoveryModule.ConfigKeys.REGISTRY_TOKEN_PREVIOUS, "old-secret");
+        System.setProperty(FleetModule.ConfigKeys.REGISTRY_TOKEN, "new-secret");
+        System.setProperty(FleetModule.ConfigKeys.REGISTRY_TOKEN_PREVIOUS, "old-secret");
         try (AppRuntime app = FreewayApp.create(
                 new HttpModule(), new FleetServerModule()).start()) {
             HttpResponse<String> old = http(app, HttpRequest.newBuilder(
@@ -236,14 +236,14 @@ class FleetServerModuleTest {
             assertTrue(stranger.statusCode() == 401,
                 "two live secrets is a window, not an open door, got " + stranger.statusCode());
         } finally {
-            System.clearProperty(FleetDiscoveryModule.ConfigKeys.REGISTRY_TOKEN);
-            System.clearProperty(FleetDiscoveryModule.ConfigKeys.REGISTRY_TOKEN_PREVIOUS);
+            System.clearProperty(FleetModule.ConfigKeys.REGISTRY_TOKEN);
+            System.clearProperty(FleetModule.ConfigKeys.REGISTRY_TOKEN_PREVIOUS);
         }
     }
 
     @Test
     void a_set_token_rejects_writers_without_the_header() throws Exception {
-        System.setProperty(FleetDiscoveryModule.ConfigKeys.REGISTRY_TOKEN, "s3cret");
+        System.setProperty(FleetModule.ConfigKeys.REGISTRY_TOKEN, "s3cret");
         try (AppRuntime app = FreewayApp.create(
                 new HttpModule(), new FleetServerModule()).start()) {
             HttpResponse<String> bare = http(app, HttpRequest.newBuilder(
@@ -257,13 +257,13 @@ class FleetServerModuleTest {
             assertTrue(peek.statusCode() == 401,
                 "reads are writes to the attacker's map too — a set token guards them as well");
         } finally {
-            System.clearProperty(FleetDiscoveryModule.ConfigKeys.REGISTRY_TOKEN);
+            System.clearProperty(FleetModule.ConfigKeys.REGISTRY_TOKEN);
         }
     }
 
     @Test
     void the_matching_token_passes_and_a_wrong_one_does_not() throws Exception {
-        System.setProperty(FleetDiscoveryModule.ConfigKeys.REGISTRY_TOKEN, "s3cret");
+        System.setProperty(FleetModule.ConfigKeys.REGISTRY_TOKEN, "s3cret");
         try (AppRuntime app = FreewayApp.create(
                 new HttpModule(), new FleetServerModule()).start()) {
             HttpResponse<String> wrong = http(app, HttpRequest.newBuilder(
@@ -279,7 +279,7 @@ class FleetServerModuleTest {
             assertTrue(right.statusCode() == 200,
                 "the matching token writes, got " + right.statusCode());
         } finally {
-            System.clearProperty(FleetDiscoveryModule.ConfigKeys.REGISTRY_TOKEN);
+            System.clearProperty(FleetModule.ConfigKeys.REGISTRY_TOKEN);
         }
     }
 }

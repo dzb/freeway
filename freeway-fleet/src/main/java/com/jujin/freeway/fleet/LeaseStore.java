@@ -10,7 +10,7 @@ import java.util.List;
  * last seen, and whether they are ready.
  *
  * <p>One owner for the storage semantics; the local backend and the Fleet
- * Server both talk to this seam. {@link InMemoryLeaseStore} is the current
+ * Server both talk to this seam. {@link MemLeaseStore} is the current
  * implementation; a durable PostgreSQL store can replace it without changing
  * the HTTP surface or the local defaults.</p>
  */

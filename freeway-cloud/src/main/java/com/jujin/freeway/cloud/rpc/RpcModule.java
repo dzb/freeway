@@ -1,5 +1,6 @@
 package com.jujin.freeway.cloud.rpc;
 
+import com.jujin.freeway.cloud.CloudKeys;
 import com.jujin.freeway.cloud.annotation.Local;
 import com.jujin.freeway.cloud.discovery.LoadBalancerDefault;
 import com.jujin.freeway.cloud.internal.OptionalBinding;
@@ -17,6 +18,7 @@ import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.http.route.Route;
 import com.jujin.freeway.ioc.RuntimeHook;
 import com.jujin.freeway.ioc.Binder;
+import com.jujin.freeway.ioc.symbol.KnownKeys;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.annotation.Builtin;
@@ -28,7 +30,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.function.Function;
-import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
+
 
 /**
  * IoC wiring for remote invocation: {@link RpcHttpClient} →
@@ -51,41 +53,44 @@ public final class RpcModule implements ModuleEx {
     // shared ConfigKeys sources so the config layer and the library
     // fallback (RpcHttpClientDefault.Wiring) cannot drift apart.
     private static final SymbolSpec<Long> REQUEST_TIMEOUT_MS = SymbolSpec.of(
-        ConfigKeys.RPC_REQUEST_TIMEOUT, Long.class,
-        ConfigKeys.RPC_REQUEST_TIMEOUT_DEFAULT, Long::parseLong);
+        RpcModule.ConfigKeys.RPC_REQUEST_TIMEOUT, Long.class,
+        RpcModule.ConfigKeys.RPC_REQUEST_TIMEOUT_DEFAULT, Long::parseLong);
     private static final SymbolSpec<Long> CONNECT_TIMEOUT_MS = SymbolSpec.of(
-        ConfigKeys.RPC_CONNECT_TIMEOUT, Long.class,
-        ConfigKeys.RPC_CONNECT_TIMEOUT_DEFAULT, Long::parseLong);
+        RpcModule.ConfigKeys.RPC_CONNECT_TIMEOUT, Long.class,
+        RpcModule.ConfigKeys.RPC_CONNECT_TIMEOUT_DEFAULT, Long::parseLong);
     private static final SymbolSpec<Boolean> TRACE_ENABLED = SymbolSpec.of(
-        ConfigKeys.RPC_TRACE_ENABLED, Boolean.class, true);
+        RpcModule.ConfigKeys.RPC_TRACE_ENABLED, Boolean.class, true);
 
     /** Shutdown drain for in-flight calls, from the shared default. */
     private static final SymbolSpec<Duration> SHUTDOWN_GRACE = SymbolSpec.of(
-        ConfigKeys.RPC_SHUTDOWN_GRACE, Duration.class,
-        ConfigKeys.RPC_SHUTDOWN_GRACE_DEFAULT);
+        RpcModule.ConfigKeys.RPC_SHUTDOWN_GRACE, Duration.class,
+        RpcModule.ConfigKeys.RPC_SHUTDOWN_GRACE_DEFAULT);
 
     // TLS stores: unset (blank) keys mean plaintext development — the module
     // resolves TransportSecurity.NONE when the key store is blank.
     private static final SymbolSpec<String> TLS_KEY_STORE = SymbolSpec.of(
-        ConfigKeys.RPC_TLS_KEY_STORE, String.class,
-        ConfigKeys.RPC_TLS_KEY_STORE_DEFAULT, Function.identity());
+        RpcModule.ConfigKeys.RPC_TLS_KEY_STORE, String.class,
+        RpcModule.ConfigKeys.RPC_TLS_KEY_STORE_DEFAULT, Function.identity());
     private static final SymbolSpec<String> TLS_KEY_STORE_PASSWORD = SymbolSpec.of(
-        ConfigKeys.RPC_TLS_KEY_STORE_PASSWORD, String.class,
-        ConfigKeys.RPC_TLS_KEY_STORE_PASSWORD_DEFAULT, Function.identity());
+        RpcModule.ConfigKeys.RPC_TLS_KEY_STORE_PASSWORD, String.class,
+        RpcModule.ConfigKeys.RPC_TLS_KEY_STORE_PASSWORD_DEFAULT, Function.identity());
     private static final SymbolSpec<String> TLS_TRUST_STORE = SymbolSpec.of(
-        ConfigKeys.RPC_TLS_TRUST_STORE, String.class,
-        ConfigKeys.RPC_TLS_TRUST_STORE_DEFAULT, Function.identity());
+        RpcModule.ConfigKeys.RPC_TLS_TRUST_STORE, String.class,
+        RpcModule.ConfigKeys.RPC_TLS_TRUST_STORE_DEFAULT, Function.identity());
     private static final SymbolSpec<String> TLS_TRUST_STORE_PASSWORD = SymbolSpec.of(
-        ConfigKeys.RPC_TLS_TRUST_STORE_PASSWORD, String.class,
-        ConfigKeys.RPC_TLS_TRUST_STORE_PASSWORD_DEFAULT, Function.identity());
+        RpcModule.ConfigKeys.RPC_TLS_TRUST_STORE_PASSWORD, String.class,
+        RpcModule.ConfigKeys.RPC_TLS_TRUST_STORE_PASSWORD_DEFAULT, Function.identity());
     /** Presence-driven, like the inbound side's reload key: unset keeps the
      *  resolved-once behaviour. */
     private static final SymbolSpec<Duration> TLS_RELOAD_INTERVAL = SymbolSpec.of(
-        ConfigKeys.RPC_TLS_RELOAD_INTERVAL, Duration.class,
-        ConfigKeys.RPC_TLS_RELOAD_INTERVAL_DEFAULT);
+        RpcModule.ConfigKeys.RPC_TLS_RELOAD_INTERVAL, Duration.class,
+        RpcModule.ConfigKeys.RPC_TLS_RELOAD_INTERVAL_DEFAULT);
 
     @Override
     public void bind(Binder b) {
+        b.contribute(KnownKeys.class)
+            .add(KnownKeys.of(ConfigKeys.class, CloudKeys.PREFIX,
+                CloudKeys.APP_PREFIX));
         b.bind(TransportSecurity.class)
             .to((Container container) -> {
                 SymbolSource symbols = container.get(SymbolSource.class);
@@ -170,4 +175,25 @@ public final class RpcModule implements ModuleEx {
     }
 
 
+    /** Keys read by the RPC client module. */
+    public static final class ConfigKeys {
+        private ConfigKeys() {}
+        public static final String RPC_TLS_KEY_STORE = "freeway.cloud.rpc.tls.key-store";
+        public static final String RPC_TLS_KEY_STORE_PASSWORD = "freeway.cloud.rpc.tls.key-store-password";
+        public static final String RPC_TLS_KEY_STORE_DEFAULT = "";
+        public static final String RPC_TLS_KEY_STORE_PASSWORD_DEFAULT = "";
+        public static final String RPC_TLS_TRUST_STORE = "freeway.cloud.rpc.tls.trust-store";
+        public static final String RPC_TLS_TRUST_STORE_PASSWORD = "freeway.cloud.rpc.tls.trust-store-password";
+        public static final String RPC_TLS_TRUST_STORE_DEFAULT = "";
+        public static final String RPC_TLS_TRUST_STORE_PASSWORD_DEFAULT = "";
+        public static final String RPC_TLS_RELOAD_INTERVAL = "freeway.cloud.rpc.tls.reload-interval";
+        public static final java.time.Duration RPC_TLS_RELOAD_INTERVAL_DEFAULT = java.time.Duration.ZERO;
+        public static final String RPC_TRACE_ENABLED = "freeway.cloud.rpc.trace.enabled";
+        public static final String RPC_CONNECT_TIMEOUT = "freeway.cloud.rpc.connect-timeout";
+        public static final long RPC_CONNECT_TIMEOUT_DEFAULT = 3000;
+        public static final String RPC_REQUEST_TIMEOUT = "freeway.cloud.rpc.request-timeout";
+        public static final long RPC_REQUEST_TIMEOUT_DEFAULT = 10_000;
+        public static final String RPC_SHUTDOWN_GRACE = "freeway.cloud.rpc.shutdown-grace";
+        public static final java.time.Duration RPC_SHUTDOWN_GRACE_DEFAULT = java.time.Duration.ofSeconds(5);
+    }
 }

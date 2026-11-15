@@ -57,7 +57,7 @@ class EventMeshActivationTest extends MeshTestSupport {
         // The key is documented as a Boolean and every other Boolean key goes
         // through the container's coercer; `off` used to fail startup because a
         // hand-rolled string parser accepted only true/false.
-        System.setProperty(ConfigKeys.EVENT_ENABLED, "off");
+        System.setProperty(EventMeshModule.ConfigKeys.EVENT_ENABLED, "off");
         nodeA = FreewayApp.run(new HttpModule(), new EventMeshModule());
         assertFalse(nodeA.get(PeerHub.class).wired(),
             "event.enabled=off must read as false, not as a parse error");
@@ -69,13 +69,13 @@ class EventMeshActivationTest extends MeshTestSupport {
         // interest declared as a subscription contribution.
         var receivedByB = new CountDownLatch(1);
         var payloadAtB = new AtomicReference<String>();
-        System.setProperty(ConfigKeys.EVENT_ENABLED, "true");
+        System.setProperty(EventMeshModule.ConfigKeys.EVENT_ENABLED, "true");
         nodeB = FreewayApp.run(new HttpModule(), new EventMeshModule(),
             greetListener(receivedByB, payloadAtB));
 
         // Dialing side: peers alone — no event.enabled anywhere.
-        System.clearProperty(ConfigKeys.EVENT_ENABLED);
-        System.setProperty(ConfigKeys.EVENT_PEERS,
+        System.clearProperty(EventMeshModule.ConfigKeys.EVENT_ENABLED);
+        System.setProperty(EventMeshModule.ConfigKeys.EVENT_PEERS,
             "127.0.0.1:" + nodeB.get(com.jujin.freeway.http.HttpServer.class).port());
         nodeA = FreewayApp.run(new HttpModule(), new EventMeshModule());
 
@@ -91,13 +91,13 @@ class EventMeshActivationTest extends MeshTestSupport {
     void explicitFalseSuppressesConfiguredPeers() throws Exception {
         var receivedByB = new CountDownLatch(1);
         var sink = new AtomicReference<String>();
-        System.setProperty(ConfigKeys.EVENT_ENABLED, "true");
+        System.setProperty(EventMeshModule.ConfigKeys.EVENT_ENABLED, "true");
         nodeB = FreewayApp.run(new HttpModule(), new EventMeshModule(),
             greetListener(receivedByB, sink));
 
         // Kill switch wins over presence: peers configured, enabled=false.
-        System.setProperty(ConfigKeys.EVENT_ENABLED, "false");
-        System.setProperty(ConfigKeys.EVENT_PEERS,
+        System.setProperty(EventMeshModule.ConfigKeys.EVENT_ENABLED, "false");
+        System.setProperty(EventMeshModule.ConfigKeys.EVENT_PEERS,
             "127.0.0.1:" + nodeB.get(com.jujin.freeway.http.HttpServer.class).port());
         nodeA = FreewayApp.run(new HttpModule(), new EventMeshModule());
 
@@ -112,12 +112,12 @@ class EventMeshActivationTest extends MeshTestSupport {
 
     @Test
     void unsetWithNoPeersStaysInert() throws Exception {
-        System.setProperty(ConfigKeys.EVENT_ENABLED, "true");
+        System.setProperty(EventMeshModule.ConfigKeys.EVENT_ENABLED, "true");
         nodeB = FreewayApp.run(new HttpModule(), new EventMeshModule());
 
         // Dialer with zero configuration: installing the module is not a
         // side effect — no mesh, no dials.
-        System.clearProperty(ConfigKeys.EVENT_ENABLED);
+        System.clearProperty(EventMeshModule.ConfigKeys.EVENT_ENABLED);
         nodeA = FreewayApp.run(new HttpModule(), new EventMeshModule());
 
         Thread.sleep(900);
@@ -127,7 +127,7 @@ class EventMeshActivationTest extends MeshTestSupport {
 
     @Test
     void invalidEnabledValueFailsStartupNamingTheKey() {
-        System.setProperty(ConfigKeys.EVENT_ENABLED, "yolo");
+        System.setProperty(EventMeshModule.ConfigKeys.EVENT_ENABLED, "yolo");
         IllegalStateException failure = assertThrows(IllegalStateException.class, () ->
             FreewayApp.run(new HttpModule(), new EventMeshModule()));
         assertTrue(rootMessage(failure).contains("event.enabled"),
@@ -138,11 +138,11 @@ class EventMeshActivationTest extends MeshTestSupport {
 
     @Test
     void anInvalidDiscoveryFeedIntervalFailsStartupNamingTheKey() {
-        System.setProperty(ConfigKeys.EVENT_ENABLED, "true");
-        System.setProperty(ConfigKeys.EVENT_DISCOVERY_FEED_MS, "0");
+        System.setProperty(EventMeshModule.ConfigKeys.EVENT_ENABLED, "true");
+        System.setProperty(EventMeshModule.ConfigKeys.EVENT_DISCOVERY_FEED_MS, "0");
         IllegalStateException failure = assertThrows(IllegalStateException.class, () ->
             FreewayApp.run(new HttpModule(), new EventMeshModule()));
-        assertTrue(rootMessage(failure).contains(ConfigKeys.EVENT_DISCOVERY_FEED_MS),
+        assertTrue(rootMessage(failure).contains(EventMeshModule.ConfigKeys.EVENT_DISCOVERY_FEED_MS),
             "the failure must name the key: " + rootMessage(failure));
         assertTrue(rootMessage(failure).contains("must be positive"),
             "the failure must show the offending value: " + rootMessage(failure));
@@ -153,8 +153,8 @@ class EventMeshActivationTest extends MeshTestSupport {
         // The feed key promises a self-configuring mesh; with no discovery bound
         // that promise can never be kept, and a quiet no-op would leave a mesh
         // that looks fed but never dials.
-        System.setProperty(ConfigKeys.EVENT_ENABLED, "true");
-        System.setProperty(ConfigKeys.EVENT_DISCOVERY_FEED_MS, "100");
+        System.setProperty(EventMeshModule.ConfigKeys.EVENT_ENABLED, "true");
+        System.setProperty(EventMeshModule.ConfigKeys.EVENT_DISCOVERY_FEED_MS, "100");
         IllegalStateException failure = assertThrows(IllegalStateException.class, () ->
             FreewayApp.run(new HttpModule(), new EventMeshModule()));
         assertTrue(rootMessage(failure).contains("ServiceDiscovery"),

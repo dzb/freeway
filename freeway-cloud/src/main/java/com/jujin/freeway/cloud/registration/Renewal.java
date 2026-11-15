@@ -18,7 +18,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * is not tracked at all: there is nothing to guard, and the contributor says so
  * instead of reporting a vacuous "healthy".</p>
  */
-final class RegistrationRenewal {
+final class Renewal {
 
     /** Consecutive failed heartbeats before readiness reports unhealthy. */
     public static final int UNHEALTHY_AFTER = 3;

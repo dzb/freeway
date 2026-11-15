@@ -110,7 +110,7 @@ class CloudPerformanceTest {
 
     @Test
     void registryRegisterAndQueryThroughput() throws Exception {
-        InMemoryLeaseStore store = new InMemoryLeaseStore();
+        MemLeaseStore store = new MemLeaseStore();
         double ops = measure(4, 200_000, () -> {
             store.register(ServiceInstance.of("svc", "i1",
                 ServiceEndpoint.of("http", "127.0.0.1", 8080), Map.of()));
@@ -118,7 +118,7 @@ class CloudPerformanceTest {
                 throw new AssertionError("freshly registered instance must be live");
             }
         });
-        print("InMemoryLeaseStore register+liveReady (4 threads)", ops);
+        print("MemLeaseStore register+liveReady (4 threads)", ops);
         assertTrue(ops > FLOOR_OPS_PER_SECOND, "got " + (long) ops);
     }
 

@@ -51,7 +51,7 @@ class CloudSymbolPrecedenceTest {
         Path secretFile = Files.writeString(dir.resolve("secrets.properties"),
             KEY + "=from-secret\n");
         System.setProperty("freeway.config.file", configFile.toString());
-        System.setProperty(ConfigKeys.SECRET_FILE, secretFile.toString());
+        System.setProperty(SecretModule.ConfigKeys.SECRET_FILE, secretFile.toString());
         try (AppRuntime app = FreewayApp.create().add(CloudModule.class).start()) {
             SymbolSource symbols = app.get(SymbolSource.class);
             assertEquals("from-secret", symbols.resolve(KEY),
@@ -60,7 +60,7 @@ class CloudSymbolPrecedenceTest {
                 "non-secret keys fall through to the framework file tier");
         } finally {
             System.clearProperty("freeway.config.file");
-            System.clearProperty(ConfigKeys.SECRET_FILE);
+            System.clearProperty(SecretModule.ConfigKeys.SECRET_FILE);
             Files.deleteIfExists(configFile);
             Files.deleteIfExists(secretFile);
             Files.deleteIfExists(dir);
@@ -72,13 +72,13 @@ class CloudSymbolPrecedenceTest {
         Path dir = Files.createTempDirectory("freeway-precedence");
         Path secretFile = Files.writeString(dir.resolve("secrets.properties"),
             KEY + "=from-secret\n");
-        System.setProperty(ConfigKeys.SECRET_FILE, secretFile.toString());
+        System.setProperty(SecretModule.ConfigKeys.SECRET_FILE, secretFile.toString());
         try {
             assertResolvesInApp("from-cli", Map.of(KEY, "from-cli"), Map.of(KEY, "from-env"));
             assertResolvesInApp("from-env", Map.of(), Map.of(KEY, "from-env"));
             assertResolvesInApp("from-secret", Map.of(), Map.of());
         } finally {
-            System.clearProperty(ConfigKeys.SECRET_FILE);
+            System.clearProperty(SecretModule.ConfigKeys.SECRET_FILE);
             Files.deleteIfExists(secretFile);
             Files.deleteIfExists(dir);
         }

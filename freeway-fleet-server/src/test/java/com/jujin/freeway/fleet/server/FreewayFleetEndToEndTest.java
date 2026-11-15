@@ -6,11 +6,11 @@ import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
 import com.jujin.freeway.cloud.CloudModule;
 import com.jujin.freeway.cloud.registration.RegistrationModule;
-import com.jujin.freeway.fleet.LocalDiscoveryModule;
+import com.jujin.freeway.fleet.LocalModule;
 import com.jujin.freeway.cloud.discovery.ServiceDiscovery;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.cloud.event.EventMeshModule;
-import com.jujin.freeway.fleet.FleetDiscoveryModule;
+import com.jujin.freeway.fleet.FleetModule;
 import com.jujin.freeway.http.HttpModule;
 import com.jujin.freeway.http.HttpServer;
 import com.jujin.freeway.ioc.ModuleEx;
@@ -47,9 +47,9 @@ class FreewayFleetEndToEndTest {
             }
         }
         System.clearProperty(HttpModule.ConfigKeys.SERVER_PORT);
-        System.clearProperty(FleetDiscoveryModule.ConfigKeys.REGISTRY_TOKEN);
-        System.clearProperty(FleetDiscoveryModule.ConfigKeys.REGISTRY_NODES);
-        System.clearProperty(FleetDiscoveryModule.ConfigKeys.REGISTRY_TOKEN);
+        System.clearProperty(FleetModule.ConfigKeys.REGISTRY_TOKEN);
+        System.clearProperty(FleetModule.ConfigKeys.REGISTRY_NODES);
+        System.clearProperty(FleetModule.ConfigKeys.REGISTRY_TOKEN);
         System.clearProperty("freeway.cloud.event.enabled");
         System.clearProperty("freeway.cloud.event.discovery-feed-ms");
         System.clearProperty("freeway.cloud.event.backoff-base-ms");
@@ -64,22 +64,22 @@ class FreewayFleetEndToEndTest {
     @Test
     void two_clients_find_each_other_through_a_registry_node_and_mesh_up() throws Exception {
         // The node: holds the table, requires the shared secret.
-        System.setProperty(FleetDiscoveryModule.ConfigKeys.REGISTRY_TOKEN, "s3cret");
+        System.setProperty(FleetModule.ConfigKeys.REGISTRY_TOKEN, "s3cret");
         node = FreewayApp.run(
             new HttpModule(), new FleetServerModule());
         int nodePort = port(node);
 
         // The clients: write through the wire, read through the wire, feed the mesh
         // from what the wire answers.
-        System.setProperty(FleetDiscoveryModule.ConfigKeys.REGISTRY_NODES, "127.0.0.1:" + nodePort);
-        System.setProperty(FleetDiscoveryModule.ConfigKeys.REGISTRY_TOKEN, "s3cret");
+        System.setProperty(FleetModule.ConfigKeys.REGISTRY_NODES, "127.0.0.1:" + nodePort);
+        System.setProperty(FleetModule.ConfigKeys.REGISTRY_TOKEN, "s3cret");
         System.setProperty("freeway.cloud.event.enabled", "true");
         System.setProperty("freeway.cloud.event.discovery-feed-ms", "100");
         System.setProperty("freeway.cloud.event.backoff-base-ms", "100");
         System.setProperty("freeway.cloud.event.backoff-max-ms", "300");
         ModuleEx[] clientModules = new ModuleEx[] {
-            new HttpModule(), new RegistrationModule(), new LocalDiscoveryModule(), new EventMeshModule(),
-            new FleetDiscoveryModule()};
+            new HttpModule(), new RegistrationModule(), new LocalModule(), new EventMeshModule(),
+            new FleetModule()};
         System.setProperty(HttpModule.ConfigKeys.SERVER_PORT, "0");
         clientA = FreewayApp.run(clientModules);
         System.setProperty(HttpModule.ConfigKeys.SERVER_PORT, "0");

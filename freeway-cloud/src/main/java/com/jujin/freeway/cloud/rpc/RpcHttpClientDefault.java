@@ -14,6 +14,7 @@ import com.jujin.freeway.cloud.resilience.RateLimiterDefault;
 import com.jujin.freeway.cloud.resilience.RetryBudget;
 import com.jujin.freeway.cloud.resilience.RetryBudgetDefault;
 import com.jujin.freeway.cloud.resilience.Retryer;
+import com.jujin.freeway.cloud.resilience.ResilienceModule;
 import com.jujin.freeway.cloud.resilience.RetryerDefault;
 import com.jujin.freeway.commons.metrics.Metrics;
 
@@ -36,7 +37,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
+
 
 /**
  * Default {@link RpcHttpClient} — a JDK {@link HttpClient}-backed
@@ -111,11 +112,11 @@ public final class RpcHttpClientDefault implements RpcHttpClient {
     /** Library fallbacks (no resilience module installed) — the same values
      *  the config layer defaults to, from one shared source. */
     private static final int DEFAULT_FAILURE_THRESHOLD =
-        ConfigKeys.RPC_CB_FAILURE_THRESHOLD_DEFAULT;
+        ResilienceModule.ConfigKeys.RPC_CB_FAILURE_THRESHOLD_DEFAULT;
     private static final Duration DEFAULT_FAILURE_WINDOW =
-        Duration.ofSeconds(ConfigKeys.RPC_CB_FAILURE_WINDOW_DEFAULT);
+        Duration.ofSeconds(ResilienceModule.ConfigKeys.RPC_CB_FAILURE_WINDOW_DEFAULT);
     private static final Duration DEFAULT_OPEN_WINDOW =
-        Duration.ofSeconds(ConfigKeys.RPC_CB_OPEN_WINDOW_DEFAULT);
+        Duration.ofSeconds(ResilienceModule.ConfigKeys.RPC_CB_OPEN_WINDOW_DEFAULT);
     /**
      * Optional wiring for {@link RpcHttpClientDefault}. Every field has a
      * production-safe default, so tests and bare setups omit what they do not
@@ -138,16 +139,16 @@ public final class RpcHttpClientDefault implements RpcHttpClient {
         Duration shutdownGrace
     ) {
         /** Library-fallback timeouts — one value per timeout with the config
-         *  layer (RpcModule), sourced from {@link ConfigKeys} and
+         *  layer (RpcModule), sourced from {@link RpcModule.ConfigKeys} and
          *  converted ms→{@link Duration} at this boundary. */
         public static final Duration DEFAULT_REQUEST_TIMEOUT =
-            Duration.ofMillis(ConfigKeys.RPC_REQUEST_TIMEOUT_DEFAULT);
+            Duration.ofMillis(RpcModule.ConfigKeys.RPC_REQUEST_TIMEOUT_DEFAULT);
         public static final Duration DEFAULT_CONNECT_TIMEOUT =
-            Duration.ofMillis(ConfigKeys.RPC_CONNECT_TIMEOUT_DEFAULT);
+            Duration.ofMillis(RpcModule.ConfigKeys.RPC_CONNECT_TIMEOUT_DEFAULT);
         /** How long {@link RpcHttpClientDefault#close()} waits for in-flight
          *  calls, from the shared config default. */
         public static final Duration DEFAULT_SHUTDOWN_GRACE =
-            ConfigKeys.RPC_SHUTDOWN_GRACE_DEFAULT;
+            RpcModule.ConfigKeys.RPC_SHUTDOWN_GRACE_DEFAULT;
 
         public Wiring {
             propagators = propagators == null ? List.of() : List.copyOf(propagators);

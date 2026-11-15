@@ -14,11 +14,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * In-process registry: register → discover → renew → stale eviction →
  * unregister.
  */
-class InMemoryLeaseStoreTest {
+class MemLeaseStoreTest {
 
     @Test
     void registerDiscoverRenewDeregister() {
-        InMemoryLeaseStore store = new InMemoryLeaseStore();
+        MemLeaseStore store = new MemLeaseStore();
         ServiceInstance inst = ServiceInstance.of("svc", "i1", ServiceEndpoint.of("http", "h", 8080));
 
         store.register(inst);
@@ -33,7 +33,7 @@ class InMemoryLeaseStoreTest {
 
     @Test
     void staleInstancesEvictedLazily() {
-        InMemoryLeaseStore store = new InMemoryLeaseStore();
+        MemLeaseStore store = new MemLeaseStore();
         store.register(ServiceInstance.of("svc", "i1", ServiceEndpoint.of("http", "h", 8080)));
         // Negative maxAge puts the cutoff strictly after lastSeen, so the
         // verdict cannot depend on clock granularity (Windows Instant.now()
@@ -50,7 +50,7 @@ class InMemoryLeaseStoreTest {
 
     @Test
     void unknownServiceIsEmpty() {
-        InMemoryLeaseStore store = new InMemoryLeaseStore();
+        MemLeaseStore store = new MemLeaseStore();
         assertTrue(store.liveReadyInstances("missing", Duration.ofMinutes(1)).isEmpty());
     }
 
@@ -61,7 +61,7 @@ class InMemoryLeaseStoreTest {
         // empty-check and the removal lost its entry with the map (and
         // renew() became a no-op forever). The eviction is now atomic with
         // register's computeIfAbsent, so a fresh registration always sticks.
-        InMemoryLeaseStore store = new InMemoryLeaseStore();
+        MemLeaseStore store = new MemLeaseStore();
         ServiceInstance first = ServiceInstance.of("svc", "i1", ServiceEndpoint.of("http", "h", 8080));
         store.register(first);
         store.unregister(first);

@@ -37,14 +37,14 @@ class PeerConnectorReconnectTest {
             nodeB.close();
         }
         System.clearProperty(HttpModule.ConfigKeys.SERVER_PORT);
-        System.clearProperty(ConfigKeys.EVENT_ENABLED);
-        System.clearProperty(ConfigKeys.EVENT_PEERS);
-        System.clearProperty(ConfigKeys.EVENT_TOKEN);
+        System.clearProperty(EventMeshModule.ConfigKeys.EVENT_ENABLED);
+        System.clearProperty(EventMeshModule.ConfigKeys.EVENT_PEERS);
+        System.clearProperty(EventMeshModule.ConfigKeys.EVENT_TOKEN);
     }
 
     private static AppRuntime startEventsNode(String peers, String subscriptions) {
-        System.setProperty(ConfigKeys.EVENT_ENABLED, "true");
-        System.setProperty(ConfigKeys.EVENT_PEERS, peers);
+        System.setProperty(EventMeshModule.ConfigKeys.EVENT_ENABLED, "true");
+        System.setProperty(EventMeshModule.ConfigKeys.EVENT_PEERS, peers);
         // Declared interest shapes the hello pull-prefixes (no-op handlers —
         // these tests assert connection state, never delivery).
         List<com.jujin.freeway.ioc.ModuleEx> mods =
@@ -124,14 +124,14 @@ class PeerConnectorReconnectTest {
     @Test
     void rejectedHandshakeAdvancesBackoffInsteadOfStorming() throws Exception {
         System.setProperty(HttpModule.ConfigKeys.SERVER_PORT, "0");
-        System.setProperty(ConfigKeys.EVENT_TOKEN, "right");
+        System.setProperty(EventMeshModule.ConfigKeys.EVENT_TOKEN, "right");
         nodeB = startEventsNode("", "greet.");
         int bPort = port(nodeB);
 
         // A wired with the WRONG token and no auto-peers; the connector is
         // standalone so the test can read its pacing state.
         System.setProperty(HttpModule.ConfigKeys.SERVER_PORT, "0");
-        System.setProperty(ConfigKeys.EVENT_TOKEN, "wrong");
+        System.setProperty(EventMeshModule.ConfigKeys.EVENT_TOKEN, "wrong");
         nodeA = startEventsNode("", "");
         PeerConnector connector = new PeerConnector(nodeA.get(PeerHub.class),
             PeerConnector.Wiring.defaults().withBackoff(200, 3000));

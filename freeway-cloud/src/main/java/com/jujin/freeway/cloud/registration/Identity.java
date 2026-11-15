@@ -25,14 +25,14 @@ import org.slf4j.LoggerFactory;
  * An explicit value always wins; the choice is logged either way, so an
  * operator can see what {@code auto} picked without turning on debug logging.
  */
-final class ServiceIdentity {
+final class Identity {
 
-    private static final Logger LOG = LoggerFactory.getLogger(ServiceIdentity.class);
+    private static final Logger LOG = LoggerFactory.getLogger(Identity.class);
 
     /** Platform-provided pod address (Kubernetes downward API). */
     private static final String POD_IP_ENV = "POD_IP";
 
-    private ServiceIdentity() {
+    private Identity() {
     }
 
     /**

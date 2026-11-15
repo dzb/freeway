@@ -5,7 +5,7 @@ import com.jujin.freeway.cloud.rpc.TransportSecurity;
 import com.jujin.freeway.cloud.discovery.ServiceDiscovery;
 import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
-import com.jujin.freeway.cloud.registration.HttpServiceDeclaration;
+import com.jujin.freeway.cloud.registration.HttpDeclaration;
 import com.jujin.freeway.ioc.MissingBindingException;
 import com.jujin.freeway.ioc.symbol.SymbolSpec;
 import com.jujin.freeway.commons.json.JsonCodec;
@@ -17,7 +17,6 @@ import java.util.List;
 import java.util.function.Function;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
 
 /**
  * MeshEventBus lifecycle hook: wires the hub and starts the peer connector.
@@ -43,31 +42,31 @@ final class MeshEventLifecycleHook implements RuntimeHook {
      * natural kill-switch spelling — fail startup.
      */
     private static final SymbolSpec<Boolean> EVENT_ENABLED_EXPLICIT = SymbolSpec.of(
-        ConfigKeys.EVENT_ENABLED, Boolean.class, null);
+        EventMeshModule.ConfigKeys.EVENT_ENABLED, Boolean.class, null);
 
     private static final SymbolSpec<String> TOKEN = SymbolSpec.of(
-        ConfigKeys.EVENT_TOKEN, String.class, "", Function.identity());
+        EventMeshModule.ConfigKeys.EVENT_TOKEN, String.class, "", Function.identity());
     private static final SymbolSpec<List<String>> PEERS =
-        SymbolSpec.list(ConfigKeys.EVENT_PEERS, List.of());
+        SymbolSpec.list(EventMeshModule.ConfigKeys.EVENT_PEERS, List.of());
     private static final SymbolSpec<Long> CONNECT_TIMEOUT_MS =
-        SymbolSpec.of(ConfigKeys.EVENT_CONNECT_TIMEOUT_MS, Long.class,
-            ConfigKeys.EVENT_CONNECT_TIMEOUT_MS_DEFAULT, Long::parseLong);
+        SymbolSpec.of(EventMeshModule.ConfigKeys.EVENT_CONNECT_TIMEOUT_MS, Long.class,
+            EventMeshModule.ConfigKeys.EVENT_CONNECT_TIMEOUT_MS_DEFAULT, Long::parseLong);
     private static final SymbolSpec<Long> HANDSHAKE_TIMEOUT_MS =
-        SymbolSpec.of(ConfigKeys.EVENT_HANDSHAKE_TIMEOUT_MS, Long.class,
-            ConfigKeys.EVENT_HANDSHAKE_TIMEOUT_MS_DEFAULT, Long::parseLong);
+        SymbolSpec.of(EventMeshModule.ConfigKeys.EVENT_HANDSHAKE_TIMEOUT_MS, Long.class,
+            EventMeshModule.ConfigKeys.EVENT_HANDSHAKE_TIMEOUT_MS_DEFAULT, Long::parseLong);
     private static final SymbolSpec<Long> BACKOFF_BASE_MS =
-        SymbolSpec.of(ConfigKeys.EVENT_BACKOFF_BASE_MS, Long.class,
-            ConfigKeys.EVENT_BACKOFF_BASE_MS_DEFAULT, Long::parseLong);
+        SymbolSpec.of(EventMeshModule.ConfigKeys.EVENT_BACKOFF_BASE_MS, Long.class,
+            EventMeshModule.ConfigKeys.EVENT_BACKOFF_BASE_MS_DEFAULT, Long::parseLong);
     private static final SymbolSpec<Long> BACKOFF_MAX_MS =
-        SymbolSpec.of(ConfigKeys.EVENT_BACKOFF_MAX_MS, Long.class,
-            ConfigKeys.EVENT_BACKOFF_MAX_MS_DEFAULT, Long::parseLong);
+        SymbolSpec.of(EventMeshModule.ConfigKeys.EVENT_BACKOFF_MAX_MS, Long.class,
+            EventMeshModule.ConfigKeys.EVENT_BACKOFF_MAX_MS_DEFAULT, Long::parseLong);
     /** Presence-driven: unset means the mesh is never fed from discovery; a
      *  value is the poll interval in milliseconds. */
     private static final SymbolSpec<Long> EVENT_DISCOVERY_FEED_MS =
-        SymbolSpec.of(ConfigKeys.EVENT_DISCOVERY_FEED_MS, Long.class, null, Long::parseLong);
+        SymbolSpec.of(EventMeshModule.ConfigKeys.EVENT_DISCOVERY_FEED_MS, Long.class, null, Long::parseLong);
     /** Presence-driven: unset leaves keepalive off. */
     private static final SymbolSpec<Long> EVENT_KEEPALIVE_MS =
-        SymbolSpec.of(ConfigKeys.EVENT_KEEPALIVE_MS, Long.class, null, Long::parseLong);
+        SymbolSpec.of(EventMeshModule.ConfigKeys.EVENT_KEEPALIVE_MS, Long.class, null, Long::parseLong);
 
     private final PeerHub hub;
     private volatile PeerConnector connector;
@@ -88,8 +87,8 @@ final class MeshEventLifecycleHook implements RuntimeHook {
         if (!meshOn(symbols.resolve(EVENT_ENABLED_EXPLICIT), peers, discoveryFeed)) {
             LOG.info("MeshEventBus not wired — dial peers with {}=<host:port,...>, "
                     + "set {}=true, or set {}=<millis> (discovery-fed mesh)",
-                ConfigKeys.EVENT_PEERS, ConfigKeys.EVENT_ENABLED,
-                ConfigKeys.EVENT_DISCOVERY_FEED_MS);
+                EventMeshModule.ConfigKeys.EVENT_PEERS, EventMeshModule.ConfigKeys.EVENT_ENABLED,
+                EventMeshModule.ConfigKeys.EVENT_DISCOVERY_FEED_MS);
             return;
         }
 
@@ -97,7 +96,7 @@ final class MeshEventLifecycleHook implements RuntimeHook {
         // the same resolution, not a second derivation of it. This hook runs
         // after the HTTP server (see EventMeshModule), so host:port are the
         // ones this node actually serves on.
-        ServiceInstance self = HttpServiceDeclaration.of(container);
+        ServiceInstance self = HttpDeclaration.of(container);
         if (self == null) {
             throw new IllegalStateException(
                 "MeshEventBus needs the HTTP module: its mesh endpoint lives on "
@@ -154,7 +153,7 @@ final class MeshEventLifecycleHook implements RuntimeHook {
             return 0;
         }
         if (configured <= 0) {
-            throw new IllegalArgumentException(ConfigKeys.EVENT_KEEPALIVE_MS
+            throw new IllegalArgumentException(EventMeshModule.ConfigKeys.EVENT_KEEPALIVE_MS
                 + " must be positive: " + configured);
         }
         return configured;
@@ -205,14 +204,14 @@ final class MeshEventLifecycleHook implements RuntimeHook {
             return;
         }
         if (feedMillis <= 0) {
-            throw new IllegalArgumentException(ConfigKeys.EVENT_DISCOVERY_FEED_MS
+            throw new IllegalArgumentException(EventMeshModule.ConfigKeys.EVENT_DISCOVERY_FEED_MS
                 + " must be positive: " + feedMillis);
         }
         ServiceDiscovery discovery;
         try {
             discovery = container.get(ServiceDiscovery.class);
         } catch (MissingBindingException e) {
-            throw new IllegalStateException(ConfigKeys.EVENT_DISCOVERY_FEED_MS
+            throw new IllegalStateException(EventMeshModule.ConfigKeys.EVENT_DISCOVERY_FEED_MS
                 + " is set but no ServiceDiscovery is bound — install CloudModule (or a"
                 + " discovery adapter) so the mesh has a registry to ask", e);
         }

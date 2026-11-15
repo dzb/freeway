@@ -15,7 +15,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * by the local discovery backend and the Fleet Server. The server will grow a
  * durable implementation without changing its HTTP surface.
  */
-public final class InMemoryLeaseStore implements LeaseStore {
+public final class MemLeaseStore implements LeaseStore {
 
     private final Map<String, Map<String, Entry>> byService = new ConcurrentHashMap<>();
 
