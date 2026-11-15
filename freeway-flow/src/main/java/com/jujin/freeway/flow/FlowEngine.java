@@ -131,7 +131,9 @@ public interface FlowEngine {
     }
 
     /**
-     * Runs a loaded graph. A fresh execution reaches the graph's END
+     * Runs a loaded graph. The supplied context is caller-owned: a fresh run
+     * should use a fresh context; a context already carrying {@code stop()} is
+     * not reset behind the caller's back. A fresh execution reaches the END
      * node or fails: an EXCLUSIVE gateway that matches nothing or a join that
      * never assembles throws instead of completing silently. A run stopped
      * on purpose (by a task or interceptor calling {@link FlowContext#stop()})

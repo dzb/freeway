@@ -8,8 +8,6 @@ import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.event.EventBus;
 import com.jujin.freeway.ioc.event.EventSubscriber;
-import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
-import com.jujin.freeway.cloud.CloudModule;
 
 /**
  * Publisher node of the cross-JVM event-mesh demo.
@@ -28,8 +26,8 @@ public final class NodeA {
         // A's own HTTP port — must differ from B's (both run locally).
         System.setProperty(HttpModule.ConfigKeys.SERVER_PORT, "18081");
         // MeshEventBus: dial B; A declares no subscriptions (outbound-only).
-        System.setProperty(ConfigKeys.EVENT_ENABLED, "true");
-        System.setProperty(ConfigKeys.EVENT_PEERS, "127.0.0.1:18080");
+        System.setProperty(EventMeshModule.ConfigKeys.EVENT_ENABLED, "true");
+        System.setProperty(EventMeshModule.ConfigKeys.EVENT_PEERS, "127.0.0.1:18080");
 
         var app = FreewayApp.run(Launch.of(args), new HttpModule(), new EventMeshModule(), new ModuleEx() {
             @Override

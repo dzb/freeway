@@ -73,8 +73,9 @@ below.
 ### Read interfaces do not write
 
 - A read view exposes reads; writes belong to the composition store or the
-  owning engine. `Extension` reads, `Binder` writes; `FlowContext.stop()` is
-  application API, `setStopped` is engine-internal.
+  owning engine. `Extension` reads, `Binder` writes; `FlowContext.stop()` /
+  `isStopped()` is the only flow-control contract, and a custom context is a
+  valid run target.
 
 ### Defaults are promises
 
@@ -475,13 +476,10 @@ parameter types to guess the behaviour.
 
 ### 9.5 Read interfaces expose no write capability
 
-`FlowContext.stopped(boolean)` was removed from the public interface and moved
-to the internal `FlowContextState.setStopped(boolean)`.
-
-The public `FlowContext` keeps only:
-
-    stop()
-    isStopped()
+`FlowContext.stopped(boolean)` was removed from the public interface; the
+remaining public contract is only `stop()` / `isStopped()`. The engine has no
+second internal stop setter: a caller-supplied `FlowContext` is a valid run
+target, and `run` does not rewrite its stop state.
 
 Reading the stop signal is application API; writing it is an internal
 permission of the engine/execution. This is the same taste as the read-only
@@ -534,7 +532,7 @@ not an RPC type. A name's ownership follows facts, not string prefixes.
 | `Query.bind` / `Contribution.addDeferred` | read, write, immediate construction and deferred construction no longer share an ambiguous verb |
 | `Row.asString/asInt/asLong` | the accessor family uses one syntax |
 | `FlowExecution` / `FlowEngine.run` | workflow execution is separate from expression eval |
-| `FlowContextState.setStopped` internal | the public read interface exposes no engine write capability |
+| `FlowContext.stop/isStopped` | one stop contract; no engine-side second setter |
 | `metadata()/putMetadata()` | reading a map, reading one value and writing meta use consistent verbs |
 | `EventBus.Stats` / `MeshEventBus.Stats` | nested types no longer repeat the owner name |
 | `ScopedCache.computeIfAbsent` / `JsonUtils.toJson` / `JsonCodec.coerce` | side effects, serialization and type coercion each use an accurate verb |

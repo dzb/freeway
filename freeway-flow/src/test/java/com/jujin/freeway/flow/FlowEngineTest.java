@@ -2280,6 +2280,7 @@ class FlowEngineTest {
         second.commit();
         assertEquals("2", ctx.get("base"));
     }
+
     /** The public FlowContext contract must be enough to run a graph. */
     static final class DelegatingContext implements FlowContext {
         private final FlowContext delegate = FlowContext.of();
@@ -2289,6 +2290,22 @@ class FlowEngineTest {
         @Override public Map<String, Object> data() { return delegate.data(); }
         @Override public String toJson() { return delegate.toJson(); }
         @Override public Branch beginBranch() { return delegate.beginBranch(); }
+    }
+
+    @Test
+    void executionStopUsesThePublicContextContract() {
+        Graph graph = Graph.create("custom_stop", spec -> {
+            spec.addStart("s").linkTo("e");
+            spec.addEnd("e");
+        });
+        FlowEngine engine = newEngine(driverResolving(Map.of(), null));
+        DelegatingContext context = new DelegatingContext();
+        FlowExecution execution = new FlowExecution(
+            graph, engine, engine.driver(graph), context);
+
+        execution.stop();
+        assertTrue(context.isStopped(),
+            "FlowExecution.stop must go through the public FlowContext.stop() contract");
     }
 
     @Test

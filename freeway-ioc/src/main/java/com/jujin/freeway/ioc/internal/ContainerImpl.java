@@ -130,7 +130,7 @@ public final class ContainerImpl implements Container {
             this, coercer, Set.of(SymbolProvider.class, CoerceRule.class));
         this.injectResolver = new InjectionResolver(this);
         this.serviceRuntime = new ServiceRuntime(this);
-        this.shutdown = new Shutdown(serviceRuntime.targets(), contributions::constructed);
+        this.shutdown = new Shutdown(serviceRuntime.targets(), contributions::constructedTargets);
         // The chain's coercer lets one-step resolve(spec) parse coercer-backed
         // types (Duration, user rules) — no two-step idiom anywhere. It is the
         // container's own instance, so a contributed CoerceRule reaches the

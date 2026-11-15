@@ -33,7 +33,7 @@ a concrete refusal behind it.
 |---|---|---|
 | **Modern** | JDK 25 is the baseline, not a compatibility tax. Freeway uses records, sealed types, pattern switches and `ScopedValue` directly instead of emulating older Java. | `maven.compiler.release=25`; HTTP/1.1, HTTP/2 and WebSocket in the built-in engine; `ScopeBoundary` on `ScopedValue`; sealed `ResponseBody` and `Http2Frame` families. |
 | **Concise** | One accurate verb per action. Aliases and overloads that do different things with the same name make call sites ambiguous and documentation endless. | `find` returns `Optional`, `require` throws; `withX` returns a new value; `HttpResponse.body/text/json/file/sendText`; `Row.asString/asInt/asLong`; no compatibility aliases. |
-| **Clean** | Every fact has one owner. If two layers can decide the same thing, they will eventually disagree. | `ResponsePlan` + `HttpTransport` own response execution; `RequestHead` + `RequestViewSupport` own request reads; `FlowContextState` keeps execution writes out of the public read interface; no scanning or bytecode weaving. |
+| **Clean** | Every fact has one owner. If two layers can decide the same thing, they will eventually disagree. | `ResponsePlan` + `HttpTransport` own response execution; `RequestHead` + `RequestViewSupport` own request reads; `FlowContext.stop/isStopped` is the only stop contract, with no engine-side setter; no scanning or bytecode weaving. |
 | **Composition-only** | A framework should provide contracts, not a base class to inherit from. Subclassing couples callers to implementation history and lets each adapter drift differently. | No Freeway class extends another Freeway class. Extension seams such as `HttpTransport`, `FlowDriver`, `ServiceRegistry` and `ServiceDiscovery` are interfaces; implementations are final and selected by the container. The only class `extends` clauses in `src/main` are standard-library boundary bases (exceptions, streams/collections, TLS, logging, publication). |
 | **Consistent** | A reader should not have to relearn the framework in every module. The same action has the same shape everywhere. | One `find`/`require` contract, one `metadata()`/`putMetadata()` family, one `withX` convention, one `ConfigKeys` per module, one lifecycle, and `ModuleDeclaration` as the single module-composition value. |
 | **Solid** | Safety comes from types and tests, not from comments asking callers to be careful. Failure modes should be unrepresentable or covered. | Sealed pattern switches force exhaustive dispatch; `ErrorMapper` returns data while `HttpServer` owns the only write path; `HttpTransport` owns commit/framing; `mvn clean test` passes 2,537 tests with zero failures, errors or skips. |
@@ -399,8 +399,8 @@ is in [CHANGELOG.md](CHANGELOG.md). The important wins are structural:
   `addDeferred(...)`, `EventBus.Stats` and `MeshEventBus.Stats` make method
   families read the same way at every call site.
 - `FlowExecution` and `FlowEngine.run/find/require` separate workflow execution
-  from expression `eval`; `FlowContextState.setStopped(...)` keeps the write
-  side internal.
+  from expression `eval`; `FlowContext.stop/isStopped` is the one stop contract,
+  and a custom context is a valid run target.
 
 ### Verification
 

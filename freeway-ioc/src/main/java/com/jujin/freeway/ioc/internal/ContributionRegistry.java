@@ -277,9 +277,9 @@ final class ContributionRegistry {
     /** Instances this registry constructed; handed to the container shutdown drain. */
     private final List<Object> constructed = new java.util.concurrent.CopyOnWriteArrayList<>();
 
-    /** Snapshot for {@link Shutdown}; ownership stays with the container lifecycle. */
-    List<Object> constructed() {
-        return constructed;
+    /** Immutable snapshot for {@link Shutdown}; ownership stays with the container lifecycle. */
+    List<Object> constructedTargets() {
+        return List.copyOf(constructed);
     }
 
     /** Drops composition state after the shutdown drain has owned lifecycle callbacks. */

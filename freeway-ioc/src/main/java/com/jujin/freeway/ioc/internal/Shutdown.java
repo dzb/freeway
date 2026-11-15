@@ -5,6 +5,7 @@ import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Supplier;
 
@@ -35,8 +36,8 @@ final class Shutdown {
     }
 
     Shutdown(Map<ServiceKey, Object> targetCache, Supplier<List<Object>> extraTargets) {
-        this.targetCache = targetCache;
-        this.extraTargets = extraTargets;
+        this.targetCache = Objects.requireNonNull(targetCache, "targetCache");
+        this.extraTargets = Objects.requireNonNull(extraTargets, "extraTargets");
     }
 
     /**

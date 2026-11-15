@@ -490,6 +490,7 @@ class GraphSpecTest {
         assertTrue(ex.getMessage().contains("cannot be serialized"),
             "got: " + ex.getMessage());
     }
+
     @Test
     void multipleStartNodesWithoutExplicitEntryAreRejectedConsistently() {
         GraphSpec spec = GraphSpec.create("two-starts", g -> {

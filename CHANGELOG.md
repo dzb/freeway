@@ -87,8 +87,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Flow**: `FlowEvaluation` → `FlowExecution`; `FlowEngine.eval(...)` →
   `run(...)`, `evalAndGet(...)` → `runAndGet(...)`; `graph(String)` →
   `find(String): Optional<Graph>`, `graphOrThrow(...)` → `require(...)`;
-  `FlowContext.stopped(boolean)` moved into internal
-  `FlowContextState.setStopped(...)`; the Graph/Node/Link metadata family is now
+  `FlowContext.stopped(boolean)` is gone; `stop()`/`isStopped()` is the only
+  public flow-control contract and the internal `FlowContextState` setter was
+  removed — the engine no longer rewrites a caller-supplied context. The
+  Graph/Node/Link metadata family is now
   `metadata()`/`putMetadata(...)`; `NodeSpec.linkAdd(...)` → `linkTo(...)`.
 - **IoC**: `Container.isActiveBinding(...)` → `isActiveBindingMarked(...)`;
   `EventBus.EventBusStats` → `EventBus.Stats`; `Contribution.add(Class)` and
