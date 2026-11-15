@@ -130,11 +130,9 @@ public final class GraphSpec {
     }
 
     public NodeSpec addStart(String id) {
-        NodeSpec node = addNode(id, NodeType.START);
-        if (entry == null) {
-            entry = id;
-        }
-        return node;
+        // Entry is resolved once in normalize()/resolveEntry(); a builder call
+        // must not silently promote the first START to the explicit entry.
+        return addNode(id, NodeType.START);
     }
 
     public NodeSpec addEnd(String id) {

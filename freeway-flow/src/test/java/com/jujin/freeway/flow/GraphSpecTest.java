@@ -490,4 +490,16 @@ class GraphSpecTest {
         assertTrue(ex.getMessage().contains("cannot be serialized"),
             "got: " + ex.getMessage());
     }
+    @Test
+    void multipleStartNodesWithoutExplicitEntryAreRejectedConsistently() {
+        GraphSpec spec = GraphSpec.create("two-starts", g -> {
+            g.addStart("s1").linkTo("e");
+            g.addStart("s2");
+            g.addEnd("e");
+        });
+
+        IllegalStateException failure = assertThrows(IllegalStateException.class, spec::create);
+        assertTrue(failure.getMessage().contains("Multiple START nodes"), failure.getMessage());
+    }
+
 }

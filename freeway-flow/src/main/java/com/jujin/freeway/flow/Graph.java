@@ -82,15 +82,6 @@ public final class Graph {
                 : Collections.unmodifiableMap(new LinkedHashMap<>(blueprint.metadata()));
 
         if (start == null) {
-            for (Node node : nodes.values()) {
-                if (node.prevLinks().isEmpty()) {
-                    start = node;
-                    break;
-                }
-            }
-        }
-
-        if (start == null) {
             throw new IllegalStateException("No start node found, graph: " + blueprint.id());
         }
     }
