@@ -107,7 +107,7 @@ public interface Dialect {
      *                               {@code Wiring…withDialect(…)}, or the
      *                               {@code freeway.db.dialect} config key)
      */
-    static Dialect of(String url) {
+    public static Dialect of(String url) {
         if (url == null || url.isBlank()) {
             return ofId("postgresql");
         }

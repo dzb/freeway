@@ -51,6 +51,15 @@ class DatabaseImplResourceTest {
     }
 
     @Test
+    void assemblyWithoutAnExplicitDialectDerivesItFromTheUrl() {
+        DatabaseImpl db = createDb();
+        try (db) {
+            assertEquals("h2", db.dialect().dialectId(),
+                "a null dialect must be URL-derived, not silently PostgreSQL");
+        }
+    }
+
+    @Test
     void subSecondQueryTimeoutRoundsUpToWholeSeconds() {
         DatabaseImpl db = createDb(Duration.ofMillis(500));
         try (db) {

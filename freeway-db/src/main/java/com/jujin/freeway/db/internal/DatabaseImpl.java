@@ -13,7 +13,6 @@ import com.jujin.freeway.db.Query;
 import com.jujin.freeway.db.SqlException;
 import com.jujin.freeway.db.Transactional;
 import com.jujin.freeway.db.dialect.Dialect;
-import com.jujin.freeway.db.dialect.PostgresDialect;
 import com.jujin.freeway.db.util.SqlTextParser;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -74,7 +73,7 @@ public final class DatabaseImpl implements Database {
             config,
             rowMapperResolver,
             pool != null ? pool : new PoolDefault(config),
-            dialect != null ? dialect : new PostgresDialect()
+            dialect != null ? dialect : Dialect.of(config.url())
         );
     }
 
