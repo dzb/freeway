@@ -17,7 +17,6 @@ freeway-cloud/src/main/java/com/jujin/freeway/cloud/context/internal/BaggageProp
 freeway-cloud/src/main/java/com/jujin/freeway/cloud/context/internal/PropagationFilter.java#PropagationFilter
 freeway-cloud/src/main/java/com/jujin/freeway/cloud/context/internal/TracePropagator.java#TracePropagator
 freeway-cloud/src/main/java/com/jujin/freeway/cloud/health/internal/ReadyHandler.java#ReadyHandler
-freeway-cloud/src/main/java/com/jujin/freeway/cloud/internal/ActiveBindingProbe.java#ActiveBindingProbe
 freeway-cloud/src/main/java/com/jujin/freeway/cloud/internal/BackendTypeGuard.java#BackendTypeGuard
 freeway-cloud/src/main/java/com/jujin/freeway/cloud/internal/CloudHttpClients.java#CloudHttpClients
 freeway-cloud/src/main/java/com/jujin/freeway/cloud/internal/ConstantTime.java#ConstantTime

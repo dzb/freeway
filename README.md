@@ -151,8 +151,8 @@ smoke path lives in [`demo/rest-db`](demo/rest-db/README.md).
 | **`freeway-db`** | JDBC, ORM, pooling, transactions, schema, migrations |
 | **`freeway-flow`** | Graph workflow engine — 7 node types, v3 DAG format, `@name` tasks |
 | **`freeway-cloud`** | Cloud runtime — registration lifecycle, RPC, event mesh, observability, resilience, health, secrets, storage, static discovery |
-| **`freeway-fleet`** | Local LeaseStore/registrar and Fleet client/protocol; registration lifecycle lives in cloud |
-| **`freeway-fleet-server`** | Standalone Fleet registry server module |
+| **`freeway-fleet`** | Fleet client/protocol; registration lifecycle and static discovery live in cloud |
+| **`freeway-fleet-server`** | Standalone Fleet registry server module (owns `LeaseStore`) |
 
 Third-party adapters live in **[freeway-ext](https://github.com/dzb/freeway-ext)**:
 

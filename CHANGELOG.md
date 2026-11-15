@@ -16,21 +16,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   or registration lifecycle is required.
 - **Neutral registration lifecycle**: `RegistrationModule` in `freeway-cloud`
   now owns registration, heartbeat, readiness and drain for any
-  `ServiceRegistry` backend. Local, Fleet and Consul discovery install the same
+  `ServiceRegistry` backend. Fleet and Consul discovery install the same
   lifecycle instead of each backend carrying it.
-- **LeaseStore seam**: `LeaseStore` and `MemLeaseStore` in `freeway-fleet`
-  are shared by local discovery and the Fleet Server; a durable server store can
-  replace the in-memory implementation without changing the HTTP surface.
+- **Server-owned LeaseStore**: `LeaseStore` and `MemLeaseStore` live in
+  `freeway-fleet-server`; a durable server store can replace the in-memory
+  implementation without changing the HTTP surface.
 
 ### Changed
 
 - **Fleet extracted from `freeway-cloud`**: `freeway-fleet` now owns the local
-  in-process registry, the Fleet client/protocol and `LeaseStore`;
-  `freeway-fleet-server` owns the registry server module. `freeway-cloud` keeps
-  the discovery contracts, static discovery and `LoadBalancer`. `CloudModule` no
-  longer installs a discovery implementation; install `RegistrationModule` plus
-  `LocalModule`, `StaticModule`, `FleetModule` or a
-  Fleet/Consul adapter explicitly. `RpcModule` assembles without discovery and
+  Fleet client/protocol; `freeway-fleet-server` owns the registry server and
+  `LeaseStore`. `freeway-cloud` keeps the discovery contracts, static discovery
+  and `LoadBalancer`. `CloudModule` no longer installs a discovery
+  implementation; install `RegistrationModule` plus `StaticModule`, `FleetModule`
+  or a Fleet/Consul adapter explicitly. `RpcModule` assembles without discovery and
   fails a call with "no instances" instead of preventing the bundle from
   starting.
 - **Fleet vocabulary**: `FleetRegistryClient` → `FleetClient`,
@@ -40,14 +39,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `LeaseStore`/`MemLeaseStore`, `RegistryLifecycleHook` →
   `RegistrationHook`, `RegistryRenewal` → `Renewal`,
   `RegistryHealthContributor` → `RegistrationHealth`,
-  `DiscoveryModule` → `LocalModule`, `FleetServiceDiscovery` →
-  `FleetDiscovery`, `FleetServiceRegistry` → `FleetRegistrar`, and
-  `ServiceRegistryDefault` / `ServiceDiscoveryDefault` → `LocalRegistrar` /
-  `LocalDiscovery`.
+  `FleetServiceDiscovery` → `FleetDiscovery`, `FleetServiceRegistry` →
+  `FleetRegistrar`. The in-process local backend was removed; tests use a
+  test-scope registry fixture.
 - **Config ownership**: feature keys moved out of `CloudModule.ConfigKeys` into
-  the modules that read them — `RegistrationModule` / `LocalModule` /
-  `FleetModule`, `RpcModule`, `ResilienceModule`, `EventMeshModule`,
-  `SecretModule`, `StorageModule`, `CloudContextModule`. `CloudModule.ConfigKeys`
+  the modules that read them — `RegistrationModule` / `FleetModule`,
+  `RpcModule`, `ResilienceModule`, `EventMeshModule`, `SecretModule`,
+  `StorageModule`, `CloudContextModule`. `CloudModule.ConfigKeys`
   now owns only the application identity keys; `CloudKeys` owns the two
   namespaces. `CloudHookIds` (formerly `CloudHooks`) holds hook ids.
 

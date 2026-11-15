@@ -1,6 +1,5 @@
 package com.jujin.freeway.cloud.registration;
 
-import com.jujin.freeway.cloud.internal.ActiveBindingProbe;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.cloud.discovery.ServiceRegistry;
 import com.jujin.freeway.cloud.health.CloudHealthContributor;
@@ -91,12 +90,6 @@ final class ReadinessGate implements AutoCloseable {
         // either implements it or ignores the gate entirely. Say which one it
         // is once, instead of leaving "the gate never takes effect" to be
         // discovered from behaviour.
-        ActiveBindingProbe probe = optionalProbe(container);
-        if (probe != null && !probe.isLocal(ServiceRegistry.class)) {
-            LOG.info("Readiness gate armed, but the bound registry is not the built-in one — "
-                + "readiness flips take effect only if that adapter implements "
-                + "ServiceRegistry.markReady");
-        }
         return gate;
     }
 
@@ -128,14 +121,6 @@ final class ReadinessGate implements AutoCloseable {
                 Thread.currentThread().interrupt();
                 return;
             }
-        }
-    }
-
-    private static ActiveBindingProbe optionalProbe(Container container) {
-        try {
-            return container.get(ActiveBindingProbe.class);
-        } catch (RuntimeException absent) {
-            return null; // installed without the discovery module that binds it
         }
     }
 

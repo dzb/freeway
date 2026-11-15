@@ -127,14 +127,12 @@ com.jujin.freeway.cloud
 ├── health/internal/    ReadyHandler
 ├── observe/internal/   MetricsHandler, TracingFilter
 └── internal/           cross-domain shared mechanisms: BackendTypeGuard,
-                        ActiveBindingProbe, OptionalBinding, CloudHttpClients,
-                        ConstantTime
+                        OptionalBinding, CloudHttpClients, ConstantTime
 ```
 
-Fleet moved out of this module in 2.0: `freeway-fleet` holds the local
-`LeaseStore`/`LocalModule` backend and the Fleet client/protocol
-(`FleetModule`); `freeway-fleet-server` holds `FleetServerModule` and
-the HTTP surface. `freeway-cloud` depends on neither. `RegistrationModule` is
+Fleet moved out of this module in 2.0: `freeway-fleet` holds the Fleet
+client/protocol (`FleetModule`); `freeway-fleet-server` holds
+`FleetServerModule` and the HTTP surface. `freeway-cloud` depends on neither. `RegistrationModule` is
 the backend-neutral lifecycle in cloud.
 
 Visibility is deliberate: types in `internal/` may be `public` (cross-package assembly needs it)
@@ -262,8 +260,7 @@ public record ServiceHealth(boolean live, boolean ready, Instant lastSeen) {
   `0.0.0.0`/`::` prefers `POD_IP`, then the first routable local address, and only falls back to the bind
   address with a startup warning if neither exists. Multi-NIC hosts should name it explicitly.
 - `registry.shutdown-drain=auto` (default) is answered by the registry backend
-  (`ServiceRegistry.drainWindow()`): the built-in in-process registry answers `0s` (same JVM, no propagation
-  delay), and a registry-center adapter answers with its own propagation window (Nacos/K8s endpoints usually a few seconds),
+  (`ServiceRegistry.drainWindow()`): a registry adapter answers with its own propagation window (Nacos/K8s endpoints usually a few seconds),
   so it need not be written once per deployment; an explicit duration wins, and a negative value fails at startup.
 - Static third-party services (PostgreSQL/Redis, etc.) get their address from configuration and **do not go through discovery**.
 - `LoadBalancerDefault` is a **weighted** round robin that is safe across virtual threads: each selection reads

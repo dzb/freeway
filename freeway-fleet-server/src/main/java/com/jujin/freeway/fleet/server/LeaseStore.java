@@ -1,4 +1,4 @@
-package com.jujin.freeway.fleet;
+package com.jujin.freeway.fleet.server;
 
 import com.jujin.freeway.cloud.discovery.ServiceHealth;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
@@ -9,10 +9,9 @@ import java.util.List;
  * The lease table behind a registry backend: who is registered, when they were
  * last seen, and whether they are ready.
  *
- * <p>One owner for the storage semantics; the local backend and the Fleet
- * Server both talk to this seam. {@link MemLeaseStore} is the current
- * implementation; a durable PostgreSQL store can replace it without changing
- * the HTTP surface or the local defaults.</p>
+ * <p>One owner for the server's storage semantics. {@link MemLeaseStore} is
+ * the current implementation; a durable PostgreSQL store can replace it without
+ * changing the HTTP surface.</p>
  */
 public interface LeaseStore {
 

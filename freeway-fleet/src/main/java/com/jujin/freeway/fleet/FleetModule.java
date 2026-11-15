@@ -34,8 +34,8 @@ import org.slf4j.LoggerFactory;
  * and the dead one is repopulated by the next heartbeat of every instance
  * (a renew that answers 404 re-asserts the instance on the spot).</p>
  *
- * <p>Place this module <em>alongside</em> {@code CloudModule} (or at least
- * {@code LocalModule}) and name the fleet with
+ * <p>Place this module alongside {@code CloudModule} and {@code RegistrationModule},
+ * and name the fleet with
  * {@code freeway.cloud.registry.nodes}; a token shared with the nodes
  * goes in {@code freeway.cloud.registry.token}. It is one of the
  * alternatives for the same seam — the in-process store is the default, and
@@ -65,7 +65,9 @@ public final class FleetModule implements ModuleEx {
                 OptionalBinding.get(container, com.jujin.freeway.commons.metrics.Metrics.class)))
             .primary();
         b.bind(LoadBalancer.class)
-            .to(LoadBalancerDefault.class)
+            .to((Container container) -> new LoadBalancerDefault(
+                container.get(SymbolSource.class).resolve(
+                    SymbolSpec.of(LoadBalancer.ConfigKeys.LOCAL_ZONE, String.class, ""))))
             .primary();
 
         // Declared vocabulary: a key outside this backend's namespace fails the

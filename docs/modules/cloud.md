@@ -37,15 +37,18 @@ These modules are reached through exactly three layers:
 
 ## Service Registry and Discovery
 
-The same seam (`ServiceRegistry` / `ServiceDiscovery`), four backends; switching = changing the module + changing the keys,
+The same seam (`ServiceRegistry` / `ServiceDiscovery`), three production backends; switching = changing the module + changing the keys,
 with zero changes to business code:
 
 | Backend | Placement | Infrastructure |
 |---|---|---|
-| In-process | `CloudModule` + `RegistrationModule` + `LocalModule` | None — single instance / fixed topology |
-| Static | `StaticModule` | None — fixed endpoint list or VIP, no registration |
+| Static | `StaticModule` | None — fixed endpoint list or VIP, no registration; no write side |
 | **Fleet** | `CloudModule` + `RegistrationModule` + `FleetModule` | Self-deployed `freeway-fleet-server` nodes (1–N freeway applications) |
-| Consul | `CloudModule` + ext `ConsulModule` | Consul cluster |
+| Consul | `CloudModule` + `RegistrationModule` + ext `ConsulModule` | Consul cluster |
+
+There is no public in-process registry module. Tests use a test-scope registry
+fixture (`TestDiscoveryModule` in `freeway-cloud`'s test sources); it is not
+shipped and not a production backend.
 
 Static discovery needs no registry process: `StaticDiscovery` (or
 `StaticModule`) binds a service-id → instance-list map. Several
@@ -105,7 +108,7 @@ are all the same shape; push-style ones such as the K8s informer need no TTL). T
 (grace = max(10×ttl, 30s)); only beyond the window does it throw.
 
 **Policy** (a default the framework provides, not a mandate): a discovery implementation that goes over the network is wrapped with `CachingDiscovery.around(delegate, ttl, metrics)`
-— that is what the fleet does; the in-process store is **not wrapped** (a table lookup already costs 0, and caching would only make it slower);
+— that is what the fleet does; static discovery is not wrapped (a fixed list needs no freshness policy), and
 adapters that bring their own push freshness (the K8s informer) are not wrapped either — they answer `TtlPolicy` with `0`. In other words: **a caching discovery implementation is
 a default the framework provides; whether to wrap is the backend's decision**.
 
@@ -304,12 +307,12 @@ state check.
 | Secrets | `@Inject SecretStore`; secrets can also be resolved as symbols (`@Symbol("db.password")`). Files are re-read when size/mtime changes (rotation without restart) | `freeway.cloud.secret.*` (system properties only) |
 | Object storage | `@Inject ObjectStorage`; `ObjectStoredEvent` / `ObjectDeletedEvent` are published to the event bus | `freeway.cloud.storage.*` |
 
-Every capability has an in-process default (local registry, env/file secrets, filesystem storage, built-in metrics registry) — **a single-node
-deployment needs no backend at all**; an external backend arrives as an adapter, and binding it with `.primary()` takes over.
+Runtime capabilities have local defaults (env/file secrets, filesystem storage, built-in metrics registry); discovery does not:
+static (`StaticModule`) is the zero-infrastructure choice, while registration/dynamic membership needs Fleet or an ext adapter.
 
 **`freeway.cloud.*.type` declares intent; it does not choose an implementation.** The framework never loads by class name (no scanning, no config reflection);
 the selector is the binding: an adapter binds the role with `.primary()`, and the built-in default steps aside. The `type` key is a declaration for humans and adapters;
-when an external backend is declared but no adapter takes over, the local implementation warns once at startup (`BackendTypeGuard`), so the
+when an external backend is declared but no adapter takes over, startup warns once (`BackendTypeGuard`), so the
 declaration does not look like it took effect.
 
 ## Online Rotation of Outbound TLS
@@ -329,7 +332,7 @@ Read at the point of use only where a "live value" is genuinely needed.
 
 **Shutdown is ordered, deliberately so.** The registration hook stops before the HTTP server: set readiness to `draining`,
 deregister first, then wait for `freeway.cloud.registry.shutdown-drain` (default `auto`, with the registry backend answering its own
-propagation window — the in-process one answers 0, an adapter answers its own number), and only then does the server stop accepting. In-flight outbound calls have
+propagation window — the bound adapter answers its own number), and only then does the server stop accepting. In-flight outbound calls have
 `freeway.cloud.rpc.shutdown-grace` (default `5s`) to finish; event mesh peers receive a `1001 going away`
 close frame rather than an RST.
 

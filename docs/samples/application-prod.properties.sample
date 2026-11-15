@@ -142,7 +142,7 @@ freeway.db.migration.enabled=true
 # Service discovery and registry.
 # External backends (Nacos/Consul/K8s/...) need a freeway-ext adapter — none is
 # shipped, so a configured type today logs a startup warning and keeps the
-# built-in local (in-process) registry.
+# a discovery backend (static/Fleet/Consul) binds explicitly.
 # freeway.cloud.discovery.type=
 # freeway.cloud.registry.type=
 # freeway.cloud.registry.service-id=

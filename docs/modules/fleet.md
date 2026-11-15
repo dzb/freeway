@@ -1,46 +1,32 @@
-# Fleet and local discovery
+# Fleet
 
-`freeway-fleet` contains the discovery implementations:
+`freeway-fleet` contains the Fleet client, discovery adapter, registrar and
+wire protocol. It has no server and no in-process registry:
 
-- `LocalModule` — in-process lease store, `LocalRegistrar`,
-  `LocalDiscovery` and the default client-side load balancer;
-- `FleetModule` — Fleet client, `FleetDiscovery`, `FleetRegistrar`
-  and the wire protocol;
-- `LeaseStore` / `MemLeaseStore` — the storage seam shared by the local
-  backend and the Fleet Server.
-
-The registration lifecycle is not in this module. Install
-`RegistrationModule` from `freeway-cloud` to register the HTTP endpoint, renew
-it and publish readiness. Static discovery (`StaticModule`) does not
-use that lifecycle.
+- `FleetModule` — binds the Fleet client, discovery/registrar and client-side
+  load balancer;
+- `FleetClient` — the wire client;
+- `FleetDiscovery` / `FleetRegistrar` — the `ServiceDiscovery` /
+  `ServiceRegistry` adapters;
+- `FleetProtocol` — routes, headers and version shared with the server.
 
 ## Assembly
-
-Fleet backend:
 
 ```java
 FreewayApp.run(
     new HttpModule(),
     new CloudModule(),          // runtime: health, metrics, RPC, ...
     new RegistrationModule(),   // register, renew, readiness, drain
-    new FleetModule()); // Fleet client + client-side load balancer
+    new FleetModule());         // Fleet client + client-side load balancer
 ```
 
-Local single-process backend:
+`RegistrationModule` from `freeway-cloud` drives the lifecycle; the backend
+never carries it. Static discovery (`StaticModule`) does not need registration;
+it has no write side.
 
-```java
-FreewayApp.run(
-    new HttpModule(),
-    new CloudModule(),
-    new RegistrationModule(),
-    new LocalModule());
-```
-
-Applications depend on `freeway-fleet`; they never depend on
-`freeway-fleet-server`. The client module is inert until installed: a dependency
-alone does not require a Fleet process. Once `FleetModule` is placed,
-`freeway.cloud.registry.nodes` must name at least one node, or startup fails
-with the key in the message.
+`freeway-fleet` is inert until installed: a dependency alone does not require a
+Fleet process. Once `FleetModule` is placed, `freeway.cloud.registry.nodes` must
+name at least one node, or startup fails with the key in the message.
 
 ## Configuration
 
@@ -54,8 +40,8 @@ with the key in the message.
 
 `RegistrationModule.ConfigKeys` owns the endpoint identity and drain keys
 (`service-id`, `service-host`, `service-scheme`, `service-port`,
-`service-instance-id`, `shutdown-drain`). `LocalModule.ConfigKeys` owns
-`freeway.cloud.discovery.local-zone`.
+`service-instance-id`, `shutdown-drain`). The default balancer's zone key is
+`LoadBalancer.ConfigKeys.LOCAL_ZONE`.
 
 An empty node list fails startup naming the key. A running Fleet that becomes
 unreachable degrades discovery to the cached membership; a failed registration
@@ -65,8 +51,7 @@ fails startup loudly.
 
 `FleetProtocol` is the single owner of routes, the `X-Registry-Proto` version
 and the token header. The client and the server share that class; the wire path
-remains under `/registry` for compatibility with earlier Fleet clients.
-
+remains under `/registry` because the resource is a registry.
 Writes fan out to every configured node; reads union their answers and
 deduplicate by instance id. A node that answers a heartbeat with 404 makes the
 client report the lost lease so `RegistrationHook` can re-register.

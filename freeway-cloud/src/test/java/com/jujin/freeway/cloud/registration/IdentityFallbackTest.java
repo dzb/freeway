@@ -1,9 +1,7 @@
-package com.jujin.freeway.fleet;
+package com.jujin.freeway.cloud.registration;
 
 import com.jujin.freeway.cloud.CloudModule;
-import com.jujin.freeway.cloud.registration.RegistrationModule;
 import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
-import com.jujin.freeway.cloud.registration.RegistrationModule;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -11,10 +9,10 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
+import com.jujin.freeway.cloud.discovery.TestDiscoveryModule;
 import com.jujin.freeway.cloud.event.PeerHub;
 import com.jujin.freeway.cloud.event.EventMeshModule;
 import com.jujin.freeway.http.HttpModule;
-import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -76,13 +74,13 @@ class IdentityFallbackTest {
     /** Events enabled so the lifecycle hook wires the hub with the mesh origin. */
     private static AppRuntime appWithEvents() {
         System.setProperty(com.jujin.freeway.cloud.event.EventMeshModule.ConfigKeys.EVENT_ENABLED, "true");
-        return FreewayApp.create(new HttpModule()).add(CloudModule.class).add(new RegistrationModule()).add(new LocalModule()).add(new EventMeshModule()).start();
+        return FreewayApp.create(new HttpModule()).add(CloudModule.class).add(new RegistrationModule()).add(new TestDiscoveryModule()).add(new EventMeshModule()).start();
     }
 
     /** Reads the identity HttpDeclaration registered for this app. */
     private static String registeredServiceId(AppRuntime app, String serviceId) {
-        LeaseStore store = app.get(LeaseStore.class);
-        List<ServiceInstance> instances = store.liveReadyInstances(serviceId, Duration.ofMinutes(1));
+        var registry = app.get(TestDiscoveryModule.TestRegistry.class);
+        List<ServiceInstance> instances = registry.instances(serviceId);
         assertFalse(instances.isEmpty(),
             "no instance registered under '" + serviceId + "' — registration identity diverged");
         assertEquals(1, instances.size(), "one HTTP declaration registers one instance");

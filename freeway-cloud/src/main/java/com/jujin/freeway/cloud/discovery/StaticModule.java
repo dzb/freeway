@@ -1,6 +1,8 @@
 package com.jujin.freeway.cloud.discovery;
 
 import com.jujin.freeway.ioc.Binder;
+import com.jujin.freeway.ioc.Container;
+import com.jujin.freeway.ioc.symbol.SymbolSource;
 import com.jujin.freeway.ioc.ModuleEx;
 import java.util.List;
 import java.util.Map;
@@ -12,8 +14,8 @@ import java.util.Objects;
  *
  * <p>It intentionally binds no {@code ServiceRegistry}. Static membership has
  * no registration or heartbeat; an application that requires those should
- * install {@code LocalModule} (in-process) or {@code FleetModule}
- * (dynamic), not a no-op that would make registration look successful.</p>
+ * install {@code RegistrationModule} with {@code FleetModule} (dynamic), not a
+ * no-op that would make registration look successful.</p>
  */
 public final class StaticModule implements ModuleEx {
 
@@ -37,6 +39,11 @@ public final class StaticModule implements ModuleEx {
     @Override
     public void bind(Binder b) {
         b.bind(ServiceDiscovery.class).to(container -> discovery).primary();
-        b.bind(LoadBalancer.class).to(LoadBalancerDefault.class).primary();
+        b.bind(LoadBalancer.class)
+            .to((Container container) -> new LoadBalancerDefault(
+                container.get(SymbolSource.class).resolve(
+                    com.jujin.freeway.ioc.symbol.SymbolSpec.of(
+                        LoadBalancer.ConfigKeys.LOCAL_ZONE, String.class, ""))))
+            .primary();
     }
 }

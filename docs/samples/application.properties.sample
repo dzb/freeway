@@ -289,7 +289,7 @@
 #  Cloud / Discovery & Registry (freeway-cloud)
 # ================================
 
-# Discovery and registry backend types (empty/local = built-in in-process registry;
+# Discovery and registry backend types (empty = no discovery backend (static/Fleet/Consul bind explicitly);
 # external backends need a freeway-ext adapter — none shipped yet).
 # freeway.cloud.discovery.type=
 # freeway.cloud.registry.type=
@@ -303,7 +303,7 @@
 # freeway.cloud.registry.service-scheme=auto
 # freeway.cloud.registry.service-port=
 # freeway.cloud.registry.service-instance-id=
-# shutdown-drain auto: the registry answers the window it needs (in-process 0s,
+# shutdown-drain auto: the registry adapter answers the window it needs,
 # a Nacos/K8s-endpoints adapter its own propagation window).
 # freeway.cloud.registry.shutdown-drain=auto
 

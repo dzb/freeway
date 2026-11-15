@@ -46,7 +46,7 @@ or its CI configuration.
 | `freeway-db` | JDBC, ORM, pooling, transactions, migrations | commons (+ ioc, DbModule only) |
 | `freeway-flow` | Graph workflow engine — 7 node types, v3 DAG format (boot-validated), task vocabulary, branch isolation | ioc + commons |
 | `freeway-cloud` | Cloud runtime — registration lifecycle, remote invocation (JDK HttpClient), event fabric (`MeshEventBus`), observability, resilience, health, secrets, storage, discovery contracts and static discovery | ioc + commons + http (+ boot, test) |
-| `freeway-fleet` | Discovery implementations — local LeaseStore/registrar, Fleet client/protocol; registration lifecycle is in cloud | cloud |
+| `freeway-fleet` | Fleet client/protocol; registration lifecycle and static discovery live in cloud | cloud |
 | `freeway-fleet-server` | Fleet registry server module — standalone with boot + http | fleet + cloud + http |
 
 No module adds an external dependency beyond SLF4J 2.0.18 (declared explicitly

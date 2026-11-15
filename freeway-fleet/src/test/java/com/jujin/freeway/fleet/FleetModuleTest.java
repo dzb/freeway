@@ -37,8 +37,7 @@ class FleetModuleTest {
     @Test
     void binding_the_module_selects_the_fleet_as_the_backend() {
         System.setProperty(HttpModule.ConfigKeys.SERVER_PORT, "0");
-        // No LocalModule here: its lifecycle hook would register through
-        // the fleet at startup, and no node is listening in this test. The
+        // No registration lifecycle here: no node is listening in this test. The
         // assertion is about the bindings, not the lifecycle.
         System.setProperty(FleetModule.ConfigKeys.REGISTRY_NODES, "127.0.0.1:1");
         try (AppRuntime app = FreewayApp.create(new FleetModule()).start()) {
@@ -54,11 +53,10 @@ class FleetModuleTest {
 
     @Test
     void the_module_without_nodes_fails_startup_naming_the_key() {
-        // LocalModule contributes the lifecycle hook that registers at
-        // startup — the thing that actually resolves the node list.
+        // RegistrationModule is the lifecycle that resolves the node list at startup.
         IllegalStateException failure = org.junit.jupiter.api.Assertions.assertThrows(
             IllegalStateException.class,
-            () -> FreewayApp.create(new FleetModule(), new RegistrationModule(), new LocalModule()).start());
+            () -> FreewayApp.create(new FleetModule(), new RegistrationModule()).start());
         assertTrue(causeChain(failure).contains(FleetModule.ConfigKeys.REGISTRY_NODES),
             "the failure must name the key: " + causeChain(failure));
     }
@@ -72,7 +70,7 @@ class FleetModuleTest {
         IllegalStateException failure = org.junit.jupiter.api.Assertions.assertThrows(
             IllegalStateException.class,
             () -> FreewayApp.create(
-                new FleetModule(), new CloudModule(), new RegistrationModule(), new LocalModule(), new HttpModule()).start());
+                new FleetModule(), new CloudModule(), new RegistrationModule(), new HttpModule()).start());
         assertTrue(causeChain(failure).contains("registration")
                 || causeChain(failure).contains("registry node"),
             "an unreachable fleet must fail the registration loudly: " + causeChain(failure));

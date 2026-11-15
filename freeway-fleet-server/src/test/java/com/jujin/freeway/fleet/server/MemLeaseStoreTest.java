@@ -1,4 +1,4 @@
-package com.jujin.freeway.fleet;
+package com.jujin.freeway.fleet.server;
 
 import com.jujin.freeway.cloud.discovery.ServiceEndpoint;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;

@@ -1,4 +1,4 @@
-package com.jujin.freeway.fleet;
+package com.jujin.freeway.fleet.server;
 
 import com.jujin.freeway.cloud.discovery.ServiceHealth;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
@@ -11,9 +11,8 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * In-memory {@link LeaseStore}: the dev/single-process implementation shared
- * by the local discovery backend and the Fleet Server. The server will grow a
- * durable implementation without changing its HTTP surface.
+ * In-memory {@link LeaseStore} implementation for the Fleet Server. A durable
+ * server store can replace it without changing the HTTP surface.
  */
 public final class MemLeaseStore implements LeaseStore {
 

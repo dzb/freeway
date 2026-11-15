@@ -1,8 +1,6 @@
 package com.jujin.freeway.fleet.server;
 
 import com.jujin.freeway.cloud.CloudKeys;
-import com.jujin.freeway.fleet.MemLeaseStore;
-import com.jujin.freeway.fleet.LeaseStore;
 import com.jujin.freeway.fleet.FleetModule;
 import com.jujin.freeway.fleet.FleetProtocol;
 import com.jujin.freeway.http.route.Route;

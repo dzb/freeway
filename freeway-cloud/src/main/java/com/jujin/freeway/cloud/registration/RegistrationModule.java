@@ -15,7 +15,7 @@ import com.jujin.freeway.ioc.RuntimeHook;
  * publish readiness, and unregister during shutdown.
  *
  * <p>This module is deliberately backend-neutral. Install it with
- * {@code LocalModule} for the in-process registry, with
+ * {@code FleetModule} for dynamic discovery, with
  * {@code FleetModule} for a Fleet backend, or with a third-party
  * adapter. Static discovery does not need it: fixed endpoints have no
  * registration lifecycle.</p>

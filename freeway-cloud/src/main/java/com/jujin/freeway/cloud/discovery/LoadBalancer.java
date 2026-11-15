@@ -24,4 +24,12 @@ public interface LoadBalancer {
 
     /** Chooses one instance, or empty when the set is empty. */
     Optional<ServiceInstance> choose(List<ServiceInstance> instances);
+
+    /** Policy keys for the default client-side balancer. */
+    final class ConfigKeys {
+        private ConfigKeys() {}
+
+        /** Preferred zone when instances declare a {@code zone} metadata value. */
+        public static final String LOCAL_ZONE = "freeway.cloud.discovery.local-zone";
+    }
 }

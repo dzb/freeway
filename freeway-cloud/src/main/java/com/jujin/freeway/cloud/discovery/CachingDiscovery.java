@@ -36,9 +36,7 @@ import org.slf4j.LoggerFactory;
  *   <li>an implementation that talks to the network wraps itself —
  *       {@code FleetModule} does it for the fleet, and an adapter such
  *       as Consul does the same in its own module;</li>
- *   <li>the in-process store ({@code LocalDiscovery}) does not wrap:
- *       its answer is a map read, and cache bookkeeping would make it
- *       slower;</li>
+ *   <li>static discovery does not wrap: a fixed list has no freshness policy;</li>
  *   <li>a backend whose freshness is pushed (a Kubernetes informer) does not
  *       wrap, or answers {@link Duration#ZERO} from its {@link TtlPolicy}.</li>
  * </ul>
