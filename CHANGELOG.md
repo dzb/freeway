@@ -357,10 +357,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   private constructor. `DbModule` binds one selected `Dialect` service and a custom
   dialect is still bound by id; built-in ids resolve through the `Dialect.ofId`
   catalog, so four dialect instances are no longer hand-bound. `Orm`'s
-  select/insert/update/delete all go through the `Sql` builder (H2 `MERGE` still
-  takes the dialect's full-statement rendering); `Sql.offset(n)` now supports
+  select/insert/update/delete all go through the `Sql` builder (H2's complete
+  `MERGE` now goes through the shared upsert seam); `Sql.offset(n)` now supports
   offset-only and lets the dialect render the spelling —
   `LIMIT -1 OFFSET` / `OFFSET n ROWS` and so on.
+- **DB upsert has one renderer** (`freeway-db`): `Orm.save` and `Sql.onConflict`
+  both route through `Dialect.upsertStatement(Upsert)`; H2 renders a complete
+  `MERGE`, while PostgreSQL/SQLite/MySQL keep their INSERT-suffix grammar.
+  `supportsMergeUpsert`/`mergeUpsertStatement` are gone, and H2 now rejects a
+  partial `doUpdateSet` because its compact MERGE refreshes every non-key column.
 - **Startup config file layer gets one owner** (freeway-boot): the new
   `ConfigFilePlan` owns the standard file names, their role, precedence, reading
   and snapshotting. `ConfigCascade` first selects a profile from a base snapshot

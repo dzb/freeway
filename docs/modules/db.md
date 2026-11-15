@@ -58,7 +58,7 @@
   User u = orm.findById(User.class, 1L).orElseThrow();
   db.execute("DELETE FROM users WHERE id = ?", 1L);
 
-  // 9. Upsert (id is null → INSERT; id has a value → ON CONFLICT DO UPDATE)
+  // 9. Upsert (id is null → INSERT; id has a value → dialect upsert: ON CONFLICT / ON DUPLICATE / H2 MERGE)
   orm.save(new User(null, "Bob", null, "bob@example.com", null));  // INSERT
   // orm.save(existingUser);                                        // UPSERT
 
@@ -674,8 +674,8 @@ There is no need to override `quoteName()` or `needsQuoting()`—their default i
 ```java
 @Override
 public boolean supportsReturning() {
-    return true;   // PG/H2/SQLite 3.35+
-    // or false   // MySQL
+    return true;   // PG/SQLite 3.35+
+    // or false   // MySQL, H2 (H2 uses MERGE for upsert, not RETURNING)
 }
 ```
 
@@ -684,8 +684,8 @@ public boolean supportsReturning() {
 ```java
 @Override
 public boolean supportsOnConflict() {
-    return true;   // PG/SQLite/H2
-    // or false   // MySQL (MySQL uses ON DUPLICATE KEY)
+    return true;   // PG/SQLite
+    // or false   // MySQL (ON DUPLICATE KEY), H2 (prepared upsert uses MERGE)
 }
 ```
 
@@ -919,9 +919,10 @@ Add to `SchemaGeneratorTest.java`:
 
 ```java
 @Test
-void oracleUpsertUsesMerge() {
-    String clause = new OracleDialect().upsertClause(List.of("id"), List.of("name"));
-    assertEquals(" MERGE ...", clause);
+void oracleUpsertUsesCompleteStatement() {
+    Upsert upsert = new Upsert(
+        "users", List.of("id", "name"), "?, ?", List.of("id"), List.of("name"), false);
+    assertTrue(new OracleDialect().upsertStatement(upsert).startsWith("MERGE INTO"));
 }
 
 @Test
@@ -943,7 +944,7 @@ void oracleDialectId() {
 - `supportsIndexIfNotExists()`
 - `backslashEscapesStrings()` (when overridden)
 - `dialectId()`
-- `upsertClause()` — 2-arg signature
+- `upsertStatement()` — complete dialect statement (H2/custom MERGE)
 - `truncateTable()`
 - `forUpdateClause()`
 - `defaultBinaryType()`
@@ -998,7 +999,8 @@ public final class XxxDialect implements Dialect {
     // ====================== Override as needed ======================
 
     // truncate: if RESTART IDENTITY or DELETE FROM is needed
-    // upsertClause: if the ON CONFLICT syntax differs
+    // upsertClause: if the INSERT-suffix ON CONFLICT syntax differs
+    // upsertStatement: if the dialect needs a complete MERGE-style statement
     // supportsIndexIfNotExists + existingIndexes: if IF NOT EXISTS is not supported
     // forUpdateClause: if FOR UPDATE is not supported
     // generatedTypeOverride: if the auto-increment column needs a specific type
@@ -1022,16 +1024,16 @@ public final class XxxDialect implements Dialect {
 | `defaultUUIDType` | `UUID` | `VARCHAR(36)` | `TEXT` | `UUID` |
 | `defaultInstantType` | `TIMESTAMP WITH TIME ZONE` | `DATETIME(6)` | `TEXT` | `TIMESTAMP WITH TIME ZONE` (default) |
 | `defaultBinaryType` | `BYTEA` | `LONGBLOB` | `BLOB` | `BINARY VARYING` |
-| `supportsReturning` | ✓ | ✗ | ✓ | ✓ |
-| `supportsOnConflict` | ✓ | ✗ | ✓ | ✓ |
-| `supportsTransactionalDdl` | ✓ (default) | ✗ (overridden) | ✓ (default) | ✓ (default) |
+| `supportsReturning` | ✓ | ✗ | ✓ | ✗ |
+| `supportsOnConflict` | ✓ | ✗ | ✓ | ✗ |
+| `supportsTransactionalDdl` | ✓ (default) | ✗ (overridden) | ✓ (default) | ✗ (overridden) |
 | `supportsIndexIfNotExists` | ✓ | ✗ | ✓ | ✓ |
 | `hashLineComments` | ✗ (default) | ✓ (overridden) | ✗ (default) | ✗ (default) |
 | `dollarQuoting` | ✓ (overridden) | ✗ (default) | ✗ (default) | ✓ (inherits PG) |
 | `escapeStringPrefix` | ✓ (overridden) | ✗ (default) | ✗ (default) | ✓ (inherits PG) |
 | `backslashEscapesStrings` | ✗ (default) | ✓ (overridden) | ✗ (default) | ✗ (default) |
 | `forUpdateClause` | `FOR UPDATE` | `FOR UPDATE` | `""` | `FOR UPDATE` |
-| `upsertClause` | `ON CONFLICT ... EXCLUDED` | `ON DUPLICATE KEY ... VALUES` | `ON CONFLICT ... EXCLUDED` | `ON CONFLICT ... EXCLUDED` (default) |
+| upsert rendering | `upsertClause` | `upsertClause` | `upsertClause` | `upsertStatement` → `MERGE` |
 | `truncateTable` | `TRUNCATE ... RESTART IDENTITY` | `TRUNCATE ...` (default) | `DELETE FROM ...` | `TRUNCATE ... RESTART IDENTITY` |
 | `dropTableCascade` | **overridden** (DROP ... CASCADE) | default | default | default |
 | `generatedPrimaryKeyInline` | default | default | **overridden** (AUTOINCREMENT inline on the primary key column) | default |
@@ -1053,7 +1055,8 @@ When adding a dialect, check each item:
 - [ ] `supportsOnConflict()` correct
 - [ ] `defaultBinaryType()` correct
 - [ ] `defaultInstantType()` overridden as needed
-- [ ] `upsertClause()` overridden as needed (when the syntax differs from PG)
+- [ ] `upsertClause()` overridden as needed (when the INSERT-suffix syntax differs from PG)
+- [ ] `upsertStatement()` overridden when the dialect needs a complete MERGE-style statement
 - [ ] `truncateTable()` overridden as needed
 - [ ] `supportsIndexIfNotExists()` + `existingIndexes()` paired
 - [ ] `forUpdateClause()` overridden as needed
@@ -1065,5 +1068,5 @@ When adding a dialect, check each item:
 - [ ] `Dialect.ofId()` registration (`id` consistent with `dialectId()`)
 - [ ] `Dialect.of()` URL detection (case-insensitive; unknown schemes fail fast)
 - [ ] `dialectId()` unit test
-- [ ] `upsertClause()` unit test
+- [ ] `upsertStatement()` test when overridden
 - [ ] DDL generation integration test

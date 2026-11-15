@@ -161,7 +161,7 @@ db.query(sql).list(UserOrderView.class);
 
 `Sql` is a fluent, immutable builder. Roots are `select`, `insert`, `update`, and `delete`; clauses cover CTEs (`with`), `from`, `join` / `leftJoin` / `innerJoin`, `on`, `where` / `orWhere` / `whereNot` and their grouped variants, `groupBy` / `having`, `orderBy`, `limit` / `offset`, `union` / `unionAll`, `value`, `setExpression`, `returning`, and `onConflict(...).doUpdateSet(...)` / `doNothing()`.
 
-`db.query(sql)` and `db.execute(sql)` render with the database's dialect and validate capability flags before execution: `RETURNING` or `ON CONFLICT` on a dialect that lacks it fails with `SqlException` instead of reaching the database. `INSERT ... RETURNING` must be consumed through `db.query(sql)` - `db.execute(sql)` discards the returned rows and reports only affected rows and one generated key. `onConflict` takes column names; the dialect renders its own spelling (`ON CONFLICT ... DO UPDATE SET ... EXCLUDED` or `ON DUPLICATE KEY UPDATE ... VALUES(...)`). Use `sql.toSql(dialect)` and `sql.args()` when executing manually.
+`db.query(sql)` and `db.execute(sql)` render with the database's dialect and validate capability flags before execution: `RETURNING`, or an unsupported conflict action, fails with `SqlException` instead of reaching the database. `INSERT ... RETURNING` must be consumed through `db.query(sql)` - `db.execute(sql)` discards the returned rows and reports only affected rows and one generated key. `onConflict` takes column names; the dialect renders its own spelling (`ON CONFLICT ... DO UPDATE SET ... EXCLUDED`, `ON DUPLICATE KEY UPDATE ... VALUES(...)`, or H2 `MERGE`). Use `sql.toSql(dialect)` and `sql.args()` when executing manually.
 
 ## ORM
 
@@ -225,7 +225,7 @@ PoolConfig tuned = PoolConfig.defaults(url, user, pass)
 
 ## Dialects
 
-The dialect controls generated DDL - identifier quoting, generated/auto-increment clauses, type mapping defaults, and schema-introspection queries - plus SQL syntax capability flags and single-clause mappings (`upsert`, `for update`, offset-only pagination, `truncate`).
+The dialect controls generated DDL - identifier quoting, generated/auto-increment clauses, type mapping defaults, and schema-introspection queries - plus SQL syntax capability flags, single-clause mappings (`for update`, offset-only pagination, `truncate`), and the complete `upsertStatement(...)` seam.
 
 Selection is by id. With an explicit `freeway.db.dialect=<id>`, a user binding `Dialect@<id>` is checked first, then the built-in catalog `Dialect.ofId(id)`; an unknown id fails startup. Without config, the id is detected from the JDBC URL, and the detected id is resolved through user bindings before the built-in catalog; an H2 URL keeps the mode-aware `H2Dialect` built from its `MODE` instead. A blank URL is the only case that defaults to `PostgresDialect`; an unrecognized URL scheme fails fast instead of falling back to PostgreSQL.
 

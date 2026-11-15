@@ -1674,6 +1674,7 @@ The conflict clause takes **column names**, not raw assignments, so the dialect 
 ```java
 // PostgreSQL: ... ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name
 // MySQL:      ... ON DUPLICATE KEY UPDATE name = VALUES(name)
+// H2:         ... MERGE INTO ... KEY (id) VALUES (...)
 Sql upsert = Sql.insert("users")
     .value("id", id).value("name", name)
     .onConflict("id").doUpdateSet("name");
