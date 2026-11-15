@@ -634,6 +634,14 @@ Current choice:
 > Do not build a data plane before the requirement. A control plane that also
 > proxies traffic has become two products with one failure domain.
 
+This is a confirmed non-goal for the current boundary, not a deferred backlog
+item. Nginx, Envoy, HAProxy, Kubernetes Service/Ingress and cloud load balancers
+already cover server-side LB; Freeway should not duplicate them. Revisit only if
+a Freeway-specific requirement appears that those products cannot express:
+Fleet-aware dynamic upstreams, Freeway context/trace propagation at the entry,
+or coordinated SSE/WebSocket drain. Until then, server-side LB is an external
+deployment choice.
+
 ### 12.8 One namespace, one migration
 
 The Fleet upgrade was taken as a whole:
@@ -662,7 +670,7 @@ config vocabulary and KnownKeys.
 | `freeway-fleet-protocol` artifact | a shared contract is compiled, not imported from `internal` |
 | `/fleet`, `X-Fleet-*`, `freeway.fleet.*` | module, wire, config and protocol say one word |
 | ext no longer imports `cloud.internal` | promote the smallest public contract |
-| gateway deferred; client LB + external ingress | don't add a data plane without a requirement |
+| gateway is a non-goal; client LB + external ingress | mature data planes exist; duplicate only for a Freeway-specific need |
 | Fleet stays in ext, no separate repo yet | split by real release/ownership pressure, not aesthetics |
 | H2 embedded, not shared-file HA | document the limit instead of pretending it is a cluster |
 
