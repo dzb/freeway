@@ -156,6 +156,21 @@ public final class H2Dialect implements Dialect {
             throw new SqlException(
                 "H2 does not support ON CONFLICT DO NOTHING; use doUpdateSet(...)");
         }
+        // H2's compact MERGE refreshes every non-key column. A partial
+        // doUpdateSet cannot be honored by that shape, so reject it instead of
+        // silently overwriting columns the caller did not name.
+        Set<String> keySet = upsert.conflictColumns().stream()
+            .map(H2Dialect::bare).collect(Collectors.toSet());
+        Set<String> updates = upsert.updateColumns().stream()
+            .map(H2Dialect::bare).collect(Collectors.toSet());
+        for (String column : upsert.columns()) {
+            String bare = bare(column);
+            if (!keySet.contains(bare) && !updates.contains(bare)) {
+                throw new SqlException(
+                    "H2 MERGE updates every non-key column; doUpdateSet(...) must list '"
+                        + bare + "' or use a dialect with UPDATE-set upsert support");
+            }
+        }
         String cols = upsert.columns().stream().map(this::identifier)
             .collect(Collectors.joining(", "));
         String keys = upsert.conflictColumns().stream().map(this::quoteName)
@@ -166,6 +181,13 @@ public final class H2Dialect implements Dialect {
 
     private String identifier(String value) {
         return value.startsWith("\"") ? value : quoteName(value);
+    }
+
+    private static String bare(String value) {
+        if (value.length() >= 2 && value.startsWith("\"") && value.endsWith("\"")) {
+            return value.substring(1, value.length() - 1).replace("\"\"", "\"");
+        }
+        return value;
     }
 
     @Override

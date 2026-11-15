@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Live H2 checks for the capabilities the dialect declares. These are
@@ -61,6 +62,15 @@ class H2DialectLiveTest {
             assertEquals("c", db.query("SELECT name FROM h2_live WHERE id = 2")
                 .one(String.class).orElse(null));
         }
+    }
+
+    @Test
+    void h2MergeRejectsAPartialUpdateSet() {
+        H2Dialect dialect = new H2Dialect(H2Mode.NATIVE);
+        SqlException ex = assertThrows(SqlException.class, () -> dialect.upsertStatement(
+            new Upsert("h2_live", List.of("id", "name", "extra"), "?, ?, ?",
+                List.of("id"), List.of("name"), false)));
+        assertTrue(ex.getMessage().contains("updates every non-key column"), ex.getMessage());
     }
 
     @Test
