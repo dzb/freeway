@@ -68,16 +68,16 @@ public final class ContextModule implements ModuleEx {
                 }
             };
         });
-        b.contribute(ContextCodec.class).add("freeway.cloud.propagation.trace", new TraceCodec());
+        b.contribute(ContextCodec.class).add("freeway.cloud.context.trace", new TraceCodec());
         // Container-created so the auth codec can read the
         // freeway.cloud.auth.extract.enabled switch from the SymbolSource.
         b.contribute(ContextCodec.class).addDeferred(AuthCodec.class);
-        // After trace/auth: their extract() leaves unset baggage as null, so
+        // After trace/auth: their decode() leaves unset baggage as null, so
         // the merge keeps the baggage parsed here (null wins only when absent).
-        b.contribute(ContextCodec.class).add("freeway.cloud.propagation.baggage", new BaggageCodec());
+        b.contribute(ContextCodec.class).add("freeway.cloud.context.baggage", new BaggageCodec());
         b.contribute(HttpFilter.class).addDeferred(PropagationFilter.class);
     }
-    /** Keys read by context propagation. */
+    /** Keys read by the context codecs. */
     public static final class ConfigKeys {
         private ConfigKeys() {}
         public static final String AUTH_EXTRACT_ENABLED = "freeway.cloud.auth.extract.enabled";

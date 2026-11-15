@@ -15,16 +15,17 @@ import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Freeway;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * {@code PropagationFilter} is itself a deferred contribution. Resolving its
- * bridge list in the constructor used to freeze the modules that happened
+ * codec list in the constructor used to freeze the modules that happened
  * to publish before it; the lazy supplier reads the sealed store instead.
  */
 class PropagationFilterContributionTest {
 
     public static final class LateContextCodec implements ContextCodec {
-        static final AtomicInteger EXTRACTED = new AtomicInteger();
+        static final AtomicInteger DECODED = new AtomicInteger();
 
         @Override
         public void encode(InvocationContext ctx, Map<String, String> headers) {
@@ -32,14 +33,25 @@ class PropagationFilterContributionTest {
 
         @Override
         public InvocationContext decode(Map<String, String> headers) {
-            EXTRACTED.incrementAndGet();
+            DECODED.incrementAndGet();
             return null;
         }
     }
 
     @Test
-    void bridgeContributedAfterTheModuleReachesTheFilter() throws Exception {
-        LateContextCodec.EXTRACTED.set(0);
+    void contextCodecIdsUseTheContextVocabulary() {
+        try (Container container = Freeway.create(new ContextModule())) {
+            Map<String, ContextCodec> codecs = container.extension(ContextCodec.class).asMap();
+            assertTrue(codecs.containsKey("freeway.cloud.context.trace"), codecs.keySet().toString());
+            assertTrue(codecs.containsKey("freeway.cloud.context.baggage"), codecs.keySet().toString());
+            assertTrue(codecs.keySet().stream().noneMatch(id -> id.contains("propagation")),
+                "the codec vocabulary must not leak the old propagation ids: " + codecs.keySet());
+        }
+    }
+
+    @Test
+    void codecContributedAfterTheModuleReachesTheFilter() throws Exception {
+        LateContextCodec.DECODED.set(0);
         Container container = Freeway.create(
             new ContextModule(),
             binder -> binder.contribute(ContextCodec.class).addDeferred(LateContextCodec.class)
@@ -72,7 +84,7 @@ class PropagationFilterContributionTest {
             RouteHandler handler = ctx -> next.incrementAndGet();
             filter.doFilter(context, handler);
 
-            assertEquals(1, LateContextCodec.EXTRACTED.get(),
+            assertEquals(1, LateContextCodec.DECODED.get(),
                 "a ContextCodec contributed after ContextModule must reach the filter");
             assertEquals(1, next.get());
         } finally {
