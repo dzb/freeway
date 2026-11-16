@@ -1,7 +1,7 @@
 <div align="center">
-  <img width="72" src=".github/assets/logo.png" alt="Freeway Framework logo">
-  <h1>Freeway Framework</h1>
-  <p><strong>Modern, concise, compose-first Java for JDK 25+.</strong></p>
+  <img width="64" src=".github/assets/logo.png" alt="Freeway Framework logo">
+  <h2>Freeway Framework</h2>
+  <p><sub><strong>Modern, concise, compose-first Java for JDK 25+.</strong></sub></p>
   <p><sub>IoC · HTTP · DB · Flow · Cloud — one coherent stack.<br>
   No classpath scanning. No bytecode weaving. No runtime dependencies beyond the SLF4J API.</sub></p>
   <p>
@@ -17,11 +17,11 @@
 
 Freeway is an exercise in engineering taste: every API states its intent, every concept pulls its weight, and **every shared fact has one owner**. The result is a framework that is complete without being bloated — predictable for humans and coding agents alike.
 
-<p align="center"><sub><a href="#quick-start">Quick Start</a> · <a href="#modules">Modules</a> · <a href="#runtime">Runtime</a> · <a href="#documentation--extensions">Documentation &amp; extensions</a> · <a href="#license">License</a></sub></p>
+<p align="center"><sub><a href="#quick-start">Quick Start</a> · <a href="#modules">Modules</a> · <a href="#runtime">Runtime</a> · <a href="#documentation--extensions">Documentation &amp; extensions</a></sub></p>
 
-> **Verified:** core **2,543 tests** · ext **188 tests** · 0 failures, 0 errors, 0 skipped.
+<p align="center"><sub><strong>Verified:</strong> core <strong>2,543 tests</strong> · ext <strong>188 tests</strong> · 0 failures, 0 errors, 0 skipped.</sub></p>
 
-## Quick Start
+### Quick Start
 
 Add only the modules you need. The snippets use `${freeway.version}`; use `2.0.0` for the current release.
 
@@ -92,17 +92,25 @@ curl http://localhost:8080/users/42   # {"id":"42","name":"Alice"}
 A runnable REST + DB sample with validation, ORM, transactions and a fat-jar
 smoke path lives in [`demo/rest-db`](demo/rest-db/README.md).
 
-## Modules
+### Modules
 
-| Module | What it provides |
-|---|---|
-| **`freeway-commons`** | JSON, coercion, validation, scoped primitives and logging |
-| **`freeway-ioc`** | Container and binding DSL, injection, scopes, contributions, AOP, EventBus |
-| **`freeway-boot`** | Launcher, config cascade, profiles and runtime lifecycle |
-| **`freeway-http`** | Routing, filters, static resources, multipart, SSE and WebSocket |
-| **`freeway-db`** | JDBC, ORM, pooling, transactions, schema and migrations |
-| **`freeway-flow`** | Graph workflow engine: 7 node types, v3 DAG format, `@name` tasks |
-| **`freeway-cloud`** | Registration lifecycle, RPC, event mesh, observability, resilience, health, secrets, storage and static discovery |
+<table>
+  <thead>
+    <tr>
+      <th align="left" width="200">Module</th>
+      <th align="left">What it provides</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td nowrap>freeway-commons</td><td>JSON, coercion, validation, scoped primitives and logging</td></tr>
+    <tr><td nowrap>freeway-ioc</td><td>Container and binding DSL, injection, scopes, contributions, AOP, EventBus</td></tr>
+    <tr><td nowrap>freeway-boot</td><td>Launcher, config cascade, profiles and runtime lifecycle</td></tr>
+    <tr><td nowrap>freeway-http</td><td>Routing, filters, static resources, multipart, SSE and WebSocket</td></tr>
+    <tr><td nowrap>freeway-db</td><td>JDBC, ORM, pooling, transactions, schema and migrations</td></tr>
+    <tr><td nowrap>freeway-flow</td><td>Graph workflow engine: 7 node types, v3 DAG format, <code>@name</code> tasks</td></tr>
+    <tr><td nowrap>freeway-cloud</td><td>Registration lifecycle, RPC, event mesh, observability, resilience, health, secrets, storage and static discovery</td></tr>
+  </tbody>
+</table>
 
 <details>
 <summary><strong>Module details</strong></summary>
@@ -125,17 +133,25 @@ smoke path lives in [`demo/rest-db`](demo/rest-db/README.md).
 
 Third-party adapters live in **[freeway-ext](https://github.com/dzb/freeway-ext)**:
 
-| Module | Purpose |
-|---|---|
-| **`freeway-http-undertow`** | Undertow engine adapter |
-| **`freeway-http-jetty`** | Jetty 12 engine adapter |
-| **`freeway-db-hikari`** | HikariCP pool adapter |
-| **`freeway-cloud-consul`** | Consul registry/discovery adapter |
-| **`freeway-mq-kafka`** | Kafka durable event plane (`KafkaEvents`) |
+<table>
+  <thead>
+    <tr>
+      <th align="left" width="220">Module</th>
+      <th align="left">Purpose</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td nowrap>freeway-http-undertow</td><td>Undertow engine adapter</td></tr>
+    <tr><td nowrap>freeway-http-jetty</td><td>Jetty 12 engine adapter</td></tr>
+    <tr><td nowrap>freeway-db-hikari</td><td>HikariCP pool adapter</td></tr>
+    <tr><td nowrap>freeway-cloud-consul</td><td>Consul registry/discovery adapter</td></tr>
+    <tr><td nowrap>freeway-mq-kafka</td><td>Kafka durable event plane (<code>KafkaEvents</code>)</td></tr>
+  </tbody>
+</table>
 
-## Runtime
+### Runtime
 
-### Configuration
+#### Configuration
 
 The cascade runs lowest to highest:
 
@@ -148,7 +164,7 @@ The cascade runs lowest to highest:
 
 Activate a profile with `--freeway.profile=dev`. The environment prefix is replaceable (`-Dfreeway.env.prefix=APP_`). Every key is declared in full in its module's `ConfigKeys` and documented in [docs/configuration.md](docs/configuration.md).
 
-### Logging
+#### Logging
 
 Freeway uses the SLF4J 2 API and ships a JUL-backed provider as the fallback. At startup it detects an external provider (Logback, Log4j, slf4j-simple) and lets it win; an explicit `-Dslf4j.provider` is always respected. Configure the built-in provider with `freeway-logging.properties` on the classpath root or with `-D` flags:
 
@@ -163,7 +179,7 @@ freeway.log.file.compress=true
 
 Route named files and per-logger levels with `freeway.log.files` and any `*.level` key. Full reference: [docs/reference/logging.properties.reference](docs/reference/logging.properties.reference).
 
-### Build
+#### Build
 
 Requires JDK 25+.
 
@@ -174,9 +190,9 @@ mvn -pl freeway-http -am test      # module plus its dependencies
 mvn -Pdemos -DskipTests compile    # compile the in-repo consumers
 ```
 
-## Documentation & extensions
+### Documentation & extensions
 
-### Documentation
+#### Documentation
 
 The documentation index is [`docs/README.md`](docs/README.md). Highlights:
 
@@ -191,7 +207,7 @@ The documentation index is [`docs/README.md`](docs/README.md). Highlights:
 
 Framework comparisons and engineering evaluations are reference-only and live under [`demo/reference/`](demo/reference/); they are not part of the normative documentation.
 
-### Extensions
+#### Extensions
 
 Adapters and add-ons are released in **[freeway-ext](https://github.com/dzb/freeway-ext)** at the same version as the core. Add the modules you need:
 
@@ -293,6 +309,4 @@ mvn clean test
 
 </details>
 
-## License
-
-[Apache 2.0](LICENSE)
+<p align="center"><sub>Licensed under <a href="LICENSE">Apache 2.0</a>.</sub></p>
