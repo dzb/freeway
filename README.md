@@ -1,4 +1,4 @@
-# Freeway Framework
+# Freeway 2
 
 A modern, concise, compose-first Java application framework for JDK 25+.
 IoC, HTTP, DB, Flow and Cloud are one coherent stack: no classpath scanning, no
