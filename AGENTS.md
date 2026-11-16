@@ -145,7 +145,7 @@ The test is whether the container exists when the code is written:
 - code written after composition resolves by `@Inject` / `@Symbol` constructor
   injection instead.
 
-Pass a capability, not the container: `ResolvableHandler` takes a
+Pass a capability, not the container: `PendingHandler` takes a
 `Supplier<RouteHandler>` so the route package never names `Container`. In
 shipped code, keep `container.*` calls where composition happens (for example
 `HttpModule`); tests are assembly points and may hold containers. A class-based

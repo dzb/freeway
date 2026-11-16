@@ -92,7 +92,7 @@ public final class BeanPlan {
     }
 
     /** Returns true if the type has a usable constructor. */
-    public boolean isConstructable() {
+    public boolean hasConstructor() {
         return constructor != null;
     }
 

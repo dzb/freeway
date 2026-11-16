@@ -196,7 +196,7 @@ public record KnownKeys(Set<String> prefixes, Set<String> keys) {
      * so the more specific of two declarations names the namespace the key
      * actually lives in.
      */
-    public String namespaceUnder(String key) {
+    public String namespaceOf(String key) {
         if (key == null) {
             return null;
         }

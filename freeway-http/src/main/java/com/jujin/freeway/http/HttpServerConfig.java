@@ -190,7 +190,7 @@ public record HttpServerConfig(
      *
      * <p>{@code freeway.http.h2.*} is not carried: the reset guard belongs to
      * the built-in engine — {@code HttpModule} reads those keys into
-     * {@code FreewayHttpEngine.Wiring}; a standalone caller passes
+     * {@code FreewayHttpEngine.Options}; a standalone caller passes
      * {@code withH2Reset} directly.
      */
     public static HttpServerConfig from(SymbolSource symbols) {

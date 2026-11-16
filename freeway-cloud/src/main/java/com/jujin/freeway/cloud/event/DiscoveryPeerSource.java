@@ -14,7 +14,7 @@ import com.jujin.freeway.cloud.discovery.ServiceDiscovery;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 
 /**
- * Feeds the mesh's discovered peer set from the bound {@link ServiceDiscovery}:
+ * Supplies the mesh's discovered peer set from the bound {@link ServiceDiscovery}:
  * on every tick it asks for the instances of this node's own service and hands
  * the whole answer — this node excluded — to
  * {@code MeshEventBus#replaceDiscoveredPeers}.
@@ -31,9 +31,9 @@ import com.jujin.freeway.cloud.discovery.ServiceInstance;
  * identity — a node cannot be fed an address it would dial on the wrong
  * scheme.</p>
  */
-final class DiscoveryPeerFeeder implements AutoCloseable {
+final class DiscoveryPeerSource implements AutoCloseable {
 
-    private static final Logger LOG = LoggerFactory.getLogger(DiscoveryPeerFeeder.class);
+    private static final Logger LOG = LoggerFactory.getLogger(DiscoveryPeerSource.class);
 
     private final ServiceDiscovery discovery;
     private final String serviceId;
@@ -42,7 +42,7 @@ final class DiscoveryPeerFeeder implements AutoCloseable {
     private final long intervalMillis;
     private volatile ScheduledExecutorService scheduler;
 
-    DiscoveryPeerFeeder(ServiceDiscovery discovery, String serviceId, String selfInstanceId,
+    DiscoveryPeerSource(ServiceDiscovery discovery, String serviceId, String selfInstanceId,
                         Consumer<List<String>> sink, long intervalMillis) {
         this.discovery = Objects.requireNonNull(discovery, "discovery");
         this.serviceId = Objects.requireNonNull(serviceId, "serviceId");
@@ -54,20 +54,20 @@ final class DiscoveryPeerFeeder implements AutoCloseable {
         this.intervalMillis = intervalMillis;
     }
 
-    /** Feeds once, immediately, then on every tick until {@link #close()}. */
+    /** Polls once, immediately, then on every tick until {@link #close()}. */
     void start() {
         scheduler = Executors.newSingleThreadScheduledExecutor(
-            Thread.ofVirtual().name("cloud-event-peer-feed-", 0).factory());
-        scheduler.scheduleWithFixedDelay(this::feedOnce, 0, intervalMillis, TimeUnit.MILLISECONDS);
+            Thread.ofVirtual().name("cloud-event-peer-source-", 0).factory());
+        scheduler.scheduleWithFixedDelay(this::pollOnce, 0, intervalMillis, TimeUnit.MILLISECONDS);
     }
 
     /** One poll: discovery's answer, this node excluded, as one whole snapshot. */
-    void feedOnce() {
+    void pollOnce() {
         List<ServiceInstance> found;
         try {
             found = discovery.instances(serviceId);
         } catch (RuntimeException e) {
-            LOG.warn("Mesh peer feed skipped — discovery lookup for '{}' failed: {}",
+            LOG.warn("Mesh peer poll skipped — discovery lookup for '{}' failed: {}",
                 serviceId, String.valueOf(e.getMessage()));
             return;
         }
@@ -84,7 +84,7 @@ final class DiscoveryPeerFeeder implements AutoCloseable {
                 peers.add(peerHost + ":" + instance.endpoint().port());;
         }
         sink.accept(List.copyOf(peers));
-        LOG.debug("Mesh peer feed: service '{}' → {} discovered peer(s)", serviceId, peers.size());
+        LOG.debug("Mesh peer poll: service '{}' → {} discovered peer(s)", serviceId, peers.size());
     }
 
     @Override

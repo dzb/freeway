@@ -93,10 +93,10 @@ class BeanPlanTest {
     }
 
     @Test
-    void nonConstructableBeanIsUnisConstructable() {
+    void beanWithoutConstructorHasNoConstructor() {
         BeanPlan plan = BeanIntrospector.plan(NoDefaultConstructor.class);
 
-        assertFalse(plan.isConstructable());
+        assertFalse(plan.hasConstructor());
     }
 
     private record Point(@Marker int x, @Marker String name) {
@@ -270,7 +270,7 @@ class BeanPlanTest {
         // back to publicLookup, so JDK types introspect to a zero-property
         // plan instead of failing.
         BeanPlan plan = BeanIntrospector.plan(Object.class);
-        assertTrue(plan.isConstructable());
+        assertTrue(plan.hasConstructor());
         assertEquals(0, plan.properties().size());
     }
 
@@ -281,17 +281,17 @@ class BeanPlanTest {
         // are not introspected, and the resulting plan carries deterministic
         // semantics for each shape.
         BeanPlan object = BeanIntrospector.plan(Object.class);
-        assertTrue(object.isConstructable());
+        assertTrue(object.hasConstructor());
         assertEquals(0, object.properties().size());
 
         BeanPlan arrayList = BeanIntrospector.plan(ArrayList.class);
-        assertTrue(arrayList.isConstructable(),
+        assertTrue(arrayList.hasConstructor(),
             "public no-arg constructor must be reachable via publicLookup");
         assertEquals(0, arrayList.properties().size(),
             "JDK fields must not be introspected");
 
         BeanPlan integer = BeanIntrospector.plan(Integer.class);
-        assertFalse(integer.isConstructable(),
+        assertFalse(integer.hasConstructor(),
             "no no-arg constructor -> non-constructable, not an error");
         assertEquals(0, integer.properties().size());
 

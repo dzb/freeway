@@ -44,7 +44,7 @@ public final class PeerHub implements WebSocketEndpoint {
     private static final Logger LOG = LoggerFactory.getLogger(PeerHub.class);
 
     private final Map<String, PeerConnection> peers = new ConcurrentHashMap<>();
-    /** Keepalive probe interval for inbound sessions; 0 = off (see Wiring). */
+    /** Keepalive probe interval for inbound sessions; 0 = off (see Options). */
     private volatile long keepaliveMs;
     /** Pre-hello admission window; 0 disables the timer (tests, embedded). */
     private volatile long handshakeTimeoutMs;
@@ -63,35 +63,44 @@ public final class PeerHub implements WebSocketEndpoint {
     private volatile boolean wired;
 
     /**
-     * One-shot wiring for the hub — every cross-module input in one place,
-     * so the values cannot drift apart at a call site.
-     *
-     * @param facade     the MeshEventBus owning subscriptions and delivery
-     * @param codec      JSON codec for frames and acks
-     * @param serviceId  logical service id (envelope source)
-     * @param instanceId this node's mesh identity; blank derives one
-     * @param token       mesh handshake token (blank = peer auth off)
-     * @param keepaliveMs ping interval for half-open detection; 0 = off
+     * Required collaborators for the hub: the mesh facade it drives and the
+     * codec it uses for frames. These are object dependencies, not options.
      */
-    record Wiring(
-        MeshEventBus facade,
-        JsonCodec codec,
+    record Deps(MeshEventBus facade, JsonCodec codec) {
+        Deps {
+            facade = Objects.requireNonNull(facade, "facade");
+            codec = Objects.requireNonNull(codec, "codec");
+        }
+    }
+
+    /**
+     * Identity and runtime policy for the hub: service/instance identity,
+     * handshake token and keepalive/handshake timeouts.
+     */
+    record Options(
         String serviceId,
         String instanceId,
         String token,
         long keepaliveMs,
         long handshakeTimeoutMs
-    ) {}
+    ) {
+        Options {
+            instanceId = Objects.requireNonNull(instanceId, "instanceId");
+            token = token == null ? "" : token;
+            keepaliveMs = Math.max(0, keepaliveMs);
+            handshakeTimeoutMs = Math.max(0, handshakeTimeoutMs);
+        }
+    }
 
-    /** RuntimeHook-time wiring: resolves builtins and config-derived state. */
-    void wire(Wiring w) {
-        this.facade = Objects.requireNonNull(w.facade(), "facade");
-        this.codec = Objects.requireNonNull(w.codec(), "codec");
-        this.serviceId = w.serviceId();
-        this.origin = Objects.requireNonNull(w.instanceId(), "instanceId");
-        this.token = w.token() == null ? "" : w.token();
-        this.keepaliveMs = Math.max(0, w.keepaliveMs());
-        this.handshakeTimeoutMs = Math.max(0, w.handshakeTimeoutMs());
+    /** RuntimeHook-time wiring: supplies builtins together with resolved config state. */
+    void wire(Deps deps, Options options) {
+        this.facade = deps.facade();
+        this.codec = deps.codec();
+        this.serviceId = options.serviceId();
+        this.origin = options.instanceId();
+        this.token = options.token();
+        this.keepaliveMs = options.keepaliveMs();
+        this.handshakeTimeoutMs = options.handshakeTimeoutMs();
         this.scheduler = java.util.concurrent.Executors.newSingleThreadScheduledExecutor(
             Thread.ofVirtual().name("cloud-mesh-keepalive-", 0).factory());
         this.wired = true;
@@ -378,16 +387,16 @@ public final class PeerHub implements WebSocketEndpoint {
         }
 
         private void handshake(com.jujin.freeway.commons.json.JsonObject frame) throws java.io.IOException {
-            HelloAdmission admission = validateHello(frame, token);
-            if (!admission.accepted()) {
-                if (admission.closeCode() == 1008) {
-                    LOG.warn("Peer {} failed the mesh token check — closing", admission.origin());
+            HelloDecision decision = validateHello(frame, token);
+            if (!decision.accepted()) {
+                if (decision.closeCode() == 1008) {
+                    LOG.warn("Peer {} failed the mesh token check — closing", decision.origin());
                 }
-                session.close(admission.closeCode(), admission.reason());
+                session.close(decision.closeCode(), decision.reason());
                 return;
             }
-            String remoteOrigin = admission.origin();
-            List<String> remoteSubs = admission.subscriptions();
+            String remoteOrigin = decision.origin();
+            List<String> remoteSubs = decision.subscriptions();
             connection = new PeerConnection(remoteOrigin, remoteSubs,
                 new SessionSender(session),
                 false,
@@ -534,14 +543,14 @@ public final class PeerHub implements WebSocketEndpoint {
      * remote origin + subscriptions; rejected carries a WS close code + reason
      * (and the origin when it was known, for the log).
      */
-    record HelloAdmission(boolean accepted, String origin, List<String> subscriptions,
+    record HelloDecision(boolean accepted, String origin, List<String> subscriptions,
                           int closeCode, String reason) {
-        static HelloAdmission accept(String origin, List<String> subscriptions) {
-            return new HelloAdmission(true, origin, subscriptions, 0, null);
+        static HelloDecision accept(String origin, List<String> subscriptions) {
+            return new HelloDecision(true, origin, subscriptions, 0, null);
         }
 
-        static HelloAdmission reject(String origin, int closeCode, String reason) {
-            return new HelloAdmission(false, origin, null, closeCode, reason);
+        static HelloDecision reject(String origin, int closeCode, String reason) {
+            return new HelloDecision(false, origin, null, closeCode, reason);
         }
     }
 
@@ -551,15 +560,15 @@ public final class PeerHub implements WebSocketEndpoint {
      * handshake gate is testable in isolation from the running inbound gate
      * ({@link #receive}).
      */
-    static HelloAdmission validateHello(com.jujin.freeway.commons.json.JsonObject frame, String expectedToken) {
+    static HelloDecision validateHello(com.jujin.freeway.commons.json.JsonObject frame, String expectedToken) {
         String remoteOrigin = Objects.requireNonNullElse(frame.getString("origin"), "");
         if (remoteOrigin.isBlank()) {
-            return HelloAdmission.reject(null, 1002, "hello missing origin");
+            return HelloDecision.reject(null, 1002, "hello missing origin");
         }
         if (!acceptsToken(frame.getString("token"), expectedToken)) {
-            return HelloAdmission.reject(remoteOrigin, 1008, "unauthorized");
+            return HelloDecision.reject(remoteOrigin, 1008, "unauthorized");
         }
-        return HelloAdmission.accept(remoteOrigin, prefixes(frame.get("subscribe")));
+        return HelloDecision.accept(remoteOrigin, prefixes(frame.get("subscribe")));
     }
 
     /** Codec accessor for the connector (client leg parses acks too). */

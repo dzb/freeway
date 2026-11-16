@@ -134,7 +134,7 @@ class PeerConnectorReconnectTest {
         System.setProperty(EventMeshModule.ConfigKeys.EVENT_TOKEN, "wrong");
         nodeA = startEventsNode("", "");
         PeerConnector connector = new PeerConnector(nodeA.get(PeerHub.class),
-            PeerConnector.Wiring.defaults().withBackoff(200, 3000));
+            PeerConnector.Options.defaults().withBackoff(200, 3000));
         try {
             var peer = "127.0.0.1:" + bPort;
             connector.start(List.of(peer));

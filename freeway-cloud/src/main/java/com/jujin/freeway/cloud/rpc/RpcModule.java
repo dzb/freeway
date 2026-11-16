@@ -51,7 +51,7 @@ public final class RpcModule implements ModuleEx {
     // Key, type and default declared once per key; the symbol chain resolves
     // the raw value and the spec post-processes it. Defaults come from the
     // shared ConfigKeys sources so the config layer and the library
-    // fallback (RpcHttpClientDefault.Wiring) cannot drift apart.
+    // fallback (RpcHttpClientDefault.Deps / Options) cannot drift apart.
     private static final SymbolSpec<Long> REQUEST_TIMEOUT_MS = SymbolSpec.of(
         RpcModule.ConfigKeys.RPC_REQUEST_TIMEOUT, Long.class,
         RpcModule.ConfigKeys.RPC_REQUEST_TIMEOUT_DEFAULT, Long::parseLong);
@@ -138,7 +138,7 @@ public final class RpcModule implements ModuleEx {
                 return new RpcHttpClientDefault(
                     discovery,
                     loadBalancer,
-                    new RpcHttpClientDefault.Wiring(
+                    new RpcHttpClientDefault.Deps(
                         container.extension(ContextCodec.class).all(),
                         OptionalBinding.get(container, Retryer.class),
                         OptionalBinding.get(container, CircuitBreaker.class),
@@ -147,7 +147,8 @@ public final class RpcModule implements ModuleEx {
                         traceEnabled ? OptionalBinding.get(container, Tracer.class) : null,
                         // Metrics has a NoopMetrics builtin — always resolvable;
                         // without ObserveModule calls record into the noop.
-                        container.get(Metrics.class),
+                        container.get(Metrics.class)),
+                    new RpcHttpClientDefault.Options(
                         Duration.ofMillis(requestMs),
                         Duration.ofMillis(connectMs),
                         shutdownGrace),

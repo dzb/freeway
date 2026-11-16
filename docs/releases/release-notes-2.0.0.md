@@ -103,6 +103,15 @@ they are separate planes with separate vocabulary.
 - The multi-database lookup is `DatabaseCatalog` (an immutable catalog, not a
   registry with a register operation); the HTTP engine's live-connection set is
   `ConnectionTracker`, not `ConnectionRegistry`.
+- Class-based HTTP wrappers are `PendingValue` / `PendingHandler` /
+  `PendingEndpoint`; `StaticResourceMount` names its route-chain hop
+  `withRouteFallback` / `routeFallback`; `BeanPlan.hasConstructor()` and
+  `KnownKeys.namespaceOf(...)` state their facts directly.
+- Optional inputs are split by role: `FreewayHttpEngine` and `PeerHub` each
+  expose `Deps` for collaborators and `Options` for caller-selected values;
+  `RpcHttpClientDefault.Deps` holds collaborators while its `Options` holds
+  timing policy; `PeerConnector.Options` and Consul's `ConsulOptions` name
+  caller-selected values rather than object wiring.
 - `withX(...)` always returns a new value; bare nouns remain reads.
 - `body/text/json/file/sendText` replace ambiguous `output`/`send` families.
 - `Row.asString/asInt/asLong`, `metadata()/putMetadata(...)`, `linkTo(...)`,
@@ -127,9 +136,9 @@ they are separate planes with separate vocabulary.
 
 ```text
 mvn clean test
-  commons 447 · ioc 341 · boot 139 · http 549
-  db 550 · flow 141 · cloud 374
-  total 2,541 — 0 failures, 0 errors, 0 skipped
+  commons 447 · ioc 341 · boot 139 · http 550
+  db 550 · flow 141 · cloud 375
+  total 2,543 — 0 failures, 0 errors, 0 skipped
 ```
 
 `mvn -Pdemos -DskipTests compile` compiles the in-repo consumers against the

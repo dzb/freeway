@@ -56,9 +56,9 @@ public final class FreewayHttpEngine implements HttpEngine {
         SocketChannel accept() throws IOException;
     }
 
-    /** Default {@link Wiring#withH2Reset(int, Duration)}: RST burst count (0 disables). */
+    /** Default {@link Options#withH2Reset(int, Duration)}: RST burst count (0 disables). */
     public static final int DEFAULT_H2_RESET_BURST_LIMIT = 200;
-    /** Default {@link Wiring#withH2Reset(int, Duration)}: guard sliding window. */
+    /** Default {@link Options#withH2Reset(int, Duration)}: guard sliding window. */
     public static final Duration DEFAULT_H2_RESET_WINDOW = Duration.ofSeconds(10);
 
     private final JsonCodec jsonCodec;
@@ -66,38 +66,52 @@ public final class FreewayHttpEngine implements HttpEngine {
     private volatile SSLContext sslContext;
     private final boolean http2OverSsl;
     private final SSLParameters sslParameters;
-    private final Wiring.SslReload sslReload;
+    private final Options.SslReload sslReload;
     private final Metrics metrics;
     private final int h2ResetBurstLimit;
     private final Duration h2ResetWindow;
 
     /**
-     * Optional wiring for the built-in engine: the knobs an embedder may
-     * vary, with production-safe defaults. It replaced five positional
-     * constructors whose steps were not a ladder (one step added metrics, the
-     * next silently reset it), so a call site could not tell what it was
-     * leaving out.
-     *
-     * <p>{@code jsonCodec} and {@code coercer} are required and named here;
-     * everything else has a default and a wither. A {@code null} metrics is the
-     * noop implementation — the engine never has "no metrics", only "nobody is
-     * listening".</p>
+     * Required collaborators for the engine: the JSON codec and coercer are
+     * required, while metrics defaults to the noop sink. These are dependencies,
+     * not caller-selected options.
      */
-    public record Wiring(
+    public record Deps(
         JsonCodec jsonCodec,
         Coercer coercer,
+        Metrics metrics
+    ) {
+        public Deps {
+            jsonCodec = Objects.requireNonNull(jsonCodec, "jsonCodec");
+            coercer = Objects.requireNonNull(coercer, "coercer");
+            metrics = metrics == null ? NoopMetrics.INSTANCE : metrics;
+        }
+
+        /** Required codecs with the noop metrics sink. */
+        public static Deps defaults(JsonCodec jsonCodec, Coercer coercer) {
+            return new Deps(jsonCodec, coercer, NoopMetrics.INSTANCE);
+        }
+
+        /** Metrics sink; {@code null} restores the noop implementation. */
+        public Deps withMetrics(Metrics metrics) {
+            return new Deps(jsonCodec, coercer, metrics);
+        }
+    }
+
+    /**
+     * Caller-selected transport and protocol options for the engine: TLS
+     * material, HTTP/2-over-TLS, and the HTTP/2 reset guard. These are values
+     * with production-safe defaults, not collaborators.
+     */
+    public record Options(
         SSLContext sslContext,
         boolean http2OverSsl,
         SSLParameters sslParameters,
         SslReload sslReload,
-        Metrics metrics,
         int h2ResetBurstLimit,
         Duration h2ResetWindow
     ) {
-        public Wiring {
-            jsonCodec = Objects.requireNonNull(jsonCodec, "jsonCodec");
-            coercer = Objects.requireNonNull(coercer, "coercer");
-            metrics = metrics == null ? NoopMetrics.INSTANCE : metrics;
+        public Options {
             if (h2ResetBurstLimit < 0) {
                 throw new IllegalArgumentException(
                     "h2ResetBurstLimit must be >= 0: " + h2ResetBurstLimit);
@@ -108,44 +122,38 @@ public final class FreewayHttpEngine implements HttpEngine {
             }
         }
 
-        /** Plain HTTP engine: no TLS, no HTTP/2 over TLS, noop metrics. */
-        public static Wiring defaults(JsonCodec jsonCodec, Coercer coercer) {
-            return new Wiring(jsonCodec, coercer, null, false, null, null, NoopMetrics.INSTANCE,
+        /** Plain HTTP, no TLS, no HTTP/2 over TLS, default reset guard. */
+        public static Options defaults() {
+            return new Options(null, false, null, null,
                 DEFAULT_H2_RESET_BURST_LIMIT, DEFAULT_H2_RESET_WINDOW);
         }
 
         /** TLS termination, optionally negotiating HTTP/2 over ALPN. */
-        public Wiring withSsl(SSLContext sslContext, boolean http2OverSsl) {
-            return new Wiring(jsonCodec, coercer, sslContext, http2OverSsl,
-                sslParameters, sslReload, metrics, h2ResetBurstLimit, h2ResetWindow);
+        public Options withSsl(SSLContext sslContext, boolean http2OverSsl) {
+            return new Options(sslContext, http2OverSsl, sslParameters, sslReload,
+                h2ResetBurstLimit, h2ResetWindow);
         }
 
         /** Per-socket TLS parameters (client auth, cipher/protocol narrowing). */
-        public Wiring withSslParameters(SSLParameters sslParameters) {
-            return new Wiring(jsonCodec, coercer, sslContext, http2OverSsl,
-                sslParameters, sslReload, metrics, h2ResetBurstLimit, h2ResetWindow);
-        }
-
-        /** Metrics sink; {@code null} restores the noop implementation. */
-        public Wiring withMetrics(Metrics metrics) {
-            return new Wiring(jsonCodec, coercer, sslContext, http2OverSsl,
-                sslParameters, sslReload, metrics, h2ResetBurstLimit, h2ResetWindow);
+        public Options withSslParameters(SSLParameters sslParameters) {
+            return new Options(sslContext, http2OverSsl, sslParameters, sslReload,
+                h2ResetBurstLimit, h2ResetWindow);
         }
 
         /** The built-in HTTP/2 inbound-RST burst guard ({@code freeway.http.h2.*}:
          *  counts read from {@code HttpModule}, or set directly here). */
-        public Wiring withH2Reset(int h2ResetBurstLimit, Duration h2ResetWindow) {
-            return new Wiring(jsonCodec, coercer, sslContext, http2OverSsl,
-                sslParameters, sslReload, metrics, h2ResetBurstLimit, h2ResetWindow);
+        public Options withH2Reset(int h2ResetBurstLimit, Duration h2ResetWindow) {
+            return new Options(sslContext, http2OverSsl, sslParameters, sslReload,
+                h2ResetBurstLimit, h2ResetWindow);
         }
 
         /** Certificate hot-reload inputs: watched material plus the builder
          *  that rebuilds a context from it. {@code null} — the default —
          *  disables reload. Requires {@link #withSsl}: a reloader without an
          *  initial context cannot serve HTTPS. */
-        public Wiring withSslReload(SslReload sslReload) {
-            return new Wiring(jsonCodec, coercer, sslContext, http2OverSsl,
-                sslParameters, sslReload, metrics, h2ResetBurstLimit, h2ResetWindow);
+        public Options withSslReload(SslReload sslReload) {
+            return new Options(sslContext, http2OverSsl, sslParameters, sslReload,
+                h2ResetBurstLimit, h2ResetWindow);
         }
 
         /** Inputs for the engine's own certificate hot reload: the watched
@@ -172,18 +180,19 @@ public final class FreewayHttpEngine implements HttpEngine {
         }
     }
 
-    /** The engine described by {@code wiring}; see {@link Wiring#defaults}. */
-    public FreewayHttpEngine(Wiring wiring) {
-        Objects.requireNonNull(wiring, "wiring");
-        this.jsonCodec = wiring.jsonCodec();
-        this.coercer = wiring.coercer();
-        this.sslContext = wiring.sslContext();
-        this.http2OverSsl = wiring.http2OverSsl();
-        this.sslParameters = wiring.sslParameters();
-        this.sslReload = wiring.sslReload();
-        this.metrics = wiring.metrics();
-        this.h2ResetBurstLimit = wiring.h2ResetBurstLimit();
-        this.h2ResetWindow = wiring.h2ResetWindow();
+    /** The engine assembled from collaborators and transport options. */
+    public FreewayHttpEngine(Deps deps, Options options) {
+        Objects.requireNonNull(deps, "deps");
+        Objects.requireNonNull(options, "options");
+        this.jsonCodec = deps.jsonCodec();
+        this.coercer = deps.coercer();
+        this.sslContext = options.sslContext();
+        this.http2OverSsl = options.http2OverSsl();
+        this.sslParameters = options.sslParameters();
+        this.sslReload = options.sslReload();
+        this.metrics = deps.metrics();
+        this.h2ResetBurstLimit = options.h2ResetBurstLimit();
+        this.h2ResetWindow = options.h2ResetWindow();
     }
 
     public SSLContext sslContext() { return sslContext; }
@@ -220,7 +229,7 @@ public final class FreewayHttpEngine implements HttpEngine {
         // binding) and closed by the handle it rides out on.
         if (sslReload != null && sslContext == null) {
             throw new IllegalStateException(
-                "Wiring.SslReload requires withSsl(...) — a hot reload without an"
+                "Options.SslReload requires withSsl(...) — a hot reload without an"
                 + " initial SSLContext cannot serve HTTPS");
         }
         SslReloader reloader = null;

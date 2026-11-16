@@ -26,7 +26,7 @@ public record WebSocketRoute(String path, WebSocketEndpoint endpoint) {
         String path,
         Class<? extends WebSocketEndpoint> endpointType
     ) {
-        return new WebSocketRoute(path, new ResolvableEndpoint(endpointType));
+        return new WebSocketRoute(path, new PendingEndpoint(endpointType));
     }
 
 }

@@ -38,7 +38,7 @@ public final class WebSocketIndex {
     }
 
     private static Route adapt(WebSocketRoute route) {
-        if (route.endpoint() instanceof ResolvableEndpoint le && !le.isResolved()) {
+        if (route.endpoint() instanceof PendingEndpoint le && !le.isResolved()) {
             throw new IllegalStateException(
                 "WebSocket route " + route.path() + " uses endpoint class "
                     + le.endpointType().getName() + " but it was never "

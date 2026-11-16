@@ -99,7 +99,7 @@ class WebSocketIndexTest {
         );
         var match = container.get(WebSocketIndex.class).match("GET", "/cls");
         assertNotNull(match);
-        var built = ((ResolvableEndpoint) match.endpoint()).resolve(() -> {
+        var built = ((PendingEndpoint) match.endpoint()).resolve(() -> {
             throw new AssertionError(
                 "resolved at startup — the supplier must never run");
         });

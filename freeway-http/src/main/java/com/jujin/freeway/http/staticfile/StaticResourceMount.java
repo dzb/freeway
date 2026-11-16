@@ -54,23 +54,23 @@ public final class StaticResourceMount {
     private final ResourceSource source;
     private final long cacheMaxAgeSeconds;
     private final boolean immutable;
-    private final boolean fallthrough;
+    private final boolean routeFallback;
     private final boolean spaFallback;
 
     private StaticResourceMount(
         String mountPath, ResourceSource source,
         long cacheMaxAgeSeconds, boolean immutable,
-        boolean fallthrough, boolean spaFallback
+        boolean routeFallback, boolean spaFallback
     ) {
         this.mountPath = normalizeMount(mountPath);
         this.source = Objects.requireNonNull(source, "source");
         this.cacheMaxAgeSeconds = Math.max(0L, cacheMaxAgeSeconds);
         this.immutable = immutable;
         // SPA fallback is a second hop after the route chain, so it can never
-        // exist without fallthrough. Canonicalizing here keeps the impossible
+        // exist without routeFallback. Canonicalizing here keeps the impossible
         // pair out of every wither.
         this.spaFallback = spaFallback;
-        this.fallthrough = fallthrough || spaFallback;
+        this.routeFallback = routeFallback || spaFallback;
     }
 
     public static StaticResourceMount directory(String mountPath, Path root) {
@@ -84,11 +84,11 @@ public final class StaticResourceMount {
     public StaticResourceMount withCacheMaxAge(Duration maxAge) {
         Objects.requireNonNull(maxAge, "maxAge");
         return new StaticResourceMount(
-            mountPath, source, maxAge.toSeconds(), immutable, fallthrough, spaFallback);
+            mountPath, source, maxAge.toSeconds(), immutable, routeFallback, spaFallback);
     }
 
     public StaticResourceMount withImmutable(boolean immutable) {
-        return new StaticResourceMount(mountPath, source, cacheMaxAgeSeconds, immutable, fallthrough, spaFallback);
+        return new StaticResourceMount(mountPath, source, cacheMaxAgeSeconds, immutable, routeFallback, spaFallback);
     }
 
     /**
@@ -98,9 +98,9 @@ public final class StaticResourceMount {
      * routing add {@link #withSpaFallback(boolean)}, which is the terminal
      * {@code /index.html} hop after the route chain has also missed.
      */
-    public StaticResourceMount withFallthrough(boolean fallthrough) {
+    public StaticResourceMount withRouteFallback(boolean routeFallback) {
         return new StaticResourceMount(mountPath, source, cacheMaxAgeSeconds, immutable,
-            fallthrough, fallthrough && spaFallback);
+            routeFallback, routeFallback && spaFallback);
     }
 
     /**
@@ -108,7 +108,7 @@ public final class StaticResourceMount {
      * that neither this mount nor the route chain serves falls back to the
      * mount root's {@code index.html}. This is the terminal hop of nginx's
      * {@code try_files $uri $uri/ /index.html}, and the one history-mode SPA
-     * routing needs; {@link #withFallthrough(boolean)} supplies the route-chain
+     * routing needs; {@link #withRouteFallback(boolean)} supplies the route-chain
      * hop before it.
      *
      * <p>Fallback is considered only after route dispatch misses and only for
@@ -119,8 +119,8 @@ public final class StaticResourceMount {
      * order), so a dedicated {@code /assets} mount still owns a missing
      * {@code .js} even when a root SPA mount exists.</p>
      *
-     * <p>Enabling this implies {@link #fallthrough() fallthrough}. Disabling
-     * fallthrough clears it as well.</p>
+     * <p>Enabling this implies {@link #routeFallback() routeFallback}. Disabling
+     * routeFallback clears it as well.</p>
      *
      * <p>The fallback reuses the mount's cache policy, including
      * {@link #withImmutable(boolean) immutable}; a shell that references hashed
@@ -129,11 +129,11 @@ public final class StaticResourceMount {
      */
     public StaticResourceMount withSpaFallback(boolean spaFallback) {
         return new StaticResourceMount(mountPath, source, cacheMaxAgeSeconds, immutable,
-            fallthrough || spaFallback, spaFallback);
+            routeFallback || spaFallback, spaFallback);
     }
 
-    public boolean fallthrough() {
-        return fallthrough;
+    public boolean routeFallback() {
+        return routeFallback;
     }
 
     public boolean spaFallback() {
@@ -173,7 +173,7 @@ public final class StaticResourceMount {
      * this window at the cost of the containment re-check.</p>
      *
      * @return true if the request was handled (file sent or 404 returned);
-     *         false if the file was not found and {@link #fallthrough} is on, so the request should continue
+     *         false if the file was not found and {@link #routeFallback} is on, so the request should continue
      */
     public boolean serve(HttpRequest request, HttpResponse response)
             throws IOException {
@@ -372,7 +372,7 @@ public final class StaticResourceMount {
     }
 
     private boolean notFound(HttpResponse response) throws IOException {
-        if (fallthrough) {
+        if (routeFallback) {
             return false;
         }
         ErrorResponses.notFound().write(response);

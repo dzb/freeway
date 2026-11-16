@@ -15,43 +15,43 @@ import org.junit.jupiter.api.Test;
  * The connector's optional inputs are one value with named knobs, so a call
  * site cannot swap two same-typed neighbours without the compiler noticing.
  */
-class PeerConnectorWiringTest {
+class PeerConnectorOptionsTest {
 
     @Test
     void defaultsAreTheConfigKeysDefaults() {
-        PeerConnector.Wiring wiring = PeerConnector.Wiring.defaults();
+        PeerConnector.Options options = PeerConnector.Options.defaults();
 
         assertEquals(Duration.ofMillis(EventMeshModule.ConfigKeys.EVENT_CONNECT_TIMEOUT_MS_DEFAULT),
-            wiring.connectTimeout());
+            options.connectTimeout());
         assertEquals(Duration.ofMillis(EventMeshModule.ConfigKeys.EVENT_HANDSHAKE_TIMEOUT_MS_DEFAULT),
-            wiring.handshakeTimeout());
-        assertEquals(EventMeshModule.ConfigKeys.EVENT_BACKOFF_BASE_MS_DEFAULT, wiring.backoffBaseMs());
-        assertEquals(EventMeshModule.ConfigKeys.EVENT_BACKOFF_MAX_MS_DEFAULT, wiring.backoffMaxMs());
-        assertEquals("ws", wiring.scheme(), "plaintext unless TLS is asked for");
-        assertNull(wiring.sslContext(), "null means the JDK default trust/identity");
+            options.handshakeTimeout());
+        assertEquals(EventMeshModule.ConfigKeys.EVENT_BACKOFF_BASE_MS_DEFAULT, options.backoffBaseMs());
+        assertEquals(EventMeshModule.ConfigKeys.EVENT_BACKOFF_MAX_MS_DEFAULT, options.backoffMaxMs());
+        assertEquals("ws", options.scheme(), "plaintext unless TLS is asked for");
+        assertNull(options.sslContext(), "null means the JDK default trust/identity");
     }
 
     @Test
     void withersAreIndependentAndNormalizeWhatTheyCarry() {
-        PeerConnector.Wiring wiring = PeerConnector.Wiring.defaults()
+        PeerConnector.Options options = PeerConnector.Options.defaults()
             .withConnectTimeout(Duration.ofSeconds(7))
             .withScheme("")
             .withBackoff(50, 900)
             .withSslContext(null);
 
-        assertEquals(Duration.ofSeconds(7), wiring.connectTimeout());
-        assertEquals("ws", wiring.scheme(), "a blank scheme falls back to ws");
+        assertEquals(Duration.ofSeconds(7), options.connectTimeout());
+        assertEquals("ws", options.scheme(), "a blank scheme falls back to ws");
         // The two backoff values are one call: swapping them is not expressible.
-        assertEquals(50, wiring.backoffBaseMs());
-        assertEquals(900, wiring.backoffMaxMs());
+        assertEquals(50, options.backoffBaseMs());
+        assertEquals(900, options.backoffMaxMs());
         assertEquals(Duration.ofMillis(EventMeshModule.ConfigKeys.EVENT_HANDSHAKE_TIMEOUT_MS_DEFAULT),
-            wiring.handshakeTimeout(), "an untouched knob keeps its default");
+            options.handshakeTimeout(), "an untouched knob keeps its default");
 
         // A non-positive backoff is a missing value, not a schedule.
         assertEquals(EventMeshModule.ConfigKeys.EVENT_BACKOFF_BASE_MS_DEFAULT,
-            wiring.withBackoff(0, -1).backoffBaseMs());
+            options.withBackoff(0, -1).backoffBaseMs());
         assertEquals(EventMeshModule.ConfigKeys.EVENT_BACKOFF_MAX_MS_DEFAULT,
-            wiring.withBackoff(0, -1).backoffMaxMs());
+            options.withBackoff(0, -1).backoffMaxMs());
     }
 
     /**
@@ -65,7 +65,7 @@ class PeerConnectorWiringTest {
     @Test
     void aCapBelowTheBaseIsRefused() {
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
-            () -> PeerConnector.Wiring.defaults().withBackoff(60_000, 1_000));
+            () -> PeerConnector.Options.defaults().withBackoff(60_000, 1_000));
         assertTrue(ex.getMessage().contains("backoffMaxMs must be >= backoffBaseMs"),
             ex.getMessage());
     }
@@ -73,6 +73,6 @@ class PeerConnectorWiringTest {
     @Test
     void aCapEqualToTheBaseIsAccepted() {
         assertEquals(1_000,
-            PeerConnector.Wiring.defaults().withBackoff(1_000, 1_000).backoffMaxMs());
+            PeerConnector.Options.defaults().withBackoff(1_000, 1_000).backoffMaxMs());
     }
 }

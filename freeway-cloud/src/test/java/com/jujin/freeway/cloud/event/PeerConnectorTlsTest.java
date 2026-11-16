@@ -17,7 +17,7 @@ import org.junit.jupiter.api.Test;
 class PeerConnectorTlsTest {
 
     @Test
-    void theDialerUsesTheConfiguredSslContext() throws Exception {
+    void thePeerDialerUsesTheConfiguredSslContext() throws Exception {
         SSLContext context = SSLContext.getInstance("TLS");
         context.init(null, null, null);
 

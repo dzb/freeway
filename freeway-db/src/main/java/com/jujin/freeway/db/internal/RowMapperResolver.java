@@ -187,7 +187,7 @@ public final class RowMapperResolver {
     }
 
     private RowMapper<?> createBean(Class<?> type, BeanPlan plan) {
-        if (!plan.isConstructable()) {
+        if (!plan.hasConstructor()) {
             throw new SqlException(
                 "Cannot map " + type.getName() + ": no default constructor"
             );

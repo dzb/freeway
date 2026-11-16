@@ -31,9 +31,9 @@ class ClasspathResourceSourceTest {
     }
 
     @Test
-    void fallthroughReturnsFalseForMissingResource() throws Exception {
+    void routeFallbackReturnsFalseForMissingResource() throws Exception {
         StaticResourceMount mount = StaticResourceMount.classpath("/assets", "static")
-            .withFallthrough(true);
+            .withRouteFallback(true);
 
         TestExchange ctx = new TestExchange("GET", "/assets/missing.txt");
         assertFalse(mount.serve(ctx, ctx));

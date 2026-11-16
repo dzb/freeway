@@ -356,7 +356,7 @@ public final class HttpServer implements AutoCloseable {
     private void dispatchToRoute(HttpExchange ctx) throws Exception {
         if (!staticMounts.isEmpty()) {
             boolean anyMountMatched = false;
-            boolean fallthroughMiss = false;
+            boolean routeFallbackMiss = false;
             for (StaticResourceMount mount : staticMounts) {
                 if (!mount.matches(ctx.method(), ctx.path())) {
                     continue;
@@ -370,12 +370,12 @@ public final class HttpServer implements AutoCloseable {
                     mount.serve(ctx, ctx);
                     return;
                 }
-                if (mount.fallthrough()) {
-                    fallthroughMiss = true;
+                if (mount.routeFallback()) {
+                    routeFallbackMiss = true;
                 }
             }
-            if (anyMountMatched && !fallthroughMiss) {
-                // Every matching mount is a non-fallthrough miss — a terminal
+            if (anyMountMatched && !routeFallbackMiss) {
+                // Every matching mount is a non-fallback miss — a terminal
                 // 404, mirroring a single mount's direct serve() result.
                 ctx.setAttribute(HttpExchange.ROUTE_ATTRIBUTE, "static");
                 ErrorResponses.notFound().write(ctx);

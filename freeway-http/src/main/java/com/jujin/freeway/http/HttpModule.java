@@ -26,12 +26,12 @@ import com.jujin.freeway.http.filter.HealthCheck;
 import com.jujin.freeway.http.filter.HealthFilter;
 import com.jujin.freeway.http.filter.HttpFilter;
 import com.jujin.freeway.http.filter.ScopeFilter;
-import com.jujin.freeway.http.route.ResolvableHandler;
+import com.jujin.freeway.http.route.PendingHandler;
 import com.jujin.freeway.http.route.Route;
 import com.jujin.freeway.http.route.RouteGroup;
 import com.jujin.freeway.http.route.RouteIndex;
 import com.jujin.freeway.http.staticfile.StaticResourceMount;
-import com.jujin.freeway.http.websocket.ResolvableEndpoint;
+import com.jujin.freeway.http.websocket.PendingEndpoint;
 import com.jujin.freeway.http.websocket.WebSocketGroup;
 import com.jujin.freeway.http.websocket.WebSocketIndex;
 import com.jujin.freeway.http.websocket.WebSocketRoute;
@@ -118,9 +118,8 @@ public final class HttpModule implements ModuleEx {
             if (!ssl.enabled()) {
                 LOG.debug("SSL disabled, using plain HTTP engine");
                 return new FreewayHttpEngine(
-                    FreewayHttpEngine.Wiring.defaults(json, coercer)
-                        .withMetrics(metrics)
-                        .withH2Reset(h2Burst, h2Window));
+                    FreewayHttpEngine.Deps.defaults(json, coercer).withMetrics(metrics),
+                    FreewayHttpEngine.Options.defaults().withH2Reset(h2Burst, h2Window));
             }
 
             LOG.info("Initializing HTTPS engine from keystore {} (type={}, http2={}, clientAuth={})",
@@ -128,20 +127,20 @@ public final class HttpModule implements ModuleEx {
             SSLContext sslContext = SslContexts.build(ssl);
             SSLParameters sslParameters = SslContexts.parameters(ssl);
             LOG.info("HTTPS engine initialized — TLS via JDK SSLContext");
-            var wiring = FreewayHttpEngine.Wiring.defaults(json, coercer)
+            var deps = FreewayHttpEngine.Deps.defaults(json, coercer).withMetrics(metrics);
+            var options = FreewayHttpEngine.Options.defaults()
                 .withSsl(sslContext, ssl.http2())
                 .withSslParameters(sslParameters)
-                .withMetrics(metrics)
                 .withH2Reset(h2Burst, h2Window);
             if (ssl.reloadInterval() != null && !ssl.reloadInterval().isZero()) {
-                wiring = wiring.withSslReload(new FreewayHttpEngine.Wiring.SslReload(
+                options = options.withSslReload(new FreewayHttpEngine.Options.SslReload(
                     Path.of(ssl.keyStorePath()),
                     ssl.trustStorePath() != null ? Path.of(ssl.trustStorePath()) : null,
                     ssl.sniDirectory() != null ? Path.of(ssl.sniDirectory()) : null,
                     ssl.reloadInterval(),
                     () -> SslContexts.build(ssl)));
             }
-            return new FreewayHttpEngine(wiring);
+            return new FreewayHttpEngine(deps, options);
         });
 
         // HttpEngine — bind to FreewayHttpEngine. Extension modules bind their
@@ -234,22 +233,22 @@ public final class HttpModule implements ModuleEx {
             container.get(SymbolSource.class), container.get(HealthCheck.class)));
     }
 
-    /** Resolves a {@link ResolvableHandler} (class-based route): the container
+    /** Resolves a {@link PendingHandler} (class-based route): the container
      *  instantiates the handler class with constructor injection and the
      *  instance is handed to the wrapper — the route package stays free of
      *  container types. */
     private static void resolveHandler(Route r, Container c) {
-        if (r.handler() instanceof ResolvableHandler lh) {
+        if (r.handler() instanceof PendingHandler lh) {
             lh.resolve(() -> c.create(lh.handlerType()));
         }
     }
 
-    /** Resolves a {@link ResolvableEndpoint} (class-based WebSocket route): the
+    /** Resolves a {@link PendingEndpoint} (class-based WebSocket route): the
      *  container instantiates the endpoint class with constructor injection
      *  and the instance is handed to the wrapper — the websocket package
      *  stays free of container types. */
     private static void resolveEndpoint(WebSocketRoute r, Container c) {
-        if (r.endpoint() instanceof ResolvableEndpoint le) {
+        if (r.endpoint() instanceof PendingEndpoint le) {
             le.resolve(() -> c.create(le.endpointType()));
         }
     }
@@ -282,7 +281,7 @@ public final class HttpModule implements ModuleEx {
             LOG.warn("freeway.http.h2.* guards only the built-in FreewayHttpEngine and the "
                 + "active HttpEngine is not built in — the tuned value has no effect here; "
                 + "the active engine module owns its own guard (built-in path: HttpModule "
-                + "wires these keys into FreewayHttpEngine.Wiring automatically)");
+                + "wires these keys into FreewayHttpEngine.Options automatically)");
         }
     }
 

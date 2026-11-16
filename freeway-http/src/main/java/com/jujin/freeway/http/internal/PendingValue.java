@@ -19,12 +19,12 @@ import java.util.function.Supplier;
  *
  * @param <T> the declared service/handler type
  */
-public final class ResolvableValue<T> {
+public final class PendingValue<T> {
 
     private final Class<? extends T> declaredType;
     private volatile T value;
 
-    public ResolvableValue(Class<? extends T> declaredType) {
+    public PendingValue(Class<? extends T> declaredType) {
         this.declaredType = Objects.requireNonNull(declaredType, "declaredType");
     }
 

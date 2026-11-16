@@ -27,17 +27,18 @@ public final class TestHttp {
 
     /** The built-in engine reporting its counters to {@code metrics} (null = nobody listening). */
     public static HttpEngine engine(Metrics metrics) {
-        var wiring = FreewayHttpEngine.Wiring.defaults(
+        var deps = FreewayHttpEngine.Deps.defaults(
             new JsonCodecDefault(), new CoercerDefault());
         return new FreewayHttpEngine(
-            metrics == null ? wiring : wiring.withMetrics(metrics));
+            metrics == null ? deps : deps.withMetrics(metrics),
+            FreewayHttpEngine.Options.defaults());
     }
 
     /** The built-in engine terminating TLS with {@code sslContext}. */
     public static HttpEngine tlsEngine(SSLContext sslContext, boolean http2OverSsl) {
-        return new FreewayHttpEngine(FreewayHttpEngine.Wiring.defaults(
-            new JsonCodecDefault(), new CoercerDefault())
-            .withSsl(sslContext, http2OverSsl));
+        return new FreewayHttpEngine(
+            FreewayHttpEngine.Deps.defaults(new JsonCodecDefault(), new CoercerDefault()),
+            FreewayHttpEngine.Options.defaults().withSsl(sslContext, http2OverSsl));
     }
 
     /** Module face: the engine contract an {@link HttpModule} test wants served. */

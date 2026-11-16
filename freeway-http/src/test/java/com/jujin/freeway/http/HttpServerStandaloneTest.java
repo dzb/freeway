@@ -35,8 +35,9 @@ class HttpServerStandaloneTest {
     private static final HttpClient CLIENT = HttpClient.newHttpClient();
 
     private static FreewayHttpEngine engine() {
-        return new FreewayHttpEngine(FreewayHttpEngine.Wiring.defaults(
-            new JsonCodecDefault(), new CoercerDefault()));
+        return new FreewayHttpEngine(
+            FreewayHttpEngine.Deps.defaults(new JsonCodecDefault(), new CoercerDefault()),
+            FreewayHttpEngine.Options.defaults());
     }
 
     private static HttpServerConfig loopback() {

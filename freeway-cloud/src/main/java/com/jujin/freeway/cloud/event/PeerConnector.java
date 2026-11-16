@@ -56,7 +56,7 @@ final class PeerConnector implements AutoCloseable {
     private static final Duration HANDSHAKE_TIMEOUT =
         Duration.ofMillis(EventMeshModule.ConfigKeys.EVENT_HANDSHAKE_TIMEOUT_MS_DEFAULT);
     /** Dial timeout; the config key's own default, so a bare
-     *  {@link Wiring#defaults()} behaves exactly like an unconfigured app. */
+     *  {@link Options#defaults()} behaves exactly like an unconfigured app. */
     private static final Duration CONNECT_TIMEOUT =
         Duration.ofMillis(EventMeshModule.ConfigKeys.EVENT_CONNECT_TIMEOUT_MS_DEFAULT);
     /** Fragment reassembly must not turn a peer that never sets FIN into
@@ -82,7 +82,7 @@ final class PeerConnector implements AutoCloseable {
      * many times has it failed, which thread may I interrupt?) sit in the entry
      * and cannot disagree.
      */
-    private final Map<PeerAddress, Dialer> dialers = new ConcurrentHashMap<>();
+    private final Map<PeerAddress, PeerDialer> peerDialers = new ConcurrentHashMap<>();
     /** Open client sessions, so {@link #close()} can abort their sockets. */
     private final java.util.Set<ClientSessionHandler> sessions =
         ConcurrentHashMap.newKeySet();
@@ -108,7 +108,7 @@ final class PeerConnector implements AutoCloseable {
      * entry rather than in the session, and the live loop's thread lives beside
      * it so removal can interrupt exactly the loop it means to.
      */
-    private static final class Dialer {
+    private static final class PeerDialer {
         private final AtomicInteger backoff = new AtomicInteger();
         /** One dial/retry loop per peer. */
         private final AtomicBoolean running = new AtomicBoolean();
@@ -131,16 +131,16 @@ final class PeerConnector implements AutoCloseable {
      * it. Networking values come from the {@code freeway.cloud.event.*} config
      * via {@link EventMeshModule.ConfigKeys}.
      */
-    public PeerConnector(PeerHub hub, Wiring wiring) {
+    public PeerConnector(PeerHub hub, Options options) {
         this.hub = Objects.requireNonNull(hub, "hub");
-        Objects.requireNonNull(wiring, "wiring");
-        this.connectTimeout = wiring.connectTimeout();
-        this.scheme = wiring.scheme();
-        this.handshakeTimeout = wiring.handshakeTimeout();
-        this.backoffBaseMs = wiring.backoffBaseMs();
-        this.backoffMaxMs = wiring.backoffMaxMs();
-        this.keepaliveMs = wiring.keepaliveMs();
-        this.http = newClient(wiring.connectTimeout(), wiring.sslContext());
+        Objects.requireNonNull(options, "options");
+        this.connectTimeout = options.connectTimeout();
+        this.scheme = options.scheme();
+        this.handshakeTimeout = options.handshakeTimeout();
+        this.backoffBaseMs = options.backoffBaseMs();
+        this.backoffMaxMs = options.backoffMaxMs();
+        this.keepaliveMs = options.keepaliveMs();
+        this.http = newClient(options.connectTimeout(), options.sslContext());
     }
 
     /**
@@ -155,7 +155,7 @@ final class PeerConnector implements AutoCloseable {
      * {@code freeway.cloud.event.*} declares, applied in the compact
      * constructor so a {@code null}/non-positive input cannot reach a field.</p>
      */
-    public record Wiring(
+    public record Options(
         Duration connectTimeout,
         String scheme,
         Duration handshakeTimeout,
@@ -164,7 +164,7 @@ final class PeerConnector implements AutoCloseable {
         javax.net.ssl.SSLContext sslContext,
         long keepaliveMs
     ) {
-        public Wiring {
+        public Options {
             connectTimeout = connectTimeout == null ? CONNECT_TIMEOUT : connectTimeout;
             scheme = scheme == null || scheme.isBlank() ? "ws" : scheme;
             handshakeTimeout = handshakeTimeout == null ? HANDSHAKE_TIMEOUT : handshakeTimeout;
@@ -185,47 +185,47 @@ final class PeerConnector implements AutoCloseable {
         }
 
         /** Production defaults from the config keys, no outbound TLS material. */
-        public static Wiring defaults() {
-            return new Wiring(CONNECT_TIMEOUT, "ws", HANDSHAKE_TIMEOUT,
+        public static Options defaults() {
+            return new Options(CONNECT_TIMEOUT, "ws", HANDSHAKE_TIMEOUT,
                 BACKOFF_BASE_MS, BACKOFF_MAX_MS, null, 0);
         }
 
-        public Wiring withConnectTimeout(Duration connectTimeout) {
-            return new Wiring(connectTimeout, scheme, handshakeTimeout, backoffBaseMs,
+        public Options withConnectTimeout(Duration connectTimeout) {
+            return new Options(connectTimeout, scheme, handshakeTimeout, backoffBaseMs,
                 backoffMaxMs, sslContext, keepaliveMs);
         }
 
         /** {@code ws} or {@code wss}; blank falls back to {@code ws}. */
-        public Wiring withScheme(String scheme) {
-            return new Wiring(connectTimeout, scheme, handshakeTimeout, backoffBaseMs,
+        public Options withScheme(String scheme) {
+            return new Options(connectTimeout, scheme, handshakeTimeout, backoffBaseMs,
                 backoffMaxMs, sslContext, keepaliveMs);
         }
 
-        public Wiring withHandshakeTimeout(Duration handshakeTimeout) {
-            return new Wiring(connectTimeout, scheme, handshakeTimeout, backoffBaseMs,
+        public Options withHandshakeTimeout(Duration handshakeTimeout) {
+            return new Options(connectTimeout, scheme, handshakeTimeout, backoffBaseMs,
                 backoffMaxMs, sslContext, keepaliveMs);
         }
 
-        public Wiring withBackoff(long backoffBaseMs, long backoffMaxMs) {
-            return new Wiring(connectTimeout, scheme, handshakeTimeout, backoffBaseMs,
+        public Options withBackoff(long backoffBaseMs, long backoffMaxMs) {
+            return new Options(connectTimeout, scheme, handshakeTimeout, backoffBaseMs,
                 backoffMaxMs, sslContext, keepaliveMs);
         }
 
         /** Half-open detection interval for dialed sessions; 0 = off. */
-        public Wiring withKeepalive(long keepaliveMs) {
-            return new Wiring(connectTimeout, scheme, handshakeTimeout, backoffBaseMs,
+        public Options withKeepalive(long keepaliveMs) {
+            return new Options(connectTimeout, scheme, handshakeTimeout, backoffBaseMs,
                 backoffMaxMs, sslContext, keepaliveMs);
         }
 
         /** Outbound TLS material shared with the RPC client; null = JDK default. */
-        public Wiring withSslContext(javax.net.ssl.SSLContext sslContext) {
-            return new Wiring(connectTimeout, scheme, handshakeTimeout, backoffBaseMs,
+        public Options withSslContext(javax.net.ssl.SSLContext sslContext) {
+            return new Options(connectTimeout, scheme, handshakeTimeout, backoffBaseMs,
                 backoffMaxMs, sslContext, keepaliveMs);
         }
     }
 
     /**
-     * The dialer's HTTP client. {@code sslContext} is the outbound transport
+     * The peer dialer's HTTP client. {@code sslContext} is the outbound transport
      * security the application configured ({@link
      * com.jujin.freeway.cloud.rpc.TransportSecurity}) — the mesh is one of the
      * outbound paths that must honour it, so a {@code wss://} dial presents the
@@ -274,13 +274,13 @@ final class PeerConnector implements AutoCloseable {
         }
         Set<PeerAddress> wanted = new LinkedHashSet<>(configured);
         wanted.addAll(discovered);
-        for (PeerAddress known : List.copyOf(dialers.keySet())) {
+        for (PeerAddress known : List.copyOf(peerDialers.keySet())) {
             if (!wanted.contains(known)) {
                 drop(known);
             }
         }
         for (PeerAddress want : wanted) {
-            if (!dialers.containsKey(want)) {
+            if (!peerDialers.containsKey(want)) {
                 spawnDial(want);
             }
         }
@@ -295,11 +295,11 @@ final class PeerConnector implements AutoCloseable {
      * {@code CLOSE_FRAME_TIMEOUT_MS}, and this runs on the monitor — a snapshot
      * that removes many peers costs that many short waits, not an unbounded one.</p> */
     private void drop(PeerAddress peer) {
-        Dialer dialer = dialers.remove(peer);
-        if (dialer == null) {
+        PeerDialer peerDialer = peerDialers.remove(peer);
+        if (peerDialer == null) {
             return;
         }
-        Thread thread = dialer.thread;
+        Thread thread = peerDialer.thread;
         if (thread != null) {
             thread.interrupt();
         }
@@ -315,7 +315,7 @@ final class PeerConnector implements AutoCloseable {
      *  removal closes the session, which lands here through
      *  {@code handleDisconnect}, and re-dialing would undo the removal. */
     private synchronized void reconnect(PeerAddress peer) {
-        if (closed || !dialers.containsKey(peer)) {
+        if (closed || !peerDialers.containsKey(peer)) {
             return;
         }
         spawnDial(peer);
@@ -327,8 +327,8 @@ final class PeerConnector implements AutoCloseable {
 
     /** True while this peer is still wanted and its loop is the current one:
      *  removal drops the entry, which is how a running loop learns it is over. */
-    private boolean stillDialed(PeerAddress peer, Dialer dialer) {
-        return !closed && dialers.get(peer) == dialer;
+    private boolean stillDialed(PeerAddress peer, PeerDialer peerDialer) {
+        return !closed && peerDialers.get(peer) == peerDialer;
     }
 
     /**
@@ -340,9 +340,9 @@ final class PeerConnector implements AutoCloseable {
      * upgrade says nothing about mesh health, and resetting here was what let
      * two token-mismatched peers re-dial each other at full speed forever.
      */
-    private void dialLoop(PeerAddress peer, Dialer dialer) {
-        AtomicInteger backoff = dialer.backoff;
-        while (stillDialed(peer, dialer)) {
+    private void dialLoop(PeerAddress peer, PeerDialer peerDialer) {
+        AtomicInteger backoff = peerDialer.backoff;
+        while (stillDialed(peer, peerDialer)) {
             long sleep = backoffSleepMs(backoff.get());
             if (sleep > 0) {
                 LOG.debug("Peer {} re-dial in {}ms (backoff)", peer, sleep);
@@ -357,7 +357,7 @@ final class PeerConnector implements AutoCloseable {
                 connect(peer, backoff).get();
                 return; // connection lifecycle now owned by the session listener
             } catch (Exception e) {
-                if (!stillDialed(peer, dialer)) {
+                if (!stillDialed(peer, peerDialer)) {
                     return;
                 }
                 backoff.incrementAndGet();
@@ -397,8 +397,8 @@ final class PeerConnector implements AutoCloseable {
      *  count driving the next dial's backoff. A completed mesh handshake
      *  resets it; a socket open no longer does. */
     int backoffAttempts(PeerAddress peer) {
-        Dialer dialer = dialers.get(peer);
-        return dialer == null ? 0 : dialer.backoff.get();
+        PeerDialer peerDialer = peerDialers.get(peer);
+        return peerDialer == null ? 0 : peerDialer.backoff.get();
     }
 
     /** Starts a dial/retry loop for the peer unless one is already live. The
@@ -406,25 +406,25 @@ final class PeerConnector implements AutoCloseable {
      *  reconnects), so the loop's own lifetime is tracked separately. Callers
      *  hold this connector's monitor. */
     private void spawnDial(PeerAddress peer) {
-        Dialer dialer = dialers.computeIfAbsent(peer, k -> new Dialer());
-        if (!dialer.running.compareAndSet(false, true)) {
+        PeerDialer peerDialer = peerDialers.computeIfAbsent(peer, k -> new PeerDialer());
+        if (!peerDialer.running.compareAndSet(false, true)) {
             // A loop is live — but it may already be on its way out (its
             // session can be aborted from a callback before connect() returns),
             // so the request is remembered and picked up when it ends.
-            dialer.pending.set(true);
+            peerDialer.pending.set(true);
             return;
         }
         Thread thread = Thread.ofVirtual().unstarted(() -> {
             try {
-                dialLoop(peer, dialer);
+                dialLoop(peer, peerDialer);
             } finally {
-                dialer.running.set(false);
-                if (dialer.pending.getAndSet(false)) {
+                peerDialer.running.set(false);
+                if (peerDialer.pending.getAndSet(false)) {
                     reconnect(peer);   // roster-checked: a removed peer stays gone
                 }
             }
         });
-        dialer.thread = thread;
+        peerDialer.thread = thread;
         thread.start();
     }
 
@@ -453,15 +453,15 @@ final class PeerConnector implements AutoCloseable {
             session.closeGracefully();
         }
         sessions.clear();
-        // A dialer parked in Thread.sleep(backoff) must not hold shutdown for
+        // A peer dialer parked in Thread.sleep(backoff) must not hold shutdown for
         // up to BACKOFF_MAX_MS.
-        for (Dialer dialer : dialers.values()) {
-            Thread thread = dialer.thread;
+        for (PeerDialer peerDialer : peerDialers.values()) {
+            Thread thread = peerDialer.thread;
             if (thread != null) {
                 thread.interrupt();
             }
         }
-        dialers.clear();
+        peerDialers.clear();
         watchdog.shutdownNow();
         // Releases the client's selector thread and pooled connections.
         http.close();

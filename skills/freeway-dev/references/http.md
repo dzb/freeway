@@ -27,7 +27,7 @@ Examples below are minimal snippets. They omit imports and app-specific domain t
   not for DB connections/transactions, global state, SSE/WebSocket sessions or background jobs. It does not propagate to child threads.
 - `freeway.http.health.enabled`
 - `freeway.http.health.path`
-- `freeway.http.h2.reset-burst-limit` (default 200, `0` disables; built-in engine only — `HttpModule` wires it into `FreewayHttpEngine.Wiring`)
+- `freeway.http.h2.reset-burst-limit` (default 200, `0` disables; built-in engine only — `HttpModule` wires it into `FreewayHttpEngine.Options`)
 - `freeway.http.h2.reset-window` (default 10s)
 - `freeway.http.ssl.reload-interval` (`0` disables hot reload)
 
@@ -175,14 +175,14 @@ binder.contribute(StaticResourceMount.class)
     .add(StaticResourceMount.directory("/uploads", Path.of("/var/uploads")));
 ```
 
-`classpath` mounts a resource tree and `directory` mounts a filesystem root. Both serve `GET`/`HEAD` only, and a directory request resolves to its `index.html`. Mounts are tried in contribution order before route dispatch; a miss on a matching mount is a terminal 404 unless at least one matching mount enables fallthrough. Each mount carries its own policy:
+`classpath` mounts a resource tree and `directory` mounts a filesystem root. Both serve `GET`/`HEAD` only, and a directory request resolves to its `index.html`. Mounts are tried in contribution order before route dispatch; a miss on a matching mount is a terminal 404 unless at least one matching mount enables a route fallback. Each mount carries its own policy:
 
 | Wither | Effect |
 |--------|--------|
 | `withCacheMaxAge(Duration)` | `Cache-Control: public, max-age=...` (default one day) |
 | `withImmutable(boolean)` | Adds `immutable` to `Cache-Control` |
-| `withFallthrough(boolean)` | On a miss, continue to the route chain instead of returning 404 |
-| `withSpaFallback(boolean)` | Serve the mount's `index.html` after route dispatch misses on an extensionless path; implies fallthrough and fails startup if `index.html` is absent |
+| `withRouteFallback(boolean)` | On a miss, continue to the route chain instead of returning 404 |
+| `withSpaFallback(boolean)` | Serve the mount's `index.html` after route dispatch misses on an extensionless path; implies a route fallback and fails startup if `index.html` is absent |
 
 Responses carry an `ETag` (and `Last-Modified` when the source reports one), honor `If-None-Match`/`If-Modified-Since` with 304, support single byte ranges (206/416), and a HEAD reports the known length without reading the file. Resolved paths must remain inside the mount root; a symlink escape is rejected.
 

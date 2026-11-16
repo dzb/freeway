@@ -70,7 +70,7 @@ final class MeshEventLifecycleHook implements RuntimeHook {
 
     private final PeerHub hub;
     private volatile PeerConnector connector;
-    private volatile DiscoveryPeerFeeder peerFeeder;
+    private volatile DiscoveryPeerSource peerSource;
 
     MeshEventLifecycleHook(PeerHub hub) {
         this.hub = hub;
@@ -102,14 +102,16 @@ final class MeshEventLifecycleHook implements RuntimeHook {
                 "MeshEventBus needs the HTTP module: its mesh endpoint lives on "
                     + "the HTTP server, so the node's identity cannot be derived");
         }
-        hub.wire(new PeerHub.Wiring(
-            container.get(MeshEventBus.class),
-            container.get(JsonCodec.class),
-            self.serviceId(),
-            self.instanceId(),
-            symbols.resolve(TOKEN),
-            keepaliveMs,
-            symbols.resolve(HANDSHAKE_TIMEOUT_MS)));
+        hub.wire(
+            new PeerHub.Deps(
+                container.get(MeshEventBus.class),
+                container.get(JsonCodec.class)),
+            new PeerHub.Options(
+                self.serviceId(),
+                self.instanceId(),
+                symbols.resolve(TOKEN),
+                keepaliveMs,
+                symbols.resolve(HANDSHAKE_TIMEOUT_MS)));
 
         // Contributions are resolved lazily at lookup — safe even when the
         // contribution view was built at bind time.
@@ -133,7 +135,7 @@ final class MeshEventLifecycleHook implements RuntimeHook {
         // Resolved optionally — the event module installs without the RPC one.
         TransportSecurity security = optional(container, TransportSecurity.class);
         connector = new PeerConnector(hub,
-            PeerConnector.Wiring.defaults()
+            PeerConnector.Options.defaults()
                 .withConnectTimeout(Duration.ofMillis(symbols.resolve(CONNECT_TIMEOUT_MS)))
                 .withScheme(wsScheme)
                 .withHandshakeTimeout(Duration.ofMillis(symbols.resolve(HANDSHAKE_TIMEOUT_MS)))
@@ -215,9 +217,9 @@ final class MeshEventLifecycleHook implements RuntimeHook {
                 + " is set but no ServiceDiscovery is bound — install CloudModule (or a"
                 + " discovery adapter) so the mesh has a registry to ask", e);
         }
-        peerFeeder = new DiscoveryPeerFeeder(discovery, self.serviceId(), self.instanceId(),
+        peerSource = new DiscoveryPeerSource(discovery, self.serviceId(), self.instanceId(),
             container.get(MeshEventBus.class)::replaceDiscoveredPeers, feedMillis);
-        peerFeeder.start();
+        peerSource.start();
         LOG.info("Mesh peers fed from discovery: service '{}' every {}ms",
             self.serviceId(), feedMillis);
     }
@@ -267,10 +269,10 @@ final class MeshEventLifecycleHook implements RuntimeHook {
 
     @Override
     public void stop(Container container) {
-        // Stop feeding first: no new discovered set while the dialer goes down.
-        if (peerFeeder != null) {
-            peerFeeder.close();
-            peerFeeder = null;
+        // Stop discovery polling first: no new discovered set while the dialer goes down.
+        if (peerSource != null) {
+            peerSource.close();
+            peerSource = null;
         }
         // Release the dialer: the connector's HttpClient and retry threads
         // must not outlive the app.

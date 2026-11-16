@@ -104,7 +104,7 @@ final class Http2Session {
             }
             h2conn.sendMySettings();
             if (upgradeStreamHeaders != null) {
-                h2conn.prepopulateUpgradeStream(upgradeStreamHeaders);
+                h2conn.registerUpgradeStream(upgradeStreamHeaders);
             }
             h2conn.handle();
         } catch (IOException e) {

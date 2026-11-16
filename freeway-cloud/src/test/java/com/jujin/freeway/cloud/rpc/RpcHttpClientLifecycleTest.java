@@ -36,8 +36,9 @@ class RpcHttpClientLifecycleTest {
         return new RpcHttpClientDefault(
             serviceId -> List.<ServiceInstance>of(),
             new LoadBalancerDefault(),
-            new RpcHttpClientDefault.Wiring(
-                List.of(), null, null, null, TransportSecurity.NONE, null, null,
+            new RpcHttpClientDefault.Deps(
+                List.of(), null, null, null, TransportSecurity.NONE, null, null),
+            new RpcHttpClientDefault.Options(
                 Duration.ofMillis(200), Duration.ofSeconds(2), Duration.ZERO));
     }
 

@@ -46,9 +46,10 @@ class RpcCancellationTest {
                     Map.of()));
             },
             new LoadBalancerDefault(),
-            new RpcHttpClientDefault.Wiring(
+            new RpcHttpClientDefault.Deps(
                 List.of(), new RetryerDefault(3, 600, 600), null, null,
-                TransportSecurity.NONE, null, null,
+                TransportSecurity.NONE, null, null),
+            new RpcHttpClientDefault.Options(
                 Duration.ofSeconds(5), Duration.ofSeconds(2), Duration.ofMillis(200)));
         try {
             var future = client.callAsync("svc", RpcRequest.get("/fail"));

@@ -29,7 +29,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 final class MeshKeepalive implements AutoCloseable {
 
     /** Sends one ping; returns false when the transport refused it. */
-    interface Pinger {
+    interface PingSender {
         boolean ping(String payload);
     }
 
@@ -42,7 +42,7 @@ final class MeshKeepalive implements AutoCloseable {
     }
 
     private final ScheduledExecutorService scheduler;
-    private final Pinger pinger;
+    private final PingSender pingSender;
     private final Runnable onTimeout;
     private final long intervalMillis;
     private final long timeoutMillis;
@@ -55,13 +55,13 @@ final class MeshKeepalive implements AutoCloseable {
      *  task firing for the life of the scheduler — one per closed connection. */
     private volatile ScheduledFuture<?> ticker;
 
-    MeshKeepalive(ScheduledExecutorService scheduler, Pinger pinger, Runnable onTimeout,
+    MeshKeepalive(ScheduledExecutorService scheduler, PingSender pingSender, Runnable onTimeout,
                   long intervalMillis, long timeoutMillis, String payload) {
         if (intervalMillis <= 0) {
             throw new IllegalArgumentException("intervalMillis must be positive");
         }
         this.scheduler = scheduler;
-        this.pinger = pinger;
+        this.pingSender = pingSender;
         this.onTimeout = onTimeout;
         this.intervalMillis = intervalMillis;
         this.timeoutMillis = Math.max(timeoutMillis, intervalMillis);
@@ -103,7 +103,7 @@ final class MeshKeepalive implements AutoCloseable {
             return;
         }
         probeSentNanos = System.nanoTime();
-        if (!pinger.ping(payload)) {
+        if (!pingSender.ping(payload)) {
             // The transport already refused the probe — the peer is gone.
             awaitingPong.set(false);
             if (closed.compareAndSet(false, true)) {

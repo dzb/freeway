@@ -46,9 +46,10 @@ class RpcObserveTest {
         return new RpcHttpClientDefault(
             serviceId -> List.of(instance),
             new LoadBalancerDefault(),
-            RpcHttpClientDefault.Wiring.defaults()
+            RpcHttpClientDefault.Deps.defaults()
                 .withTracer(tracer)
-                .withMetrics(metrics));
+                .withMetrics(metrics),
+            RpcHttpClientDefault.Options.defaults());
     }
 
     @Test

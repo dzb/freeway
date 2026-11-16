@@ -115,7 +115,7 @@ class EventMeshActivationTest extends MeshTestSupport {
         System.setProperty(EventMeshModule.ConfigKeys.EVENT_ENABLED, "true");
         nodeB = FreewayApp.run(new HttpModule(), new EventMeshModule());
 
-        // Dialer with zero configuration: installing the module is not a
+        // PeerDialer with zero configuration: installing the module is not a
         // side effect — no mesh, no dials.
         System.clearProperty(EventMeshModule.ConfigKeys.EVENT_ENABLED);
         nodeA = FreewayApp.run(new HttpModule(), new EventMeshModule());

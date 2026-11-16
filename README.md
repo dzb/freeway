@@ -408,9 +408,9 @@ The refactor is backed by the core suite, not just by compile success:
 
 ```text
 mvn clean test
-  commons 447 · ioc 341 · boot 139 · http 549
-  db 550 · flow 141 · cloud 374
-  total 2,541 — 0 failures, 0 errors, 0 skipped
+  commons 447 · ioc 341 · boot 139 · http 550
+  db 550 · flow 141 · cloud 375
+  total 2,543 — 0 failures, 0 errors, 0 skipped
 ```
 
 `mvn -Pdemos -DskipTests compile` also compiles the in-repo consumers against

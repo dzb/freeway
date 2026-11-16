@@ -139,8 +139,9 @@ class RpcHttpClientShutdownTest {
         return new RpcHttpClientDefault(
             serviceId -> instances,
             new LoadBalancerDefault(),
-            new RpcHttpClientDefault.Wiring(
-                List.of(), null, null, null, TransportSecurity.NONE, null, null,
+            new RpcHttpClientDefault.Deps(
+                List.of(), null, null, null, TransportSecurity.NONE, null, null),
+            new RpcHttpClientDefault.Options(
                 requestTimeout, Duration.ofSeconds(2), grace));
     }
 

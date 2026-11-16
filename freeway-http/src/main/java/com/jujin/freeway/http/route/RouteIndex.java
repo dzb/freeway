@@ -39,7 +39,7 @@ public final class RouteIndex {
      * handlers before construction, so this index owns no contribution or
      * container vocabulary. {@code HttpModule} is that assembly point; a
      * standalone caller uses the same two steps
-     * ({@link RouteGroup#expand()}, {@link ResolvableHandler#resolve}).
+     * ({@link RouteGroup#expand()}, {@link PendingHandler#resolve}).
      */
     public RouteIndex(List<Route> routes) {
         List<Route> all = routes == null ? List.of() : List.copyOf(routes);
@@ -49,7 +49,7 @@ public final class RouteIndex {
         // it here names the cause at assembly, where the whole route set is in
         // hand, instead of on the first matching request.
         for (Route route : all) {
-            if (route.handler() instanceof ResolvableHandler h && !h.isResolved()) {
+            if (route.handler() instanceof PendingHandler h && !h.isResolved()) {
                 throw new IllegalStateException(
                     "Route " + route.method() + " " + route.path()
                         + " uses handler class " + h.handlerType().getName()

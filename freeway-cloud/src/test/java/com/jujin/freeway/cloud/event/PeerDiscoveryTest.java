@@ -145,7 +145,7 @@ class PeerDiscoveryTest {
         nodeA = startNode("");
         awaitWired(nodeA);
         PeerConnector connector = new PeerConnector(nodeA.get(PeerHub.class),
-            PeerConnector.Wiring.defaults().withBackoff(100, 300));
+            PeerConnector.Options.defaults().withBackoff(100, 300));
         try {
             // A port with nothing behind it: the dial fails fast, and the
             // failed attempt is the observable that a dial was even attempted.
@@ -170,11 +170,11 @@ class PeerDiscoveryTest {
         /**
      * The full discovery-fed story, end to end: an instance appears in a
      * directory the node asks (what an operator, another service, or a registry
-     * node's client would write), the feeder hands it to the mesh, the node
+     * node's client would write), the source hands it to the mesh, the node
      * dials it - and when it leaves the directory, the node drops it and never
      * dials it again. No static peers: the mesh configured itself.
      *
-     * <p>Only A runs the feeder: the interval is a system property, and B is a
+     * <p>Only A runs the source: the interval is a system property, and B is a
      * pure listener that never asks discovery for anything. That asymmetry is
      * what makes the removal assertion deterministic - no one re-dials B from
      * the other side.</p>

@@ -25,14 +25,14 @@ class MeshKeepaliveTest {
 
     private ScheduledExecutorService scheduler;
 
-    private MeshKeepalive probe(MeshKeepalive.Pinger pinger, Runnable onTimeout) {
-        return probe(pinger, onTimeout, 30, 30);
+    private MeshKeepalive probe(MeshKeepalive.PingSender pingSender, Runnable onTimeout) {
+        return probe(pingSender, onTimeout, 30, 30);
     }
 
-    private MeshKeepalive probe(MeshKeepalive.Pinger pinger, Runnable onTimeout,
+    private MeshKeepalive probe(MeshKeepalive.PingSender pingSender, Runnable onTimeout,
                                 long intervalMillis, long timeoutMillis) {
         scheduler = Executors.newSingleThreadScheduledExecutor(Thread.ofVirtual().factory());
-        return new MeshKeepalive(scheduler, pinger, onTimeout,
+        return new MeshKeepalive(scheduler, pingSender, onTimeout,
             intervalMillis, timeoutMillis, "fw-keepalive");
     }
 

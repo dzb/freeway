@@ -689,14 +689,14 @@ public final class Http2Connection {
     }
 
     /**
-     * Installs stream 1 for an h2c upgrade (RFC 7540 §3.2). The HTTP/1.1
+     * Registers stream 1 for an h2c upgrade (RFC 7540 §3.2). The HTTP/1.1
      * request that negotiated the upgrade becomes stream 1, implicitly
      * half-closed from the client side — the client never sends HEADERS for
      * it. Must be invoked after the server connection preface (SETTINGS) has
      * been written so a fast handler cannot put response frames ahead of our
      * preface.
      */
-    public void prepopulateUpgradeStream(Map<String, List<String>> requestHeaders)
+    public void registerUpgradeStream(Map<String, List<String>> requestHeaders)
             throws IOException {
         if (lastSeenStreamId != 0)
             throw new IllegalStateException("upgrade stream 1 already in use");

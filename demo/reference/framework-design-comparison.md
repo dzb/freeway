@@ -74,7 +74,7 @@ This is the most striking **cultural difference** between Freeway and the other 
 - Extension adapter module, benchmark module — moved to an external repository
 - `Route.handlerType` field — because the 4-field version's constraint invariants were scattered across multiple consumers
 
-Route going from 4 fields to 3 is a typical case: spot a design flaw → don't patch it → re-examine the abstraction → introduce the `ResolvableHandler` wrapper → delete the redundant field. **This is not "fixing a bug", it is design iteration**.
+Route going from 4 fields to 3 is a typical case: spot a design flaw → don't patch it → re-examine the abstraction → introduce the `PendingHandler` wrapper → delete the redundant field. **This is not "fixing a bug", it is design iteration**.
 
 The repository conventions in `AGENTS.md` state this as a rule:
 

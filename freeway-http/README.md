@@ -44,8 +44,9 @@ needs nothing from `freeway-ioc` or `freeway-boot`: an engine, an
 
 ```java
 HttpServer server = HttpServer.create(
-    new FreewayHttpEngine(FreewayHttpEngine.Wiring.defaults(
-        new JsonCodecDefault(), new CoercerDefault())),
+    new FreewayHttpEngine(
+        FreewayHttpEngine.Deps.defaults(new JsonCodecDefault(), new CoercerDefault()),
+        FreewayHttpEngine.Options.defaults()),
     HttpServerConfig.defaults().withHost("0.0.0.0").withPort(8080),
     HttpPipeline.of(Route.get("/ping", ctx -> ctx.send(200, "pong"))));
 server.start();

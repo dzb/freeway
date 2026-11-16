@@ -342,7 +342,7 @@ class StaticResourceMountTest {
         StaticResourceMount mount = StaticResourceMount.directory("/", root)
             .withSpaFallback(true);
 
-        assertTrue(mount.fallthrough(), "SPA fallback needs the route-chain hop");
+        assertTrue(mount.routeFallback(), "SPA fallback needs the route-chain hop");
         assertTrue(mount.spaFallback());
         assertTrue(mount.spaFallbackEligible("/chat"));
         assertTrue(mount.spaFallbackEligible("/chat/42"));
@@ -403,18 +403,18 @@ class StaticResourceMountTest {
     void spaFallbackModeTransitionsStayCanonical() throws Exception {
         Path root = Files.createDirectory(tempDir.resolve("spa-modes"));
         StaticResourceMount base = StaticResourceMount.directory("/", root);
-        assertFalse(base.fallthrough());
+        assertFalse(base.routeFallback());
         assertFalse(base.spaFallback());
 
         StaticResourceMount spa = base.withSpaFallback(true);
-        assertTrue(spa.fallthrough());
+        assertTrue(spa.routeFallback());
         assertTrue(spa.spaFallback());
-        assertFalse(spa.withFallthrough(false).spaFallback(),
-            "disabling fallthrough must also clear the terminal SPA hop");
-        assertFalse(spa.withFallthrough(false).fallthrough());
-        assertFalse(base.withFallthrough(true).spaFallback());
-        assertFalse(base.withSpaFallback(false).fallthrough());
-        assertTrue(spa.withSpaFallback(false).fallthrough());
+        assertFalse(spa.withRouteFallback(false).spaFallback(),
+            "disabling routeFallback must also clear the terminal SPA hop");
+        assertFalse(spa.withRouteFallback(false).routeFallback());
+        assertFalse(base.withRouteFallback(true).spaFallback());
+        assertFalse(base.withSpaFallback(false).routeFallback());
+        assertTrue(spa.withSpaFallback(false).routeFallback());
         assertFalse(spa.withSpaFallback(false).spaFallback());
     }
 

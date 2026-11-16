@@ -19,66 +19,67 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The engine's optional wiring is a value with named knobs, not a constructor
- * ladder: each wither sets exactly one thing. The h2 reset guard is the one
- * exception that proves the rule's intent — its count and window are a single
- * decision (a zero count makes the window meaningless), so one wither takes
- * both.
+ * The engine's constructor inputs are split by role: {@link FreewayHttpEngine.Deps}
+ * contains required collaborators, while {@link FreewayHttpEngine.Options}
+ * contains caller-selected transport and protocol policy. Each wither sets
+ * exactly one thing; the h2 reset guard is the one exception, because its count
+ * and window are one decision.
  */
-class FreewayHttpEngineWiringTest {
+class FreewayHttpEngineDepsOptionsTest {
 
     @Test
-    void defaultsArePlainHttpWithNoopMetrics() {
-        var wiring = FreewayHttpEngine.Wiring.defaults(
+    void depsDefaultsProvideNoopMetrics() {
+        var deps = FreewayHttpEngine.Deps.defaults(
             new JsonCodecDefault(), new CoercerDefault());
 
-        assertNull(wiring.sslContext(), "no TLS unless asked for");
-        assertFalse(wiring.http2OverSsl());
-        assertNull(wiring.sslParameters());
-        assertSame(NoopMetrics.INSTANCE, wiring.metrics(),
+        assertSame(NoopMetrics.INSTANCE, deps.metrics(),
             "the engine never has \"no metrics\", only the noop sink");
+    }
+
+    @Test
+    void optionsDefaultsArePlainHttpWithTheDefaultResetGuard() {
+        var options = FreewayHttpEngine.Options.defaults();
+
+        assertNull(options.sslContext(), "no TLS unless asked for");
+        assertFalse(options.http2OverSsl());
+        assertNull(options.sslParameters());
         assertEquals(FreewayHttpEngine.DEFAULT_H2_RESET_BURST_LIMIT,
-            wiring.h2ResetBurstLimit(), "the h2 guard default moves with Wiring");
-        assertEquals(FreewayHttpEngine.DEFAULT_H2_RESET_WINDOW, wiring.h2ResetWindow());
+            options.h2ResetBurstLimit(), "the h2 guard default moves with Options");
+        assertEquals(FreewayHttpEngine.DEFAULT_H2_RESET_WINDOW, options.h2ResetWindow());
     }
 
     @Test
     void withersDoNotClobberEachOther() {
-        // The constructor ladder this replaced had a step that added metrics and
-        // a later step that reset them to the noop sink, so
-        // `(codec, coercer, ssl, http2)` silently dropped an earlier
-        // `(codec, coercer, metrics)` call. Each wither now touches one field.
-        // A non-noop sink: passing NoopMetrics would make "metrics were reset to
-        // the noop sink" indistinguishable from "metrics were preserved" — the
-        // assertion could not fail, which is how this check was useless once.
+        // A non-noop sink makes "metrics were reset" distinguishable from
+        // "metrics were preserved". Deps and Options must stay independent.
         Metrics metrics = new CountingMetrics();
         SSLContext ssl = sslContext();
         SSLParameters parameters = new SSLParameters();
 
-        var wiring = FreewayHttpEngine.Wiring.defaults(
+        var deps = FreewayHttpEngine.Deps.defaults(
                 new JsonCodecDefault(), new CoercerDefault())
+            .withMetrics(metrics);
+        var options = FreewayHttpEngine.Options.defaults()
             .withH2Reset(50, Duration.ofSeconds(5))
-            .withMetrics(metrics)
             .withSslParameters(parameters)
             .withSsl(ssl, true);
 
-        assertSame(metrics, wiring.metrics(), "withSsl must not reset metrics");
-        assertSame(parameters, wiring.sslParameters());
-        assertSame(ssl, wiring.sslContext());
-        assertTrue(wiring.http2OverSsl());
-        assertEquals(50, wiring.h2ResetBurstLimit(),
+        assertSame(metrics, deps.metrics(), "withSsl must not reset metrics");
+        assertSame(parameters, options.sslParameters());
+        assertSame(ssl, options.sslContext());
+        assertTrue(options.http2OverSsl());
+        assertEquals(50, options.h2ResetBurstLimit(),
             "every wither passes the h2 guard through untouched");
-        assertEquals(Duration.ofSeconds(5), wiring.h2ResetWindow());
+        assertEquals(Duration.ofSeconds(5), options.h2ResetWindow());
 
         // null metrics restores the noop sink rather than failing later.
-        assertSame(NoopMetrics.INSTANCE, wiring.withMetrics(null).metrics());
+        assertSame(NoopMetrics.INSTANCE, deps.withMetrics(null).metrics());
     }
 
     /** The guard's defaults and validation live here, not on HttpServerConfig. */
     @Test
     void withH2ResetTunesWithoutTouchingTheOriginal() {
-        var original = FreewayHttpEngine.Wiring.defaults(
-            new JsonCodecDefault(), new CoercerDefault());
+        var original = FreewayHttpEngine.Options.defaults();
         var tuned = original.withH2Reset(50, Duration.ofSeconds(5));
 
         assertEquals(50, tuned.h2ResetBurstLimit());
@@ -90,15 +91,14 @@ class FreewayHttpEngineWiringTest {
     /** Validation moved here with the knob, so a bad guard fails at wiring. */
     @Test
     void withH2ResetRunsTheValidationTheConfigUsedToCarry() {
-        var w = FreewayHttpEngine.Wiring.defaults(
-            new JsonCodecDefault(), new CoercerDefault());
+        var options = FreewayHttpEngine.Options.defaults();
 
         assertThrows(IllegalArgumentException.class,
-            () -> w.withH2Reset(-1, Duration.ofSeconds(1)));
+            () -> options.withH2Reset(-1, Duration.ofSeconds(1)));
         assertThrows(IllegalArgumentException.class,
-            () -> w.withH2Reset(10, Duration.ofSeconds(-1)));
+            () -> options.withH2Reset(10, Duration.ofSeconds(-1)));
         assertThrows(IllegalArgumentException.class,
-            () -> w.withH2Reset(10, null));
+            () -> options.withH2Reset(10, null));
     }
 
     /** A sink that is not {@link NoopMetrics}, so identity proves preservation. */

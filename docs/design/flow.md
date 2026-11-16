@@ -110,7 +110,7 @@ When exceeded, a `BodyTooLargeException` is thrown and mapped by the built-in `E
 
 **Decision:** `Container.inject(Object)` was removed. `Container.create(Class<T>)` added as the public API.
 
-**Why:** `inject()` was a "half measure" encouraging `new X() + container.inject(x)` — an anti-pattern where the caller manages part of the lifecycle and the container manages the rest. `create()` provides a clean contract: constructor injection + field injection, **no lifecycle callbacks** — `@PostConstruct` belongs to the managed path (this entry originally listed it; corrected in 1.5.6, see the note under *ResolvableHandler* below) — caller owns the lifecycle, no caching, no container management. The name `create()` was chosen over `instantiate()` as more idiomatic.
+**Why:** `inject()` was a "half measure" encouraging `new X() + container.inject(x)` — an anti-pattern where the caller manages part of the lifecycle and the container manages the rest. `create()` provides a clean contract: constructor injection + field injection, **no lifecycle callbacks** — `@PostConstruct` belongs to the managed path (this entry originally listed it; corrected in 1.5.6, see the note under *PendingHandler* below) — caller owns the lifecycle, no caching, no container management. The name `create()` was chosen over `instantiate()` as more idiomatic.
 
 Final Container API: `get(Class)`, `get(Class, String)`, `extension(Class)`, `create(Class)`, `close()`.
 
@@ -122,9 +122,9 @@ Final Container API: `get(Class)`, `get(Class, String)`, `extension(Class)`, `cr
 
 **Decision:** The `Route` record went from 4 fields to 3 (`method`, `path`, `handler`). The `handlerType` field and its accessor were removed.
 
-**Why:** The 4-field version created an awkward "either handler or handlerType" invariant that shifted validation complexity into every consumer. By moving class-based lazy resolution into `ResolvableHandler` (a `RouteHandler` wrapper), the record itself has no special cases — it always carries a resolved `RouteHandler`. Factory methods like `Route.get("/path", MyHandler.class)` internally create `new ResolvableHandler(MyHandler.class)`.
+**Why:** The 4-field version created an awkward "either handler or handlerType" invariant that shifted validation complexity into every consumer. By moving class-based lazy resolution into `PendingHandler` (a `RouteHandler` wrapper), the record itself has no special cases — it always carries a resolved `RouteHandler`. Factory methods like `Route.get("/path", MyHandler.class)` internally create `new PendingHandler(MyHandler.class)`.
 
-**See also:** `Route.java`, `ResolvableHandler.java` (`freeway-http`)
+**See also:** `Route.java`, `PendingHandler.java` (`freeway-http`)
 
 ---
 
@@ -135,7 +135,7 @@ Final Container API: `get(Class)`, `get(Class, String)`, `extension(Class)`, `cr
 **Why:** `RouteIndex` is a pure data structure (trie-based path matcher) — it should not know about IoC. The Container dependency was leaked into it because class-based handlers needed resolution during construction. The fix:
 
 1. `HttpModule` binds `RouteIndex` via a provider function
-2. The provider resolves all `ResolvableHandler` instances by calling
+2. The provider resolves all `PendingHandler` instances by calling
    `lh.resolve(() -> c.create(lh.handlerType()))` — a supplier, so the route
    package still does not name the container
 3. Expands `RouteGroup` contributions once and passes the final, resolved routes to
@@ -143,7 +143,7 @@ Final Container API: `get(Class)`, `get(Class, String)`, `extension(Class)`, `cr
 
 This keeps the IoC dependency boundary at the Module level, identical to the `freeway-db` pattern.
 
-**See also:** `HttpModule`'s `RouteIndex` binding and `resolveHandler`, `RouteIndex`, `ResolvableHandler`
+**See also:** `HttpModule`'s `RouteIndex` binding and `resolveHandler`, `RouteIndex`, `PendingHandler`
 
 ---
 
@@ -201,7 +201,7 @@ freeway-commons         zero deps
 
 ---
 
-## ResolvableHandler Resolution Strategy
+## PendingHandler Resolution Strategy
 
 **Status: renamed from `LazyHandler`, and the index check restored.** The
 mechanism is unchanged; the name and one missing check are not.
@@ -214,8 +214,8 @@ refuses an unresolved endpoint when its index is built; `RouteIndex` had no
 such check, so the same mistake surfaced on the first matching request from
 inside dispatch, naming only a class. One index had the check and the other
 did not, and the likeliest reason is that "lazy" made the check look
-unnecessary. `Resolvable` states the two phases and claims nothing about when
-they happen.
+unnecessary. `PendingHandler` states the two phases and claims nothing about
+when they happen.
 
 **The check, restored.** `RouteIndex` now refuses a class route that reached it
 unresolved, naming the route, the class, who normally resolves it, and the way
@@ -231,7 +231,7 @@ the server's, so lifecycle belongs with a binding. Earlier text here said the
 instance was created "with `@PostConstruct`"; that stopped being true when
 `create` became `new` plus dependency resolution.
 
-**Decision:** `ResolvableHandler.resolve()` uses DCL (double-checked locking) with `volatile`, and takes a `Supplier<RouteHandler>` — the route package never sees the container, so `HttpModule` supplies the factory.
+**Decision:** `PendingHandler.resolve()` uses DCL (double-checked locking) with `volatile`, and takes a `Supplier<RouteHandler>` — the route package never sees the container, so `HttpModule` supplies the factory.
 
 ```java
 RouteHandler resolve(Supplier<RouteHandler> factory) {
@@ -250,7 +250,7 @@ RouteHandler resolve(Supplier<RouteHandler> factory) {
 
 **Why:** DCL provides thread-safe lazy initialization with minimal overhead on the fast path (a single volatile read). `resolve()` is public but only called during module wiring (by `HttpModule`), not on the request path. The `handle()` method throws if `resolved` is null — this is a programming error guard (must call `resolve()` before handling) rather than a fallback.
 
-**See also:** `ResolvableHandler.java`
+**See also:** `PendingHandler.java`
 
 ---
 

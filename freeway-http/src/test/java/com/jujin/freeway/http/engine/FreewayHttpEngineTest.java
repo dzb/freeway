@@ -610,7 +610,7 @@ class FreewayHttpEngineTest {
 
         app = FreewayApp.run(binder -> {
             binder.contribute(StaticResourceMount.class).add(
-                StaticResourceMount.directory("/", tempDir).withFallthrough(true)
+                StaticResourceMount.directory("/", tempDir).withRouteFallback(true)
             );
             binder.contribute(Route.class).add(
                 Route.get("/missing.txt", ctx -> ctx.sendText(200, "route handled"))
@@ -629,7 +629,7 @@ class FreewayHttpEngineTest {
         assertEquals(200, r1.statusCode());
         assertEquals("static file", r1.body());
 
-        // Missing file with fallthrough → route handles it
+        // Missing file with routeFallback → route handles it
         HttpResponse<String> r2 = client.send(
             HttpRequest.newBuilder()
                 .uri(URI.create("http://127.0.0.1:" + port + "/missing.txt"))
@@ -1084,7 +1084,8 @@ class FreewayHttpEngineTest {
         // as started — a dead acceptor would strand new connections in the OS
         // backlog.
         FreewayHttpEngine engine = new FreewayHttpEngine(
-            FreewayHttpEngine.Wiring.defaults(new JsonCodecDefault(), new CoercerDefault()));
+            FreewayHttpEngine.Deps.defaults(new JsonCodecDefault(), new CoercerDefault()),
+            FreewayHttpEngine.Options.defaults());
         try (ServerSocketChannel listener = ServerSocketChannel.open()) {
             listener.bind(new InetSocketAddress("127.0.0.1", 0));
             int port = ((InetSocketAddress) listener.getLocalAddress()).getPort();
@@ -1171,8 +1172,8 @@ class FreewayHttpEngineTest {
         SSLContext serverSsl = serverSslContext(keystore);
 
         FreewayHttpEngine engine = new FreewayHttpEngine(
-            FreewayHttpEngine.Wiring.defaults(new JsonCodecDefault(), new CoercerDefault())
-                .withSsl(serverSsl, false));
+            FreewayHttpEngine.Deps.defaults(new JsonCodecDefault(), new CoercerDefault()),
+            FreewayHttpEngine.Options.defaults().withSsl(serverSsl, false));
         var handle = engine.start(
             TestServerConfig.loopback(),
             ctx -> ctx.sendJson(200, Map.of(

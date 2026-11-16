@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test;
  * the same rule {@code RouteIndex} applies to class routes — so this guard is
  * reachable only for a wrapper invoked directly, and it has to carry the whole
  * explanation because nothing else will. It is the endpoint-side counterpart of
- * {@code ResolvableHandler.handle}'s guard, and both messages say the same
+ * {@code PendingHandler.handle}'s guard, and both messages say the same
  * things in the same order.
  */
 class UnresolvedEndpointTest {
@@ -31,7 +31,7 @@ class UnresolvedEndpointTest {
 
     @Test
     void openOnAnUnresolvedWrapperNamesTheClassAndTheFix() {
-        var wrapper = new ResolvableEndpoint(Endpoint.class);
+        var wrapper = new PendingEndpoint(Endpoint.class);
 
         IllegalStateException ex = assertThrows(IllegalStateException.class,
             () -> wrapper.open(null));
@@ -41,13 +41,13 @@ class UnresolvedEndpointTest {
             "must print the class name, not " + Endpoint.class + ": " + message);
         assertTrue(message.contains("upgrade"),
             "must say which phase called it: " + message);
-        assertTrue(message.contains("ResolvableEndpoint.resolve"),
+        assertTrue(message.contains("PendingEndpoint.resolve"),
             "must name the way out: " + message);
     }
 
     @Test
     void subprotocolsOnAnUnresolvedWrapperUsesTheSameGuard() {
-        var wrapper = new ResolvableEndpoint(Endpoint.class);
+        var wrapper = new PendingEndpoint(Endpoint.class);
 
         IllegalStateException ex = assertThrows(IllegalStateException.class,
             wrapper::subprotocols);

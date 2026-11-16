@@ -10,18 +10,18 @@ import java.util.concurrent.atomic.LongAdder;
  */
 final class EventStats {
 
-    private final Tally published;
-    private final Tally delivered;
-    private final Tally subscriberFailures;
-    private final Tally deadEvents;
-    private final Tally streamDrops;
+    private final CounterState published;
+    private final CounterState delivered;
+    private final CounterState subscriberFailures;
+    private final CounterState deadEvents;
+    private final CounterState streamDrops;
 
     EventStats(Metrics metrics) {
-        this.published = new Tally(metrics.counter("eventbus.published"));
-        this.delivered = new Tally(metrics.counter("eventbus.delivered"));
-        this.subscriberFailures = new Tally(metrics.counter("eventbus.subscriber.failures"));
-        this.deadEvents = new Tally(metrics.counter("eventbus.dead.events"));
-        this.streamDrops = new Tally(metrics.counter("eventbus.stream.drops"));
+        this.published = new CounterState(metrics.counter("eventbus.published"));
+        this.delivered = new CounterState(metrics.counter("eventbus.delivered"));
+        this.subscriberFailures = new CounterState(metrics.counter("eventbus.subscriber.failures"));
+        this.deadEvents = new CounterState(metrics.counter("eventbus.dead.events"));
+        this.streamDrops = new CounterState(metrics.counter("eventbus.stream.drops"));
     }
 
     void published() {
@@ -55,8 +55,8 @@ final class EventStats {
     }
 
     /** One count, kept locally and mirrored to its metrics counter. */
-    private record Tally(LongAdder local, Metrics.Counter metric) {
-        Tally(Metrics.Counter metric) {
+    private record CounterState(LongAdder local, Metrics.Counter metric) {
+        CounterState(Metrics.Counter metric) {
             this(new LongAdder(), metric);
         }
 

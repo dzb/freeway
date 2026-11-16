@@ -118,22 +118,64 @@ public final class RpcHttpClientDefault implements RpcHttpClient {
     private static final Duration DEFAULT_OPEN_WINDOW =
         Duration.ofSeconds(ResilienceModule.ConfigKeys.RPC_CB_OPEN_WINDOW_DEFAULT);
     /**
-     * Optional wiring for {@link RpcHttpClientDefault}. Every field has a
-     * production-safe default, so tests and bare setups omit what they do not
-     * use. Bundled into one value (mirroring {@code PeerHub.Wiring}) so the
-     * optional inputs cannot drift apart at a call site and the client
-     * needs no telescoping constructor overloads. Each field also has a
-     * wither ({@code withX}) for stepwise customization from
-     * {@link #defaults()}.
+     * Collaborators that shape how the client talks to the outside world:
+     * context codecs, resilience policy objects, transport security and
+     * observability. Every field may be omitted and then takes its production
+     * default, but these are dependencies, not caller options — the client
+     * composes them.
      */
-    public record Wiring(
+    public record Deps(
         List<ContextCodec> codecs,
         Retryer retryer,
         CircuitBreaker breaker,
         RateLimiter rateLimiter,
         TransportSecurity transport,
         Tracer tracer,
-        Metrics metrics,
+        Metrics metrics
+    ) {
+        public Deps {
+            codecs = codecs == null ? List.of() : List.copyOf(codecs);
+        }
+
+        /** All-default collaborators: no codecs, built-in resilience, plaintext. */
+        public static Deps defaults() {
+            return new Deps(null, null, null, null, null, null, null);
+        }
+
+        public Deps withContextCodecs(List<ContextCodec> value) {
+            return new Deps(value, retryer, breaker, rateLimiter, transport, tracer, metrics);
+        }
+
+        public Deps withRetryer(Retryer value) {
+            return new Deps(codecs, value, breaker, rateLimiter, transport, tracer, metrics);
+        }
+
+        public Deps withBreaker(CircuitBreaker value) {
+            return new Deps(codecs, retryer, value, rateLimiter, transport, tracer, metrics);
+        }
+
+        public Deps withRateLimiter(RateLimiter value) {
+            return new Deps(codecs, retryer, breaker, value, transport, tracer, metrics);
+        }
+
+        public Deps withTransport(TransportSecurity value) {
+            return new Deps(codecs, retryer, breaker, rateLimiter, value, tracer, metrics);
+        }
+
+        public Deps withTracer(Tracer value) {
+            return new Deps(codecs, retryer, breaker, rateLimiter, transport, value, metrics);
+        }
+
+        public Deps withMetrics(Metrics value) {
+            return new Deps(codecs, retryer, breaker, rateLimiter, transport, tracer, value);
+        }
+    }
+
+    /**
+     * Caller-selected timing policy for the client. These are values, not
+     * collaborators; every field has a production-safe default and a wither.
+     */
+    public record Options(
         Duration requestTimeout,
         Duration connectTimeout,
         Duration shutdownGrace
@@ -150,123 +192,75 @@ public final class RpcHttpClientDefault implements RpcHttpClient {
         public static final Duration DEFAULT_SHUTDOWN_GRACE =
             RpcModule.ConfigKeys.RPC_SHUTDOWN_GRACE_DEFAULT;
 
-        public Wiring {
-            codecs = codecs == null ? List.of() : List.copyOf(codecs);
+        public Options {
             requestTimeout = requestTimeout == null ? DEFAULT_REQUEST_TIMEOUT : requestTimeout;
             connectTimeout = connectTimeout == null ? DEFAULT_CONNECT_TIMEOUT : connectTimeout;
             shutdownGrace = shutdownGrace == null ? DEFAULT_SHUTDOWN_GRACE : shutdownGrace;
         }
 
-        /** All-default wiring: no codecs, built-in resilience, plaintext. */
-        public static Wiring defaults() {
-            return new Wiring(null, null, null, null, null, null, null, null, null, null);
+        public static Options defaults() {
+            return new Options(null, null, null);
         }
 
-        public Wiring withTracer(Tracer value) {
-            return new Wiring(codecs, retryer, breaker, rateLimiter, transport,
-                value, metrics, requestTimeout, connectTimeout,
-                shutdownGrace);
+        public Options withRequestTimeout(Duration value) {
+            return new Options(value, connectTimeout, shutdownGrace);
         }
 
-        public Wiring withMetrics(Metrics value) {
-            return new Wiring(codecs, retryer, breaker, rateLimiter, transport,
-                tracer, value, requestTimeout, connectTimeout,
-                shutdownGrace);
+        public Options withConnectTimeout(Duration value) {
+            return new Options(requestTimeout, value, shutdownGrace);
         }
 
-        public Wiring withContextCodecs(List<ContextCodec> value) {
-            return new Wiring(value, retryer, breaker, rateLimiter, transport,
-                tracer, metrics, requestTimeout, connectTimeout,
-                shutdownGrace);
-        }
-
-        public Wiring withRetryer(Retryer value) {
-            return new Wiring(codecs, value, breaker, rateLimiter, transport,
-                tracer, metrics, requestTimeout, connectTimeout,
-                shutdownGrace);
-        }
-
-        public Wiring withBreaker(CircuitBreaker value) {
-            return new Wiring(codecs, retryer, value, rateLimiter, transport,
-                tracer, metrics, requestTimeout, connectTimeout,
-                shutdownGrace);
-        }
-
-        public Wiring withRateLimiter(RateLimiter value) {
-            return new Wiring(codecs, retryer, breaker, value, transport,
-                tracer, metrics, requestTimeout, connectTimeout,
-                shutdownGrace);
-        }
-
-        public Wiring withTransport(TransportSecurity value) {
-            return new Wiring(codecs, retryer, breaker, rateLimiter, value,
-                tracer, metrics, requestTimeout, connectTimeout,
-                shutdownGrace);
-        }
-
-        public Wiring withRequestTimeout(Duration value) {
-            return new Wiring(codecs, retryer, breaker, rateLimiter, transport,
-                tracer, metrics, value, connectTimeout,
-                shutdownGrace);
-        }
-
-        public Wiring withShutdownGrace(Duration value) {
-            return new Wiring(codecs, retryer, breaker, rateLimiter, transport,
-                tracer, metrics, requestTimeout, connectTimeout,
-                value);
-        }
-
-        public Wiring withConnectTimeout(Duration value) {
-            return new Wiring(codecs, retryer, breaker, rateLimiter, transport,
-                tracer, metrics, requestTimeout, value,
-                shutdownGrace);
+        public Options withShutdownGrace(Duration value) {
+            return new Options(requestTimeout, connectTimeout, value);
         }
     }
 
     public RpcHttpClientDefault(ServiceDiscovery discovery, LoadBalancer loadBalancer) {
-        this(discovery, loadBalancer, Wiring.defaults());
+        this(discovery, loadBalancer, Deps.defaults(), Options.defaults());
     }
 
     public RpcHttpClientDefault(
-        ServiceDiscovery discovery, LoadBalancer loadBalancer, Wiring wiring) {
-        this(discovery, loadBalancer, wiring, null);
+        ServiceDiscovery discovery, LoadBalancer loadBalancer,
+        Deps deps, Options options) {
+        this(discovery, loadBalancer, deps, options, null);
     }
 
     /**
      * Package-visible assembly used by {@link RpcModule}, which resolves the
-     * optional {@link RetryBudget} binding without widening {@link Wiring}.
+     * optional {@link RetryBudget} binding without widening {@link Deps}.
      * A null budget uses the library default.
      */
     RpcHttpClientDefault(
-        ServiceDiscovery discovery, LoadBalancer loadBalancer, Wiring wiring,
-        RetryBudget retryBudget) {
-        Objects.requireNonNull(wiring, "wiring");
+        ServiceDiscovery discovery, LoadBalancer loadBalancer,
+        Deps deps, Options options, RetryBudget retryBudget) {
+        Objects.requireNonNull(deps, "deps");
+        Objects.requireNonNull(options, "options");
         this.discovery = Objects.requireNonNull(discovery, "discovery");
         this.loadBalancer = Objects.requireNonNull(loadBalancer, "loadBalancer");
-        this.codecs = wiring.codecs();
+        this.codecs = deps.codecs();
         // A default-implementation breaker/limiter is used as the per-service
         // shard configuration template; any other implementation (or NOOP) is
         // shared verbatim — see the computeIfAbsent factories in call().
-        this.injectedBreaker = wiring.breaker();
-        this.injectedRateLimiter = wiring.rateLimiter();
-        this.transport = wiring.transport() != null ? wiring.transport() : TransportSecurity.NONE;
-        this.tracer = wiring.tracer();
-        this.metrics = wiring.metrics();
+        this.injectedBreaker = deps.breaker();
+        this.injectedRateLimiter = deps.rateLimiter();
+        this.transport = deps.transport() != null ? deps.transport() : TransportSecurity.NONE;
+        this.tracer = deps.tracer();
+        this.metrics = deps.metrics();
         // The resolved retryer is never null: an absent one falls back to the
         // built-in default before the policy is built, so a missing resilience
         // module cannot NPE on the first retryable failure.
-        Retryer resolvedRetryer = wiring.retryer() != null
-            ? wiring.retryer()
+        Retryer resolvedRetryer = deps.retryer() != null
+            ? deps.retryer()
             : RetryerDefault.withDefaults();
         this.injectedRetryBudget = retryBudget != null
             ? retryBudget
             : RetryBudgetDefault.withDefaults();
         this.policy = new ResiliencePolicy(
             resolvedRetryer, this.tracer, this.metrics, this::retryBudgetFor);
-        this.shutdownGrace = wiring.shutdownGrace();
-        this.requestTimeout = wiring.requestTimeout();
+        this.shutdownGrace = options.shutdownGrace();
+        this.requestTimeout = options.requestTimeout();
         this.http = HttpClients
-            .builder(wiring.connectTimeout(), this.transport.sslContext())
+            .builder(options.connectTimeout(), this.transport.sslContext())
             .version(HttpClient.Version.HTTP_1_1)
             .build();
         this.asyncExecutor = Executors.newVirtualThreadPerTaskExecutor();

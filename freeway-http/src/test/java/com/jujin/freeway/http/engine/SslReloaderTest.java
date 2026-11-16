@@ -155,13 +155,14 @@ class SslReloaderTest {
 
     private static FreewayHttpEngine engine() {
         return new FreewayHttpEngine(
-            FreewayHttpEngine.Wiring.defaults(new JsonCodecDefault(), new CoercerDefault()));
+            FreewayHttpEngine.Deps.defaults(new JsonCodecDefault(), new CoercerDefault()),
+            FreewayHttpEngine.Options.defaults());
     }
 
     private static FreewayHttpEngine engine(SSLContext initial) {
         return new FreewayHttpEngine(
-            FreewayHttpEngine.Wiring.defaults(new JsonCodecDefault(), new CoercerDefault())
-                .withSsl(initial, false));
+            FreewayHttpEngine.Deps.defaults(new JsonCodecDefault(), new CoercerDefault()),
+            FreewayHttpEngine.Options.defaults().withSsl(initial, false));
     }
 
     private static SslReloader reloader(

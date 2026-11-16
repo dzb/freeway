@@ -122,7 +122,7 @@ final class UnknownKeysHook implements RuntimeHook {
     /** Whether a prefix-only admission covers {@code key}. */
     private static boolean isAdmitted(String key, List<KnownKeys> admitted) {
         for (KnownKeys vocab : admitted) {
-            if (vocab.namespaceUnder(key) != null) {
+            if (vocab.namespaceOf(key) != null) {
                 return true;
             }
         }
@@ -138,7 +138,7 @@ final class UnknownKeysHook implements RuntimeHook {
     private static String claimedNamespace(String key, List<KnownKeys> listed) {
         String claimed = null;
         for (KnownKeys vocab : listed) {
-            String namespace = vocab.namespaceUnder(key);
+            String namespace = vocab.namespaceOf(key);
             if (namespace == null || namespace.equals(KnownKeys.ROOT_PREFIX)) {
                 continue;
             }

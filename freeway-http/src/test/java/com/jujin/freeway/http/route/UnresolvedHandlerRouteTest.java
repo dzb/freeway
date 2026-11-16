@@ -17,7 +17,7 @@ import com.jujin.freeway.http.HttpExchange;
  * <p>Building a {@code RouteIndex} by hand is a supported route — the
  * constructor takes plain lists and an application may bind it directly. What
  * it cannot do on its own is turn a handler <em>class</em> into an instance:
- * {@code HttpModule} is what calls {@link ResolvableHandler#resolve}, because
+ * {@code HttpModule} is what calls {@link PendingHandler#resolve}, because
  * it is what holds the container.
  *
  * <p>So the failure is reachable, and the check belongs at assembly: that is
@@ -61,7 +61,7 @@ class UnresolvedHandlerRouteTest {
         // An index cannot hold this wrapper unresolved, so the only way to
         // reach the guard is to keep the wrapper and call it — which is worth
         // naming rather than letting dispatch fail on a null instance.
-        ResolvableHandler wrapper = new ResolvableHandler(Plain.class);
+        PendingHandler wrapper = new PendingHandler(Plain.class);
 
         IllegalStateException ex = assertThrows(IllegalStateException.class,
             () -> wrapper.handle(null));
@@ -71,7 +71,7 @@ class UnresolvedHandlerRouteTest {
             "must name the class that has no instance: " + message);
         assertTrue(message.contains("invoked directly"),
             "must say how an unresolved wrapper got here: " + message);
-        assertTrue(message.contains("ResolvableHandler.resolve"),
+        assertTrue(message.contains("PendingHandler.resolve"),
             "must name the way out: " + message);
     }
 
@@ -80,19 +80,19 @@ class UnresolvedHandlerRouteTest {
         // The supported standalone shape: declare, resolve, then index — all on
         // the same Route, since resolve records on the wrapper the route holds.
         Route route = Route.get("/test", Plain.class);
-        ((ResolvableHandler) route.handler()).resolve(Plain::new);
+        ((PendingHandler) route.handler()).resolve(Plain::new);
 
         RouteIndex index = new RouteIndex(List.of(route));
         var match = index.match("GET", "/test");
         assertNotNull(match, "a resolved class route indexes and matches like any other");
-        assertTrue(match.handler() instanceof ResolvableHandler,
+        assertTrue(match.handler() instanceof PendingHandler,
             "the wrapper stays in place; it is what holds the instance");
     }
 
     @Test
     void theFactoryIsConsultedOnlyOnce() {
         Route route = Route.get("/test", Plain.class);
-        ResolvableHandler h = (ResolvableHandler) route.handler();
+        PendingHandler h = (PendingHandler) route.handler();
 
         int[] built = {0};
         h.resolve(() -> { built[0]++; return new Plain(); });

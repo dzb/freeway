@@ -221,7 +221,7 @@ final class JsonCoercions {
         Coercer coercer,
         TypeContext context
     ) {
-        if (!plan.isConstructable()) {
+        if (!plan.hasConstructor()) {
             throw new IllegalArgumentException(
                 "Cannot construct record type: " + plan.type().getName()
             );
@@ -248,7 +248,7 @@ final class JsonCoercions {
         Coercer coercer,
         TypeContext context
     ) {
-        if (!plan.isConstructable()) {
+        if (!plan.hasConstructor()) {
             throw new IllegalArgumentException(
                 "Type " + plan.type().getName() + " has no no-arg constructor"
             );

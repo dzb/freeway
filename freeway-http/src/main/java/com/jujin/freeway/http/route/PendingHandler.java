@@ -1,7 +1,7 @@
 package com.jujin.freeway.http.route;
 
 import com.jujin.freeway.http.HttpExchange;
-import com.jujin.freeway.http.internal.ResolvableValue;
+import com.jujin.freeway.http.internal.PendingValue;
 import java.util.function.Supplier;
 
 /**
@@ -34,11 +34,11 @@ import java.util.function.Supplier;
  * detail of that arrangement, not API: it is {@code public} only so
  * {@code HttpModule} can reach it from another package.
  */
-public final class ResolvableHandler implements RouteHandler {
-    private final ResolvableValue<RouteHandler> resolved;
+public final class PendingHandler implements RouteHandler {
+    private final PendingValue<RouteHandler> resolved;
 
-    public ResolvableHandler(Class<? extends RouteHandler> handlerType) {
-        this.resolved = new ResolvableValue<>(handlerType);
+    public PendingHandler(Class<? extends RouteHandler> handlerType) {
+        this.resolved = new PendingValue<>(handlerType);
     }
 
     /** The handler class this route was declared with. */
@@ -83,7 +83,7 @@ public final class ResolvableHandler implements RouteHandler {
                     + "route wrapper was invoked directly, outside an index. HttpModule "
                     + "resolves class routes while building the index, and RouteIndex "
                     + "refuses to build one that still holds an unresolved wrapper — so "
-                    + "call ResolvableHandler.resolve(factory) on the wrapper you hold, or "
+                    + "call PendingHandler.resolve(factory) on the wrapper you hold, or "
                     + "declare the handler as an instance "
                     + "(Route.of(String, String, RouteHandler))");
         }

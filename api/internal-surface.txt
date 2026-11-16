@@ -29,7 +29,7 @@ freeway-http/src/main/java/com/jujin/freeway/http/internal/HeaderStore.java#Head
 freeway-http/src/main/java/com/jujin/freeway/http/internal/HttpHeaders.java#HttpHeaders
 freeway-http/src/main/java/com/jujin/freeway/http/internal/HttpUtils.java#HttpUtils
 freeway-http/src/main/java/com/jujin/freeway/http/internal/LimitedInputStream.java#LimitedInputStream
-freeway-http/src/main/java/com/jujin/freeway/http/internal/ResolvableValue.java#ResolvableValue
+freeway-http/src/main/java/com/jujin/freeway/http/internal/PendingValue.java#PendingValue
 freeway-http/src/main/java/com/jujin/freeway/http/internal/ResponseFraming.java#ResponseFraming
 freeway-http/src/main/java/com/jujin/freeway/http/internal/WebSocketCloseReason.java#WebSocketCloseReason
 freeway-ioc/src/main/java/com/jujin/freeway/ioc/internal/ContainerImpl.java#ContainerImpl

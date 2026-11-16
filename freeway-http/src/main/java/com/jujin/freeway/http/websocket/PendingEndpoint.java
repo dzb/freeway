@@ -1,6 +1,6 @@
 package com.jujin.freeway.http.websocket;
 
-import com.jujin.freeway.http.internal.ResolvableValue;
+import com.jujin.freeway.http.internal.PendingValue;
 import java.util.Set;
 import java.util.function.Supplier;
 
@@ -8,7 +8,7 @@ import java.util.function.Supplier;
  * A {@link WebSocketEndpoint} that stands for an endpoint <em>class</em> until
  * the container supplies an instance.
  *
- * <p>Same two-phase arrangement as {@code ResolvableHandler}, and for the same
+ * <p>Same two-phase arrangement as {@code PendingHandler}, and for the same
  * reasons: a route declared as {@code WebSocketRoute.of(path, MyEndpoint.class)}
  * contributes a complete class, {@code HttpModule} instantiates it through
  * {@code Container.create} while building the WebSocket index, and the result
@@ -25,11 +25,11 @@ import java.util.function.Supplier;
  * <p>Not API: {@code public} only so {@code HttpModule} can resolve it from
  * another package.
  */
-public final class ResolvableEndpoint implements WebSocketEndpoint {
-    private final ResolvableValue<WebSocketEndpoint> resolved;
+public final class PendingEndpoint implements WebSocketEndpoint {
+    private final PendingValue<WebSocketEndpoint> resolved;
 
-    public ResolvableEndpoint(Class<? extends WebSocketEndpoint> endpointType) {
-        this.resolved = new ResolvableValue<>(endpointType);
+    public PendingEndpoint(Class<? extends WebSocketEndpoint> endpointType) {
+        this.resolved = new PendingValue<>(endpointType);
     }
 
     /** The endpoint class this route was declared with. */
@@ -71,7 +71,7 @@ public final class ResolvableEndpoint implements WebSocketEndpoint {
 
     /**
      * The guard for a wrapper invoked directly, outside an index — the same
-     * shape {@code ResolvableHandler.handle} uses, for the same reason.
+     * shape {@code PendingHandler.handle} uses, for the same reason.
      *
      * <p>{@code WebSocketIndex} refuses to build while an endpoint is
      * unresolved (the rule {@code RouteIndex} applies to class routes), so an
@@ -86,7 +86,7 @@ public final class ResolvableEndpoint implements WebSocketEndpoint {
                 + "endpoint wrapper was invoked directly at " + phase + ", outside an "
                 + "index. HttpModule resolves class endpoints while building the index, "
                 + "and WebSocketIndex refuses to build one that still holds an unresolved "
-                + "wrapper — so call ResolvableEndpoint.resolve(factory) on the wrapper "
+                + "wrapper — so call PendingEndpoint.resolve(factory) on the wrapper "
                 + "you hold, or declare the endpoint as an instance");
     }
 }

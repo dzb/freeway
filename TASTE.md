@@ -573,6 +573,8 @@ semantic channel and the two paths are not interchangeable.
 | `isSecure` / `matchWebSocket` / `webSocketIndex` | predicates use `is`; WebSocket keeps two camelCase segments in Java identifiers |
 | `PoolStats` / `DatabaseCatalog.find` / `databases()` | statistics, missing values and collection reads each have an accurate word |
 | `DatabaseCatalog` / `ConnectionTracker` | a lookup snapshot and a live-collection collaborator stop using the `Registry` suffix |
+| `PendingValue` / `withRouteFallback` / `hasConstructor` | a pre-resolution wrapper names its state, and route fallback/simple predicates name the fact directly |
+| `RpcHttpClientDefault.Deps` / `Options`, `FreewayHttpEngine.Deps` / `Options`, `PeerHub.Deps` / `Options` | collaborators and caller-selected values are different contracts, not one `Wiring` bag |
 | `Query.bind` / `Contribution.addDeferred` | read, write, immediate construction and deferred construction no longer share an ambiguous verb |
 | `Row.asString/asInt/asLong` | the accessor family uses one syntax |
 | `FlowExecution` / `FlowEngine.run` | workflow execution is separate from expression eval |

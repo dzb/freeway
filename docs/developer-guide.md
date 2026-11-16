@@ -1436,7 +1436,7 @@ binder.contribute(StaticResourceMount.class)
 StaticResourceMount.classpath("/assets", "/static")
     .withCacheMaxAge(Duration.ofHours(1))
     .withImmutable(true)            // sets Cache-Control: immutable
-    .withFallthrough(true);         // pass to next handler on 404
+    .withRouteFallback(true);       // pass to next handler on 404
 
 // History-mode SPA (vue-router createWebHistory, React Router, ...):
 // extensionless GET/HEAD paths that neither the mount nor the route chain
@@ -1445,13 +1445,12 @@ StaticResourceMount.classpath("/", "/dist")
     .withSpaFallback(true);
 ```
 
-`withSpaFallback(true)` implies fallthrough and adds the terminal hop nginx
+`withSpaFallback(true)` implies a route fallback and adds the terminal hop nginx
 spells as `try_files $uri $uri/ /index.html`. Precedence is: a real asset, the
 route chain, a 405 for a path known under another method, then the SPA shell; a
 missing `.js` never receives HTML. The fallback is owned by the most specific
 matching mount (longest prefix, ties by contribution order), and a mount that
-opts in fails server creation if its `index.html` is missing. `withFallthrough`
-alone only hands the miss to the route chain — it does not serve the shell.
+opts in fails server creation if its `index.html` is missing. `withRouteFallback` alone only hands the miss to the route chain — it does not serve the shell.
 
 Directory requests serve that directory's `index.html` — both at the mount
 root and in subdirectories (`/docs/` resolves to `docs/index.html`; a request

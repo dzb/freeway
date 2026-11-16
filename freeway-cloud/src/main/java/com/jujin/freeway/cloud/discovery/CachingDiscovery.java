@@ -16,7 +16,7 @@ import org.slf4j.LoggerFactory;
  *
  * <p><b>Where it sits.</b> Freshness is a property of the backend, so the cache
  * lives inside the discovery implementation: every consumer — remote calls, the
- * mesh peer feeder, an application's own {@code @Inject ServiceDiscovery} —
+ * mesh peer source, an application's own {@code @Inject ServiceDiscovery} —
  * gets it without knowing about it, and the seam stays one method. A cached
  * answer is at most the TTL old, which is far inside the registry's own
  * staleness window; the load balancer's rotation is what keeps a stale entry

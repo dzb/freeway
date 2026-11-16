@@ -57,16 +57,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   or a Fleet/Consul adapter explicitly. `RpcModule` assembles without discovery and
   fails a call with "no instances" instead of preventing the bundle from
   starting.
-- **Fleet vocabulary**: `FleetRegistryClient` → `FleetClient`,
-  `FleetRegistryModule` → `FleetModule`, `RegistryNodes` → `FleetNodes`,
+- **Fleet vocabulary**: `RegistryNodeClient` → `FleetClient`,
+  `RegistryFleetModule` → `FleetModule`, `RegistryNodes` → `FleetNodes`,
   `RegistryApi` → `FleetApi`, `RegistryIndexHandler` → `FleetIndexHandler`,
   `RegistryServerModule` → `FleetServerModule`, `RegistryStore` →
   `LeaseStore`/`MemLeaseStore`, `RegistryLifecycleHook` →
   `RegistrationHook`, `RegistryRenewal` → `Renewal`,
   `RegistryHealthContributor` → `RegistrationHealth`,
-  `FleetServiceDiscovery` → `FleetDiscovery`, `FleetServiceRegistry` →
-  `FleetRegistrar`. The in-process local backend was removed; tests use a
-  test-scope registry fixture.
+  `RegistryNodeServiceDiscovery` → `FleetDiscovery`,
+  `RegistryNodeServiceRegistry` → `FleetRegistrar`. The in-process local backend
+  was removed; tests use a test-scope registry fixture.
 - **Public transport/comparison helpers**: `CloudHttpClients` → `cloud.http.HttpClients`,
   `ConstantTime` → `commons.util.ConstantTime`, and `OptionalBinding` →
   `ioc.OptionalBinding`. Ext modules no longer import `cloud.internal`.
@@ -97,6 +97,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rule: `TestRegistry` → `TestBackend`, `NoReadinessRegistry` →
   `NoReadinessBackend`, `ExternalRegistryModule` / `BareExternalRegistryModule`
   → `ExternalBackendModule` / `BareExternalBackendModule`.
+- **Readability vocabulary** (`freeway-http` / `freeway-cloud` / `freeway-commons`
+  / `freeway-ioc`): `ResolvableHandler` / `ResolvableEndpoint` →
+  `PendingHandler` / `PendingEndpoint`;
+  `BeanPlan.isConstructable()` → `hasConstructor()`; `KnownKeys.namespaceUnder()`
+  → `namespaceOf()`; `StaticResourceMount.withFallthrough()` / `fallthrough()` →
+  `withRouteFallback()` / `routeFallback()`; `Http2Connection.prepopulateUpgradeStream()`
+  → `registerUpgradeStream()`. Internal roles follow the same rule:
+  `MeshKeepalive.Pinger` → `PingSender`, `PeerConnector.Dialer` → `PeerDialer`,
+  `DiscoveryPeerFeeder` → `DiscoveryPeerSource`, `EventStats.Tally` →
+  `CounterState`, and `PeerHub.HelloAdmission` → `HelloDecision`.
+- **Input bundles distinguish dependencies from options**: `FreewayHttpEngine.Wiring`
+  → `FreewayHttpEngine.Deps` + `FreewayHttpEngine.Options`;
+  `PeerHub.Wiring` → `PeerHub.Deps` + `PeerHub.Options`;
+  `CloudHttpClientDefault.Wiring` → `RpcHttpClientDefault.Deps` +
+  `RpcHttpClientDefault.Options`; `PeerConnector.Wiring` →
+  `PeerConnector.Options`; ext `ConsulWiring` → `ConsulOptions`. A dependency
+  bundle names collaborators; an options bundle names caller-selected values.
 - **Cloud context vocabulary** (`freeway-cloud`): `CloudContextModule` →
   `ContextModule`; `Propagator` → `ContextCodec`, with `TracePropagator` →
   `TraceCodec`, `AuthPropagator` → `AuthCodec`, and `BaggagePropagator` →
@@ -115,7 +132,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   afterwards.
 
 - **HTTP**: `HttpContext` → `HttpExchange`, `HttpContextSupport` →
-  `HttpExchangeSupport`; `ResolvableSupport` → `ResolvableValue`, `SslSettings` →
+  `HttpExchangeSupport`; `SslSettings` →
   `SslConfig`; `HttpServer.secure` / `HttpEngine.secure` → `isSecure`;
   `ExchangeHandler.websocket` → `matchWebSocket`; `websocketIndex` →
   `webSocketIndex` on `HttpPipeline` / `HttpServer`. `HttpResponse`'s body-writing
@@ -166,8 +183,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ServiceHealth` / `ServiceEndpoint`; `cloud.registry` →
   `cloud.discovery.registry`, and `RegistryNodeClient` /
   `RegistryNodeServiceRegistry` / `RegistryNodeServiceDiscovery` /
-  `RegistryFleetModule` → `FleetRegistryClient` / `FleetServiceRegistry` /
-  `FleetDiscovery` / `FleetRegistryModule`.
+  `RegistryFleetModule` → `FleetClient` / `FleetRegistrar` / `FleetDiscovery` /
+  `FleetModule`.
 
   - `ErrorHandler` → `ErrorMapper`: error mapping no longer writes the response.
     A mapper returns `Optional<ErrorResponse>` (the server is the only writer),
@@ -436,8 +453,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `WebSocketIndex` now accept only the final, already-expanded and already-resolved
   route list; `HttpModule` is the single assembly point, so a contribution's direct
   route, `RouteGroup`/`WebSocketGroup` expansion and class handler/endpoint
-  resolution each happen once. `ResolvableHandler`/`ResolvableEndpoint` share
-  `ResolvableValue`'s two-phase first-assignment state machine;
+  resolution each happen once. `PendingHandler`/`PendingEndpoint` share
+  `PendingValue`'s two-phase first-assignment state machine;
   `WebSocketSessionSupport` and the built-in frame writer share
   `WebSocketCloseReason`'s 123-byte UTF-8 truncation rule. `HttpExchangeSupport`'s
   four response paths — byte[], stream, file, channel — merge into one `write(...)`
@@ -608,10 +625,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Dialect.limitClause`/`limitOffsetClause`/`offsetOnlyClause`; this fixes find
   failing under H2's Oracle/MSSQLServer/Derby/STRICT modes, which reject LIMIT.
 - **history-mode SPA deep links lacked the index fallback** (`freeway-http`):
-  `withFallthrough(true)` only handed a miss back to the route chain, without
+  `withRouteFallback(true)` only handed a miss back to the route chain, without
   nginx `try_files ... /index.html`'s final hop, so a deep link such as `/chat`
   got a 404 when no route matched. The terminal `withSpaFallback` fallback is
-  added, `withFallthrough`'s javadoc no longer claims it supports SPAs on its own,
+  added, `withRouteFallback`'s javadoc no longer claims it supports SPAs on its own,
   and `serve()` splits out a shared `serveResolved` so the fallback reuses the same
   cache/ETag/Range/HEAD/bytes pipeline.
 - **Contribution lifecycle becomes "construct/publish → seal → initialize"**

@@ -387,7 +387,7 @@ default or no limit, and empty means the JDK default.
 
 #### HTTP/2
 
-> These two keys belong to the built-in engine: `HttpModule` reads them and wires them into `FreewayHttpEngine.Wiring`;
+> These two keys belong to the built-in engine: `HttpModule` reads them and wires them into `FreewayHttpEngine.Options`;
 > they no longer enter `HttpServerConfig`. If a third-party engine is active and the values were tuned, startup WARNs
 > and names the owner.
 

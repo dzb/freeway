@@ -267,7 +267,7 @@ class RouteIndexTest {
         Container container = Freeway.create(b ->
             b.bind(RouteIndex.class).to(c -> {
                 Route r = Route.get("/test", NoDepsHandler.class);
-                ResolvableHandler h = (ResolvableHandler) r.handler();
+                PendingHandler h = (PendingHandler) r.handler();
                 h.resolve(() -> c.create(h.handlerType()));
                 return new RouteIndex(List.of(r));
             }));
@@ -303,7 +303,7 @@ class RouteIndexTest {
         Container container = Freeway.create(b -> {
             b.bind(RouteIndex.class).to(c -> {
                 Route r = Route.get("/greet", InjectedHandler.class);
-                ResolvableHandler h = (ResolvableHandler) r.handler();
+                PendingHandler h = (PendingHandler) r.handler();
                 h.resolve(() -> c.create(h.handlerType()));
                 return new RouteIndex(List.of(r));
             });
@@ -315,7 +315,7 @@ class RouteIndexTest {
         // the instance the container built — without consulting the factory
         // again, which is what makes one handler class become one singleton
         // however many routes reference it.
-        RouteHandler handler = ((ResolvableHandler) match.handler())
+        RouteHandler handler = ((PendingHandler) match.handler())
             .resolve(() -> { throw new IllegalStateException("supplier must not re-run"); });
         assertInstanceOf(InjectedHandler.class, handler,
             "the index must dispatch to the instance the container built");
@@ -340,7 +340,7 @@ class RouteIndexTest {
             b.bind(RouteIndex.class).to(c -> {
                 List<Route> routes = group.expand();
                 for (Route r : routes) {
-                    if (r.handler() instanceof ResolvableHandler h) {
+                    if (r.handler() instanceof PendingHandler h) {
                         h.resolve(() -> c.create(h.handlerType()));
                     }
                 }
