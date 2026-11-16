@@ -1,4 +1,6 @@
-# Freeway 2
+## Freeway 2
+
+[![Version](https://img.shields.io/badge/version-2.0.0-blue)](docs/releases/release-notes-2.0.0.md) [![JDK](https://img.shields.io/badge/JDK-25%2B-orange)](https://jdk.java.net/25/) [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE) ![Runtime dependencies](https://img.shields.io/badge/runtime%20deps-0-brightgreen)
 
 A modern, concise, compose-first Java application framework for JDK 25+.
 IoC, HTTP, DB, Flow and Cloud are one coherent stack: no classpath scanning, no
@@ -10,9 +12,11 @@ both humans and coding agents.
 
 **Latest release: 2.0.0** — [release notes](docs/releases/release-notes-2.0.0.md) · [changelog](CHANGELOG.md)
 
-[Maven Central](https://central.sonatype.com/artifact/com.jujin8.freeway/freeway-parent) · [Apache 2.0](LICENSE) · [JDK 25+](https://jdk.java.net/25/)
+[Documentation](docs/README.md) · [Quick Start](#quick-start) · [Modules](#modules) · [Changelog](CHANGELOG.md) · [License](#license)
 
-## Quick Start
+---
+
+### Quick Start
 
 Add only the modules you need. The snippets use `${freeway.version}`; use `2.0.0`
 for the current release.
@@ -84,29 +88,45 @@ curl http://localhost:8080/users/42   # {"id":"42","name":"Alice"}
 A runnable REST + DB sample with validation, ORM, transactions and a fat-jar
 smoke path lives in [`demo/rest-db`](demo/rest-db/README.md).
 
-## Modules
+### Modules
 
-| Module | What it provides |
-|---|---|
-| freeway-commons | JSON, coercion, validation, scoped primitives and logging |
-| freeway-ioc | Container and binding DSL, injection, scopes, contributions, AOP, EventBus |
-| freeway-boot | Launcher, config cascade, profiles and runtime lifecycle |
-| freeway-http | Routing, filters, static resources, multipart, SSE and WebSocket |
-| freeway-db | JDBC, ORM, pooling, transactions, schema and migrations |
-| freeway-flow | Graph workflow engine: 7 node types, v3 DAG format, `@name` tasks |
-| freeway-cloud | Registration lifecycle, RPC, event mesh, observability, resilience, health, secrets, storage and static discovery |
+<table>
+  <thead>
+    <tr>
+      <th align="left" width="210" nowrap>Module</th>
+      <th align="left" nowrap>What it provides</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td nowrap>freeway-commons</td><td>JSON, coercion, validation, scoped primitives and logging</td></tr>
+    <tr><td nowrap>freeway-ioc</td><td>Container and binding DSL, injection, scopes, contributions, AOP, EventBus</td></tr>
+    <tr><td nowrap>freeway-boot</td><td>Launcher, config cascade, profiles and runtime lifecycle</td></tr>
+    <tr><td nowrap>freeway-http</td><td>Routing, filters, static resources, multipart, SSE and WebSocket</td></tr>
+    <tr><td nowrap>freeway-db</td><td>JDBC, ORM, pooling, transactions, schema and migrations</td></tr>
+    <tr><td nowrap>freeway-flow</td><td>Graph workflow engine: 7 node types, v3 DAG format, @name tasks</td></tr>
+    <tr><td nowrap>freeway-cloud</td><td>Registration lifecycle, RPC, event mesh, observability, resilience, health, secrets, storage and static discovery</td></tr>
+  </tbody>
+</table>
 
 Third-party adapters live in [freeway-ext](https://github.com/dzb/freeway-ext):
 
-| Module | Purpose |
-|---|---|
-| freeway-http-undertow | Undertow engine adapter |
-| freeway-http-jetty | Jetty 12 engine adapter |
-| freeway-db-hikari | HikariCP pool adapter |
-| freeway-cloud-consul | Consul registry/discovery adapter |
-| freeway-mq-kafka | Kafka durable event plane (`KafkaEvents`) |
+<table>
+  <thead>
+    <tr>
+      <th align="left" width="230" nowrap>Module</th>
+      <th align="left" nowrap>Purpose</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td nowrap>freeway-http-undertow</td><td>Undertow engine adapter</td></tr>
+    <tr><td nowrap>freeway-http-jetty</td><td>Jetty 12 engine adapter</td></tr>
+    <tr><td nowrap>freeway-db-hikari</td><td>HikariCP pool adapter</td></tr>
+    <tr><td nowrap>freeway-cloud-consul</td><td>Consul registry/discovery adapter</td></tr>
+    <tr><td nowrap>freeway-mq-kafka</td><td>Kafka durable event plane (KafkaEvents)</td></tr>
+  </tbody>
+</table>
 
-## Why Freeway
+### Why Freeway
 
 - **Modern** — JDK 25 is the baseline. Freeway uses records, sealed types, pattern switches and `ScopedValue` directly instead of emulating older Java.
 - **Concise** — one accurate verb per action. `find` returns `Optional`, `require` throws, `withX` returns a new value, and aliases that do different things under the same name do not exist.
@@ -117,7 +137,7 @@ Third-party adapters live in [freeway-ext](https://github.com/dzb/freeway-ext):
 - **Full-featured** — IoC, boot/config, HTTP, DB/ORM/migrations, Flow and Cloud cover the application lifecycle without a second stack.
 - **Agentic-friendly** — `Container.describe()`, `AppRuntime.describe()`, `RouteIndex.descriptions()` and `HttpServer.routeDescriptions()` expose stable metadata; every config key is declared in `ConfigKeys`.
 
-### Composition, not inheritance
+#### Composition, not inheritance
 
 Freeway's object model is interface contracts plus final implementations. To
 customize behavior you implement an SPI or contribute an object; you never
@@ -128,9 +148,9 @@ exceptions, stream and collection adapters, TLS managers, logging handlers and
 `SubmissionPublisher`. They exist because the standard library requires those
 base types.
 
-## Runtime
+### Runtime
 
-### Configuration
+#### Configuration
 
 The cascade runs lowest to highest:
 
@@ -145,7 +165,7 @@ Activate a profile with `--freeway.profile=dev`. The environment prefix is
 replaceable (`-Dfreeway.env.prefix=APP_`). Every key is declared in full in its
 module's `ConfigKeys` and documented in [docs/configuration.md](docs/configuration.md).
 
-### Logging
+#### Logging
 
 Freeway uses the SLF4J 2 API and ships a JUL-backed provider as the fallback. At
 startup it detects an external provider (Logback, Log4j, slf4j-simple) and lets
@@ -166,7 +186,7 @@ Route named files and per-logger levels with `freeway.log.files` and any
 `*.level` key. Full reference:
 [docs/reference/logging.properties.reference](docs/reference/logging.properties.reference).
 
-### Build
+#### Build
 
 Requires JDK 25+.
 
@@ -177,7 +197,7 @@ mvn -pl freeway-http -am test      # module plus its dependencies
 mvn -Pdemos -DskipTests compile    # compile the in-repo consumers
 ```
 
-## Documentation
+### Documentation
 
 The documentation index is [`docs/README.md`](docs/README.md). Highlights:
 
@@ -193,7 +213,7 @@ The documentation index is [`docs/README.md`](docs/README.md). Highlights:
 Framework comparisons and engineering evaluations are reference-only and live
 under [`demo/reference/`](demo/reference/).
 
-## Extensions
+### Extensions
 
 Adapters and add-ons are released in [freeway-ext](https://github.com/dzb/freeway-ext)
 at the same version as the core:
@@ -210,7 +230,7 @@ The Maven group id keeps its original `com.jujin8` spelling while Java packages
 are `com.jujin.freeway`. Renaming either would break every consumer's build for
 no design gain.
 
-## 2.0 Refactor
+### 2.0 Refactor
 
 `2.0.0` is an architecture and vocabulary cleanup, not a feature pile-on. The
 theme is fewer owners, fewer defaults and fewer ways to express the same fact.
@@ -237,6 +257,6 @@ mvn clean test
 `mvn -Pdemos -DskipTests compile` also compiles the in-repo consumers against the
 reactor.
 
-## License
+### License
 
 [Apache 2.0](LICENSE)
