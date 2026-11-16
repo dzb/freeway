@@ -82,6 +82,12 @@ class RemotePolicyTest {
 
         @Override
         public CompletableFuture<RpcResponse> callAsync(
+                String serviceId, RpcRequest request) {
+            return CompletableFuture.completedFuture(call(serviceId, request));
+        }
+
+        @Override
+        public CompletableFuture<RpcResponse> callAsync(
                 String serviceId, RpcRequest request, Duration deadline) {
             return callAsync(serviceId, request, deadline, 0);
         }

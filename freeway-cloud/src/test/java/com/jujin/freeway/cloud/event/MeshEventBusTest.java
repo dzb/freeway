@@ -116,7 +116,7 @@ class MeshEventBusTest extends MeshTestSupport {
 
         // The plane separation, pinned: loading the mesh module does NOT
         // turn a local bus publish into a broadcast.
-        nodeA.get(EventBus.class).publish("greet.hello", "local-only");
+        nodeA.get(EventBus.class).publishTopic("greet.hello", "local-only");
         Thread.sleep(700);
         assertTrue(atB.isEmpty(), "a local fact must stay a local fact");
         assertEquals(0, nodeA.get(MeshEventBus.class).stats().published(),

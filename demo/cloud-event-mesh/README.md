@@ -10,7 +10,7 @@ crosses a process boundary only where the code says so, on a named plane.
 │  port 18081                │        /cloud/event                 │  port 18080                │
 │                            │                                     │  MeshEventBus subscription│
 │  MeshEventBus.publish(…)  ┼──── crosses the boundary ───►       │    → mirror line            │
-│  bus.publish(...)     stays HERE                                 │  EventBus subscriber ──►   │
+│  bus.publishEvent(...)     stays HERE                                 │  EventBus subscriber ──►   │
 └────────────────────────────┘                                     └────────────────────────────┘
 ```
 
@@ -28,7 +28,7 @@ and **mirrors it to its local bus on purpose** — one line, in the handler.
 | Explicit cross-JVM broadcast | `MeshEventBus.publish("greet.hello", …)` arrives on B |
 | Subscriptions are declared, not configured | B contributes a `MeshSubscription` — the same declaration drives the hello pull-prefix, the inbound gate, and delivery |
 | The subscription table **is** the allowlist | the declared `Class` is the only type inbound frames deserialize into; undeclared topics are dropped unread |
-| Remote facts become local facts only by mirroring | B's subscription handler calls `bus.publish(event)` — deliberate, visible, one line |
+| Remote facts become local facts only by mirroring | B's subscription handler calls `bus.publishEvent(event)` — deliberate, visible, one line |
 | `Defer` commit coupling | (not exercised here — see `MeshEventBusTest` in freeway-cloud: rollback inside a transaction = nothing on the wire) |
 
 For the durable, per-key ordered stream plane see `freeway-ext/freeway-mq-kafka`

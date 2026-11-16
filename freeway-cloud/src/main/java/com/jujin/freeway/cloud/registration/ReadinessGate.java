@@ -1,7 +1,7 @@
 package com.jujin.freeway.cloud.registration;
 
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
-import com.jujin.freeway.cloud.discovery.ServiceRegistry;
+import com.jujin.freeway.cloud.discovery.ReadinessAwareRegistry;
 import com.jujin.freeway.cloud.health.CloudHealthContributor;
 import com.jujin.freeway.ioc.Container;
 import java.time.Duration;
@@ -41,7 +41,7 @@ final class ReadinessGate implements AutoCloseable {
     private static final Duration RETRY = Duration.ofSeconds(1);
 
     private final List<CloudHealthContributor> checks;
-    private final ServiceRegistry registry;
+    private final ReadinessAwareRegistry registry;
     private final List<ServiceInstance> instances;
     private final Duration retry;
     private volatile Thread runner;
@@ -49,7 +49,7 @@ final class ReadinessGate implements AutoCloseable {
      *  never flip readiness afterwards. */
     private final AtomicBoolean closed = new AtomicBoolean();
 
-    private ReadinessGate(List<CloudHealthContributor> checks, ServiceRegistry registry,
+    private ReadinessGate(List<CloudHealthContributor> checks, ReadinessAwareRegistry registry,
                           List<ServiceInstance> instances, Duration retry) {
         this.checks = checks;
         this.registry = registry;
@@ -64,7 +64,7 @@ final class ReadinessGate implements AutoCloseable {
      *     there is nothing to wait for, and a gate would only delay an
      *     instance that is in fact ready
      */
-    static ReadinessGate arm(Container container, ServiceRegistry registry,
+    static ReadinessGate arm(Container container, ReadinessAwareRegistry registry,
                              List<ServiceInstance> instances) {
         List<CloudHealthContributor> checks =
             container.extension(CloudHealthContributor.class).all();

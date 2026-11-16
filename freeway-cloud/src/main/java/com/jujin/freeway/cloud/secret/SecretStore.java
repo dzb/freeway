@@ -12,9 +12,9 @@ import java.util.Optional;
 public interface SecretStore {
 
     /** The secret for {@code key}, if configured. */
-    Optional<String> get(String key);
+    Optional<String> find(String key);
 
-    default Optional<byte[]> getBytes(String key) {
-        return get(key).map(s -> s.getBytes(StandardCharsets.UTF_8));
+    default Optional<byte[]> findBytes(String key) {
+        return find(key).map(s -> s.getBytes(StandardCharsets.UTF_8));
     }
 }

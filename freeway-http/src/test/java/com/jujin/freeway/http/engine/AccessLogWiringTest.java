@@ -94,7 +94,7 @@ class AccessLogWiringTest {
         @Override
         public void bind(Binder binder) {
             binder.contribute(EventSubscriber.class)
-                .add(EventSubscriber.of(HttpExchangeEvent.class, events::add));
+                .add(EventSubscriber.ofEvent(HttpExchangeEvent.class, events::add));
         }
     }
 

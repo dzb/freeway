@@ -48,29 +48,34 @@ import java.util.Objects;
 public final class RemoteProxyFactory {
 
     private final RemoteCaller remote;
-    private String serviceId;
-    private String mapping;
-    private Duration timeout;
+    private final String serviceId;
+    private final String mapping;
+    private final Duration timeout;
 
-    private RemoteProxyFactory(RemoteCaller remote) {
+    private RemoteProxyFactory(
+            RemoteCaller remote, String serviceId, String mapping, Duration timeout) {
         this.remote = remote;
+        this.serviceId = serviceId;
+        this.mapping = mapping;
+        this.timeout = timeout;
     }
 
     /** Starts a client bound to a caller — the transport the framework wires. */
     public static RemoteProxyFactory of(RemoteCaller remote) {
-        return new RemoteProxyFactory(Objects.requireNonNull(remote, "remote"));
+        return new RemoteProxyFactory(
+            Objects.requireNonNull(remote, "remote"), null, null, null);
     }
 
     /** Discovery id of the serving service. */
     public RemoteProxyFactory withServiceId(String serviceId) {
-        this.serviceId = Objects.requireNonNull(serviceId, "serviceId");
-        return this;
+        return new RemoteProxyFactory(
+            remote, Objects.requireNonNull(serviceId, "serviceId"), mapping, timeout);
     }
 
     /** Call-topic prefix the provider exported (e.g. {@code "user"}). */
     public RemoteProxyFactory withMapping(String mapping) {
-        this.mapping = Objects.requireNonNull(mapping, "mapping");
-        return this;
+        return new RemoteProxyFactory(
+            remote, serviceId, Objects.requireNonNull(mapping, "mapping"), timeout);
     }
 
     /**
@@ -78,10 +83,12 @@ public final class RemoteProxyFactory {
      * Without it a call is bounded only by the transport's per-request
      * timeout — it can occupy a thread for request-timeout × attempts plus
      * backoff.
+     *
+     * <p>This is a wither: it returns a new factory and leaves this value
+     * unchanged, matching the {@code withX} contract used across the API.</p>
      */
     public RemoteProxyFactory withTimeout(Duration timeout) {
-        this.timeout = timeout;
-        return this;
+        return new RemoteProxyFactory(remote, serviceId, mapping, timeout);
     }
 
     /** Builds the client. Validates the declaration up front. */

@@ -97,7 +97,10 @@ Boundary rules:
 - **`internal` means no stability promise, not "package-private".** It may hold
   public classes when sibling packages assemble them; the public surface there
   is budgeted in [api/internal-surface.txt](api/internal-surface.txt) and guarded
-  by `InternalSurfaceBudgetTest`. An owner's collaborators stay in the owner's
+  by `InternalSurfaceBudgetTest`. The built-in HTTP engine has the same
+  no-stability stance; its public cross-package seams are budgeted in
+  [api/http-engine-surface.txt](api/http-engine-surface.txt) and guarded by
+  `EngineSurfaceBudgetTest`. An owner's collaborators stay in the owner's
   package and package-private; widen a type only when a public signature names it
   or `ServiceLoader` instantiates it reflectively.
 - **`require*` refuses, `ensure*` repairs.** `requireNonNull` / `requireOpen`

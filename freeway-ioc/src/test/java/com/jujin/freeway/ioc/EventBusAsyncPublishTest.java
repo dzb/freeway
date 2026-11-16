@@ -33,11 +33,11 @@ class EventBusAsyncPublishTest {
         List<String> log = new ArrayList<>();
         Container container = Freeway.create(
             binder -> binder.contribute(EventSubscriber.class)
-                .add(EventSubscriber.of(PostCreatedEvent.class, e -> log.add("async")))
+                .add(EventSubscriber.ofEvent(PostCreatedEvent.class, e -> log.add("async")))
         );
 
         EventBus bus = EventBus.create(container);
-        bus.publishAsync(new PostCreatedEvent(new Post("x")));
+        bus.publishEventAsync(new PostCreatedEvent(new Post("x")));
         Await.until(2000, () -> log.size() == 1);
 
         assertEquals(1, log.size());
@@ -48,8 +48,8 @@ class EventBusAsyncPublishTest {
     void asyncStringTopicPublishDelivers() throws Exception {
         List<String> log = new ArrayList<>();
         EventBus bus = EventBus.create(Freeway.create());
-        bus.subscribe("topic", p -> log.add((String) p));
-        bus.publishAsync("topic", "hello");
+        bus.subscribeTopic("topic", p -> log.add((String) p));
+        bus.publishTopicAsync("topic", "hello");
         Await.until(2000, () -> log.size() == 1);
 
         assertEquals(1, log.size());
@@ -60,12 +60,12 @@ class EventBusAsyncPublishTest {
         List<String> log = new ArrayList<>();
         Container container = Freeway.create(
             binder -> binder.contribute(EventSubscriber.class)
-                .add(EventSubscriber.of(PostCreatedEvent.class, e -> log.add("sync")))
+                .add(EventSubscriber.ofEvent(PostCreatedEvent.class, e -> log.add("sync")))
         );
 
         EventBus bus = EventBus.create(container);
         bus.setAsyncExecutor(Executors.newVirtualThreadPerTaskExecutor());
-        bus.publish(new PostCreatedEvent(new Post("x"))); // sync, not async
+        bus.publishEvent(new PostCreatedEvent(new Post("x"))); // sync, not async
 
         assertEquals(1, log.size());
     }
@@ -79,12 +79,12 @@ class EventBusAsyncPublishTest {
         List<String> log = new ArrayList<>();
         Container container = Freeway.create(
             binder -> binder.contribute(EventSubscriber.class)
-                .add(EventSubscriber.of(PostCreatedEvent.class, e -> log.add("event")))
+                .add(EventSubscriber.ofEvent(PostCreatedEvent.class, e -> log.add("event")))
         );
         EventBus bus = EventBus.create(container);
 
         Defer.within(() -> {
-            bus.publishAsync(new PostCreatedEvent(new Post("x")));
+            bus.publishEventAsync(new PostCreatedEvent(new Post("x")));
             assertTrue(log.isEmpty(),
                 "async publish inside a Defer scope must not deliver before the scope ends");
 

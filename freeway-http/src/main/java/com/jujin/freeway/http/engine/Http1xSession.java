@@ -133,7 +133,7 @@ final class Http1xSession {
                 if (!bodyDrained) break;
                 transport.syncKeepAliveFromResponse(
                     context.responseHeader("Connection"));
-                if (ctx.registry().isStopping()) break;
+                if (ctx.tracker().isStopping()) break;
                 if (!transport.isKeepAlive()) break;
                 if (req.isHttp10() && !req.keepAlive()) break;
             }

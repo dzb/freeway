@@ -153,14 +153,14 @@ The most common scenario — you write no Defer code at all; the framework handl
 ```java
 db.transaction(() → {
     db.execute("INSERT INTO posts ...");
-    bus.publish(new PostCreatedEvent(post));     // looks immediate, actually deferred
+    bus.publishEvent(new PostCreatedEvent(post));     // looks immediate, actually deferred
     db.execute("UPDATE counts ...");
 });
 // commit succeeds → event published
 // rollback → event not sent
 
-// the same bus.publish(), called outside a transaction, sends immediately — users need not distinguish
-bus.publish(new SomeOtherEvent());              // published immediately
+// the same bus.publishEvent(), called outside a transaction, sends immediately — users need not distinguish
+bus.publishEvent(new SomeOtherEvent());              // published immediately
 ```
 
 #### Three-way Wiring (code level)
@@ -174,7 +174,7 @@ Defer.within(() -> {
     raw.commit();                                            // ② commit
 });                                                          // ③ leave scope → drain → event dispatch
 
-// freeway-ioc · EventBus.publish() — probes the scope; enqueues when active
+// freeway-ioc · EventBus.publishEvent() — probes the scope; enqueues when active
 if (Defer.isActive() && !(event instanceof DeadEvent)) {
     Defer.defer(() -> dispatchEvent(event));
 }
@@ -188,7 +188,7 @@ sequenceDiagram
     participant D as Defer buffer
     participant DB as JDBC connection
     participant B as EventBus dispatch
-    W->>D: publish(event) → defer()
+    W->>D: publishEvent(event) → defer()
     W->>DB: execute SQL
     W-->>D: normal return
     D->>DB: commit()
@@ -201,7 +201,7 @@ sequenceDiagram
 - **Commit happens before drain** — events are dispatched only after a successful commit; on rollback `Defer` discards and the events are dropped as a whole. **Events live and die with the transaction**; "rolled back but the event was sent" cannot happen.
 - **The `Error` path**: work throws an `Error` (such as `AssertionError`) → `Defer.within`'s `catch(Throwable)` discards + rethrows → `transaction()`'s `catch(Throwable)` performs the rollback. Before the fix only `Exception` was caught, so an `Error` slipped past rollback, and the `setAutoCommit(true)` that restores the connection state committed the failed transaction instead.
 - **The drain failure boundary**: an individual action throwing happens **after** commit; `ScopeSession.drain` does `catch (Throwable)` per action and only logs a WARN, and the scope still returns normally — so the caller sees **success** while events are **partially dispatched** (the remaining actions still run). Only a failure of "action ordering" itself (dependency constraints that cannot be satisfied) rethrows. This is a defensible semantic (cleanup actions must run to completion); the cost is that an event failure is invisible to the caller and must be observed on the logging side.
-- **Cross-thread**: `ScopedValue` is bound to the current thread and does not propagate to child threads. In a child thread `Defer.isActive()` is false, so `publish()` dispatches immediately and is not protected by the transaction; for this reason `publishAsync` also keeps its immediate semantics (it does not participate in Defer).
+- **Cross-thread**: `ScopedValue` is bound to the current thread and does not propagate to child threads. In a child thread `Defer.isActive()` is false, so `publishEvent()` dispatches immediately and is not protected by the transaction; for this reason `publishEventAsync` / `publishTopicAsync` keep their immediate semantics (they do not participate in Defer).
 
 ### Scenario 2: DB Transaction + Cache Invalidation (manual defer)
 
@@ -235,7 +235,7 @@ Defer.within(() → {
 Defer.within(() → {
     for (var record : records) {
         process(record);
-        Defer.defer(() → bus.publish(new RecordProcessed(record)));
+        Defer.defer(() → bus.publishEvent(new RecordProcessed(record)));
     }
     consumer.commitSync();  // offset acknowledgment
 });
@@ -251,7 +251,7 @@ Defer.within(() → {
     }
     Defer.defer("index",  () → searchIndex.rebuild()).after("stats");
     Defer.defer("stats",  () → stats.refresh());
-    Defer.defer("notify", () → bus.publish(new BatchDone())).after("index");
+    Defer.defer("notify", () → bus.publishEvent(new BatchDone())).after("index");
 });
 // after all INSERTs commit: stats → index → notify run in order
 // any one failure → all discarded
@@ -373,7 +373,7 @@ There is no nesting WARN, and a composition entry point such as `Scopes` is no l
 ## When Not to Use It
 
 - **Cleanup logic** (such as closing a stream or releasing a lock) — use `try/finally`. Defer handles only side effects that "happen after success"; it discards them on failure.
-- **Cross-thread fire-and-forget** — `ScopedValue` is bound to the current thread. That is why `publishAsync` keeps its immediate semantics (it does not participate in Defer).
+- **Cross-thread fire-and-forget** — `ScopedValue` is bound to the current thread. That is why `publishEventAsync` / `publishTopicAsync` keep their immediate semantics (they do not participate in Defer).
 - **Long-running asynchronous work** — deferred actions run inline when the scope drains. If they must happen after async work, submit them to a thread pool from inside the deferred action: `Defer.defer(() → executor.submit(heavy))`.
 
 ## Implementation

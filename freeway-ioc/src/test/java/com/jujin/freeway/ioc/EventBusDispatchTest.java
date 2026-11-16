@@ -25,11 +25,11 @@ class EventBusDispatchTest {
         List<String> log = new ArrayList<>();
         Container container = Freeway.create(
             binder -> binder.contribute(EventSubscriber.class)
-                .add(EventSubscriber.of(PostCreatedEvent.class, (Consumer<PostCreatedEvent>) e -> log.add("got:" + e.post().title())))
+                .add(EventSubscriber.ofEvent(PostCreatedEvent.class, (Consumer<PostCreatedEvent>) e -> log.add("got:" + e.post().title())))
         );
 
         EventBus bus = EventBus.create(container);
-        bus.publish(new PostCreatedEvent(new Post("hello")));
+        bus.publishEvent(new PostCreatedEvent(new Post("hello")));
 
         assertEquals(1, log.size());
         assertEquals("got:hello", log.get(0));
@@ -41,13 +41,13 @@ class EventBusDispatchTest {
         Container container = Freeway.create(
             binder -> {
                 binder.contribute(EventSubscriber.class).add(
-                    EventSubscriber.of(PostCreatedEvent.class, (Consumer<PostCreatedEvent>) e -> log.add("first")));
+                    EventSubscriber.ofEvent(PostCreatedEvent.class, (Consumer<PostCreatedEvent>) e -> log.add("first")));
                 binder.contribute(EventSubscriber.class).add(
-                    EventSubscriber.of(PostCreatedEvent.class, (Consumer<PostCreatedEvent>) e -> log.add("second")));
+                    EventSubscriber.ofEvent(PostCreatedEvent.class, (Consumer<PostCreatedEvent>) e -> log.add("second")));
             }
         );
 
-        EventBus.create(container).publish(new PostCreatedEvent(new Post("x")));
+        EventBus.create(container).publishEvent(new PostCreatedEvent(new Post("x")));
 
         assertEquals(2, log.size());
     }
@@ -58,16 +58,16 @@ class EventBusDispatchTest {
         Container container = Freeway.create(
             binder -> {
                 binder.contribute(EventSubscriber.class).add(
-                    EventSubscriber.of(PostCreatedEvent.class, (Consumer<PostCreatedEvent>) e -> {
+                    EventSubscriber.ofEvent(PostCreatedEvent.class, (Consumer<PostCreatedEvent>) e -> {
                         log.add("stop");
                         e.stop();
                     }));
                 binder.contribute(EventSubscriber.class).add(
-                    EventSubscriber.of(PostCreatedEvent.class, (Consumer<PostCreatedEvent>) e -> log.add("never")));
+                    EventSubscriber.ofEvent(PostCreatedEvent.class, (Consumer<PostCreatedEvent>) e -> log.add("never")));
             }
         );
 
-        EventBus.create(container).publish(new PostCreatedEvent(new Post("x")));
+        EventBus.create(container).publishEvent(new PostCreatedEvent(new Post("x")));
 
         assertEquals(1, log.size());
         assertEquals("stop", log.get(0));
@@ -79,8 +79,8 @@ class EventBusDispatchTest {
         Container container = Freeway.create();
 
         EventBus bus = EventBus.create(container);
-        bus.subscribe(PostCreatedEvent.class, e -> log.add("runtime"));
-        bus.publish(new PostCreatedEvent(new Post("x")));
+        bus.subscribeEvent(PostCreatedEvent.class, e -> log.add("runtime"));
+        bus.publishEvent(new PostCreatedEvent(new Post("x")));
 
         assertEquals(1, log.size());
         assertEquals("runtime", log.get(0));
@@ -91,12 +91,12 @@ class EventBusDispatchTest {
         List<String> log = new ArrayList<>();
         Container container = Freeway.create(
             binder -> binder.contribute(EventSubscriber.class).add(
-                EventSubscriber.of(PostCreatedEvent.class, (Consumer<PostCreatedEvent>) e -> log.add("module")))
+                EventSubscriber.ofEvent(PostCreatedEvent.class, (Consumer<PostCreatedEvent>) e -> log.add("module")))
         );
 
         EventBus bus = EventBus.create(container);
-        bus.subscribe(PostCreatedEvent.class, e -> log.add("runtime"));
-        bus.publish(new PostCreatedEvent(new Post("x")));
+        bus.subscribeEvent(PostCreatedEvent.class, e -> log.add("runtime"));
+        bus.publishEvent(new PostCreatedEvent(new Post("x")));
 
         assertEquals(2, log.size());
     }
@@ -105,10 +105,10 @@ class EventBusDispatchTest {
     void unsubscribeRemovesRuntimeSubscriber() {
         List<String> log = new ArrayList<>();
         EventBus bus = EventBus.create(Freeway.create());
-        Subscription<PostCreatedEvent> sub = bus.subscribe(PostCreatedEvent.class, e -> log.add("x"));
+        Subscription<PostCreatedEvent> sub = bus.subscribeEvent(PostCreatedEvent.class, e -> log.add("x"));
         bus.unsubscribe(sub);
 
-        bus.publish(new PostCreatedEvent(new Post("x")));
+        bus.publishEvent(new PostCreatedEvent(new Post("x")));
         assertTrue(log.isEmpty());
     }
 
@@ -117,10 +117,10 @@ class EventBusDispatchTest {
         List<DeadEvent> deads = new ArrayList<>();
         Container container = Freeway.create(
             binder -> binder.contribute(EventSubscriber.class).add(
-                EventSubscriber.of(DeadEvent.class, (Consumer<DeadEvent>) deads::add))
+                EventSubscriber.ofEvent(DeadEvent.class, (Consumer<DeadEvent>) deads::add))
         );
 
-        EventBus.create(container).publish(new PostCreatedEvent(new Post("orphan")));
+        EventBus.create(container).publishEvent(new PostCreatedEvent(new Post("orphan")));
 
         assertEquals(1, deads.size());
         assertInstanceOf(PostCreatedEvent.class, deads.get(0).event());
@@ -131,10 +131,10 @@ class EventBusDispatchTest {
         List<DeadEvent> deads = new ArrayList<>();
         Container container = Freeway.create(
             binder -> binder.contribute(EventSubscriber.class).add(
-                EventSubscriber.of(DeadEvent.class, (Consumer<DeadEvent>) deads::add))
+                EventSubscriber.ofEvent(DeadEvent.class, (Consumer<DeadEvent>) deads::add))
         );
 
-        EventBus.create(container).publish(new PostCreatedEvent(new Post("x")));
+        EventBus.create(container).publishEvent(new PostCreatedEvent(new Post("x")));
         assertEquals(1, deads.size());
     }
 
@@ -146,14 +146,14 @@ class EventBusDispatchTest {
         List<DeadEvent> deads = new ArrayList<>();
         Container container = Freeway.create(
             binder -> binder.contribute(EventSubscriber.class).add(
-                EventSubscriber.of(DeadEvent.class, (Consumer<DeadEvent>) deads::add))
+                EventSubscriber.ofEvent(DeadEvent.class, (Consumer<DeadEvent>) deads::add))
         );
         EventBus bus = EventBus.create(container);
 
-        bus.publish("orphan.topic", "no topic subscribers yet");
+        bus.publishTopic("orphan.topic", "no topic subscribers yet");
         assertEquals(1, deads.size(), "a zero-subscriber topic publish reports one diagnostic");
 
-        bus.publish("orphan.topic", deads.get(0));
+        bus.publishTopic("orphan.topic", deads.get(0));
         assertEquals(1, deads.size(),
             "publishing the diagnostic itself must not produce a second one");
     }
@@ -164,11 +164,11 @@ class EventBusDispatchTest {
         List<String> log = new ArrayList<>();
         Container container = Freeway.create(
             binder -> binder.contribute(EventSubscriber.class).add(
-                EventSubscriber.of(PostCreatedEvent.class, e -> log.add("parent")))
+                EventSubscriber.ofEvent(PostCreatedEvent.class, e -> log.add("parent")))
         );
         EventBus bus = EventBus.create(container);
 
-        bus.publish(new SpecialPostCreatedEvent(new Post("x")));
+        bus.publishEvent(new SpecialPostCreatedEvent(new Post("x")));
 
         assertEquals(List.of("parent"),
             log, "a subtype event must be delivered to superclass subscribers");
@@ -181,11 +181,11 @@ class EventBusDispatchTest {
         List<String> log = new ArrayList<>();
         Container container = Freeway.create(
             binder -> binder.contribute(EventSubscriber.class).add(
-                EventSubscriber.of(SpecialPostCreatedEvent.class, e -> log.add("child")))
+                EventSubscriber.ofEvent(SpecialPostCreatedEvent.class, e -> log.add("child")))
         );
         EventBus bus = EventBus.create(container);
 
-        bus.publish(new PostCreatedEvent(new Post("x")));
+        bus.publishEvent(new PostCreatedEvent(new Post("x")));
 
         assertEquals(0, log.size(),
             "a parent event must not reach subtype subscribers");
@@ -199,11 +199,11 @@ class EventBusDispatchTest {
         List<Object> received = new ArrayList<>();
         Container container = Freeway.create(
             binder -> binder.contribute(EventSubscriber.class).add(
-                EventSubscriber.of(PostCreatedEvent.class, e -> received.add("event")))
+                EventSubscriber.ofEvent(PostCreatedEvent.class, e -> received.add("event")))
         );
         EventBus bus = EventBus.create(container);
 
-        bus.publish(new SpecialPostCreatedEvent(new Post("x")));
+        bus.publishEvent(new SpecialPostCreatedEvent(new Post("x")));
 
         assertEquals(List.of("event"), received,
             "a superclass subscriber must suppress the DeadEvent for a subtype event");
@@ -216,15 +216,15 @@ class EventBusDispatchTest {
         Container container = Freeway.create(
             binder -> {
                 binder.contribute(EventSubscriber.class).add(
-                    EventSubscriber.of(PostCreatedEvent.class, (Consumer<PostCreatedEvent>) e -> {
+                    EventSubscriber.ofEvent(PostCreatedEvent.class, (Consumer<PostCreatedEvent>) e -> {
                         throw new RuntimeException("boom");
                     }));
                 binder.contribute(EventSubscriber.class).add(
-                    EventSubscriber.of(PostCreatedEvent.class, (Consumer<PostCreatedEvent>) e -> log.add("survive")));
+                    EventSubscriber.ofEvent(PostCreatedEvent.class, (Consumer<PostCreatedEvent>) e -> log.add("survive")));
             }
         );
 
-        EventBus.create(container).publish(new PostCreatedEvent(new Post("x")));
+        EventBus.create(container).publishEvent(new PostCreatedEvent(new Post("x")));
 
         assertEquals(1, log.size());
         assertEquals("survive", log.get(0));
@@ -240,16 +240,16 @@ class EventBusDispatchTest {
         Container container = Freeway.create(
             binder -> {
                 binder.contribute(EventSubscriber.class).add(
-                    EventSubscriber.of(PostCreatedEvent.class, (Consumer<PostCreatedEvent>) e -> {
+                    EventSubscriber.ofEvent(PostCreatedEvent.class, (Consumer<PostCreatedEvent>) e -> {
                         throw new AssertionError("boom");
                     }));
                 binder.contribute(EventSubscriber.class).add(
-                    EventSubscriber.of(PostCreatedEvent.class, (Consumer<PostCreatedEvent>) e -> log.add("survive")));
+                    EventSubscriber.ofEvent(PostCreatedEvent.class, (Consumer<PostCreatedEvent>) e -> log.add("survive")));
             }
         );
         EventBus bus = EventBus.create(container);
 
-        assertDoesNotThrow(() -> bus.publish(new PostCreatedEvent(new Post("x"))),
+        assertDoesNotThrow(() -> bus.publishEvent(new PostCreatedEvent(new Post("x"))),
             "a subscriber Error must not escape publish()");
 
         assertEquals(List.of("survive"), log,
@@ -264,14 +264,14 @@ class EventBusDispatchTest {
         List<String> log = new ArrayList<>();
         Container container = Freeway.create(
             binder -> binder.contribute(EventSubscriber.class).add(
-                EventSubscriber.of(PostCreatedEvent.class, (Consumer<PostCreatedEvent>) e -> log.add("survive")))
+                EventSubscriber.ofEvent(PostCreatedEvent.class, (Consumer<PostCreatedEvent>) e -> log.add("survive")))
         );
         EventBus bus = EventBus.create(container);
-        bus.subscribe(PostCreatedEvent.class, e -> {
+        bus.subscribeEvent(PostCreatedEvent.class, e -> {
             throw new AssertionError("boom");
         });
 
-        assertDoesNotThrow(() -> bus.publish(new PostCreatedEvent(new Post("x"))));
+        assertDoesNotThrow(() -> bus.publishEvent(new PostCreatedEvent(new Post("x"))));
         assertEquals(List.of("survive"), log);
         assertEquals(1, bus.stats().subscriberFailures());
         bus.close();
@@ -283,16 +283,16 @@ class EventBusDispatchTest {
         Container container = Freeway.create(
             binder -> {
                 binder.contribute(EventSubscriber.class)
-                    .add(EventSubscriber.of("topic", p -> {
+                    .add(EventSubscriber.ofTopic("topic", p -> {
                         throw new AssertionError("boom");
                     }));
                 binder.contribute(EventSubscriber.class)
-                    .add(EventSubscriber.of("topic", p -> log.add((String) p)));
+                    .add(EventSubscriber.ofTopic("topic", p -> log.add((String) p)));
             }
         );
         EventBus bus = EventBus.create(container);
 
-        assertDoesNotThrow(() -> bus.publish("topic", "payload"),
+        assertDoesNotThrow(() -> bus.publishTopic("topic", "payload"),
             "a topic subscriber Error must not escape publish()");
         assertEquals(List.of("payload"), log);
         assertEquals(1, bus.stats().subscriberFailures());
@@ -305,15 +305,15 @@ class EventBusDispatchTest {
         Container container = Freeway.create(
             binder -> {
                 binder.contribute(EventSubscriber.class).add(
-                    EventSubscriber.of(PostCreatedEvent.class, e -> {
+                    EventSubscriber.ofEvent(PostCreatedEvent.class, e -> {
                         throw new RuntimeException("boom");
                     }));
                 binder.contribute(EventSubscriber.class).add(
-                    EventSubscriber.of(DeadEvent.class, (Consumer<DeadEvent>) deads::add));
+                    EventSubscriber.ofEvent(DeadEvent.class, (Consumer<DeadEvent>) deads::add));
             }
         );
 
-        EventBus.create(container).publish(new PostCreatedEvent(new Post("x")));
+        EventBus.create(container).publishEvent(new PostCreatedEvent(new Post("x")));
 
         assertTrue(deads.isEmpty());
     }
@@ -324,12 +324,12 @@ class EventBusDispatchTest {
         Container container = Freeway.create();
 
         EventBus bus = EventBus.create(container);
-        bus.subscribe(PostCreatedEvent.class, e -> log.add("x"));
+        bus.subscribeEvent(PostCreatedEvent.class, e -> log.add("x"));
         bus.close();
 
         // Publishing to a closed bus is a programming error — fail fast.
         assertThrows(IllegalStateException.class,
-            () -> bus.publish(new PostCreatedEvent(new Post("x"))));
+            () -> bus.publishEvent(new PostCreatedEvent(new Post("x"))));
         assertTrue(log.isEmpty());
     }
 }

@@ -91,8 +91,8 @@ application that contributes `CloudHealthContributor`s registers as
 `ServiceHealth.starting()` - present in the registry, absent from discovery
 results - and a gate flips it to ready only when **every** check passes (retried
 every second, off the startup thread). No contributors ⇒ ready as registered —
-the old behaviour, deliberately. `ServiceRegistry.markReady` is the seam
-(default no-op, so Consul-style adapters are unaffected).
+the old behaviour, deliberately. `ReadinessAwareRegistry.markReady` is the seam; a registry opts into
+readiness by implementing the capability interface, not by flipping a boolean.
 
 **Caching is the discovery implementation's own policy.** A network-backed
 implementation wraps itself with `CachingServiceDiscovery.around(delegate, ttl,

@@ -31,7 +31,7 @@ public final class DatabaseImpl implements Database {
     /**
      * Transaction binding for this Database instance. Instance-scoped so a
      * transaction on one Database never leaks into another Database's
-     * queries (a static key made {@code db1.transaction(() -> registry.get("audit").query(...))}
+     * queries (a static key made {@code db1.transaction(() -> catalog.find("audit").query(...))}
      * silently execute audit's SQL on db1's connection).
      */
     private final ScopedValue<TxBinding> tx = ScopedValue.newInstance();
@@ -39,7 +39,7 @@ public final class DatabaseImpl implements Database {
     /**
      * Threads currently inside a transaction on this Database. Added when
      * {@code transaction()} starts and removed in its {@code finally}.
-     * ScopedValue does not propagate to child threads, so this registry is
+     * ScopedValue does not propagate to child threads, so this set is
      * what lets the borrow guard reject DB calls that would otherwise
      * silently borrow an independent pooled connection and run outside the
      * transaction. A set, not a single field: parallel transactions started
@@ -153,7 +153,7 @@ public final class DatabaseImpl implements Database {
      *
      * <p>The transaction covers only this {@code Database}'s connection: SQL
      * executed on other {@code Database} instances (e.g. obtained from a
-     * {@link com.jujin.freeway.db.DatabaseRegistry}) commits independently and is not rolled back when
+     * {@link com.jujin.freeway.db.DatabaseCatalog}) commits independently and is not rolled back when
      * this transaction fails.
      */
     @Override
@@ -287,7 +287,7 @@ public final class DatabaseImpl implements Database {
                     + "(ScopedValue does not propagate; the call would borrow an "
                     + "independent pooled connection and run outside the transaction). "
                     + "Run DB work on the transaction thread, or use a separate "
-                    + "Database instance (e.g. via DatabaseRegistry) for concurrent work"
+                    + "Database instance (e.g. via DatabaseCatalog) for concurrent work"
             );
         }
     }

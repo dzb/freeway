@@ -19,8 +19,8 @@ concept pulls its weight, and **every shared fact has one owner**. The result is
 a framework that is complete without being bloated — and predictable enough for
 both humans and coding agents.
 
-> **Latest release: 1.5.7** · **Development line: 2.0.0-SNAPSHOT**
-> See the [1.5.7 release notes](docs/releases/release-notes-1.5.7.md) and
+> **Latest release: 2.0.0**
+> See the [2.0.0 release notes](docs/releases/release-notes-2.0.0.md) and
 > [CHANGELOG.md](CHANGELOG.md) for what changed; [ROADMAP.md](ROADMAP.md)
 > tracks the remaining evaluated work.
 
@@ -69,8 +69,8 @@ implementation class hierarchy.
 
 ## Quick Start
 
-Add the modules you need. The snippets use `${freeway.version}`; use `1.5.7`
-for the latest release or `2.0.0-SNAPSHOT` for the current development line.
+Add the modules you need. The snippets use `${freeway.version}`; use `2.0.0`
+for the current release.
 
 ```xml
 <dependency>
@@ -206,7 +206,7 @@ before application filters); see
 ### DB
 `Database` SQL execution, `Orm` CRUD/upsert, schema-less `Row` with
 `asString/asInt/asLong/...`, a programmatic `Sql` builder with `toSql()` and
-`value(...)`, `DatabaseRegistry.find`/`PoolStats`, pooling,
+`value(...)`, `DatabaseCatalog.find`/`PoolStats`, pooling,
 `db.transaction(...)` with thread-bound isolation and transaction-aware events,
 dialect detection, `H2Mode`, `Schema.ensure()` and versioned migrations with
 checksum validation.
@@ -283,7 +283,7 @@ The documentation index is [`docs/README.md`](docs/README.md). Highlights:
 - [Defer & ScopedCache](docs/design/defer.md) · [Cloud design](docs/design/cloud.md) · [Reflection](docs/reflection.md)
 - [Configuration samples](docs/samples/) · [Release notes](docs/releases/)
 - [Design taste](TASTE.md) — the judgment rules behind these APIs
-- [Changelog](CHANGELOG.md) · [1.5.7 release notes](docs/releases/release-notes-1.5.7.md)
+- [Changelog](CHANGELOG.md) · [2.0.0 release notes](docs/releases/release-notes-2.0.0.md)
 
 Framework comparisons and engineering evaluations are reference-only and live
 under [`demo/reference/`](demo/reference/); they are not part of the normative
@@ -310,7 +310,7 @@ core. Add the modules you need:
 
 ## Since 1.5.7: the 2.0 refactor
 
-`2.0.0-SNAPSHOT` is a deliberate architecture and vocabulary cleanup, not a
+`2.0.0` is a deliberate architecture and vocabulary cleanup, not a
 feature pile-on. The theme is fewer owners, fewer defaults, and fewer ways to
 express the same fact. Existing code migrates through compiler errors; no
 compatibility alias was added.
@@ -408,9 +408,9 @@ The refactor is backed by the core suite, not just by compile success:
 
 ```text
 mvn clean test
-  commons 422 · ioc 335 · boot 128 · http 527
-  db 541 · flow 129 · cloud 361
-  total 2,537 — 0 failures, 0 errors, 0 skipped
+  commons 447 · ioc 341 · boot 139 · http 549
+  db 550 · flow 141 · cloud 374
+  total 2,541 — 0 failures, 0 errors, 0 skipped
 ```
 
 `mvn -Pdemos -DskipTests compile` also compiles the in-repo consumers against

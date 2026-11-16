@@ -105,7 +105,7 @@ com.jujin.freeway.cloud
 ├── context/      InvocationContext, TraceContext, PrincipalContext, Baggage,
 │                 ContextCodec, ContextModule
 ├── discovery/    ServiceEndpoint, ServiceHealth, ServiceInstance, ServiceDiscovery,
-│                 ServiceRegistry, ServiceDeclaration,
+│                 ServiceRegistry, ReadinessAwareRegistry, ServiceDeclaration,
 │                 LoadBalancer(+Default), StaticDiscovery,
 │                 StaticModule
 ├── registration/ RegistrationModule, RegistrationHook,
@@ -534,8 +534,8 @@ the http probe lives in `HttpModule`/`HealthFilter`, and the cloud probe is regi
 
 ```java
 public interface SecretStore {
-    Optional<String> get(String key);
-    default Optional<byte[]> getBytes(String key);
+    Optional<String> find(String key);
+    default Optional<byte[]> findBytes(String key);
 }
 ```
 
@@ -555,7 +555,7 @@ public interface SecretStore {
 
 ### 5.8 Object Storage (storage)
 
-`ObjectStorage`: `get` / `put` / `delete` / `list` / `presignedUrl` — a **synchronous
+`ObjectStorage`: `find` / `put` / `delete` / `list` / `presignedUrl` — a **synchronous
 API** following the `Database`/`Pool` pattern, with concurrency left to virtual threads.
 
 `ObjectStorageDefault` is the local filesystem (`root/bucket/key`):
@@ -647,7 +647,7 @@ Exclusions and rationale (the first four are **structural** and will not change 
   cross-process on a local miss) with its companion `CallBridge` / `RemoteProxyFactory.localFirst()`, deleted wholesale because it
   inflated the concept count and hid "where the call goes" at runtime; `freeway-ioc` has no bridging seam prepared for it either.
   **The broadcast domain's seam of the same kind was dismantled in 1.5.5 by the same precedent**: the local
-  `EventBus.publish` once quietly left the process based on which modules were installed (`EventSink` fan-out bridge + `publishInbound`
+  `EventBus.publishEvent` once quietly left the process based on which modules were installed (`EventSink` fan-out bridge + `publishInbound`
   inbound funnel + the `@Topic` type-routing annotation — the violator of this section's "no routing annotations" entry);
   now the bus knows no transport, cloud-native broadcast goes through the explicit `MeshEventBus`, persistent streams go through `KafkaEvents`,
   and there is no event bridging seam between `freeway-ioc` and `freeway-cloud`.
@@ -710,7 +710,7 @@ bring your own backend marker and type-key consumption when needed, and it must 
 | ~~zone preference~~ **Delivered (2.0)**: `LoadBalancerDefault(localZone)` prefers instances in the configured local zone and falls back to the full list when none match. `canary` remains a weight/custom-policy input; the default never sends all traffic to a canary just because one exists | — |
 | ~~Mesh drop-count metrics~~ **Delivered (1.5.7)**: `/metrics` exposes the `cloud_event.*` series (published/frames.queued/frames.dropped/send.failures/inbound.delivered/dropped.legacy/dropped.no.subscriber/peers; API names use the dot grammar since 2.0, the Prometheus exposition is unchanged); the label dimension is still pending |
 | ~~Mesh application-level heartbeat~~ **Delivered (1.5.7)**: `WebSocketListener.onPong` is visible + mesh-side `MeshKeepalive` (`event.keepalive-ms`, one shared policy for both legs), no protocol change (reuses WS ping/pong) |
-| ~~readiness published to the registry + startup probe~~ **Delivered (1.5.7)**: `ServiceRegistry.markReady` (no-op by default, so adapters need no change) + registration as `ServiceHealth.starting()` + readiness gate (it flips only when all contributors pass); the startup probe semantics are simply "not ready = not in discovery results" |
+| ~~readiness published to the registry + startup probe~~ **Delivered (1.5.7)**: `ReadinessAwareRegistry.markReady` (an explicit capability, not a base no-op) + registration as `ServiceHealth.starting()` + readiness gate (it flips only when all contributors pass); the startup probe semantics are simply "not ready = not in discovery results" |
 | ~~outbound certificate rotation~~ **Delivered (1.5.7)**: enabled as soon as `rpc.tls.reload-interval` is set — the `SSLContext` is built once, and `KeyManager`/`TrustManager` delegate to rotatable material (size/mtime + throttling, keeping the old material on failure). This is **not** rebuilding the context: the JDK `HttpClient` captures it at construction, so rebuilding would reopen the connection pool and redo in-flight settlement |
 
 | ~~Per-method resilience policy~~ **Delivered (2.0)**: `@RemotePolicy(timeoutMillis, maxAttempts)` on a method or interface, read by `RemoteProxyFactory`; bounds travel through `RemoteCaller` → `RpcHttpClient` → `ResiliencePolicy`. It selects call bounds only; `Retryer`/retry budget/breaker thresholds stay shared | — |

@@ -15,7 +15,7 @@ Examples below are minimal snippets. They omit imports and app-specific domain t
 - `Extension<V>` - framework-internal aggregation handle. Access via `container.extension(Class)`. Application code injects `List<V>` or `Map<String, V>`, not `Extension<V>` directly.
 - `Contribution<T>` - contribution DSL from `Binder.contribute(Class)`: `add(T)`, `add(id, T)`, `addDeferred(Class)`, `addDeferred(id, factory)`; composition-time only - the stores seal when the container is built
 - `Ordering` - handle returned by a named `add` or `addDeferred`: `before(String...)`, `after(String...)`, `beforeIfPresent(String...)`, `afterIfPresent(String...)` (bind-time only, same seal)
-- `EventBus` - `publish`, `publish(String, Object)`, `publishAsync`, `subscribe`, `unsubscribe`
+- `EventBus` - `publishEvent`, `publishTopic`, `publishEventAsync` / `publishTopicAsync`, `publishEventOrdered` / `publishTopicOrdered`, `subscribeEvent` / `subscribeTopic`, `streamEvents` / `streamTopic`, `unsubscribe`
 - `RuntimeHook` - `start(Container)`, `stop(Container)`
 - `LoggerSource` - owner-aware logger lookup
 
@@ -449,13 +449,13 @@ Contribute subscribers at bind time; the contribution id carries the ordering.
 
 ```java
 var subscribers = binder.contribute(EventSubscriber.class);
-subscribers.add("index", EventSubscriber.of(PostCreatedEvent.class, e -> index(e.post())));
-subscribers.add("notify", EventSubscriber.of(PostCreatedEvent.class, e -> sendEmail(e)))
+subscribers.add("index", EventSubscriber.ofEvent(PostCreatedEvent.class, e -> index(e.post())));
+subscribers.add("notify", EventSubscriber.ofEvent(PostCreatedEvent.class, e -> sendEmail(e)))
     .after("index");
 
 // String-topic subscription: the first argument is the topic.
 binder.contribute(EventSubscriber.class)
-    .add(EventSubscriber.of("order.placed", payload -> process(payload)));
+    .add(EventSubscriber.ofTopic("order.placed", payload -> process(payload)));
 ```
 
 Module-level subscribers are sealed at composition time and support the usual `before`/`after`
@@ -468,11 +468,11 @@ subscribers (in subscription order). An unnamed `add(...)` cannot be referenced 
 ```java
 @Inject EventBus bus;
 
-Subscription<PostCreatedEvent> sub = bus.subscribe(PostCreatedEvent.class, e -> { ... });
+Subscription<PostCreatedEvent> sub = bus.subscribeEvent(PostCreatedEvent.class, e -> { ... });
 bus.unsubscribe(sub);
 
 // String-topic subscription.
-Subscription<Object> topicSub = bus.subscribe("order.placed", payload -> { ... });
+Subscription<Object> topicSub = bus.subscribeTopic("order.placed", payload -> { ... });
 ```
 
 Runtime subscriptions are registered after composition, receive events until `unsubscribe` (or bus
@@ -481,15 +481,15 @@ close), and are not part of contribution ordering.
 ### Publishing
 
 ```java
-bus.publish(new PostCreatedEvent(post));        // class event
-bus.publish("order.placed", payload);           // string topic
-bus.publishAsync(new PostCreatedEvent(post));   // async executor (virtual threads by default)
+bus.publishEvent(new PostCreatedEvent(post));        // class event
+bus.publishTopic("order.placed", payload);           // string topic
+bus.publishEventAsync(new PostCreatedEvent(post));   // async executor (virtual threads by default)
 ```
 
-`publish(event)` matches subscribers on the event's runtime type (and supertypes);
-`publish(topic, payload)` matches the topic string. The two channels do not cross. Inside a
+`publishEvent(event)` matches subscribers on the event's runtime type (and supertypes);
+`publishTopic(topic, payload)` matches the topic string. The two channels do not cross. Inside a
 `Defer` scope, publishes are buffered and dispatched only after the scope commits; a rollback
-discards them. `publishAsync` dispatches on a separate thread, so the handler does not run inside
+discards them. `publishEventAsync` / `publishTopicAsync` dispatch on a separate thread, so the handler does not run inside
 the publisher's `Defer` scope (it cannot join that transaction); the submission itself is still
 released only when the scope commits.
 
@@ -505,7 +505,7 @@ public class PostCreatedEvent implements EventBus.Stoppable {
 
 // The first subscriber validates and can stop propagation.
 binder.contribute(EventSubscriber.class)
-    .add(EventSubscriber.of(PostCreatedEvent.class, e -> {
+    .add(EventSubscriber.ofEvent(PostCreatedEvent.class, e -> {
         if (!loggedIn) e.stop();
     }));
 ```

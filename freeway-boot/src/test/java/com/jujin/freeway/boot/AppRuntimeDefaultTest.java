@@ -153,7 +153,7 @@ class AppRuntimeDefaultTest {
         @Override
         public void bind(Binder binder) {
             binder.contribute(EventSubscriber.class)
-                .add(EventSubscriber.of(AppLifecycleEvent.class, event -> {
+                .add(EventSubscriber.ofEvent(AppLifecycleEvent.class, event -> {
                     throw new IllegalStateException("subscriber boom");
                 }));
         }
@@ -298,7 +298,7 @@ class AppRuntimeDefaultTest {
         @Override
         public void bind(Binder binder) {
             binder.contribute(EventSubscriber.class)
-                .add(EventSubscriber.of(AppLifecycleEvent.class, events::add));
+                .add(EventSubscriber.ofEvent(AppLifecycleEvent.class, events::add));
             binder.contribute(RuntimeHook.class).add(new RuntimeHook() {
                 @Override
                 public void start(Container container) {

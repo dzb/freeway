@@ -6,7 +6,7 @@
  * its wiring and lifecycle ({@code FreewayHttpEngine},
  * {@code HttpServerHandleImpl}, {@code SslReloader}: TLS hot reload is
  * engine-self-driven), the per-request transport ({@code HttpTransportImpl}),
- * the HTTP/1 stack (parser, sessions, connection registry, streams,
+ * the HTTP/1 stack (parser, sessions, connection tracker, streams,
  * metrics) and the protocol bridges that speak both this package and a
  * codec sub-package: {@code Http1xSession} (including the h2c upgrade),
  * {@code Http2Session} (ALPN h2) and {@code WebSocketUpgrade}. Pure frame
@@ -20,6 +20,9 @@
  * {@code engine.http2.Http2ResponseWriter} implements across packages;
  * {@code HttpTransportImpl} is the built-in {@code HttpTransport} that
  * benchmarks exercise across jars; {@code FreewayHttpEngine} is what the
- * root {@code HttpModule} binds.</p>
+ * root {@code HttpModule} binds. The complete list is the surface budget in
+ * {@code api/http-engine-surface.txt}, guarded by
+ * {@code EngineSurfaceBudgetTest}; widening the engine surface is an explicit
+ * edit, not an accident.</p>
  */
 package com.jujin.freeway.http.engine;

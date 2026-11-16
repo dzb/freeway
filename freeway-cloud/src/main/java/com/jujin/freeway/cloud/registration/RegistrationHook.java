@@ -1,6 +1,7 @@
 package com.jujin.freeway.cloud.registration;
 
 import com.jujin.freeway.cloud.discovery.ServiceDeclaration;
+import com.jujin.freeway.cloud.discovery.ReadinessAwareRegistry;
 import com.jujin.freeway.cloud.discovery.ServiceHealth;
 import com.jujin.freeway.cloud.health.CloudHealthContributor;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
@@ -81,13 +82,14 @@ final class RegistrationHook implements RuntimeHook {
     public void start(Container container) throws Exception {
         ServiceRegistry registry = container.get(ServiceRegistry.class);
         registryRef = registry;
+        ReadinessAwareRegistry readinessRegistry = registry.readinessCapability().orElse(null);
         stopped = false;
         SymbolSource symbols = container.get(SymbolSource.class);
         shutdownDrain = resolveDrain(symbols.resolve(SHUTDOWN_DRAIN_RAW), registry, symbols);
         // Whether a readiness gate will arm is known before the first write:
         // an application with health checks registers as starting, so "in the
         // registry, not in discovery" is one write rather than a window.
-        boolean warming = registry.supportsReadiness()
+        boolean warming = readinessRegistry != null
             && !container.extension(CloudHealthContributor.class).all().isEmpty();
         ServiceHealth initialHealth = warming ? ServiceHealth.starting() : ServiceHealth.up();
         try {
@@ -96,7 +98,11 @@ final class RegistrationHook implements RuntimeHook {
                 if (instance == null) {
                     continue; // declaration not applicable this boot
                 }
-                registry.register(instance, initialHealth);
+                if (readinessRegistry != null) {
+                    readinessRegistry.register(instance, initialHealth);
+                } else {
+                    registry.register(instance);
+                }
                 registered.add(instance);
                 LOG.info("Registered service '{}' instance '{}' at {}", instance.serviceId(),
                     instance.instanceId(), instance.endpoint());
@@ -117,8 +123,8 @@ final class RegistrationHook implements RuntimeHook {
         }
 
         if (!registered.isEmpty()) {
-            if (registry.supportsReadiness()) {
-                readinessGate = ReadinessGate.arm(container, registryRef, registered);
+            if (readinessRegistry != null) {
+                readinessGate = ReadinessGate.arm(container, readinessRegistry, registered);
                 if (readinessGate != null) {
                     readinessGate.start();
                 }
@@ -180,6 +186,7 @@ final class RegistrationHook implements RuntimeHook {
         if (registry == null) {
             return;
         }
+        ReadinessAwareRegistry readinessRegistry = registry.readinessCapability().orElse(null);
         boolean healthy = true;
         for (ServiceInstance instance : registered) {
             boolean stillHeld;
@@ -207,7 +214,11 @@ final class RegistrationHook implements RuntimeHook {
                 ServiceHealth health = readinessGate != null && !readinessGate.ready()
                     ? ServiceHealth.starting()
                     : ServiceHealth.up();
-                registry.register(instance, health);
+                if (readinessRegistry != null) {
+                    readinessRegistry.register(instance, health);
+                } else {
+                    registry.register(instance);
+                }
                 LOG.warn("Registration for {} instance {} was gone — re-registered",
                     instance.serviceId(), instance.instanceId());
             } catch (Exception ex) {

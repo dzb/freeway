@@ -1,7 +1,7 @@
 package com.jujin.freeway.db.internal;
 
 import com.jujin.freeway.db.Database;
-import com.jujin.freeway.db.DatabaseRegistry;
+import com.jujin.freeway.db.DatabaseCatalog;
 import com.jujin.freeway.db.NamedDatabase;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -11,10 +11,10 @@ import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public final class DatabaseRegistryImpl implements DatabaseRegistry {
+public final class DatabaseCatalogImpl implements DatabaseCatalog {
 
     private static final Logger LOG = LoggerFactory.getLogger(
-        DatabaseRegistryImpl.class
+        DatabaseCatalogImpl.class
     );
 
     /**
@@ -31,11 +31,11 @@ public final class DatabaseRegistryImpl implements DatabaseRegistry {
      * IoC constructor — {@code List<NamedDatabase>} populated from module
      * contributions via {@code binder.contribute(NamedDatabase.class).add(...)}.
      */
-    public DatabaseRegistryImpl(List<NamedDatabase> entries) {
+    public DatabaseCatalogImpl(List<NamedDatabase> entries) {
         this(toMap(entries));
     }
 
-    public DatabaseRegistryImpl(Map<String, Database> databases) {
+    public DatabaseCatalogImpl(Map<String, Database> databases) {
         this.databases = Map.copyOf(databases);
         for (var entry : databases.entrySet()) {
             LOG.debug("Registered database '{}'", entry.getKey());

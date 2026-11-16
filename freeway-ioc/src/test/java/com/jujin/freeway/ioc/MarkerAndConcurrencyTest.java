@@ -172,7 +172,7 @@ class MarkerAndConcurrencyTest {
     void eventBusConcurrentPublishAndSubscribe() throws Exception {
         Container container = Freeway.create(binder -> {
             binder.contribute(EventSubscriber.class)
-                .add(EventSubscriber.of(String.class, e -> {}));
+                .add(EventSubscriber.ofEvent(String.class, e -> {}));
         });
         EventBus bus = container.get(EventBus.class);
         int threads = 8;
@@ -188,9 +188,9 @@ class MarkerAndConcurrencyTest {
                     try {
                         start.await();
                         for (int i = 0; i < perThread; i++) {
-                            bus.publish("evt-" + threadId + "-" + i);
+                            bus.publishEvent("evt-" + threadId + "-" + i);
                             if (i % 50 == 0) {
-                                var sub = bus.subscribe(String.class, e -> {});
+                                var sub = bus.subscribeEvent(String.class, e -> {});
                                 bus.unsubscribe(sub);
                             }
                         }

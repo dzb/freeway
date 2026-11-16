@@ -1,11 +1,17 @@
 package com.jujin.freeway.cloud.discovery;
 
 import java.time.Duration;
+import java.util.Optional;
 
 /**
  * Lifecycle side of the registry: register / renew (heartbeat) / unregister.
  * Driven by the discovery module's {@code RuntimeHook}s (register on start,
  * unregister on stop, periodic renew in between).
+ *
+ * <p>Readiness publication is an optional capability: a backend that can
+ * register an instance as starting and later flip readiness implements
+ * {@link ReadinessAwareRegistry}; a backend without it is registered as ready
+ * through {@link #register(ServiceInstance)} and never receives an inert gate.
  */
 public interface ServiceRegistry {
 
@@ -13,18 +19,12 @@ public interface ServiceRegistry {
     void register(ServiceInstance instance);
 
     /**
-     * Registers an instance with the probe state the caller already knows.
-     *
-     * <p>This exists so a slow-starting process is registered as
-     * {@link ServiceHealth#starting()}: "in the registry, not in the discovery result"
-     * has to be one write, not a register followed by a mark-not-ready that
-     * leaves a window where discovery can see it. The default delegates to
-     * {@link #register(ServiceInstance)} for adapters whose backend cannot
-     * express readiness at registration time — the same posture
-     * {@link #markReady} takes.</p>
+     * Returns this registry's readiness capability when it has one. The
+     * capability is a typed object, not a boolean flag plus inert defaults:
+     * callers either receive a usable readiness-aware registry or empty.
      */
-    default void register(ServiceInstance instance, ServiceHealth health) {
-        register(instance);
+    default Optional<ReadinessAwareRegistry> readinessCapability() {
+        return Optional.empty();
     }
 
     /**
@@ -41,30 +41,6 @@ public interface ServiceRegistry {
 
     /** Removes the instance from the registry. */
     void unregister(ServiceInstance instance);
-
-    /**
-     * Whether this backend can publish readiness before the instance is
-     * discoverable. The default is false: an adapter that has no such concept
-     * must not be given a gate that can never flip. Fleet and Consul implement
-     * it; a custom adapter opts in explicitly.
-     */
-    default boolean supportsReadiness() { return false; }
-
-    /**
-     * Publishes this instance's readiness, so a slow-starting process is not
-     * discoverable before it can serve. Discovery only returns live
-     * <em>and ready</em> instances ({@link ServiceDiscovery#instances}), so an
-     * implementation that cannot express readiness leaves the seam promising
-     * more than it delivers — the reason this method exists at all.
-     *
-     * <p>The default is a no-op for adapters whose backend owns readiness
-     * itself (Consul's TTL/health checks answer it), and for any adapter not
-     * yet migrated. The Fleet client (`FleetModule`) implements it; static
-     * discovery has no write side to implement.</p>
-     *
-     * @param ready {@code false} marks the instance as starting/warming
-     */
-    default void markReady(ServiceInstance instance, boolean ready) { }
 
     /**
      * How long this registry needs after an {@link #unregister unregister} for

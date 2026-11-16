@@ -13,7 +13,7 @@ import java.util.List;
  * share one wire order, and {@code combine} is the join that keeps a payload
  * split across buffers in one array.
  */
-public final class Bytes {
+final class Bytes {
 
     private Bytes() {}
 

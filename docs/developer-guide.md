@@ -556,7 +556,7 @@ binder.contribute(RuntimeHook.class)
     .add("db.migration", hook).beforeIfPresent("freeway.http.server");
 
 binder.contribute(EventSubscriber.class)
-    .add(EventSubscriber.of(OrderCreated.class, e -> notify(e)))
+    .add(EventSubscriber.ofEvent(OrderCreated.class, e -> notify(e)))
     .after("audit");
 
 // Consumption — inject List<V> or Map<String, V>
@@ -668,35 +668,39 @@ Rules:
 
 ### EventBus
 
-In-process publish-subscribe built on the Extension mechanism. Events are plain objects; subscribers are contributed via `EventSubscriber` or registered at runtime.
+In-process publish-subscribe built on the Extension mechanism. Events are plain objects; subscribers are contributed via `EventSubscriber` or registered at runtime. The channel is written into the method name: `Event` methods use class matching, `Topic` methods use exact string-topic matching.
 
 ```java
 // Module-level subscribers (startup-time, supports ordering)
 binder.contribute(EventSubscriber.class)
-    .add(EventSubscriber.of(PostCreatedEvent.class, e -> index(e.post())))
-    .add("notify", EventSubscriber.of(PostCreatedEvent.class, e -> sendEmail(e)))
+    .add(EventSubscriber.ofEvent(PostCreatedEvent.class, e -> index(e.post())))
+    .add("notify", EventSubscriber.ofEvent(PostCreatedEvent.class, e -> sendEmail(e)))
     .after("index");
 
 // String-topic subscribers (no event class needed)
 binder.contribute(EventSubscriber.class)
-    .add(EventSubscriber.of("order.placed", payload -> process(payload)));
+    .add(EventSubscriber.ofTopic("order.placed", payload -> process(payload)));
 
 // Runtime subscribers (dynamic, no ordering)
 @Inject EventBus bus;
-Subscription<PostCreatedEvent> sub = bus.subscribe(PostCreatedEvent.class, e -> { ... });
-bus.unsubscribe(sub);
+Subscription<PostCreatedEvent> eventSub =
+    bus.subscribeEvent(PostCreatedEvent.class, e -> { ... });
+Subscription<Object> topicSub =
+    bus.subscribeTopic("order.placed", payload -> { ... });
+bus.unsubscribe(eventSub);
 
-// Publish
-bus.publish(new PostCreatedEvent(post));    // class-based
-bus.publish("order.placed", payload);       // string-topic
-bus.publishAsync(new PostCreatedEvent(post)); // fire-and-forget (virtual threads)
+// Publish: the channel is explicit at every call site
+bus.publishEvent(new PostCreatedEvent(post));       // class-based
+bus.publishTopic("order.placed", payload);           // string-topic
+bus.publishEventAsync(new PostCreatedEvent(post));   // fire-and-forget
+bus.publishTopicAsync("order.placed", payload);
 ```
 
-Note the single-argument `publish("order.placed")` is **not** a topic publish —
-a one-arg call dispatches a `String` *class event*, which only subscribers on
-`String.class` (or a supertype) receive. Topic subscribers registered via
-`EventSubscriber.of("order.placed", ...)` or `subscribe("order.placed", ...)`
-only receive two-argument `publish(topic, payload)` calls.
+The old arity-based ambiguity is gone: a single `String` is an event argument
+only when passed to `publishEvent`, and topic publication always names
+`publishTopic(topic, payload)`. Topic subscribers registered via
+`EventSubscriber.ofTopic(...)` or `subscribeTopic(...)` only receive topic
+publications.
 
 **Key types:**
 
@@ -704,7 +708,7 @@ only receive two-argument `publish(topic, payload)` calls.
 |------|---------|
 | `EventBus` | Publish, subscribe, unsubscribe. Injected via `@Inject EventBus` |
 | `EventSubscriber<E>` | Module-level subscriber: carries event type, handler, and ordering |
-| `Subscription<E>` | Handle returned by `subscribe()`, used to `unsubscribe()` |
+| `Subscription<E>` | Handle returned by `subscribeEvent` / `subscribeTopic`, used to `unsubscribe()` |
 | `DeadEvent` | Published when an event has zero subscribers — subscribe for diagnostics |
 | `EventBus.Stoppable` | Events implementing this can `stop()` the subscriber chain |
 
@@ -719,36 +723,36 @@ public class PostCreatedEvent implements EventBus.Stoppable {
 
 // First subscriber validates and stops if unauthorized — later subscribers are skipped
 binder.contribute(EventSubscriber.class)
-    .add(EventSubscriber.of(PostCreatedEvent.class, e -> { if (!loggedIn) e.stop(); }));
+    .add(EventSubscriber.ofEvent(PostCreatedEvent.class, e -> { if (!loggedIn) e.stop(); }));
 ```
 
 **Async publishing:** Fire-and-forget dispatched on virtual threads by default:
 
 ```java
-bus.publishAsync(new PostCreatedEvent(post));
-bus.publishAsync("order.placed", payload);
+bus.publishEventAsync(new PostCreatedEvent(post));
+bus.publishTopicAsync("order.placed", payload);
 
 // Custom executor (e.g. platform-thread pool)
 Executor pool = Executors.newFixedThreadPool(4);
 bus.setAsyncExecutor(pool);
 ```
 
-Async dispatch defaults to `Executors.newVirtualThreadPerTaskExecutor()`. Call `setAsyncExecutor()` to replace it with a custom executor. Note: `publishAsync` dispatches to a separate thread and therefore does **not** participate in `Defer` scopes (which are thread-bound via `ScopedValue`). For transaction-safe events, use sync `publish()` — it automatically defers inside a transaction and fires on commit.
+Async dispatch defaults to `Executors.newVirtualThreadPerTaskExecutor()`. Call `setAsyncExecutor()` to replace it with a custom executor. `publishEventAsync` and `publishTopicAsync` dispatch on a separate thread and therefore do **not** participate in `Defer` scopes (which are thread-bound via `ScopedValue`). For transaction-safe events, use `publishEvent` — it automatically defers inside a transaction and fires on commit.
 
 **DeadEvent diagnostics:** When zero subscribers exist for an event, a `DeadEvent` is published — subscribe to it for logging or monitoring:
 
 ```java
 binder.contribute(EventSubscriber.class)
-    .add(EventSubscriber.of(DeadEvent.class, e ->
+    .add(EventSubscriber.ofEvent(DeadEvent.class, e ->
         LOG.warn("No subscriber for {}", e.event().getClass())));
 ```
 
-**Ordered channel:** `publishOrdered(event)` dispatches strictly in submission order (single-threaded FIFO) — the channel for transaction-outbox-style sequences: events published inside one `Defer` scope drain in call order after the scope commits.
+**Ordered channel:** `publishEventOrdered` / `publishTopicOrdered` dispatch strictly in submission order (single-threaded FIFO) — the channel for transaction-outbox-style sequences: events published inside one `Defer` scope drain in call order after the scope commits.
 
-**Reactive streams:** `stream(Class)` / `stream(String)` expose the same subscriptions as a JDK `Flow.Publisher` — no external dependency. A consumer that cannot keep up overflow-drops (non-blocking) rather than stalling bus dispatch; `close()` completes all live streams. Fan out by calling `stream()` once per consumer, not by sharing one publisher.
+**Reactive streams:** `streamEvents(Class)` / `streamTopic(String)` expose the same subscriptions as a JDK `Flow.Publisher` — no external dependency. A consumer that cannot keep up overflow-drops (non-blocking) rather than stalling bus dispatch; `close()` completes all live streams. Fan out by calling one stream per consumer, not by sharing one publisher.
 
 ```java
-bus.stream(OrderPlaced.class).subscribe(new Flow.Subscriber<>() {
+bus.streamEvents(OrderPlaced.class).subscribe(new Flow.Subscriber<>() {
     public void onSubscribe(Flow.Subscription s) { s.request(Long.MAX_VALUE); }
     public void onNext(OrderPlaced item) { handle(item); }
     public void onError(Throwable t) { LOG.error("stream failed", t); }
@@ -761,8 +765,10 @@ bus.stream(OrderPlaced.class).subscribe(new Flow.Subscriber<>() {
 
 ```java
 binder.contribute(EventSubscriber.class)
-    .add(EventSubscriber.of(AppLifecycleEvent.class, e -> { if (e.state() == AppState.RUNNING) cache.warmup(); }))
-    .add(EventSubscriber.of(AppLifecycleEvent.class, e -> { if (e.state() == AppState.STOPPING) cache.flush(); }));
+    .add(EventSubscriber.ofEvent(AppLifecycleEvent.class,
+        e -> { if (e.state() == AppState.RUNNING) cache.warmup(); }))
+    .add(EventSubscriber.ofEvent(AppLifecycleEvent.class,
+        e -> { if (e.state() == AppState.STOPPING) cache.flush(); }));
 ```
 
 **Transaction-aware:** Events published inside a `db.transaction()` are automatically deferred and fire only after commit. No manual wiring needed — powered by the `Defer` mechanism (see [Defer](design/defer.md)).
@@ -1091,14 +1097,14 @@ Three-layer architecture: **engine layer** handles transport (socket I/O, protoc
 | Engine (shared) | `FreewayHttpEngine`, `HttpTransportImpl`, `HttpExchangeSupport`, `HttpSession`, `HttpServerHandleImpl`, `SessionBufferedInputStream/OutputStream`, `FixedLengthInputStream`, `ChunkedInputStream` |
 | Engine (HTTP/1.x) | `HttpConnection`, `Http1xSession`, `Http1xParser` in `engine/` |
 | Engine (HTTP/2) | `Http2Connection`, `Http2Stream`, `FrameSerializer`, `HPackContext` etc in `engine/http2/` |
-| Engine (WebSocket) | `WebSocketFrame`, `WebSocketConnection`, `WebSocketUtils` etc in `engine/ws/` |
+| Engine (WebSocket) | `WebSocketFrame`, `WebSocketConnection`, `WebSocketReadLoop` etc in `engine/ws/` |
 | Routing | `Route`, `RouteGroup`, `RouteIndex`, `PathPattern` |
 | Body | `BodyHandler`, `MultipartForm` |
 | WebSocket | `WebSocketSession`, `WebSocketSessionSupport`, `WebSocketTransport`, `WebSocketListener`, `WebSocketRoute`, `WebSocketGroup`, `WebSocketIndex` |
 | SSE | `SseEmitter`, `SseEvent` |
 | Built-ins | `JsonCodecDefault`, `CorsFilter`, `HealthFilter`, `HealthCheck`, `StaticResourceMount`, `ErrorMapper` |
 
-Engine internals (`engine/` and sub-packages) are implementation details — `FreewayHttpEngine` is the only public class. `JdkHttpEngine`/`JdkHttpContext` have been removed; the built-in engine is the sole default.
+Engine internals (`engine/` and its sub-packages) are implementation details with no stability promise. A small set of public types are cross-package assembly seams — `FreewayHttpEngine`, `HttpTransportImpl`, `HttpResponseWriter`, and the HTTP/2/WebSocket bridge types — and are budgeted in `api/http-engine-surface.txt`; every other collaborator stays package-private. `JdkHttpEngine`/`JdkHttpContext` have been removed; the built-in engine is the sole default.
 
 At runtime, `HttpServer.routeDescriptions()` and `HttpServer.webSocketPaths()` expose the
 registered method/path identities for diagnostics and tools, without returning handlers.
@@ -1702,14 +1708,14 @@ db.transaction(IsolationLevel.SERIALIZABLE, () -> {
 });
 ```
 
-Nested transactions are detected and rejected. Auto-commit is restored on exit. Queries inside the transaction automatically use the same connection. The transaction is **thread-bound** (backed by `ScopedValue`, which does not propagate to child threads): DB calls made on a different thread while a transaction is active, or consuming a `Query`/`BatchQuery` created inside a transaction on another thread (or after the transaction ends), throw a `SqlException` — the work would otherwise silently borrow an independent pooled connection and run outside the transaction, breaking atomicity. Cross-`Database` work (e.g. via `DatabaseRegistry`) commits independently and is not rolled back with the transaction.
+Nested transactions are detected and rejected. Auto-commit is restored on exit. Queries inside the transaction automatically use the same connection. The transaction is **thread-bound** (backed by `ScopedValue`, which does not propagate to child threads): DB calls made on a different thread while a transaction is active, or consuming a `Query`/`BatchQuery` created inside a transaction on another thread (or after the transaction ends), throw a `SqlException` — the work would otherwise silently borrow an independent pooled connection and run outside the transaction, breaking atomicity. Cross-`Database` work (e.g. via `DatabaseCatalog`) commits independently and is not rolled back with the transaction.
 
 **Transaction-aware side effects:** EventBus events published inside a transaction are automatically deferred and only fire after commit — no manual wiring needed. This is powered by the `Defer` mechanism (see [Defer](design/defer.md)):
 
 ```java
 db.transaction(() -> {
     db.execute("INSERT INTO posts (title) VALUES (?)", "hello");
-    bus.publish(new PostCreatedEvent(post));  // deferred, fires after commit
+    bus.publishEvent(new PostCreatedEvent(post));  // deferred, fires after commit
 });
 // EventBus subscribers receive PostCreatedEvent here
 ```
@@ -2066,16 +2072,16 @@ freeway.db.schema.mode=auto           freeway.db.schema.mode=validate
 
 The same entity classes and SQL files work in both environments. Switching modes is just one config key.
 
-### DatabaseRegistry
+### DatabaseCatalog
 
 ```java
 binder.contribute(NamedDatabase.class)
     .add(new NamedDatabase("audit", auditDb))
     .add(new NamedDatabase("primary", mainDb));
 
-DatabaseRegistry registry = container.get(DatabaseRegistry.class);
-Database primary = registry.primary();
-Database audit = registry.find("audit").orElseThrow();
+DatabaseCatalog catalog = container.get(DatabaseCatalog.class);
+Database primary = catalog.primary();
+Database audit = catalog.find("audit").orElseThrow();
 ```
 
 ---
@@ -2212,7 +2218,7 @@ Lightweight graph-based workflow engine.
 Parallel branches inherit the submitting thread's ambient work context through
 the single `ContextCarrier` binding (the cloud context module supplies it):
 trace, principal, baggage and MDC reach every branch worker, exactly as they
-reach an `EventBus.publishAsync` task. A standalone engine (`FlowEngine.create()`
+reach an `EventBus.publishEventAsync` task. A standalone engine (`FlowEngine.create()`
 without a carrier) runs branches bare; the branch scope itself is still carried
 by the flow engine's own `ScopedValue` frame. Graphs are defined by the canonical `GraphSpec` (`nodes`+`links` structure with explicit `entry`). Zero external dependencies beyond commons + ioc. The legacy solon-flow `layout` format was removed — only the canonical shape loads.
 
@@ -2334,7 +2340,7 @@ re-arms each LOOP iteration for a fork-join inside a loop body.
 | `FlowDriver` | Pluggable task/condition executor + optional `PARALLEL` executor — contributed via `binder.contribute(FlowDriver.class)` |
 | `FlowDriverDefault` | Built-in driver: resolves `@name` against the container, `#graphId` via sub-graph runs; standalone with inline handlers when container is null |
 | `FlowInterceptor` | Contributed chain (flow-level `interceptFlow` + node `onNodeStart`/`onNodeEnd`); fixed at load, cannot change while running |
-| `FlowEventBus` | Topic pub/sub scoped to one execution (cleared at run boundaries); a container-assembled engine also forwards each publish to the application `EventBus` under `"flow." + topic` |
+| `FlowEventBus` | Topic pub/sub scoped to one execution (cleared at run boundaries); a container-assembled engine also forwards each publish to the application `EventBus` via `publishTopic("flow." + topic, payload)` |
 | `ExprEvaluator` | Self-written recursive descent expression evaluator (~600 lines) |
 
 **Driver & interceptor assembly:** graphs select a driver via `"driver"`

@@ -211,7 +211,7 @@ A frame whose topic matches no subscription is **dropped without deserialization
 subscribe: an interest the peer cannot see during the handshake is an interest that cannot be honored.
 
 **Local and remote deliberately mirror each other**: the two planes do not feed each other — a remote fact does not automatically become a local fact. When needed, mirror it in the handler
-with: `MeshSubscription.of("order.", OrderCreated.class, event -> bus.publish(event))`.
+with: `MeshSubscription.of("order.", OrderCreated.class, event -> bus.publishEvent(event))`.
 
 **Who receives what**: only the subscription prefixes a node itself declares; there is no second filter. Per-node deployment checklist: module placement +
 (peers or `enabled=true`) + subscription declarations + `token` — missing any one is a silent partition rather than an error;

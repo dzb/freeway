@@ -49,7 +49,7 @@ public final class ObjectStorageDefault implements ObjectStorage {
     }
 
     @Override
-    public Optional<byte[]> get(String bucket, String key) throws StorageException {
+    public Optional<byte[]> find(String bucket, String key) throws StorageException {
         Path target = resolve(bucket, key);
         if (!Files.isRegularFile(target)) {
             return Optional.empty();

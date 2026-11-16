@@ -70,7 +70,7 @@ class ContainerCloseTest {
         var received = new CopyOnWriteArrayList<String>();
         containerRef = Freeway.create(binder ->
             binder.bind(EventPublishingCleanup.class).to(EventPublishingCleanup.class));
-        containerRef.get(EventBus.class).subscribe(String.class, received::add);
+        containerRef.get(EventBus.class).subscribeEvent(String.class, received::add);
         containerRef.get(EventPublishingCleanup.class); // realize so PreDestroy fires on close
 
         assertDoesNotThrow(containerRef::close,
@@ -88,7 +88,7 @@ class ContainerCloseTest {
         var received = new CopyOnWriteArrayList<String>();
         containerRef = Freeway.create(binder ->
             binder.bind(ClosingPublisher.class).to(ClosingPublisher.class));
-        containerRef.get(EventBus.class).subscribe(String.class, received::add);
+        containerRef.get(EventBus.class).subscribeEvent(String.class, received::add);
         containerRef.get(ClosingPublisher.class); // realize so close() fires on container close
 
         assertDoesNotThrow(containerRef::close,
@@ -320,7 +320,7 @@ class ContainerCloseTest {
 
         @PreDestroy
         void cleanup() {
-            bus.publish("cleanup-event");
+            bus.publishEvent("cleanup-event");
         }
     }
 
@@ -330,7 +330,7 @@ class ContainerCloseTest {
 
         @Override
         public void close() {
-            bus.publish("closing-event");
+            bus.publishEvent("closing-event");
         }
     }
 

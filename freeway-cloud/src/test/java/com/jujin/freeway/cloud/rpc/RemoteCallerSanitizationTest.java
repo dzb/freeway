@@ -31,10 +31,35 @@ class RemoteCallerSanitizationTest {
     private static RemoteCaller callerWith(int status, String exClass, String message) {
         RpcHttpClient hostile = new RpcHttpClient() {
             @Override
+            public RpcResponse call(String serviceId, RpcRequest request, int maxAttempts) {
+                return call(serviceId, request);
+            }
+
+            @Override
             public RpcResponse call(String serviceId, RpcRequest request) {
                 return new RpcResponse(status,
                     Map.of("x-rpc-exception", List.of(exClass), "x-rpc-message", List.of(message)),
                     new byte[0]);
+            }
+
+            @Override
+            public java.util.concurrent.CompletableFuture<RpcResponse> callAsync(
+                    String serviceId, RpcRequest request) {
+                return java.util.concurrent.CompletableFuture.completedFuture(
+                    call(serviceId, request));
+            }
+
+            @Override
+            public java.util.concurrent.CompletableFuture<RpcResponse> callAsync(
+                    String serviceId, RpcRequest request, java.time.Duration deadline) {
+                return callAsync(serviceId, request);
+            }
+
+            @Override
+            public java.util.concurrent.CompletableFuture<RpcResponse> callAsync(
+                    String serviceId, RpcRequest request, java.time.Duration deadline,
+                    int maxAttempts) {
+                return callAsync(serviceId, request);
             }
 
             @Override

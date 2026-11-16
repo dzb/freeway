@@ -1,5 +1,8 @@
 package com.jujin.freeway.cloud.rpc;
 
+import java.time.Duration;
+import java.util.concurrent.CompletableFuture;
+
 /**
  * Outbound remote invocation: explicit HTTP calls by logical service name —
  * no method-level RPC in the transport itself; typed remote-call proxies
@@ -36,54 +39,52 @@ public interface RpcHttpClient extends AutoCloseable {
 
     /**
      * As {@link #call(String, RpcRequest)} with a per-call total-attempt cap
-     * ({@code 0} = the client's configured Retryer). The default ignores the
-     * cap so existing implementations keep compiling; the framework default
-     * honors it at the resilience loop.
+     * ({@code 0} = the client's configured Retryer).
+     *
+     * <p>An implementation must honor the cap. It must not silently delegate
+     * to the unbounded overload: a caller-provided attempt bound is a
+     * transport contract, not a hint.</p>
      */
-    default RpcResponse call(String serviceId, RpcRequest request, int maxAttempts)
-            throws RpcException {
-        return call(serviceId, request);
-    }
+    RpcResponse call(String serviceId, RpcRequest request, int maxAttempts)
+            throws RpcException;
 
     /**
      * Async variant of {@link #call}: the full resilience orchestration
      * (discovery, load balancing, retry, breaker, rate limit) runs as-is —
-     * only the final socket wait is lifted off the calling thread. The
-     * default bridges the synchronous form, so existing implementations
-     * need no changes; {@link RpcHttpClientDefault} overrides it with a
-     * virtual-thread based send that keeps the caller's thread free.
-     * Completes exceptionally with {@link RpcException}; never returns
-     * {@code null}.
+     * only the final socket wait is lifted off the calling thread. Completes
+     * exceptionally with {@link RpcException}; never returns {@code null}.
      *
-     * <p>Cancelling the returned future should abort the orchestration: the
-     * retry loop (including backoff) is interrupted, the in-flight send is
-     * asked to cancel, and the in-flight registration is settled.
-     * {@link RpcHttpClientDefault} implements that contract; the default
-     * implementation below runs a blocking call and can only settle the
-     * future, because it has no handle on the running attempt. Transport
-     * support is best-effort — the JDK client owns the connection — but the
-     * retry loop stops consuming attempts and worker time. Cancellation is
+     * <p>Cancelling the returned future aborts the orchestration: the retry
+     * loop (including backoff) is interrupted, the in-flight send is asked to
+     * cancel, and the in-flight registration is settled. Cancellation is
      * distinct from a deadline: a deadline fails the call with a timeout,
      * while cancellation means the caller no longer wants the result.</p>
+     *
+     * <p>The implementation owns this async contract; it may not be left to a
+     * generic common-pool bridge because context propagation and cancellation
+     * are part of the call semantics.</p>
      */
-    default java.util.concurrent.CompletableFuture<RpcResponse> callAsync(
-        String serviceId, RpcRequest request) {
-        return java.util.concurrent.CompletableFuture.supplyAsync(
-            () -> call(serviceId, request));
-    }
-    /** Asynchronous call bounded by an end-to-end deadline across every
-     *  attempt (not just one socket wait). Implementations that cannot bound
-     *  the whole orchestration fall back to the per-request timeout. */
-    default java.util.concurrent.CompletableFuture<RpcResponse> callAsync(
-        String serviceId, RpcRequest request, java.time.Duration deadline) {
-        return callAsync(serviceId, request);
-    }
+    CompletableFuture<RpcResponse> callAsync(
+        String serviceId, RpcRequest request);
 
-    /** As {@link #callAsync(String, RpcRequest, java.time.Duration)} with a
-     *  per-call total-attempt cap; {@code 0} means the client default. */
-    default java.util.concurrent.CompletableFuture<RpcResponse> callAsync(
-        String serviceId, RpcRequest request, java.time.Duration deadline,
-        int maxAttempts) {
-        return callAsync(serviceId, request, deadline);
-    }
+    /**
+     * Asynchronous call bounded by an end-to-end deadline across every
+     * attempt (not just one socket wait). {@code null} or zero means the
+     * client's configured request timeout.
+     *
+     * <p>An implementation that cannot bound the whole orchestration must
+     * fail the call loudly or refuse the declaration at composition time; it
+     * must not silently ignore the deadline and fall back to one socket
+     * timeout. A caller-provided deadline is a contract.</p>
+     */
+    CompletableFuture<RpcResponse> callAsync(
+        String serviceId, RpcRequest request, Duration deadline);
+
+    /**
+     * As {@link #callAsync(String, RpcRequest, Duration)} with a per-call
+     * total-attempt cap; {@code 0} means the client default. The attempt cap
+     * is a contract, not a hint.
+     */
+    CompletableFuture<RpcResponse> callAsync(
+        String serviceId, RpcRequest request, Duration deadline, int maxAttempts);
 }

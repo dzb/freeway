@@ -79,8 +79,8 @@ class IdentityFallbackTest {
 
     /** Reads the identity HttpDeclaration registered for this app. */
     private static String registeredServiceId(AppRuntime app, String serviceId) {
-        var registry = app.get(TestDiscoveryModule.TestRegistry.class);
-        List<ServiceInstance> instances = registry.instances(serviceId);
+        var backend = app.get(TestDiscoveryModule.TestBackend.class);
+        List<ServiceInstance> instances = backend.instances(serviceId);
         assertFalse(instances.isEmpty(),
             "no instance registered under '" + serviceId + "' — registration identity diverged");
         assertEquals(1, instances.size(), "one HTTP declaration registers one instance");

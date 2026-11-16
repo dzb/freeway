@@ -3,6 +3,7 @@ package com.jujin.freeway.cloud.rpc;
 import com.jujin.freeway.commons.json.JsonCodec;
 
 import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -12,7 +13,15 @@ import java.util.Map;
 public record RpcResponse(int status, Map<String, List<String>> headers, byte[] body) {
 
     public RpcResponse {
-        headers = headers == null ? Map.of() : Map.copyOf(headers);
+        if (headers == null) {
+            headers = Map.of();
+        } else {
+            Map<String, List<String>> copy = new LinkedHashMap<>();
+            for (Map.Entry<String, List<String>> header : headers.entrySet()) {
+                copy.put(header.getKey(), List.copyOf(header.getValue()));
+            }
+            headers = Map.copyOf(copy);
+        }
     }
 
     public boolean isSuccess() {

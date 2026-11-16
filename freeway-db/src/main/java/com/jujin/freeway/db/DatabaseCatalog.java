@@ -1,11 +1,11 @@
 package com.jujin.freeway.db;
 
-import com.jujin.freeway.db.internal.DatabaseRegistryImpl;
+import com.jujin.freeway.db.internal.DatabaseCatalogImpl;
 import java.util.Map;
 import java.util.Optional;
 
 /**
- * Registry for multiple named {@link Database} instances.
+ * Catalog of multiple named {@link Database} instances.
  *
  * <p>Contributions are made via {@code binder.contribute(NamedDatabase.class)} in IoC mode,
  * or via {@link #of(Map)} in standalone mode.
@@ -16,13 +16,13 @@ import java.util.Optional;
  * single-database transaction — work on the other databases commits on its
  * own and is not rolled back with the transaction.
  */
-public interface DatabaseRegistry {
+public interface DatabaseCatalog {
 
     /**
-     * Creates a registry over the given named databases (standalone mode).
+     * Creates a catalog over the given named databases (standalone mode).
      */
-    static DatabaseRegistry of(Map<String, Database> databases) {
-        return new DatabaseRegistryImpl(databases);
+    static DatabaseCatalog of(Map<String, Database> databases) {
+        return new DatabaseCatalogImpl(databases);
     }
 
     /**
@@ -39,7 +39,7 @@ public interface DatabaseRegistry {
     Database primary();
 
     /**
-     * Returns the registered databases as they were when this registry was
+     * Returns the registered databases as they were when this catalog was
      *  assembled — an immutable snapshot, not a live view: later contributions
      *  do not appear.
      */

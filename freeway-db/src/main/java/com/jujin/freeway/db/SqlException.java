@@ -4,7 +4,7 @@ import com.jujin.freeway.commons.error.Failure;
 /**
  * Unchecked exception thrown for database access failures.
  */
-public class SqlException extends RuntimeException implements Failure {
+public final class SqlException extends RuntimeException implements Failure {
     public SqlException(String message) {
         super(message);
     }

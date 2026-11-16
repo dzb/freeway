@@ -25,7 +25,7 @@ class BuiltinMetricsWiringTest {
         RecordingMetrics metrics = new RecordingMetrics();
         try (Container container = Freeway.create(
             binder -> binder.bind(Metrics.class).to(c -> metrics).primary())) {
-            container.get(EventBus.class).publish(new UnsubscribedEvent());
+            container.get(EventBus.class).publishEvent(new UnsubscribedEvent());
 
             assertEquals(1, metrics.counterValue("eventbus.published"),
                 "the primary registry must observe the bus's counters");

@@ -62,7 +62,7 @@ public final class FlowModule implements ModuleEx {
                     ? container.get(ContextCarrier.class)
                     : null;
                 return FlowEngine.create(driverMap, interceptors,
-                    (topic, payload) -> events.publish("flow." + topic, payload), carrier);
+                    (topic, payload) -> events.publishTopic("flow." + topic, payload), carrier);
             })
             .scope(Scope.SINGLETON);
     }

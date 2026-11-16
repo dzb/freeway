@@ -79,7 +79,7 @@ final class EventDispatcher {
         }
         if (unheard) {
             stats.deadEvent();
-            bus.publish(new DeadEvent(bus, payload));
+            bus.publishEvent(new DeadEvent(bus, payload));
         }
     }
 

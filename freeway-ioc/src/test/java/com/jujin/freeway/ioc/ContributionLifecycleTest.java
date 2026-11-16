@@ -35,16 +35,16 @@ class ContributionLifecycleTest {
     }
 
     /** A service that snapshots the contributed abilities — the reported shape. */
-    public static final class Registry {
+    public static final class AbilitySnapshot {
         final List<Ability> all;
 
-        public Registry(List<Ability> all) {
+        public AbilitySnapshot(List<Ability> all) {
             this.all = List.copyOf(all);
         }
     }
 
     public static final class A1 implements Ability {
-        @Inject Registry registry;
+        @Inject AbilitySnapshot snapshot;
 
         @Override
         public String name() {
@@ -135,7 +135,7 @@ class ContributionLifecycleTest {
                 binder.contribute(Ability.class).addDeferred(A6.class);
                 binder.contribute(Ability.class).addDeferred(A7.class);
                 binder.contribute(Ability.class).addDeferred(A8.class);
-                binder.bind(Registry.class).to(Registry.class);
+                binder.bind(AbilitySnapshot.class).to(AbilitySnapshot.class);
             },
             binder -> {
                 binder.contribute(Ability.class).addDeferred(B1.class);
@@ -144,7 +144,7 @@ class ContributionLifecycleTest {
             }
         );
         try {
-            assertEquals(11, container.get(Registry.class).all.size(),
+            assertEquals(11, container.get(AbilitySnapshot.class).all.size(),
                 "a service realized from the field-injection chain must see every "
                     + "cross-module contribution, not the prefix published so far");
             assertEquals(11, container.extension(Ability.class).all().size());

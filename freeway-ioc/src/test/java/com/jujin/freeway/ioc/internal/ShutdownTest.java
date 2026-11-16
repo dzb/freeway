@@ -32,7 +32,7 @@ class ShutdownTest {
         Container container = Freeway.create();
         EventBus bus = EventBus.create(container);
         var received = new CopyOnWriteArrayList<String>();
-        bus.subscribe(String.class, received::add);
+        bus.subscribeEvent(String.class, received::add);
 
         Map<ServiceKey, Object> targetCache = new LinkedHashMap<>();
         targetCache.put(new ServiceKey(EventBus.class, "EventBus"), bus);
@@ -55,7 +55,7 @@ class ShutdownTest {
         Container container = Freeway.create();
         EventBus bus = EventBus.create(container);
         var received = new CopyOnWriteArrayList<String>();
-        bus.subscribe(String.class, received::add);
+        bus.subscribeEvent(String.class, received::add);
 
         Map<ServiceKey, Object> targetCache = new LinkedHashMap<>();
         targetCache.put(new ServiceKey(EventBus.class, "EventBus"), bus);
@@ -80,7 +80,7 @@ class ShutdownTest {
 
         @Override
         public void close() {
-            bus.publish("closing-event");
+            bus.publishEvent("closing-event");
         }
     }
 
@@ -93,7 +93,7 @@ class ShutdownTest {
 
         @PreDestroy
         void cleanup() {
-            bus.publish("pre-destroy-event");
+            bus.publishEvent("pre-destroy-event");
         }
     }
 }

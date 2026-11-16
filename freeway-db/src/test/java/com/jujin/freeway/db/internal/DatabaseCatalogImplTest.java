@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class DatabaseRegistryImplTest {
+class DatabaseCatalogImplTest {
 
     @Test
     void duplicateNameFailsFast() {
@@ -27,7 +27,7 @@ class DatabaseRegistryImplTest {
 
         IllegalStateException ex = assertThrows(
             IllegalStateException.class,
-            () -> new DatabaseRegistryImpl(List.of(first, second))
+            () -> new DatabaseCatalogImpl(List.of(first, second))
         );
         assertTrue(ex.getMessage().contains("primary"),
             "message must name the duplicated database: " + ex.getMessage());
@@ -36,17 +36,17 @@ class DatabaseRegistryImplTest {
     @Test
     void distinctNamesAreAllRegistered() {
         StubDb db = new StubDb();
-        DatabaseRegistryImpl registry =
-            new DatabaseRegistryImpl(List.of(new NamedDatabase("primary", db),
+        DatabaseCatalogImpl catalog =
+            new DatabaseCatalogImpl(List.of(new NamedDatabase("primary", db),
                 new NamedDatabase("audit", db)));
 
-        assertEquals(2, registry.databases().size());
-        assertEquals(db, registry.primary());
-        assertEquals(db, registry.find("audit").orElseThrow());
-        assertTrue(registry.find("missing").isEmpty(), "an absent name must be empty, not null");
+        assertEquals(2, catalog.databases().size());
+        assertEquals(db, catalog.primary());
+        assertEquals(db, catalog.find("audit").orElseThrow());
+        assertTrue(catalog.find("missing").isEmpty(), "an absent name must be empty, not null");
     }
 
-    /** Value object standing in for a Database — the registry only stores routes. */
+    /** Value object standing in for a Database — the catalog only stores routes. */
     private static final class StubDb implements Database {
 
         @Override

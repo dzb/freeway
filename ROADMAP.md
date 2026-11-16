@@ -71,7 +71,9 @@ fallback, not an automatic promotion.
 `api/internal-surface.txt` budgets the public types under `internal`. `Stepper`
 was moved back to its owner package (40 → 39); the rest cross module/package
 assembly boundaries and should be taken one at a time, each with a named reason,
-not in a batch.
+not in a batch. The built-in HTTP engine now has the same explicit budget in
+`api/http-engine-surface.txt`: its public types are only the cross-package
+assembly seams, and the unused public `http2.Bytes` helper is package-private.
 
 ### Metrics export adapters (ext)
 

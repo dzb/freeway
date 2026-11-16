@@ -413,7 +413,7 @@ class DbModuleTest {
     }
 
     @Test
-    void dbRegistryWrapsNamedDatabaseContributions() {
+    void databaseCatalogWrapsNamedDatabaseContributions() {
         Database primary = Database.create(PoolConfig.defaults("jdbc:h2:mem:primary_" + UUID.randomUUID().toString().replace('-', '_') + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""));
         Database audit = Database.create(PoolConfig.defaults("jdbc:h2:mem:audit_" + UUID.randomUUID().toString().replace('-', '_') + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""));
 
@@ -424,11 +424,11 @@ class DbModuleTest {
                     binder -> binder.contribute(NamedDatabase.class).add(new NamedDatabase("audit", audit))
             );
 
-            DatabaseRegistry registry = container.get(DatabaseRegistry.class);
-            assertEquals(primary, registry.find("primary").orElseThrow());
-            assertEquals(audit, registry.find("audit").orElseThrow());
-            assertSame(primary, registry.primary());
-            assertEquals(Map.of("primary", primary, "audit", audit), registry.databases());
+            DatabaseCatalog catalog = container.get(DatabaseCatalog.class);
+            assertEquals(primary, catalog.find("primary").orElseThrow());
+            assertEquals(audit, catalog.find("audit").orElseThrow());
+            assertSame(primary, catalog.primary());
+            assertEquals(Map.of("primary", primary, "audit", audit), catalog.databases());
         } finally {
             primary.close();
             audit.close();
@@ -443,10 +443,10 @@ class DbModuleTest {
         System.setProperty(PASS_KEY, "");
 
         try (Container container = Freeway.create(new DbModule())) {
-            DatabaseRegistry registry = container.get(DatabaseRegistry.class);
-            assertTrue(registry.databases().containsKey("primary"),
+            DatabaseCatalog catalog = container.get(DatabaseCatalog.class);
+            assertTrue(catalog.databases().containsKey("primary"),
                 "default install must auto-register a 'primary' database");
-            Database primary = registry.primary();
+            Database primary = catalog.primary();
             assertSame(container.get(Database.class), primary,
                 "auto-registered primary must be the container's configured Database");
             assertEquals("h2", primary.dialect().dialectId(),
@@ -467,10 +467,10 @@ class DbModuleTest {
                 binder -> binder.contribute(NamedDatabase.class)
                     .add(new NamedDatabase("primary", custom))
             );
-            DatabaseRegistry registry = container.get(DatabaseRegistry.class);
-            assertSame(custom, registry.primary(),
+            DatabaseCatalog catalog = container.get(DatabaseCatalog.class);
+            assertSame(custom, catalog.primary(),
                 "a user-contributed 'primary' must win over auto-registration");
-            assertEquals(1, registry.databases().size(),
+            assertEquals(1, catalog.databases().size(),
                 "auto-registration must not add a second 'primary' when the user already provided one");
         } finally {
             custom.close();

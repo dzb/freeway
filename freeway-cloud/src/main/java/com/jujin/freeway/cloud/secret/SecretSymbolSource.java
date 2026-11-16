@@ -60,7 +60,7 @@ public final class SecretSymbolSource implements SymbolProvider {
         if (allowedKeys != null && !allowedKeys.contains(name)) {
             return null; // not a declared secret — leave the name to the next provider
         }
-        return store.get(name).orElse(null);
+        return store.find(name).orElse(null);
     }
 
     /**

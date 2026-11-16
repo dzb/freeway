@@ -10,6 +10,8 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
  * The bus is handed to application code and lives as long as the container,
@@ -27,15 +29,46 @@ class EventBusCapabilitiesTest {
     }
 
     @Test
+    void theChannelIsPartOfTheMethodName() throws Exception {
+        assertNotNull(EventBus.class.getMethod("publishEvent", Object.class));
+        assertNotNull(EventBus.class.getMethod("publishTopic", String.class, Object.class));
+        assertNotNull(EventBus.class.getMethod("publishEventAsync", Object.class));
+        assertNotNull(EventBus.class.getMethod("publishTopicAsync", String.class, Object.class));
+        assertNotNull(EventBus.class.getMethod("publishEventOrdered", Object.class));
+        assertNotNull(EventBus.class.getMethod("publishTopicOrdered", String.class, Object.class));
+        assertNotNull(EventBus.class.getMethod(
+            "subscribeEvent", Class.class, java.util.function.Consumer.class));
+        assertNotNull(EventBus.class.getMethod(
+            "subscribeTopic", String.class, java.util.function.Consumer.class));
+        assertNotNull(EventBus.class.getMethod("streamEvents", Class.class));
+        assertNotNull(EventBus.class.getMethod("streamTopic", String.class));
+
+        assertThrows(NoSuchMethodException.class,
+            () -> EventBus.class.getMethod("publish", Object.class),
+            "the ambiguous bare publish overload must not come back");
+        assertThrows(NoSuchMethodException.class,
+            () -> EventBus.class.getMethod("publish", String.class, Object.class),
+            "the arity-selected topic publish must not come back");
+        assertNotNull(EventSubscriber.class.getMethod(
+            "ofEvent", Class.class, java.util.function.Consumer.class));
+        assertNotNull(EventSubscriber.class.getMethod(
+            "ofTopic", String.class, java.util.function.Consumer.class));
+        assertThrows(NoSuchMethodException.class,
+            () -> EventSubscriber.class.getMethod(
+                "of", Class.class, java.util.function.Consumer.class),
+            "a bare of() factory would reintroduce the ambiguity");
+    }
+
+    @Test
     void theAssemblyFactoryStillSeesCompositionContributions() {
         // The capability list is a snapshot, so it must be taken after the
         // contributions are sealed — which is what create() promises.
         List<String> received = new ArrayList<>();
         try (Container container = Freeway.create(binder ->
                 binder.contribute(EventSubscriber.class)
-                    .add(EventSubscriber.of(String.class, received::add)))) {
+                    .add(EventSubscriber.ofEvent(String.class, received::add)))) {
             EventBus bus = EventBus.create(container);
-            bus.publish("hello");
+            bus.publishEvent("hello");
         }
         assertEquals(List.of("hello"), received,
             "a contributed subscriber must reach the bus built by the factory");

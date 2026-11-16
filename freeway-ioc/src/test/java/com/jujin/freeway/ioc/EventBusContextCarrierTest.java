@@ -53,10 +53,10 @@ class EventBusContextCarrierTest {
         try (Container container = containerWith(carrier)) {
             EventBus bus = EventBus.create(container);
             List<String> log = new ArrayList<>();
-            bus.subscribe(String.class, log::add);
+            bus.subscribeEvent(String.class, log::add);
 
             Thread submitter = Thread.currentThread();
-            bus.publishAsync("hello");
+            bus.publishEventAsync("hello");
             // capture is synchronous on the submitting path — no race with the executor
             assertEquals(1, carrier.captureCount.get(),
                 "capture must run exactly once, on the submitting thread");
@@ -77,10 +77,10 @@ class EventBusContextCarrierTest {
         try (Container container = containerWith(carrier)) {
             EventBus bus = EventBus.create(container);
             List<String> log = new ArrayList<>();
-            bus.subscribe(String.class, log::add);
+            bus.subscribeEvent(String.class, log::add);
 
             Thread submitter = Thread.currentThread();
-            bus.publishOrdered("hello");
+            bus.publishEventOrdered("hello");
             assertEquals(1, carrier.captureCount.get(),
                 "capture must run exactly once, on the submitting thread");
             assertSame(submitter, carrier.captureThread,
@@ -101,9 +101,9 @@ class EventBusContextCarrierTest {
         try (Container container = Freeway.create()) {
             EventBus bus = EventBus.create(container);
             List<String> log = new ArrayList<>();
-            bus.subscribe(String.class, log::add);
+            bus.subscribeEvent(String.class, log::add);
 
-            bus.publishAsync("hello");
+            bus.publishEventAsync("hello");
             Await.until(2000, () -> log.size() == 1);
             assertEquals(List.of("hello"), log,
                 "delivery must not depend on a carrier being bound");

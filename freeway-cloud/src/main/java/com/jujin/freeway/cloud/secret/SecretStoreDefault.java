@@ -56,7 +56,7 @@ public final class SecretStoreDefault implements SecretStore {
     }
 
     @Override
-    public Optional<String> get(String key) {
+    public Optional<String> find(String key) {
         String env = System.getenv(envKey(key));
         if (env != null) {
             return Optional.of(env);

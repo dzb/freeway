@@ -68,7 +68,7 @@ class FlowModuleTest {
 
         List<Object> received = new ArrayList<>();
         container.get(com.jujin.freeway.ioc.event.EventBus.class)
-            .subscribe("flow.audit", received::add);
+            .subscribeTopic("flow.audit", received::add);
 
         container.get(FlowEngine.class).run(simpleGraph("@emit", null), FlowContext.of());
 

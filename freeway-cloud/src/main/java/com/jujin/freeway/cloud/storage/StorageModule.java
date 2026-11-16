@@ -46,7 +46,7 @@ public final class StorageModule implements ModuleEx {
                 SymbolSource symbols = container.get(SymbolSource.class);
                 return new ObjectStorageDefault(
                     Path.of(symbols.resolve(STORAGE_BASE_PATH)),
-                    event -> container.get(EventBus.class).publish(event));
+                    event -> container.get(EventBus.class).publishEvent(event));
             })
             .marker(Local.class)
             ;

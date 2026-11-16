@@ -24,15 +24,15 @@ class StatsTest {
         List<String> log = new ArrayList<>();
         Container container = Freeway.create(
             binder -> binder.contribute(EventSubscriber.class)
-                .add(EventSubscriber.of(PostCreatedEvent.class, e -> log.add("ok")))
+                .add(EventSubscriber.ofEvent(PostCreatedEvent.class, e -> log.add("ok")))
         );
         EventBus bus = EventBus.create(container);
-        bus.subscribe(PostCreatedEvent.class, e -> {
+        bus.subscribeEvent(PostCreatedEvent.class, e -> {
             throw new IllegalStateException("boom");
         });
 
-        bus.publish(new PostCreatedEvent(new Post("x")));
-        bus.publish(new CommentAddedEvent(1L, "y")); // zero subscribers -> DeadEvent
+        bus.publishEvent(new PostCreatedEvent(new Post("x")));
+        bus.publishEvent(new CommentAddedEvent(1L, "y")); // zero subscribers -> DeadEvent
 
         EventBus.Stats stats = bus.stats();
         assertEquals(2, stats.published(), "one dispatch per publish");
@@ -62,9 +62,9 @@ class StatsTest {
         Container container = Freeway.create(binder ->
             binder.bind(Metrics.class).to(c -> metrics).primary());
         EventBus bus = EventBus.create(container);
-        bus.subscribe(PostCreatedEvent.class, e -> { });
+        bus.subscribeEvent(PostCreatedEvent.class, e -> { });
 
-        bus.publish(new PostCreatedEvent(new Post("x")));
+        bus.publishEvent(new PostCreatedEvent(new Post("x")));
 
         assertEquals(1, counters.get("eventbus.published").value());
         assertEquals(1, counters.get("eventbus.delivered").value());
@@ -78,9 +78,9 @@ class StatsTest {
         Container container = Freeway.create(binder -> { });
         EventBus bus = EventBus.create(container);
         List<DeadEvent> dead = new ArrayList<>();
-        bus.subscribe(DeadEvent.class, dead::add);
+        bus.subscribeEvent(DeadEvent.class, dead::add);
 
-        bus.publish("nobody-listens");
+        bus.publishEvent("nobody-listens");
 
         assertEquals(1, dead.size());
         assertEquals(bus, dead.get(0).source(),

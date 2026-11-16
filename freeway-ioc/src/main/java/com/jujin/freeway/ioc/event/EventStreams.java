@@ -15,7 +15,7 @@ import org.slf4j.LoggerFactory;
  * from bus dispatch to JDK {@link Flow}, and the live-subscription registry that
  * bus shutdown completes. Extracted from {@code EventBus} so the broadcast
  * core stays readable; the public contract is documented on
- * {@link EventBus#stream(Class)}/{@link EventBus#stream(String)}.
+ * {@link EventBus#streamEvents(Class)}/{@link EventBus#streamTopic(String)}.
  */
 final class EventStreams {
 
@@ -28,18 +28,18 @@ final class EventStreams {
         this.bus = bus;
     }
 
-    <E> Flow.Publisher<E> stream(Class<E> eventType) {
+    <E> Flow.Publisher<E> streamEvents(Class<E> eventType) {
         StreamSubscription<E> subscription = new StreamSubscription<>();
         return downstream -> subscription.startAndSubscribe(
-            () -> bus.subscribe(eventType, subscription::onEvent),
+            () -> bus.subscribeEvent(eventType, subscription::onEvent),
             downstream
         );
     }
 
-    Flow.Publisher<Object> stream(String topic) {
+    Flow.Publisher<Object> streamTopic(String topic) {
         StreamSubscription<Object> subscription = new StreamSubscription<>();
         return downstream -> subscription.startAndSubscribe(
-            () -> bus.subscribe(topic, subscription::onEvent),
+            () -> bus.subscribeTopic(topic, subscription::onEvent),
             downstream
         );
     }

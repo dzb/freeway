@@ -30,7 +30,7 @@ import org.slf4j.LoggerFactory;
  * that happens to be quiet.
  *
  * <p>Long-lived streams can be fed from a JDK {@link Flow.Publisher} (e.g.
- * an event bus stream) via {@link #from(Flow.Publisher)}: the call blocks the
+ * an event bus stream) via {@link #pipe(Flow.Publisher, Function)}: the call blocks the
  * current thread — virtual-thread friendly — until the source completes or
  * the emitter is closed, so a handler's try-with-resources close happens only
  * after the stream ends.</p>
@@ -208,7 +208,7 @@ public final class SseEmitter implements AutoCloseable {
                 subscription = s;
                 streamSubscription = s;
                 if (closed) {
-                    // The emitter died between from()'s latch registration and
+                    // The emitter died between pipe()'s latch registration and
                     // this callback: cancel here — an external close() already
                     // ran cancelStream() against a still-null subscription.
                     s.cancel();

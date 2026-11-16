@@ -33,11 +33,11 @@ class EventBusTopicTest {
         List<String> log = new ArrayList<>();
         Container container = Freeway.create(
             binder -> binder.contribute(EventSubscriber.class)
-                .add(EventSubscriber.of("post.created", p -> log.add((String) p)))
+                .add(EventSubscriber.ofTopic("post.created", p -> log.add((String) p)))
         );
 
         EventBus bus = EventBus.create(container);
-        bus.publish("post.created", "hello");
+        bus.publishTopic("post.created", "hello");
 
         assertEquals(1, log.size());
         assertEquals("hello", log.get(0));
@@ -47,8 +47,8 @@ class EventBusTopicTest {
     void stringTopicRuntimeSubscriberReceivesPayload() {
         List<String> log = new ArrayList<>();
         EventBus bus = EventBus.create(Freeway.create());
-        bus.subscribe("post.created", p -> log.add((String) p));
-        bus.publish("post.created", "runtime");
+        bus.subscribeTopic("post.created", p -> log.add((String) p));
+        bus.publishTopic("post.created", "runtime");
 
         assertEquals(1, log.size());
         assertEquals("runtime", log.get(0));
@@ -59,11 +59,11 @@ class EventBusTopicTest {
         List<String> log = new ArrayList<>();
         Container container = Freeway.create(
             binder -> binder.contribute(EventSubscriber.class)
-                .add(EventSubscriber.of("post.created", p -> log.add("post:" + p)))
+                .add(EventSubscriber.ofTopic("post.created", p -> log.add("post:" + p)))
         );
 
         EventBus bus = EventBus.create(container);
-        bus.publish("comment.added", "test");
+        bus.publishTopic("comment.added", "test");
 
         // "comment.added" has no subscriber → DeadEvent
         assertTrue(log.isEmpty());
@@ -78,14 +78,14 @@ class EventBusTopicTest {
         Container container = Freeway.create(
             binder -> {
                 binder.contribute(EventSubscriber.class)
-                    .add(EventSubscriber.of("x", p -> topicLog.add((String) p)));
+                    .add(EventSubscriber.ofTopic("x", p -> topicLog.add((String) p)));
                 binder.contribute(EventSubscriber.class)
-                    .add(EventSubscriber.of(String.class, p -> classLog.add(p)));
+                    .add(EventSubscriber.ofEvent(String.class, p -> classLog.add(p)));
             }
         );
         EventBus bus = EventBus.create(container);
 
-        bus.publish("x");
+        bus.publishEvent("x");
 
         assertTrue(topicLog.isEmpty(),
             "a single-argument publish(String) must not reach topic subscribers");
@@ -103,14 +103,14 @@ class EventBusTopicTest {
         Container container = Freeway.create(
             binder -> {
                 binder.contribute(EventSubscriber.class)
-                    .add(EventSubscriber.of(String.class, p -> classLog.add(p)));
+                    .add(EventSubscriber.ofEvent(String.class, p -> classLog.add(p)));
                 binder.contribute(EventSubscriber.class)
-                    .add(EventSubscriber.of("x", p -> topicLog.add((String) p)));
+                    .add(EventSubscriber.ofTopic("x", p -> topicLog.add((String) p)));
             }
         );
         EventBus bus = EventBus.create(container);
 
-        bus.publish("x", "payload");
+        bus.publishTopic("x", "payload");
 
         assertEquals(List.of("payload"), topicLog, "the topic subscriber must receive the payload");
         assertTrue(classLog.isEmpty(),
@@ -123,10 +123,10 @@ class EventBusTopicTest {
         List<DeadEvent> deads = new ArrayList<>();
         Container container = Freeway.create(
             binder -> binder.contribute(EventSubscriber.class)
-                .add(EventSubscriber.of(DeadEvent.class, (Consumer<DeadEvent>) deads::add))
+                .add(EventSubscriber.ofEvent(DeadEvent.class, (Consumer<DeadEvent>) deads::add))
         );
 
-        EventBus.create(container).publish("no.such.topic", "orphan");
+        EventBus.create(container).publishTopic("no.such.topic", "orphan");
 
         assertEquals(1, deads.size());
         assertEquals("orphan", deads.get(0).event());
@@ -136,9 +136,9 @@ class EventBusTopicTest {
     void stringTopicUnsubscribe() {
         List<String> log = new ArrayList<>();
         EventBus bus = EventBus.create(Freeway.create());
-        Subscription<Object> sub = bus.subscribe("topic", p -> log.add((String) p));
+        Subscription<Object> sub = bus.subscribeTopic("topic", p -> log.add((String) p));
         bus.unsubscribe(sub);
-        bus.publish("topic", "x");
+        bus.publishTopic("topic", "x");
 
         assertTrue(log.isEmpty());
     }
@@ -149,15 +149,15 @@ class EventBusTopicTest {
         Container container = Freeway.create(
             binder -> {
                 binder.contribute(EventSubscriber.class)
-                    .add(EventSubscriber.of("topic", p -> {
+                    .add(EventSubscriber.ofTopic("topic", p -> {
                         throw new RuntimeException("boom");
                     }));
                 binder.contribute(EventSubscriber.class)
-                    .add(EventSubscriber.of(DeadEvent.class, (Consumer<DeadEvent>) deads::add));
+                    .add(EventSubscriber.ofEvent(DeadEvent.class, (Consumer<DeadEvent>) deads::add));
             }
         );
 
-        EventBus.create(container).publish("topic", "payload");
+        EventBus.create(container).publishTopic("topic", "payload");
 
         assertTrue(deads.isEmpty());
     }

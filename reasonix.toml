@@ -1,2 +1,0 @@
-[permissions]
-allow = ["Bash=for f in freeway-*/logs/freeway.log; do echo \"=== $f ===\"; grep -c \"SEVERE\" \"$f\"; done", "Edit"]

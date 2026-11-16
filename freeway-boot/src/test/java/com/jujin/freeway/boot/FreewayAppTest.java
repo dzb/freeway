@@ -674,7 +674,7 @@ class FreewayAppTest {
             @Override
             public void bind(Binder binder) {
                 binder.contribute(EventSubscriber.class)
-                    .add(EventSubscriber.of(AppLifecycleEvent.class, events::add));
+                    .add(EventSubscriber.ofEvent(AppLifecycleEvent.class, events::add));
             }
         }).start();
         app.close();

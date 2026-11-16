@@ -9,14 +9,14 @@ import java.util.concurrent.atomic.AtomicInteger;
  * them during shutdown. Each connection is registered by its session on
  * start and unregistered when the session ends.
  */
-final class ConnectionRegistry {
+final class ConnectionTracker {
 
     private final Set<HttpConnection> active = ConcurrentHashMap.newKeySet();
     /** Requests currently executing on any connection (gauge source). */
     final AtomicInteger requestsInFlight = new AtomicInteger();
     private volatile boolean stopping;
 
-    ConnectionRegistry(HttpMetrics metrics) {
+    ConnectionTracker(HttpMetrics metrics) {
         metrics.registerGauges(this::activeCount, requestsInFlight::get);
     }
 

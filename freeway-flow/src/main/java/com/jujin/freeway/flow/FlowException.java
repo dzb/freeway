@@ -4,7 +4,7 @@ import com.jujin.freeway.commons.error.Failure;
 /**
  * Flow exception
  */
-public class FlowException extends RuntimeException implements Failure {
+public final class FlowException extends RuntimeException implements Failure {
 
     /** Shared message template for task-handling failures. */
     public static final String TASK_FAILED = "The task handle failed";

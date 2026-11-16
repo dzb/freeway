@@ -17,13 +17,13 @@ import java.util.function.Supplier;
 /**
  * In-process event bus with class-based and string-topic subscriptions,
  * optional {@code Defer}-scoped buffering, async dispatch, and reactive
- * streams ({@link #stream(Class)}/{@link #stream(String)}, JDK {@link Flow}).
+ * streams ({@link #streamEvents(Class)}/{@link #streamTopic(String)}, JDK {@link Flow}).
  *
  * <p><b>The message domain has two channels:</b></p>
  * <ul>
- *   <li>broadcast — {@link #publish}: facts about what happened; topic
+ *   <li>broadcast — {@link #publishEvent(E)}: facts about what happened; topic
  *       grammar is past tense ({@code user.created});</li>
- *   <li>streams — {@link #stream(Class)}/{@link #stream(String)}: a
+ *   <li>streams — {@link #streamEvents(Class)}/{@link #streamTopic(String)}: a
  *       {@link Flow.Publisher} view over the same subscriptions as
  *       broadcast.</li>
  * </ul>
@@ -43,8 +43,8 @@ import java.util.function.Supplier;
  * counted in {@link #stats()}; the event is not retried. Inside a
  * {@code Defer} scope (e.g. a DB transaction), events are buffered and
  * dispatched only after the scope commits — a rollback discards them.
- * Async dispatch ({@link #publishAsync}) has no ordering guarantee;
- * {@link #publishOrdered} provides a globally ordered channel. Within one
+ * Async dispatch ({@link #publishEventAsync(E)}) has no ordering guarantee;
+ * {@link #publishEventOrdered(Object)} provides a globally ordered channel. Within one
  * dispatch, module subscribers (composition-time contributions, in their
  * ordering) run first, then runtime subscribers (in subscription order).
  * Runtime subscribers live until {@link #close()} or explicit
@@ -126,17 +126,17 @@ public final class EventBus implements AutoCloseable {
      *
      * <p>This is the <b>class-event</b> channel: subscribers are matched on
      * the runtime type of {@code event}. In particular,
-     * {@code publish("x")} dispatches a {@code String} <em>class event</em> —
+     * {@code publishEvent("x")} dispatches a {@code String} <em>class event</em> —
      * only subscribers on {@code String.class} (or a supertype) receive it.
-     * Topic subscribers registered via {@code subscribe("x", ...)} or
-     * {@code EventSubscriber.of("x", ...)} do <em>not</em> receive it. For
-     * string-topic semantics use {@link #publish(String, Object)}.
+     * Topic subscribers registered via {@code subscribeTopic("x", ...)} or
+     * {@code EventSubscriber.ofTopic("x", ...)} do <em>not</em> receive it. For
+     * string-topic semantics use {@link #publishTopic(String, Object)}.
      *
      * <p>If called inside a {@code Defer} scope (e.g. within a DB transaction),
      * the event is buffered and only published after the scope commits.
      * If no scope is active, the event is published immediately.</p>
      */
-    public <E> void publish(E event) {
+    public <E> void publishEvent(E event) {
         Objects.requireNonNull(event, "event");
         requireOpen();
         // DeadEvent always dispatches immediately — it is a diagnostic
@@ -150,11 +150,11 @@ public final class EventBus implements AutoCloseable {
 
     /**
      * Publish a payload on a string topic. Subscribers registered via
-     * {@code EventSubscriber.of("topic", handler)} or
-     * {@code bus.subscribe("topic", handler)} receive it.
+     * {@code EventSubscriber.ofTopic("topic", handler)} or
+     * {@code bus.subscribeTopic("topic", handler)} receive it.
      *
      * <p>This is the <b>topic</b> channel: dispatch matches the topic string,
-     * not the payload's class. A single-argument {@code publish("x")}
+     * not the payload's class. A single-argument {@code publishEvent("x")}
      * dispatches a {@code String} <em>class event</em> that topic subscribers
      * do <em>not</em> receive — use this two-argument form whenever the
      * topic itself carries the routing meaning.</p>
@@ -162,9 +162,9 @@ public final class EventBus implements AutoCloseable {
      * <p>The payload may be {@code null} (signal semantics — the topic
      * itself carries the meaning); the topic must not be null.
      *
-     * <p>Like {@link #publish(Object)}, respects the active {@code Defer} scope.</p>
+     * <p>Like {@link #publishEvent(Object)}, respects the active {@code Defer} scope.</p>
      */
-    public void publish(String topic, Object payload) {
+    public void publishTopic(String topic, Object payload) {
         Objects.requireNonNull(topic, "topic");
         requireOpen();
         deferOrRun(Defer.isActive(), () -> dispatcher.dispatchTopic(topic, payload));
@@ -199,7 +199,7 @@ public final class EventBus implements AutoCloseable {
      * because it is a <em>swappable operational handle</em> with its own
      * lifecycle — replaceable while the bus runs, owned (and shut down) by
      * whoever created it. Composition-time data cannot express either half of
-     * that. Runtime {@code subscribe} is the other documented post-composition
+     * that. Runtime {@code subscribeEvent}/{@code subscribeTopic} are the other documented post-composition
      * operation.</p>
      */
     public void setAsyncExecutor(Executor executor) {
@@ -207,24 +207,24 @@ public final class EventBus implements AutoCloseable {
         executors.setAsyncExecutor(executor);
     }
 
-    /** Async version of {@link #publish(Object)}.
+    /** Async version of {@link #publishEvent(Object)}.
      *
      * <p>The submitting thread's ambient async context (see
      * {@link ContextCarrier} — the cloud context module binds the
      * {@code InvocationContext} carrier) is captured here and restored
      * around dispatch on the executor thread. A traceless submit dispatches
      * bare, like the mesh plane's inbound rule. */
-    public <E> void publishAsync(E event) {
+    public <E> void publishEventAsync(E event) {
         Objects.requireNonNull(event, "event");
         requireOpen();
-        executeDeferred(executors::asyncExecutor, () -> publish(event));
+        executeDeferred(executors::asyncExecutor, () -> publishEvent(event));
     }
 
-    /** Async version of {@link #publish(String, Object)}. */
-    public void publishAsync(String topic, Object payload) {
+    /** Async version of {@link #publishTopic(String, Object)}. */
+    public void publishTopicAsync(String topic, Object payload) {
         Objects.requireNonNull(topic, "topic");
         requireOpen();
-        executeDeferred(executors::asyncExecutor, () -> publish(topic, payload));
+        executeDeferred(executors::asyncExecutor, () -> publishTopic(topic, payload));
     }
 
     // ==================== ordered publish ====================
@@ -242,21 +242,21 @@ public final class EventBus implements AutoCloseable {
      * promise past it. Subscriber failures are isolated and counted, never
      * propagated to the submitter.
      */
-    public void publishOrdered(Object event) {
+    public <E> void publishEventOrdered(E event) {
         Objects.requireNonNull(event, "event");
         requireOpen();
-        executeDeferred(executors::orderedExecutor, () -> publish(event));
+        executeDeferred(executors::orderedExecutor, () -> publishEvent(event));
     }
 
     /**
-     * Ordered version of {@link #publish(String, Object)}: topic payloads
+     * Ordered version of {@link #publishTopic(String, Object)}: topic payloads
      * submitted here dispatch strictly in submission order on the same
-     * global ordered channel as {@link #publishOrdered(Object)}.
+     * global ordered channel as {@link #publishEventOrdered(Object)}.
      */
-    public void publishOrdered(String topic, Object payload) {
+    public void publishTopicOrdered(String topic, Object payload) {
         Objects.requireNonNull(topic, "topic");
         requireOpen();
-        executeDeferred(executors::orderedExecutor, () -> publish(topic, payload));
+        executeDeferred(executors::orderedExecutor, () -> publishTopic(topic, payload));
     }
 
     /**
@@ -318,7 +318,7 @@ public final class EventBus implements AutoCloseable {
      *
      * <p>Lifecycle: any downstream {@code cancel()} ends the whole stream —
      * the subscription detaches from the bus and further subscribers see
-     * {@code onError}. Fan out by calling {@code stream()} once per
+     * {@code onError}. Fan out by calling {@code streamEvents()} or {@code streamTopic()} once per
      * consumer, not by sharing one publisher instance. Events published
      * inside a {@code Defer} scope reach the stream only after the scope
      * commits, like every other subscription. {@link #close()} completes
@@ -331,25 +331,25 @@ public final class EventBus implements AutoCloseable {
      *
      * @param eventType event type to match (with supertypes)
      */
-    public <E> Flow.Publisher<E> stream(Class<E> eventType) {
+    public <E> Flow.Publisher<E> streamEvents(Class<E> eventType) {
         requireOpen();
-        return streams.stream(eventType);
+        return streams.streamEvents(eventType);
     }
 
     /**
      * Streams payloads on a string topic as a JDK {@link Flow.Publisher}.
      * Matching is exact (the topic channel), mirroring
-     * {@link #subscribe(String, Consumer)} semantics.
+     * {@link #subscribeTopic(String, Consumer)} semantics.
      *
      * <p>{@code null} payloads are legal on the topic channel but forbidden
      * by the Flow specification — they are skipped by streams. See
-     * {@link #stream(Class)} for backpressure and lifecycle semantics.</p>
+     * {@link #streamEvents(Class)} for backpressure and lifecycle semantics.</p>
      *
      * @param topic topic to match exactly
      */
-    public Flow.Publisher<Object> stream(String topic) {
+    public Flow.Publisher<Object> streamTopic(String topic) {
         requireOpen();
-        return streams.stream(topic);
+        return streams.streamTopic(topic);
     }
 
     // ==================== stats ====================
@@ -389,7 +389,7 @@ public final class EventBus implements AutoCloseable {
 
     // ==================== class-based runtime subscribe ====================
 
-    public <E> Subscription<E> subscribe(
+    public <E> Subscription<E> subscribeEvent(
         Class<E> eventType,
         Consumer<E> handler
     ) {
@@ -399,7 +399,7 @@ public final class EventBus implements AutoCloseable {
 
     // ==================== string-topic runtime subscribe ====================
 
-    public Subscription<Object> subscribe(
+    public Subscription<Object> subscribeTopic(
         String topic,
         Consumer<Object> handler
     ) {

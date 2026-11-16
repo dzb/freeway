@@ -34,11 +34,11 @@ class ObjectStorageTest {
         assertNotNull(put.etag());
 
 
-        byte[] read = storage.get("assets", "a/b.txt").orElseThrow();
+        byte[] read = storage.find("assets", "a/b.txt").orElseThrow();
         assertArrayEquals(data, read, "read bytes match written bytes");
 
         storage.delete("assets", "a/b.txt");
-        assertTrue(storage.get("assets", "a/b.txt").isEmpty(), "deleted object is gone");
+        assertTrue(storage.find("assets", "a/b.txt").isEmpty(), "deleted object is gone");
     }
 
     @Test
@@ -47,7 +47,7 @@ class ObjectStorageTest {
         // declared StorageException — not leak an InvalidPathException past
         // the storage contract.
         ObjectStorageDefault storage = new ObjectStorageDefault(dir);
-        assertThrows(StorageException.class, () -> storage.get("assets", "bad\u0000key"));
+        assertThrows(StorageException.class, () -> storage.find("assets", "bad\u0000key"));
         assertThrows(StorageException.class,
             () -> storage.put("assets", "bad\u0000key", new byte[]{1}, null));
         assertThrows(StorageException.class, () -> storage.delete("assets", "bad\u0000key"));
@@ -59,7 +59,7 @@ class ObjectStorageTest {
         // keys bypass bucket isolation.
         ObjectStorageDefault storage = new ObjectStorageDefault(dir);
         assertThrows(StorageException.class, () -> storage.put(".", "x", new byte[]{1}, null));
-        assertThrows(StorageException.class, () -> storage.get(".", "x"));
+        assertThrows(StorageException.class, () -> storage.find(".", "x"));
         assertThrows(StorageException.class, () -> storage.list(".", ""));
     }
 
@@ -92,7 +92,7 @@ class ObjectStorageTest {
         // "/../evil" is the sharp case: on Windows it parses as root-relative
         // "\evil", so an isAbsolute() check alone lets it escape the root.
         assertThrows(StorageException.class, () -> storage.put("assets", "/../evil", new byte[1], ObjectMetadata.of("")));
-        assertThrows(StorageException.class, () -> storage.get("assets", "/abs"));
+        assertThrows(StorageException.class, () -> storage.find("assets", "/abs"));
         assertThrows(StorageException.class, () -> storage.put("bad..bucket", "k", new byte[1], ObjectMetadata.of("")));
         assertThrows(StorageException.class, () -> storage.put("a/b", "k", new byte[1], ObjectMetadata.of("")));
     }
@@ -109,7 +109,7 @@ class ObjectStorageTest {
         Files.createSymbolicLink(bucket.resolve("linked.txt"), outside);
 
         storage.put("assets", "linked.txt", "owned".getBytes(StandardCharsets.UTF_8), ObjectMetadata.of(""));
-        assertEquals("owned", new String(storage.get("assets", "linked.txt").orElseThrow(), StandardCharsets.UTF_8));
+        assertEquals("owned", new String(storage.find("assets", "linked.txt").orElseThrow(), StandardCharsets.UTF_8));
         assertEquals("secret", Files.readString(outside), "the outside file is untouched");
         assertFalse(Files.isSymbolicLink(bucket.resolve("linked.txt")), "the symlink was removed before write");
     }

@@ -1,0 +1,22 @@
+# Public types in the freeway-http engine implementation packages.
+#
+# The engine has no stability promise, but a public type there is still
+# reachable by every consumer. The entries below are the cross-package
+# assembly seams that Java cannot make package-private; everything else stays
+# package-private. EngineSurfaceBudgetTest fails when the tree and this list
+# differ, so each widening is an explicit decision.
+#
+# One entry per line: path/to/File.java#TypeName
+freeway-http/src/main/java/com/jujin/freeway/http/engine/FreewayHttpEngine.java#FreewayHttpEngine
+freeway-http/src/main/java/com/jujin/freeway/http/engine/HttpResponseWriter.java#HttpResponseWriter
+freeway-http/src/main/java/com/jujin/freeway/http/engine/HttpTransportImpl.java#HttpTransportImpl
+freeway-http/src/main/java/com/jujin/freeway/http/engine/http2/FrameFlag.java#FrameFlag
+freeway-http/src/main/java/com/jujin/freeway/http/engine/http2/FrameHeader.java#FrameHeader
+freeway-http/src/main/java/com/jujin/freeway/http/engine/http2/FrameType.java#FrameType
+freeway-http/src/main/java/com/jujin/freeway/http/engine/http2/Http2Connection.java#Http2Connection
+freeway-http/src/main/java/com/jujin/freeway/http/engine/http2/Http2ErrorCode.java#Http2ErrorCode
+freeway-http/src/main/java/com/jujin/freeway/http/engine/http2/Http2ResponseWriter.java#Http2ResponseWriter
+freeway-http/src/main/java/com/jujin/freeway/http/engine/http2/Http2Stream.java#Http2Stream
+freeway-http/src/main/java/com/jujin/freeway/http/engine/http2/SettingsFrame.java#SettingsFrame
+freeway-http/src/main/java/com/jujin/freeway/http/engine/ws/WebSocketConnection.java#WebSocketConnection
+freeway-http/src/main/java/com/jujin/freeway/http/engine/ws/WebSocketReadLoop.java#WebSocketReadLoop

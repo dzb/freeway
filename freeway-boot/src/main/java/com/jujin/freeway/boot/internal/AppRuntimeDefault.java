@@ -155,7 +155,7 @@ public final class AppRuntimeDefault implements AppRuntime {
             // AppLifecycleEvent in start(), which is best-effort and can never
             // abort an already-succeeded startup.
             try {
-                container.get(EventBus.class).publish(new AppLifecycleEvent(container, AppState.STOPPING));
+                container.get(EventBus.class).publishEvent(new AppLifecycleEvent(container, AppState.STOPPING));
             } catch (Exception ex) {
                 failure = accumulate(failure, "Failed to publish AppLifecycleEvent(STOPPING)", ex);
                 LOG.warn("Failed to publish AppLifecycleEvent(STOPPING)", ex);
@@ -205,7 +205,7 @@ public final class AppRuntimeDefault implements AppRuntime {
      */
     private void publish(AppLifecycleEvent event) {
         try {
-            container.get(EventBus.class).publish(event);
+            container.get(EventBus.class).publishEvent(event);
         } catch (Exception ex) {
             LOG.warn(
                 "Failed to publish lifecycle event: {}",

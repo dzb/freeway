@@ -35,7 +35,7 @@ public final class NodeA {
                 // The local counterpart: prints to show a LOCAL publish never
                 // leaves this JVM — no mesh frame is built for it.
                 binder.contribute(EventSubscriber.class).add("local-print",
-                    EventSubscriber.of(Events.Greeting.class, g ->
+                    EventSubscriber.ofEvent(Events.Greeting.class, g ->
                         System.out.println("[A] local bus heard (and NO peer receives this): " + g)));
             }
         });
@@ -48,7 +48,7 @@ public final class NodeA {
 
         System.out.println("[A] publishing Greeting(bob): once on the mesh plane, once on the local plane");
         mesh.publish(Events.GREET_TOPIC, new Events.Greeting("bob")); // → crosses to B
-        bus.publish(new Events.Greeting("bob"));                       // → stays here
+        bus.publishEvent(new Events.Greeting("bob"));                       // → stays here
 
         // Stay alive long enough for B's logs to be observed, then exit.
         Thread.sleep(10_000);

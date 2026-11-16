@@ -172,4 +172,4 @@ and protocol/cipher-suite restrictions.
   writes one line per exchange from `HttpExchangeEvent`, including CORS
   preflights and health probes that never reach a route. A different
   destination is an application-contributed
-  `EventSubscriber.of(HttpExchangeEvent.class, …)` with the key off.
+  `EventSubscriber.ofEvent(HttpExchangeEvent.class, …)` with the key off.

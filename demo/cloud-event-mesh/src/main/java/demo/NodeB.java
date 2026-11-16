@@ -46,12 +46,12 @@ public final class NodeB {
                         MeshSubscription.of(Events.GREET_TOPIC, Events.Greeting.class, g -> {
                             int n = deliveries.incrementAndGet();
                             System.out.println("[B] mesh received #" + n + ": " + g + " — mirroring to the local bus");
-                            container.get(EventBus.class).publish(g);
+                            container.get(EventBus.class).publishEvent(g);
                         }));
                 // The local consumer of the mirrored fact — an ordinary bus
                 // subscriber, unaware the event ever crossed a process.
                 binder.contribute(EventSubscriber.class).add("greet-print",
-                    EventSubscriber.of(Events.Greeting.class, g ->
+                    EventSubscriber.ofEvent(Events.Greeting.class, g ->
                         System.out.println("[B] local bus heard the mirrored fact: " + g)));
             }
         });

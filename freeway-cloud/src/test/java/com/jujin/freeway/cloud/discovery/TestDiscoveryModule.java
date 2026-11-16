@@ -10,28 +10,28 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Test fixture: an in-memory registry/discovery pair for tests that need a
+ * Test fixture: an in-memory registration/discovery pair for tests that need a
  * controlled backend without a production registry or the removed local
  * module. It implements exactly the registration/readiness behaviour the
  * tests assert; it has no TTL, heartbeat scheduler, or drain policy.
  */
 public final class TestDiscoveryModule implements ModuleEx {
 
-    private final TestRegistry registry = new TestRegistry();
+    private final TestBackend backend = new TestBackend();
 
     @Override
     public void bind(Binder b) {
-        b.bind(TestRegistry.class).to(container -> registry);
-        b.bind(ServiceRegistry.class).to(container -> registry).marker(Local.class);
-        b.bind(ServiceDiscovery.class).to(container -> registry).marker(Local.class);
+        b.bind(TestBackend.class).to(container -> backend);
+        b.bind(ServiceRegistry.class).to(container -> backend).marker(Local.class);
+        b.bind(ServiceDiscovery.class).to(container -> backend).marker(Local.class);
     }
 
-    /** The pytest-style direct handle, for tests that assert the table itself. */
-    public TestRegistry registry() {
-        return registry;
+    /** Direct fixture handle, for tests that assert the table itself. */
+    public TestBackend backend() {
+        return backend;
     }
 
-    public static final class TestRegistry implements ServiceRegistry, ServiceDiscovery {
+    public static final class TestBackend implements ReadinessAwareRegistry, ServiceDiscovery {
 
         private final Map<String, Entry> entries = new ConcurrentHashMap<>();
 
@@ -56,9 +56,6 @@ public final class TestDiscoveryModule implements ModuleEx {
         public void unregister(ServiceInstance instance) {
             entries.remove(instance.instanceId());
         }
-
-        @Override
-        public boolean supportsReadiness() { return true; }
 
         @Override
         public void markReady(ServiceInstance instance, boolean ready) {

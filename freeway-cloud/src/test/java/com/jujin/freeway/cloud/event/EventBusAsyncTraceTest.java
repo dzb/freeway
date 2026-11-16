@@ -40,12 +40,12 @@ class EventBusAsyncTraceTest {
             EventBus bus = container.get(EventBus.class);
             var seen = new AtomicReference<Optional<InvocationContext>>();
             var latch = new CountDownLatch(1);
-            bus.subscribe(String.class, e -> {
+            bus.subscribeEvent(String.class, e -> {
                 seen.set(InvocationContext.current());
                 latch.countDown();
             });
             InvocationContext.runWith(InvocationContext.of(TRACE, null, null),
-                () -> bus.publishAsync("hello"));
+                () -> bus.publishEventAsync("hello"));
             assertTrue(latch.await(2, TimeUnit.SECONDS), "async dispatch must deliver");
             Optional<InvocationContext> ctx = seen.get();
             assertTrue(ctx != null && ctx.isPresent(), "handler must run under the submitter's context");
@@ -59,12 +59,12 @@ class EventBusAsyncTraceTest {
             EventBus bus = container.get(EventBus.class);
             var seen = new AtomicReference<Optional<InvocationContext>>();
             var latch = new CountDownLatch(1);
-            bus.subscribe(String.class, e -> {
+            bus.subscribeEvent(String.class, e -> {
                 seen.set(InvocationContext.current());
                 latch.countDown();
             });
             InvocationContext.runWith(InvocationContext.of(TRACE, null, null),
-                () -> bus.publishOrdered("hello"));
+                () -> bus.publishEventOrdered("hello"));
             assertTrue(latch.await(2, TimeUnit.SECONDS), "ordered dispatch must deliver");
             Optional<InvocationContext> ctx = seen.get();
             assertTrue(ctx != null && ctx.isPresent(), "ordered handler must run under the submitter's context");
@@ -78,11 +78,11 @@ class EventBusAsyncTraceTest {
             EventBus bus = container.get(EventBus.class);
             var seen = new AtomicReference<Optional<InvocationContext>>();
             var latch = new CountDownLatch(1);
-            bus.subscribe(String.class, e -> {
+            bus.subscribeEvent(String.class, e -> {
                 seen.set(InvocationContext.current());
                 latch.countDown();
             });
-            bus.publishAsync("hello");
+            bus.publishEventAsync("hello");
             assertTrue(latch.await(2, TimeUnit.SECONDS), "traceless async must deliver");
             Optional<InvocationContext> ctx = seen.get();
             assertTrue(ctx != null && ctx.isEmpty(),
@@ -97,7 +97,7 @@ class EventBusAsyncTraceTest {
             EventBus bus = container.get(EventBus.class);
             var seen = new AtomicReference<Optional<InvocationContext>>();
             var latch = new CountDownLatch(1);
-            bus.subscribe(String.class, e -> {
+            bus.subscribeEvent(String.class, e -> {
                 seen.set(InvocationContext.current());
                 latch.countDown();
             });
@@ -106,7 +106,7 @@ class EventBusAsyncTraceTest {
             InvocationContext.runWith(InvocationContext.of(null, null, null), () -> {
                 assertTrue(InvocationContext.current().isEmpty(),
                     "the submitting thread binds nothing either: one rule, both sides of the handoff");
-                bus.publishAsync("hello");
+                bus.publishEventAsync("hello");
             });
             assertTrue(latch.await(2, TimeUnit.SECONDS), "blank-context async must deliver");
             Optional<InvocationContext> ctx = seen.get();
@@ -123,12 +123,12 @@ class EventBusAsyncTraceTest {
             Baggage baggage = Baggage.of(Map.of("tenant", "acme"));
             var seen = new AtomicReference<Optional<InvocationContext>>();
             var latch = new CountDownLatch(1);
-            bus.subscribe(String.class, e -> {
+            bus.subscribeEvent(String.class, e -> {
                 seen.set(InvocationContext.current());
                 latch.countDown();
             });
             InvocationContext.runWith(InvocationContext.of(TRACE, principal, baggage),
-                () -> bus.publishAsync("hello"));
+                () -> bus.publishEventAsync("hello"));
             assertTrue(latch.await(2, TimeUnit.SECONDS), "async dispatch must deliver");
             Optional<InvocationContext> ctx = seen.get();
             assertTrue(ctx != null && ctx.isPresent(),

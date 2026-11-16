@@ -22,21 +22,21 @@ final class HttpServerHandleImpl implements HttpServerHandle {
     private final SslReloader sslReloader;
     private final Duration shutdownGrace;
     private final AtomicBoolean finished;
-    private final ConnectionRegistry registry;
+    private final ConnectionTracker tracker;
     private final String host;
     private final int port;
 
     public HttpServerHandleImpl(ServerSocket serverSocket, Thread acceptor,
                  SslReloader sslReloader,
                  Duration shutdownGrace, AtomicBoolean finished,
-                 ConnectionRegistry registry,
+                 ConnectionTracker tracker,
                  String host, int port) {
         this.serverSocket = serverSocket;
         this.acceptor = acceptor;
         this.sslReloader = sslReloader;
         this.shutdownGrace = shutdownGrace;
         this.finished = finished;
-        this.registry = registry;
+        this.tracker = tracker;
         this.host = host;
         this.port = port;
     }
@@ -50,23 +50,23 @@ final class HttpServerHandleImpl implements HttpServerHandle {
     @Override
     public void close() {
         finished.set(true);
-        registry.beginShutdown();
+        tracker.beginShutdown();
         // Stop watching certificate material before draining: no reload may
         // land mid-shutdown. Nullable — plain-HTTP wiring has none.
         if (sslReloader != null) sslReloader.close();
         try { serverSocket.close(); } catch (IOException ignored) {}
         // Announce shutdown to HTTP/2 peers (GOAWAY) before the grace window
         // so they stop opening new streams and can retry elsewhere.
-        registry.preCloseAll();
+        tracker.preCloseAll();
         try { acceptor.join(1000); } catch (InterruptedException ignored) {
             Thread.currentThread().interrupt();
         }
         // Grace window: let in-flight requests finish; sessions close their
         // connection as soon as they observe isStopping().
         long graceMillis = shutdownGrace.toMillis();
-        if (graceMillis > 0 && registry.activeCount() > 0) {
+        if (graceMillis > 0 && tracker.activeCount() > 0) {
             long deadline = System.currentTimeMillis() + graceMillis;
-            while (registry.activeCount() > 0 && System.currentTimeMillis() < deadline) {
+            while (tracker.activeCount() > 0 && System.currentTimeMillis() < deadline) {
                 try {
                     Thread.sleep(20);
                 } catch (InterruptedException e) {
@@ -75,7 +75,7 @@ final class HttpServerHandleImpl implements HttpServerHandle {
                 }
             }
         }
-        registry.closeAll();
+        tracker.closeAll();
         LOG.info("Freeway HTTP engine stopped");
     }
 }

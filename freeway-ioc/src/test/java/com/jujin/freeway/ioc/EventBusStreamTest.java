@@ -49,15 +49,15 @@ class EventBusStreamTest {
         List<Object> received = new CopyOnWriteArrayList<>();
         AtomicBoolean completed = new AtomicBoolean();
 
-        bus.stream(Tick.class).subscribe(new Flow.Subscriber<>() {
+        bus.streamEvents(Tick.class).subscribe(new Flow.Subscriber<>() {
             @Override public void onSubscribe(Flow.Subscription s) { s.request(Long.MAX_VALUE); }
             @Override public void onNext(Tick item) { received.add(item); }
             @Override public void onError(Throwable t) {}
             @Override public void onComplete() { completed.set(true); }
         });
 
-        bus.publish(new Tick("a"));
-        bus.publish(new Tick("b"));
+        bus.publishEvent(new Tick("a"));
+        bus.publishEvent(new Tick("b"));
         Await.until(2000, () -> received.size() == 2);
         assertEquals(List.of(new Tick("a"), new Tick("b")), received);
 
@@ -72,12 +72,12 @@ class EventBusStreamTest {
         EventBus bus = EventBus.create(container);
 
         List<Object> received = new CopyOnWriteArrayList<>();
-        bus.stream("market.ticker").subscribe(collecting(new ArrayList<>()));
+        bus.streamTopic("market.ticker").subscribe(collecting(new ArrayList<>()));
         // Collect via a second stream with a collecting subscriber.
-        bus.stream("market.ticker").subscribe(collecting(received));
+        bus.streamTopic("market.ticker").subscribe(collecting(received));
 
-        bus.publish("other.topic", "noise");
-        bus.publish("market.ticker", "price");
+        bus.publishTopic("other.topic", "noise");
+        bus.publishTopic("market.ticker", "price");
         Await.until(2000, () -> received.equals(List.of("price")));
 
         bus.close();
@@ -90,10 +90,10 @@ class EventBusStreamTest {
 
         List<Object> first = new CopyOnWriteArrayList<>();
         List<Object> second = new CopyOnWriteArrayList<>();
-        bus.stream(Tick.class).subscribe(collecting(first));
-        bus.stream(Tick.class).subscribe(collecting(second));
+        bus.streamEvents(Tick.class).subscribe(collecting(first));
+        bus.streamEvents(Tick.class).subscribe(collecting(second));
 
-        bus.publish(new Tick("x"));
+        bus.publishEvent(new Tick("x"));
         Await.until(2000, () -> first.size() == 1 && second.size() == 1);
 
         bus.close();
@@ -107,11 +107,11 @@ class EventBusStreamTest {
         EventBus bus = EventBus.create(container);
 
         List<DeadEvent> deads = new CopyOnWriteArrayList<>();
-        bus.subscribe(DeadEvent.class, (Consumer<DeadEvent>) deads::add);
+        bus.subscribeEvent(DeadEvent.class, (Consumer<DeadEvent>) deads::add);
 
         List<Object> received = new CopyOnWriteArrayList<>();
         AtomicReference<Flow.Subscription> handle = new AtomicReference<>();
-        bus.stream(Tick.class).subscribe(new Flow.Subscriber<>() {
+        bus.streamEvents(Tick.class).subscribe(new Flow.Subscriber<>() {
             @Override public void onSubscribe(Flow.Subscription s) {
                 handle.set(s);
                 s.request(1);
@@ -121,14 +121,14 @@ class EventBusStreamTest {
             @Override public void onComplete() {}
         });
 
-        bus.publish(new Tick("first"));
+        bus.publishEvent(new Tick("first"));
         Await.until(2000, () -> received.size() == 1);
 
         // Cancel must detach the subscription: the next publish finds zero
         // subscribers and emits a DeadEvent instead of feeding a zombie.
         handle.get().cancel();
         Await.until(2000, () -> {
-            bus.publish(new Tick("after-cancel"));
+            bus.publishEvent(new Tick("after-cancel"));
             return !deads.isEmpty();
         });
     }
@@ -138,7 +138,7 @@ class EventBusStreamTest {
         Container container = Freeway.create();
         EventBus bus = EventBus.create(container);
 
-        Flow.Publisher<Tick> publisher = bus.stream(Tick.class);
+        Flow.Publisher<Tick> publisher = bus.streamEvents(Tick.class);
         // Subscribe and cancel through the real path to close the stream.
         AtomicReference<Flow.Subscription> handle = new AtomicReference<>();
         publisher.subscribe(new Flow.Subscriber<Tick>() {
@@ -174,7 +174,7 @@ class EventBusStreamTest {
         Container container = Freeway.create();
         EventBus bus = EventBus.create(container);
 
-        bus.stream(Tick.class).subscribe(new Flow.Subscriber<>() {
+        bus.streamEvents(Tick.class).subscribe(new Flow.Subscriber<>() {
             @Override public void onSubscribe(Flow.Subscription s) { /* never request */ }
             @Override public void onNext(Tick item) {}
             @Override public void onError(Throwable t) {}
@@ -182,7 +182,7 @@ class EventBusStreamTest {
         });
 
         for (int i = 0; i < 400; i++) {
-            bus.publish(new Tick("t" + i));
+            bus.publishEvent(new Tick("t" + i));
         }
 
         assertTrue(bus.stats().streamDrops() > 0,
@@ -199,9 +199,9 @@ class EventBusStreamTest {
         EventBus bus = EventBus.create(container);
 
         List<Object> received = new CopyOnWriteArrayList<>();
-        bus.stream(Tick.class).subscribe(collecting(received));
+        bus.streamEvents(Tick.class).subscribe(collecting(received));
 
-        Defer.within(() -> bus.publish(new Tick("tx")));
+        Defer.within(() -> bus.publishEvent(new Tick("tx")));
         Await.until(2000, () -> received.equals(List.of(new Tick("tx"))));
 
         bus.close();
@@ -215,8 +215,8 @@ class EventBusStreamTest {
         EventBus bus = EventBus.create(container);
         bus.close();
 
-        assertThrows(IllegalStateException.class, () -> bus.stream(Tick.class));
-        assertThrows(IllegalStateException.class, () -> bus.stream("topic"));
+        assertThrows(IllegalStateException.class, () -> bus.streamEvents(Tick.class));
+        assertThrows(IllegalStateException.class, () -> bus.streamTopic("topic"));
     }
 
     @Test
@@ -228,7 +228,7 @@ class EventBusStreamTest {
         // throw) and not leave the subscription attached to a dead registry.
         Container container = Freeway.create();
         EventBus bus = EventBus.create(container);
-        Flow.Publisher<Tick> publisher = bus.stream(Tick.class);
+        Flow.Publisher<Tick> publisher = bus.streamEvents(Tick.class);
         bus.close();
 
         AtomicReference<Throwable> failure = new AtomicReference<>();
@@ -256,21 +256,21 @@ class EventBusStreamTest {
         EventBus bus = EventBus.create(container);
 
         List<Object> deads = new CopyOnWriteArrayList<>();
-        bus.subscribe(DeadEvent.class, (Consumer<DeadEvent>) deads::add);
+        bus.subscribeEvent(DeadEvent.class, (Consumer<DeadEvent>) deads::add);
         List<Object> received = new CopyOnWriteArrayList<>();
-        bus.stream("market.ticker").subscribe(collecting(received));
+        bus.streamTopic("market.ticker").subscribe(collecting(received));
 
         // Warm up until the lazy subscription is attached (attachment is async),
         // discarding any pre-attach diagnostics from the race window.
         Await.until(2000, () -> {
-            bus.publish("market.ticker", "warmup");
+            bus.publishTopic("market.ticker", "warmup");
             return !received.isEmpty();
         });
         deads.clear();
         int deliveredBefore = received.size();
 
         // Once attached, the stream IS the subscriber: no DeadEvent.
-        bus.publish("market.ticker", "real");
+        bus.publishTopic("market.ticker", "real");
         Await.until(2000, () -> received.size() > deliveredBefore);
         assertTrue(deads.isEmpty(),
             "a live stream must suppress DeadEvent diagnostics for its topic");

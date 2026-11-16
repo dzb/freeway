@@ -21,7 +21,7 @@ freeway-cloud/src/main/java/com/jujin/freeway/cloud/internal/BackendTypeGuard.ja
 freeway-cloud/src/main/java/com/jujin/freeway/cloud/observe/internal/MetricsHandler.java#MetricsHandler
 freeway-cloud/src/main/java/com/jujin/freeway/cloud/observe/internal/TracingFilter.java#TracingFilter
 freeway-db/src/main/java/com/jujin/freeway/db/internal/DatabaseImpl.java#DatabaseImpl
-freeway-db/src/main/java/com/jujin/freeway/db/internal/DatabaseRegistryImpl.java#DatabaseRegistryImpl
+freeway-db/src/main/java/com/jujin/freeway/db/internal/DatabaseCatalogImpl.java#DatabaseCatalogImpl
 freeway-db/src/main/java/com/jujin/freeway/db/internal/PoolDefault.java#PoolDefault
 freeway-db/src/main/java/com/jujin/freeway/db/internal/RowMapperResolver.java#RowMapperResolver
 freeway-flow/src/main/java/com/jujin/freeway/flow/internal/FlowContextImpl.java#FlowContextImpl

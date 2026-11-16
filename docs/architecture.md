@@ -154,7 +154,7 @@ freeway-commons         zero deps
   `{name}`, with `{name:regex}` for constraints.
 - **DB** — `Database` is the entry point: named params (`:name`/`$name`),
   programmatic transactions, built-in pooling, dialect auto-detection from the
-  JDBC URL, `DatabaseRegistry` for multi-datasource. Schema (annotation-driven DDL)
+  JDBC URL, `DatabaseCatalog` for multi-datasource. Schema (annotation-driven DDL)
   and Migration (versioned SQL) are complementary evolution paths.
 - **Flow** — in-JVM graph orchestration (lineage: solon-flow 4.0.2, Apache 2.0;
   schema and semantics are freeway-native): 7 node types
@@ -171,8 +171,8 @@ freeway-commons         zero deps
   values; there is no marker/`$meta` string syntax. Execution events leave
   through one optional sink (`FlowEngine.create(..., BiConsumer<String,Object>)`):
   `FlowModule` installs one that publishes each event on the application's
-  `EventBus` under `"flow." + topic`, while a standalone engine keeps them
-  inside the evaluation. The module runs in-process; it is not a durable
+  `EventBus` via `publishTopic("flow." + topic, payload)`, while a standalone
+  engine keeps them inside the evaluation. The module runs in-process; it is not a durable
   workflow engine and offers no pause/resume. Zero dependencies beyond
   commons + ioc.
 

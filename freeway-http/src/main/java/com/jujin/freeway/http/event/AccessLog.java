@@ -17,7 +17,7 @@ import java.util.function.Consumer;
  * line to {@code System.out} from the server's event sink — so the line is
  * emitted even when an event bus {@code Defer} scope is active. An application
  * that wants another destination leaves the key off and contributes its own
- * {@code EventSubscriber.of(HttpExchangeEvent.class, event -> …)}: the same
+ * {@code EventSubscriber.ofEvent(HttpExchangeEvent.class, event -> …)}: the same
  * event, one line either way, never both.
  *
  * <p>The enabled key writes from the server's sink, before the event is

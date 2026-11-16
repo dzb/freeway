@@ -11,16 +11,16 @@ import java.util.function.Consumer;
  * <pre>{@code
  * // Class-based
  * binder.contribute(EventSubscriber.class)
- *     .add(EventSubscriber.of(PostCreated.class, e -> index(e)));
+ *     .add(EventSubscriber.ofEvent(PostCreated.class, e -> index(e)));
  *
  * // Named + ordered: the id belongs to the contribution, not the subscriber
  * binder.contribute(EventSubscriber.class)
- *     .add("notify", EventSubscriber.of(PostCreated.class, e -> sendEmail(e)))
+ *     .add("notify", EventSubscriber.ofEvent(PostCreated.class, e -> sendEmail(e)))
  *     .after("index");
  *
  * // String-topic
  * binder.contribute(EventSubscriber.class)
- *     .add(EventSubscriber.of("order.placed", payload -> process(payload)));
+ *     .add(EventSubscriber.ofTopic("order.placed", payload -> process(payload)));
  * }</pre>
  *
  * <p><b>Filtering convention:</b> subscribers receive every event of the
@@ -44,7 +44,7 @@ public final class EventSubscriber<E> {
     }
 
     /** Class-based subscriber: receives events of {@code eventType} and below. */
-    public static <E> EventSubscriber<E> of(
+    public static <E> EventSubscriber<E> ofEvent(
         Class<E> eventType,
         Consumer<E> handler
     ) {
@@ -60,7 +60,7 @@ public final class EventSubscriber<E> {
      * contribution's job, not the subscriber's — pass the id to
      * {@code Contribution.add(id, value)}.
      */
-    public static EventSubscriber<Object> of(
+    public static EventSubscriber<Object> ofTopic(
         String topic,
         Consumer<Object> handler
     ) {

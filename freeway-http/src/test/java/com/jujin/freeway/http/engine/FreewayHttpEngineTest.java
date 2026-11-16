@@ -1207,9 +1207,8 @@ class FreewayHttpEngineTest {
     @Test
     void httpsModuleLoadsKeyStoreFromConfig(@TempDir Path tempDir) throws Exception {
         Path keystore = generateKeyStore(tempDir);
-        int port = freePort();
         System.setProperty(ConfigKeys.SERVER_HOST, "127.0.0.1");
-        System.setProperty(ConfigKeys.SERVER_PORT, String.valueOf(port));
+        System.setProperty(ConfigKeys.SERVER_PORT, "0");
         System.setProperty(ConfigKeys.SSL_ENABLED, "true");
         System.setProperty(ConfigKeys.SSL_KEY_STORE, keystore.toString());
         System.setProperty(ConfigKeys.SSL_KEY_STORE_PASSWORD, "changeit");
@@ -1226,6 +1225,7 @@ class FreewayHttpEngineTest {
             ));
         assertTrue(app.get(HttpServer.class).isRunning(),
             "HttpModule must start an HTTPS server when freeway.http.ssl.* is configured");
+        int port = app.get(HttpServer.class).port();
 
         var client = HttpClient.newBuilder()
             .sslContext(trustAllSslContext())
@@ -1286,9 +1286,8 @@ class FreewayHttpEngineTest {
     void httpsModuleRestrictsProtocolsAndCiphersFromConfig(@TempDir Path tempDir)
             throws Exception {
         Path keystore = generateKeyStore(tempDir);
-        int port = freePort();
         System.setProperty(ConfigKeys.SERVER_HOST, "127.0.0.1");
-        System.setProperty(ConfigKeys.SERVER_PORT, String.valueOf(port));
+        System.setProperty(ConfigKeys.SERVER_PORT, "0");
         System.setProperty(ConfigKeys.SSL_ENABLED, "true");
         System.setProperty(ConfigKeys.SSL_KEY_STORE, keystore.toString());
         System.setProperty(ConfigKeys.SSL_KEY_STORE_PASSWORD, "changeit");
@@ -1304,6 +1303,7 @@ class FreewayHttpEngineTest {
                         ? ctx.sslSession().getProtocol() : "")))
             ));
         assertTrue(app.get(HttpServer.class).isRunning());
+        int port = app.get(HttpServer.class).port();
 
         var client = HttpClient.newBuilder()
             .sslContext(trustAllSslContext())

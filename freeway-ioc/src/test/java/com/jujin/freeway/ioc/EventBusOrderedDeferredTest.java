@@ -24,10 +24,10 @@ class EventBusOrderedDeferredTest {
     void publishOrderedDispatchesInSubmissionOrder() throws Exception {
         List<Integer> log = new ArrayList<>();
         EventBus bus = EventBus.create(Freeway.create());
-        bus.subscribe(Integer.class, log::add);
+        bus.subscribeEvent(Integer.class, log::add);
 
         for (int i = 0; i < 50; i++) {
-            bus.publishOrdered(i);
+            bus.publishEventOrdered(i);
         }
         Await.until(5000, () -> log.size() == 50);
         for (int i = 0; i < 50; i++) {
@@ -41,12 +41,12 @@ class EventBusOrderedDeferredTest {
     void publishOrderedInsideActionScopeKeepsOrder() throws Exception {
         List<Integer> log = new ArrayList<>();
         EventBus bus = EventBus.create(Freeway.create());
-        bus.subscribe(Integer.class, log::add);
+        bus.subscribeEvent(Integer.class, log::add);
 
         Defer.within(() -> {
-            bus.publishOrdered(1);
-            bus.publishOrdered(2);
-            bus.publishOrdered(3);
+            bus.publishEventOrdered(1);
+            bus.publishEventOrdered(2);
+            bus.publishEventOrdered(3);
             assertEquals(0, log.size(),
                 "ordered event inside a Defer scope must wait for the scope end");
         });
@@ -63,11 +63,11 @@ class EventBusOrderedDeferredTest {
         // transaction-outbox use case often routes on a topic string.
         List<Object> log = new ArrayList<>();
         EventBus bus = EventBus.create(Freeway.create());
-        bus.subscribe("ordered.topic", log::add);
+        bus.subscribeTopic("ordered.topic", log::add);
 
         Defer.within(() -> {
-            bus.publishOrdered("ordered.topic", 1);
-            bus.publishOrdered("ordered.topic", 2);
+            bus.publishTopicOrdered("ordered.topic", 1);
+            bus.publishTopicOrdered("ordered.topic", 2);
             assertTrue(log.isEmpty(), "ordered topic publish must wait for commit");
         });
         Await.until(2000, () -> log.size() == 2);
@@ -82,12 +82,12 @@ class EventBusOrderedDeferredTest {
         List<String> log = new ArrayList<>();
         Container container = Freeway.create(
             binder -> binder.contribute(EventSubscriber.class)
-                .add(EventSubscriber.of(PostCreatedEvent.class, e -> log.add("event")))
+                .add(EventSubscriber.ofEvent(PostCreatedEvent.class, e -> log.add("event")))
         );
         EventBus bus = EventBus.create(container);
 
         Defer.within(() -> {
-            bus.publish(new PostCreatedEvent(new Post("x")));
+            bus.publishEvent(new PostCreatedEvent(new Post("x")));
             assertTrue(log.isEmpty(), "event should be buffered, not published immediately");
         });
 
@@ -99,13 +99,13 @@ class EventBusOrderedDeferredTest {
         List<String> log = new ArrayList<>();
         Container container = Freeway.create(
             binder -> binder.contribute(EventSubscriber.class)
-                .add(EventSubscriber.of(PostCreatedEvent.class, e -> log.add("event")))
+                .add(EventSubscriber.ofEvent(PostCreatedEvent.class, e -> log.add("event")))
         );
         EventBus bus = EventBus.create(container);
 
         assertThrows(RuntimeException.class, () -> {
             Defer.within(() -> {
-                bus.publish(new PostCreatedEvent(new Post("x")));
+                bus.publishEvent(new PostCreatedEvent(new Post("x")));
                 throw new RuntimeException("rollback");
             });
         });
@@ -121,12 +121,12 @@ class EventBusOrderedDeferredTest {
         List<String> log = new ArrayList<>();
         Container container = Freeway.create(
             binder -> binder.contribute(EventSubscriber.class)
-                .add(EventSubscriber.of(PostCreatedEvent.class, e -> log.add("event")))
+                .add(EventSubscriber.ofEvent(PostCreatedEvent.class, e -> log.add("event")))
         );
         EventBus bus = EventBus.create(container);
 
         Defer.within(() -> {
-            bus.publish(new PostCreatedEvent(new Post("x")));
+            bus.publishEvent(new PostCreatedEvent(new Post("x")));
             bus.close();
 
         });
@@ -142,7 +142,7 @@ class EventBusOrderedDeferredTest {
         EventBus bus = EventBus.create(Freeway.create());
 
         assertDoesNotThrow(() -> Defer.within(() -> {
-            bus.publish(new PostCreatedEvent(new Post("x")));
+            bus.publishEvent(new PostCreatedEvent(new Post("x")));
             bus.close();
 
         }), "a post-close drain must be a silent no-op, not a spurious failure");
@@ -157,7 +157,7 @@ class EventBusOrderedDeferredTest {
         EventBus bus = EventBus.create(Freeway.create());
 
         assertDoesNotThrow(() -> Defer.within(() -> {
-            bus.publishAsync(new PostCreatedEvent(new Post("x")));
+            bus.publishEventAsync(new PostCreatedEvent(new Post("x")));
             bus.close();
 
         }), "a deferred async publish draining after close must not throw");
@@ -168,7 +168,7 @@ class EventBusOrderedDeferredTest {
         EventBus bus = EventBus.create(Freeway.create());
 
         assertDoesNotThrow(() -> Defer.within(() -> {
-            bus.publishAsync("topic", "payload");
+            bus.publishTopicAsync("topic", "payload");
             bus.close();
 
         }), "a deferred async topic publish draining after close must not throw");
@@ -179,7 +179,7 @@ class EventBusOrderedDeferredTest {
         EventBus bus = EventBus.create(Freeway.create());
 
         assertDoesNotThrow(() -> Defer.within(() -> {
-            bus.publishOrdered(new PostCreatedEvent(new Post("x")));
+            bus.publishEventOrdered(new PostCreatedEvent(new Post("x")));
             bus.close();
 
         }), "a deferred ordered publish draining after close must not throw");
@@ -193,12 +193,12 @@ class EventBusOrderedDeferredTest {
         List<String> log = new ArrayList<>();
         Container container = Freeway.create(
             binder -> binder.contribute(EventSubscriber.class)
-                .add(EventSubscriber.of(PostCreatedEvent.class, e -> log.add("event")))
+                .add(EventSubscriber.ofEvent(PostCreatedEvent.class, e -> log.add("event")))
         );
         EventBus bus = EventBus.create(container);
 
         Defer.within(() -> {
-            bus.publishAsync(new PostCreatedEvent(new Post("x")));
+            bus.publishEventAsync(new PostCreatedEvent(new Post("x")));
         });
         Await.until(2000, () -> log.size() == 1);
 
@@ -211,10 +211,10 @@ class EventBusOrderedDeferredTest {
     void stringTopicPublishInsideActionScopeIsDeferred() {
         List<String> log = new ArrayList<>();
         EventBus bus = EventBus.create(Freeway.create());
-        bus.subscribe("topic", p -> log.add((String) p));
+        bus.subscribeTopic("topic", p -> log.add((String) p));
 
         Defer.within(() -> {
-            bus.publish("topic", "hello");
+            bus.publishTopic("topic", "hello");
             assertTrue(log.isEmpty());
         });
 
@@ -226,11 +226,11 @@ class EventBusOrderedDeferredTest {
         List<String> log = new ArrayList<>();
         Container container = Freeway.create(
             binder -> binder.contribute(EventSubscriber.class)
-                .add(EventSubscriber.of(PostCreatedEvent.class, e -> log.add("event")))
+                .add(EventSubscriber.ofEvent(PostCreatedEvent.class, e -> log.add("event")))
         );
         EventBus bus = EventBus.create(container);
 
-        bus.publish(new PostCreatedEvent(new Post("x")));
+        bus.publishEvent(new PostCreatedEvent(new Post("x")));
 
         assertEquals(List.of("event"), log);
     }
@@ -242,19 +242,19 @@ class EventBusOrderedDeferredTest {
         bus.close();
 
         assertThrows(IllegalStateException.class,
-            () -> bus.publish(new PostCreatedEvent(new Post("x"))));
+            () -> bus.publishEvent(new PostCreatedEvent(new Post("x"))));
         assertThrows(IllegalStateException.class,
-            () -> bus.publish("topic", "payload"));
+            () -> bus.publishTopic("topic", "payload"));
         assertThrows(IllegalStateException.class,
-            () -> bus.publishAsync(new PostCreatedEvent(new Post("x"))));
+            () -> bus.publishEventAsync(new PostCreatedEvent(new Post("x"))));
         assertThrows(IllegalStateException.class,
-            () -> bus.publishAsync("topic", "payload"));
+            () -> bus.publishTopicAsync("topic", "payload"));
         assertThrows(IllegalStateException.class,
-            () -> bus.publishOrdered("topic", "payload"));
+            () -> bus.publishTopicOrdered("topic", "payload"));
         assertThrows(IllegalStateException.class,
-            () -> bus.subscribe(PostCreatedEvent.class, e -> {}));
+            () -> bus.subscribeEvent(PostCreatedEvent.class, e -> {}));
         assertThrows(IllegalStateException.class,
-            () -> bus.subscribe("topic", p -> {}));
+            () -> bus.subscribeTopic("topic", p -> {}));
         container.close();
     }
 
@@ -272,7 +272,7 @@ class EventBusOrderedDeferredTest {
     void publishNullEventThrows() {
         Container container = Freeway.create(binder -> {});
         EventBus bus = container.get(EventBus.class);
-        assertThrows(NullPointerException.class, () -> bus.publish((Object) null));
+        assertThrows(NullPointerException.class, () -> bus.publishEvent((Object) null));
         container.close();
     }
 
@@ -281,13 +281,13 @@ class EventBusOrderedDeferredTest {
         List<String> log = new ArrayList<>();
         Container container = Freeway.create(
             binder -> binder.contribute(EventSubscriber.class)
-                .add(EventSubscriber.of(DeadEvent.class, e -> log.add("dead")))
+                .add(EventSubscriber.ofEvent(DeadEvent.class, e -> log.add("dead")))
         );
         EventBus bus = EventBus.create(container);
 
         Defer.within(() -> {
             // Publish an event with zero subscribers — DeadEvent should fire immediately
-            bus.publish("no-subscribers-for-this");
+            bus.publishEvent("no-subscribers-for-this");
         });
 
         assertFalse(log.isEmpty(), "DeadEvent must fire immediately, not be deferred");

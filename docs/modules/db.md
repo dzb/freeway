@@ -49,7 +49,7 @@
   db.transaction(() -> {
       db.execute("UPDATE accounts SET balance = balance - ? WHERE id = ?", 100, 1);
       db.execute("UPDATE accounts SET balance = balance + ? WHERE id = ?", 100, 2);
-      bus.publish(new TransferEvent(1, 2, 100));  // automatically deferred until after commit
+      bus.publishEvent(new TransferEvent(1, 2, 100));  // automatically deferred until after commit
   });
 
   // 8. ORM (Record entity — insert + find are available; update/delete go through raw SQL)
@@ -218,10 +218,10 @@ Container container = Freeway.create(
     }
 );
 
-DatabaseRegistry registry = container.get(DatabaseRegistry.class);
-Database p = registry.find("primary").orElseThrow();
-Database a = registry.find("audit").orElseThrow();
-Database def = registry.primary();
+DatabaseCatalog catalog = container.get(DatabaseCatalog.class);
+Database p = catalog.find("primary").orElseThrow();
+Database a = catalog.find("audit").orElseThrow();
+Database def = catalog.primary();
 ```
 
 ### 3.4 Dialect Detection and Selection
@@ -427,22 +427,22 @@ try {
 
 ### Transaction-Aware Event Publishing
 
-Calling `bus.publish()` inside a transaction automatically defers execution until after commit—it is sent only if the commit succeeds, and not sent on rollback. Zero configuration; the framework handles it automatically through `Defer`'s post-commit execution mechanism.
+Calling `bus.publishEvent()` inside a transaction automatically defers execution until after commit—it is sent only if the commit succeeds, and not sent on rollback. Zero configuration; the framework handles it automatically through `Defer`'s post-commit execution mechanism.
 
 ```java
 db.transaction(() -> {
     orm.insert(new User("Lightning", 3));
-    bus.publish(new UserCreatedEvent(user));  // actually published only after commit
+    bus.publishEvent(new UserCreatedEvent(user));  // actually published only after commit
 });
 ```
 
 ### Cross-Thread Restriction (ScopedValue Does Not Propagate)
 
-A transaction is bound to the thread that opened it; `ScopedValue` **does not propagate to child threads**. A newly started thread or any other thread inside `transaction()` cannot do DB work—calling `db.query/execute/batch` then throws `SqlException` ("Another thread holds an active transaction on this Database ..."), instead of silently borrowing a separate connection to bypass the transaction and break atomicity. Note that this guard applies per `Database` instance: while a singleton `Database` is in a transaction, all non-transactional DB calls from other threads are rejected; for concurrent work, use separate `Database` instances (e.g. through `DatabaseRegistry`). `Query`/`BatchQuery` created inside a transaction must also be consumed on the transaction thread before the transaction ends, otherwise a `SqlException` is thrown as well.
+A transaction is bound to the thread that opened it; `ScopedValue` **does not propagate to child threads**. A newly started thread or any other thread inside `transaction()` cannot do DB work—calling `db.query/execute/batch` then throws `SqlException` ("Another thread holds an active transaction on this Database ..."), instead of silently borrowing a separate connection to bypass the transaction and break atomicity. Note that this guard applies per `Database` instance: while a singleton `Database` is in a transaction, all non-transactional DB calls from other threads are rejected; for concurrent work, use separate `Database` instances (e.g. through `DatabaseCatalog`). `Query`/`BatchQuery` created inside a transaction must also be consumed on the transaction thread before the transaction ends, otherwise a `SqlException` is thrown as well.
 
 ### No XA Across Databases
 
-`db.transaction()` covers only the connection of the current `Database` itself: writes inside the transaction through other data sources obtained via `DatabaseRegistry` **commit independently**, and are not rolled back if this transaction fails. There is no XA / two-phase commit across databases; do not mix writes to multiple databases in a single-database transaction.
+`db.transaction()` covers only the connection of the current `Database` itself: writes inside the transaction through other data sources obtained via `DatabaseCatalog` **commit independently**, and are not rolled back if this transaction fails. There is no XA / two-phase commit across databases; do not mix writes to multiple databases in a single-database transaction.
 
 ### Schema.ensure and Transactions
 

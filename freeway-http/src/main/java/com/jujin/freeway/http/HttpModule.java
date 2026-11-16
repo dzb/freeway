@@ -195,7 +195,7 @@ public final class HttpModule implements ModuleEx {
                     if (accessLog != null && event instanceof HttpExchangeEvent exchange) {
                         accessLog.accept(exchange);
                     }
-                    events.publish(event);
+                    events.publishEvent(event);
                 });
         });
 

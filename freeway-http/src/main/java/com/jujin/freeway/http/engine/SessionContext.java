@@ -19,7 +19,7 @@ record SessionContext(
     Coercer coercer,
     FreewayHttpEngine engine,
     HttpServerConfig config,
-    ConnectionRegistry registry,
+    ConnectionTracker tracker,
     HttpMetrics metrics
 ) {
     Metrics.Histogram requestTimer(Map<String, String> labels) {
@@ -33,13 +33,13 @@ record SessionContext(
      * HTTP/1.1 and HTTP/2 keep their distinct failure behavior.
      */
     void executeRequest(HttpExchange context) throws Exception {
-        registry().requestsInFlight.incrementAndGet();
+        tracker().requestsInFlight.incrementAndGet();
         String method = HttpMetrics.methodLabel(context.method());
         long startNanos = System.nanoTime();
         try {
             handler().handle(context);
         } finally {
-            registry().requestsInFlight.decrementAndGet();
+            tracker().requestsInFlight.decrementAndGet();
             // The route is known only after dispatch; record in the finally so
             // every completed request carries the declared template (or the
             // bounded category the pipeline set for a short-circuit/miss).

@@ -6,7 +6,7 @@ Examples below are minimal snippets. They omit imports and app-specific domain t
 
 - `Database`
 - `Database.Wiring`
-- `DatabaseRegistry`, `NamedDatabase`
+- `DatabaseCatalog`, `NamedDatabase`
 - `Orm`
 - `Orm.FindOptions`
 - `Query`, `Row`, `Sql`, `BatchQuery`, `ExecuteResult`, `IsolationLevel`, `Transactional`
@@ -35,10 +35,10 @@ Orm orm = Orm.of(db);
 
 ```java
 FreewayApp.run(new AppModule(), new DbModule());
-// Database, Orm, Coercer, Pool, Dialect, MigrationRunner, DatabaseRegistry are injectable
+// Database, Orm, Coercer, Pool, Dialect, MigrationRunner, DatabaseCatalog are injectable
 ```
 
-`DbModule` builds `Database` from the `PoolConfig` resolved through the config cascade and binds `Orm` as a singleton. `DatabaseRegistry` registers the configured database under `primary` unless a `NamedDatabase` contribution already owns that name.
+`DbModule` builds `Database` from the `PoolConfig` resolved through the config cascade and binds `Orm` as a singleton. `DatabaseCatalog` indexes the configured database under `primary` unless a `NamedDatabase` contribution already owns that name.
 
 ## Configuration Keys
 
@@ -144,8 +144,8 @@ db.transaction(IsolationLevel.SERIALIZABLE, () -> { ... });
 - The work commits on normal return and rolls back on any throwable; auto-commit is restored on exit.
 - Nested transactions are rejected with `IllegalStateException`.
 - The transaction is thread-bound (`ScopedValue`): a `Query` or `BatchQuery` created inside it must be consumed on the transaction thread before the transaction ends, and DB work on another thread while it is active is rejected with `SqlException`.
-- The transaction covers only this `Database`'s connection. Work on another `Database` (for example through `DatabaseRegistry`) commits independently and is not rolled back with it; there is no XA.
-- EventBus events published with synchronous `publish()` inside the transaction are deferred by `Defer` until commit; a rollback discards them. `publishAsync` does not participate in `Defer`.
+- The transaction covers only this `Database`'s connection. Work on another `Database` (for example through `DatabaseCatalog`) commits independently and is not rolled back with it; there is no XA.
+- EventBus events published with synchronous `publishEvent()` inside the transaction are deferred by `Defer` until commit; a rollback discards them. `publishEventAsync` / `publishTopicAsync` do not participate in `Defer`.
 
 ## SQL Builder
 

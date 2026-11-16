@@ -80,7 +80,7 @@ class HealthEndpointsTest {
         // failing — belongs to Renewal and is updated by the
         // registration hook whichever registry is bound. An external backend must not make
         // /health/ready forget that it is deregistered or draining.
-        try (AppRuntime app = FreewayApp.create(new BareExternalRegistryModule(), new HttpModule())
+        try (AppRuntime app = FreewayApp.create(new BareExternalBackendModule(), new HttpModule())
                 .add(CloudModule.class).add(new RegistrationModule()).add(new TestDiscoveryModule()).start()) {
             HttpResponse<String> ready = get(app, "/health/ready");
             assertEquals(200, ready.statusCode());
@@ -93,7 +93,7 @@ class HealthEndpointsTest {
 
     @Test
     void anExternalContributorAddsToTheRegistryCheckRatherThanReplacingIt() throws Exception {
-        try (AppRuntime app = FreewayApp.create(new ExternalRegistryModule(), new HttpModule()).add(CloudModule.class).add(new RegistrationModule()).add(new TestDiscoveryModule()).start()) {
+        try (AppRuntime app = FreewayApp.create(new ExternalBackendModule(), new HttpModule()).add(CloudModule.class).add(new RegistrationModule()).add(new TestDiscoveryModule()).start()) {
             HttpResponse<String> ready = get(app, "/health/ready");
             assertEquals(200, ready.statusCode());
             assertTrue(ready.body().contains("external-registry"),
@@ -151,7 +151,7 @@ class HealthEndpointsTest {
     /** A stand-in for a future freeway-ext cloud adapter: primary bindings
      *  plus its own readiness contributor. */
     /** A primary registry/discovery with no contributor of its own: core must still report. */
-    static class BareExternalRegistryModule extends ExternalRegistryModule {
+    static class BareExternalBackendModule extends ExternalBackendModule {
         @Override
         public void bind(Binder b) {
             b.bind(ServiceRegistry.class).to(container -> registry).primary();
@@ -159,7 +159,7 @@ class HealthEndpointsTest {
         }
     }
 
-    static class ExternalRegistryModule implements ModuleEx {
+    static class ExternalBackendModule implements ModuleEx {
         final ServiceRegistry registry = new ServiceRegistry() {
             @Override
             public void register(ServiceInstance instance) {

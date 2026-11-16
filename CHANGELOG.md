@@ -5,10 +5,18 @@ All notable changes to Freeway will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.0.0] - 2026-11-16
 
 ### Added
 
+- **HTTP engine public-surface budget** (`freeway-http`): `api/http-engine-surface.txt`
+  and `EngineSurfaceBudgetTest` make every public top-level type in the engine
+  packages an explicit cross-package seam. The unused public `http2.Bytes`
+  helper is now package-private.
+- **Readiness capability as a type** (`freeway-cloud`): `ReadinessAwareRegistry`
+  makes readiness-aware registration and readiness flipping an explicit
+  subinterface of `ServiceRegistry`. The base registry no longer advertises a
+  boolean capability with inert default methods.
 - **Static discovery for fixed deployments**: `StaticDiscovery` and
   `StaticModule` in `freeway-cloud`. A list with several instances lets
   the client-side load balancer distribute per call; a single endpoint is the
@@ -24,6 +32,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   replace either without changing the HTTP surface.
 
 ### Changed
+
+- **RPC call-bound contract** (`freeway-cloud`): the `maxAttempts`, async,
+  end-to-end-deadline and `deadline + maxAttempts` overloads of
+  `RpcHttpClient` are now abstract contract methods. Implementations must
+  explicitly honor the caller's attempt cap and deadline; the compatibility
+  default that silently degraded to an unbounded call is gone.
+  `RpcHttpClientDefault` already implements the full semantics, and a client
+  contract test pins all four methods as non-default.
+- **`RemoteProxyFactory` is now an immutable wither chain**: `withServiceId`,
+  `withMapping` and `withTimeout` return new factories instead of mutating the
+  receiver.
+- **`ServiceHealth` enforces its readiness invariant**: a ready instance must
+  also be live, and `lastSeen` is required.
+- **`RpcResponse` copies headers deeply**: the record stores immutable header
+  lists rather than a shallow map copy, so callers cannot mutate a response
+  after construction. Framework leaf exceptions are final.
 
 - **Fleet extracted from `freeway-cloud`**: `freeway-fleet` owns the Fleet
   client/protocol; `freeway-fleet-server` owns the registry server and
@@ -59,6 +83,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Renamed / API vocabulary
 
+- **EventBus channel vocabulary** (`freeway-ioc`): `publishEvent` /
+  `publishTopic`, `publishEventAsync` / `publishTopicAsync`,
+  `publishEventOrdered` / `publishTopicOrdered`, `subscribeEvent` /
+  `subscribeTopic`, `streamEvents` / `streamTopic`, and
+  `EventSubscriber.ofEvent` / `ofTopic`. The channel is now a method-name fact,
+  not an overload selected by argument count.
+- **Optional lookup vocabulary** (`freeway-cloud`): `ObjectStorage.get` →
+  `find`; `SecretStore.get` / `getBytes` → `find` / `findBytes`.
+- **DB catalog and HTTP connection vocabulary**: `DatabaseRegistry` /
+  `DatabaseRegistryImpl` → `DatabaseCatalog` / `DatabaseCatalogImpl`;
+  `ConnectionRegistry` → `ConnectionTracker`. Test fixtures follow the same
+  rule: `TestRegistry` → `TestBackend`, `NoReadinessRegistry` →
+  `NoReadinessBackend`, `ExternalRegistryModule` / `BareExternalRegistryModule`
+  → `ExternalBackendModule` / `BareExternalBackendModule`.
 - **Cloud context vocabulary** (`freeway-cloud`): `CloudContextModule` →
   `ContextModule`; `Propagator` → `ContextCodec`, with `TracePropagator` →
   `TraceCodec`, `AuthPropagator` → `AuthCodec`, and `BaggagePropagator` →
@@ -87,9 +125,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `StaticResourceMount.withCacheMaxAgeSeconds(long)` → `withCacheMaxAge(Duration)`;
   `SseEmitter.from(...)` → `pipe(...)`; `ErrorResponse.send(HttpResponse)` →
   `write(HttpResponse)`.
-- **DB**: `DatabaseStats` → `PoolStats`; `DatabaseRegistry.get(String)` →
-  `find(String): Optional<Database>`; `DatabaseRegistry.all()` → `databases()`;
-  `Query.param(...)` → `bind(...)`; `BatchQuery.rows(...)` → `rowsRaw(...)`,
+- **DB**: `DatabaseStats` → `PoolStats`; the multi-database lookup type is now
+  `DatabaseCatalog` (`DatabaseRegistry.get(String)` → `DatabaseCatalog.find(...)`,
+  `DatabaseRegistry.all()` → `databases()`), with implementation and tests renamed
+  together; `Query.param(...)` → `bind(...)`; `BatchQuery.rows(...)` → `rowsRaw(...)`,
   `BatchQuery.named(...)` → `rowsNamed(...)`; `Row`'s convenience accessors are now
   `asString/asInt/asLong/asBoolean/asBigDecimal/asBigInteger/asLocalDate/...`;
   `Sql.sql()` → `toSql()`, `Sql.setColumn(...)` → `value(...)`.
@@ -5006,7 +5045,8 @@ Behaviour changes (no call sites need changing, but worth knowing):
 - **freeway-db** — JDBC data access with ORM, connection pooling, transactions, and query builder with named parameters and collection expansion.
 - Extension adapters (robaho, undertow, jetty, hikari, kafka) available in [freeway-ext](https://github.com/dzb/freeway-ext).
 
-[Unreleased]: https://github.com/dzb/freeway/compare/v1.5.1...HEAD
+[Unreleased]: https://github.com/dzb/freeway/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/dzb/freeway/compare/v1.5.7...v2.0.0
 [1.5.1]: https://github.com/dzb/freeway/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/dzb/freeway/compare/v1.4.0...v1.5.0
 [1.3.1]: https://github.com/dzb/freeway/compare/v1.2.2...v1.3.1

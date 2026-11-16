@@ -435,7 +435,8 @@ name; only module types whose package already covered their semantics changed.
 
 - `Container.get(...)` still means "throw when not found"; it is the container's
   primary lookup entry.
-- `DatabaseRegistry.get(String)` → `find(String): Optional<Database>`;
+- `DatabaseCatalog.find(String): Optional<Database>`: the multi-database lookup
+  uses the optional-find contract rather than a `get` that implies presence;
   `FlowEngine.graph(String)` → `find(String): Optional<Graph>`;
   `graphOrThrow(...)` → `require(...)`.
 - `find` no longer returns null; `require` throws. The name tells the caller to
@@ -490,8 +491,9 @@ permission of the engine/execution. This is the same taste as the read-only
 This round did not rename only the "ugliest-looking" method; it aligned every
 outlet of the same fact:
 
-- `DatabaseRegistry.find`'s Optional contract, implementation, tests and docs
-  changed together;
+- `DatabaseCatalog.find`'s Optional contract, implementation, tests and docs
+  changed together, and the type stopped calling itself a registry when it has
+  no register operation;
 - `BatchQuery.rows/named` → `rowsRaw/rowsNamed`, with interface, implementation
   and tests;
 - all `Row` convenience accessors unified as `as*`;
@@ -547,6 +549,21 @@ a caller would use at that call site over a borrowed term from another domain.
   spelling.
 - A word that can describe every layer describes none of them.
 
+### 9.9 Put the channel in the method name
+
+When two operations share a verb but select their channel from an argument,
+the method name must state the channel. `publish` could mean "publish this
+event object" or "publish to this topic"; the caller's intent was encoded in
+arity in one case, but a one-argument `String` could still be a class event.
+`publishEvent` / `publishTopic`, and the matching `subscribe*` / `stream*`
+families, make the choice visible at the call site and leave overload
+resolution with nothing to infer.
+
+The companion factories follow the same rule: `EventSubscriber.ofEvent` and
+`ofTopic` do not make a reader check the static type of the first argument.
+This is not a mechanical suffix: it applies when the argument selects a
+semantic channel and the two paths are not interchangeable.
+
 ## 10. The naming ledger of this round
 
 | Decision | Taste |
@@ -554,7 +571,8 @@ a caller would use at that call site over a borrowed term from another domain.
 | `HttpExchange` + `HttpExchangeSupport` | exchange describes the fact of request/response meeting, not a generalized context |
 | `HttpResponse.body/text/json/file/sendText` | content source, content semantics and shortcut actions each have their own word |
 | `isSecure` / `matchWebSocket` / `webSocketIndex` | predicates use `is`; WebSocket keeps two camelCase segments in Java identifiers |
-| `PoolStats` / `DatabaseRegistry.find` / `databases()` | statistics, missing values and collection reads each have an accurate word |
+| `PoolStats` / `DatabaseCatalog.find` / `databases()` | statistics, missing values and collection reads each have an accurate word |
+| `DatabaseCatalog` / `ConnectionTracker` | a lookup snapshot and a live-collection collaborator stop using the `Registry` suffix |
 | `Query.bind` / `Contribution.addDeferred` | read, write, immediate construction and deferred construction no longer share an ambiguous verb |
 | `Row.asString/asInt/asLong` | the accessor family uses one syntax |
 | `FlowExecution` / `FlowEngine.run` | workflow execution is separate from expression eval |
@@ -573,6 +591,7 @@ a caller would use at that call site over a borrowed term from another domain.
 | `freeway.fleet.*` | the Fleet client/server and its protocol state the same domain in every artifact |
 | `CloudHttpClient` rename includes `CloudHttpClientDefault` | an interface and its default implementation are one type family; half a naming set is not kept |
 | Keep `HttpClients` / `CloudHealthContributor` / `CloudEvents` | do not rename mechanically by prefix; rename by ownership of the fact |
+| `EventBus.publishEvent` / `publishTopic` families | the channel is a method-name fact, not an argument-type or arity convention |
 
 ## 11. Review checklist
 
@@ -692,7 +711,7 @@ needs.
 ### 12.6 A test fixture is not a production backend
 
 The local registry became a test-scope fixture in `freeway-cloud`: marked
-`@Local`, never `.primary()`; supports register/renew/markReady/unregister; no
+`@Local`, never `.primary()`; supports readiness-aware register/markReady through the capability interface; no
 heartbeat scheduler, TTL or drain. Production startup fails loudly if no real
 backend is installed. A fixture must not outrank a configured primary.
 

@@ -251,7 +251,7 @@ public final class FreewayHttpEngine implements HttpEngine {
 
         var finished = new AtomicBoolean();
         HttpMetrics httpMetrics = new HttpMetrics(metrics);
-        var registry = new ConnectionRegistry(httpMetrics);
+        var tracker = new ConnectionTracker(httpMetrics);
         Metrics.Counter rejected = httpMetrics.connectionsRejected();
         Metrics.Counter accepted = httpMetrics.connectionsTotal();
         var permits = config.maxConnections() > 0
@@ -286,7 +286,7 @@ public final class FreewayHttpEngine implements HttpEngine {
                     Thread.ofVirtual()
                         .name("http-" + socket.getRemoteSocketAddress())
                         .start(new HttpSession(socket, handler, jsonCodec, coercer, this,
-                            config, registry, permits));
+                            config, tracker, permits));
                 } catch (IOException e) {
                     // ServerSocketChannel.accept() throws ClosedChannelException
                     // / AsynchronousCloseException when the listener is closed
@@ -312,6 +312,6 @@ public final class FreewayHttpEngine implements HttpEngine {
         String scheme = sslContext != null ? "https" : "http";
         LOG.info("Freeway HTTP engine ({}) started on {}:{}", scheme, config.host(), port);
         return new HttpServerHandleImpl(ss.socket(), acceptor, reloader,
-            config.shutdownGrace(), finished, registry, config.host(), port);
+            config.shutdownGrace(), finished, tracker, config.host(), port);
     }
 }

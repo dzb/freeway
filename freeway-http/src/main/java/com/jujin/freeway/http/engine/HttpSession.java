@@ -44,11 +44,11 @@ final class HttpSession implements Runnable {
 
     HttpSession(Socket socket, ExchangeHandler handler,
             JsonCodec jsonCodec, Coercer coercer, FreewayHttpEngine engine,
-            HttpServerConfig config, ConnectionRegistry registry,
+            HttpServerConfig config, ConnectionTracker tracker,
             Semaphore connectionPermits) {
         this.rawSocket = socket;
         this.context = new SessionContext(handler, jsonCodec, coercer, engine,
-            config, registry, new HttpMetrics(engine.metrics()));
+            config, tracker, new HttpMetrics(engine.metrics()));
         this.connectionPermits = connectionPermits;
     }
 
@@ -92,7 +92,7 @@ final class HttpSession implements Runnable {
             connection = new HttpConnection(
                 socket, SESSION_BUFFER_SIZE,
                 timeoutMillis(context.config().writeTimeout()));
-            context.registry().register(connection);
+            context.tracker().register(connection);
 
             if (isH2) {
                 new Http2Session(context).handle(connection, true, null, null, null);
@@ -109,7 +109,7 @@ final class HttpSession implements Runnable {
             LOG.warn("Unexpected session error", e);
         } finally {
             if (connection != null) {
-                context.registry().unregister(connection);
+                context.tracker().unregister(connection);
                 connection.close();
             } else if (!rawSocket.isClosed()) {
                 try {

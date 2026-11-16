@@ -42,6 +42,18 @@ class RemoteProxyFactoryTest {
     }
 
     @Test
+    void withersReturnNewFactoriesAndLeaveTheReceiverUnchanged() {
+        RemoteCaller caller = new RemoteCaller(stubClient(), new JsonCodecDefault());
+        RemoteProxyFactory base = RemoteProxyFactory.of(caller);
+        RemoteProxyFactory withService = base.withServiceId("s");
+
+        assertThrows(IllegalStateException.class, () -> base.build(EchoApi.class),
+            "withServiceId must not mutate the base factory");
+        assertThrows(IllegalStateException.class, () -> withService.build(EchoApi.class),
+            "the derived factory still needs its own mapping");
+    }
+
+    @Test
     void idempotentMarkerRidesIntoTheOutgoingRequest() {
         // A recording transport: the marker's path is proxy → RemoteCaller →
         // RpcRequest, so a stub client that captures request.idempotent()
@@ -49,9 +61,34 @@ class RemoteProxyFactoryTest {
         List<Boolean> seen = new ArrayList<>();
         RpcHttpClient recording = new RpcHttpClient() {
             @Override
+            public RpcResponse call(String serviceId, RpcRequest request, int maxAttempts) {
+                return call(serviceId, request);
+            }
+
+            @Override
             public RpcResponse call(String serviceId, RpcRequest request) {
                 seen.add(request.idempotent());
                 return ok();
+            }
+
+            @Override
+            public java.util.concurrent.CompletableFuture<RpcResponse> callAsync(
+                    String serviceId, RpcRequest request) {
+                return java.util.concurrent.CompletableFuture.completedFuture(
+                    call(serviceId, request));
+            }
+
+            @Override
+            public java.util.concurrent.CompletableFuture<RpcResponse> callAsync(
+                    String serviceId, RpcRequest request, java.time.Duration deadline) {
+                return callAsync(serviceId, request);
+            }
+
+            @Override
+            public java.util.concurrent.CompletableFuture<RpcResponse> callAsync(
+                    String serviceId, RpcRequest request, java.time.Duration deadline,
+                    int maxAttempts) {
+                return callAsync(serviceId, request);
             }
 
             @Override
@@ -79,8 +116,33 @@ class RemoteProxyFactoryTest {
     private static RpcHttpClient stubClient() {
         return new RpcHttpClient() {
             @Override
+            public RpcResponse call(String serviceId, RpcRequest request, int maxAttempts) {
+                return call(serviceId, request);
+            }
+
+            @Override
             public RpcResponse call(String serviceId, RpcRequest request) {
                 return ok();
+            }
+
+            @Override
+            public java.util.concurrent.CompletableFuture<RpcResponse> callAsync(
+                    String serviceId, RpcRequest request) {
+                return java.util.concurrent.CompletableFuture.completedFuture(
+                    call(serviceId, request));
+            }
+
+            @Override
+            public java.util.concurrent.CompletableFuture<RpcResponse> callAsync(
+                    String serviceId, RpcRequest request, java.time.Duration deadline) {
+                return callAsync(serviceId, request);
+            }
+
+            @Override
+            public java.util.concurrent.CompletableFuture<RpcResponse> callAsync(
+                    String serviceId, RpcRequest request, java.time.Duration deadline,
+                    int maxAttempts) {
+                return callAsync(serviceId, request);
             }
 
             @Override
