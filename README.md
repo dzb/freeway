@@ -1,6 +1,5 @@
 <div align="center">
-  <img width="64" src=".github/assets/logo.png" alt="Freeway Framework logo">
-  <h2>Freeway Framework</h2>
+  <h2><img width="32" src=".github/assets/logo.png" alt="Freeway Framework logo" align="middle" hspace="8">Freeway Framework</h2>
   <p><sub><strong>Modern, concise, compose-first Java for JDK 25+.</strong></sub></p>
   <p><sub>IoC · HTTP · DB · Flow · Cloud — one coherent stack.<br>
   No classpath scanning. No bytecode weaving. No runtime dependencies beyond the SLF4J API.</sub></p>
@@ -10,7 +9,7 @@
     <a href="https://jdk.java.net/25/"><img src="https://img.shields.io/badge/JDK-25%2B-orange" alt="JDK 25+"></a>
     <img src="https://img.shields.io/badge/deps-0-brightgreen" alt="Zero runtime dependencies">
   </p>
-  <p><sub><strong>Latest: 2.0.0</strong> · <a href="docs/releases/release-notes-2.0.0.md">Release notes</a> · <a href="CHANGELOG.md">Changelog</a> · <a href="ROADMAP.md">Roadmap</a></sub></p>
+  <p><sub><strong>Latest: 2.0.0</strong> · <a href="docs/releases/release-notes-2.0.0.md">Release notes</a> · <a href="CHANGELOG.md">Changelog</a></sub></p>
 </div>
 
 ---
@@ -115,6 +114,8 @@ smoke path lives in [`demo/rest-db`](demo/rest-db/README.md).
 <details>
 <summary><strong>Module details</strong></summary>
 
+<sub>
+
 **Commons** — `JsonCodec` / `JsonUtils.toJson`, `JsonCodec.coerce`, `Coercer` with contributed rules, `BeanIntrospector` / `BeanPlan`, `@NotNull`-style validation and logging. The scoped primitives are `Defer` (commit-time actions) and `ScopedCache.computeIfAbsent` (scope-lifetime values); both share one `ScopeSession`, and manual rollback is `Defer.rollback()`.
 
 **IoC** — Explicit `bind` / `to`, named and primary bindings, `SINGLETON` / `PROTOTYPE` / `BOUNDARY` scopes, constructor and field injection, `${...}` expansion, contributions with ordering, method advisors and an in-process EventBus. Class and factory contributions use `addDeferred(...)`, `Extension` is a read-only view, and `Container.describe()` exposes metadata-only composition without realizing services. `ScopeBoundary.within(...)` enters a boundary scope on JDK 25 `ScopedValue`.
@@ -128,6 +129,8 @@ smoke path lives in [`demo/rest-db`](demo/rest-db/README.md).
 **Flow** — JSON-defined DAGs with `START`, `END`, `ACTIVITY`, `EXCLUSIVE`, `INCLUSIVE`, `PARALLEL` and `LOOP`; `@name` container tasks and `#graphId` subflows; static validation at build/load; iterative `FlowExecution` runs with `FlowEngine.run/find/require`; metadata and `linkTo`; branch isolation and PlantUML export.
 
 **Cloud** — Static/Fleet/Consul registry/discovery (Fleet and Consul live in freeway-ext); RPC over HTTP with load balancing, retries, circuit breaking and rate limiting; an at-most-once `MeshEventBus` event plane; health/readiness, metrics/tracing, secrets, object storage and TLS rotation. Domain packages use `Rpc*` / `Mesh*` vocabulary directly.
+
+</sub>
 
 </details>
 
@@ -224,6 +227,8 @@ Adapters and add-ons are released in **[freeway-ext](https://github.com/dzb/free
 <details>
 <summary><strong>Why Freeway?</strong> — eight design constraints and the evidence behind them</summary>
 
+<sub>
+
 The words in the banner are design constraints, not marketing copy. Each one has a concrete refusal behind it.
 
 | Principle | What it means in practice |
@@ -241,10 +246,14 @@ The common thread is simple: less vocabulary, fewer owners, sharper contracts. A
 
 **Composition, not inheritance.** Freeway's own object model is interface contracts plus final implementations. To customize behavior you implement an SPI or contribute an object; you never subclass a framework class to reach protected state. The few `extends` clauses in `src/main` are deliberate standard-library boundary adapters: exceptions (`RuntimeException` / `IOException`), stream and collection adapters (`InputStream` / `OutputStream` / `AbstractMap`), TLS managers (`X509ExtendedKeyManager` / `X509ExtendedTrustManager`), logging handlers (`Formatter` / `Handler`) and `SubmissionPublisher`.
 
+</sub>
+
 </details>
 
 <details>
 <summary><strong>2.0 refactor</strong> — architecture and vocabulary changes since 1.5.7</summary>
+
+<sub>
 
 `2.0.0` is a deliberate architecture and vocabulary cleanup, not a feature pile-on. The theme is fewer owners, fewer defaults and fewer ways to express the same fact. Existing code migrates through compiler errors; no compatibility alias was added.
 
@@ -306,6 +315,8 @@ mvn clean test
 ```
 
 `mvn -Pdemos -DskipTests compile` also compiles the in-repo consumers against the reactor, and `git diff --check` is clean. The design rule is simple: if a change removes a second owner or a second answer, it belongs in 2.0; if it only adds a spelling, it does not.
+
+</sub>
 
 </details>
 
