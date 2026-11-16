@@ -49,14 +49,15 @@ if cardinality stays bounded.
 
 ## Later
 
-### HTTP/2 stateful fuzz
+### HTTP/2 randomized stateful fuzz
 
-Malformed frame and HPACK blocks are covered by fixed-seed fuzz tests. The next
-layer is **valid-but-adversarial sequences**: SETTINGS changes, RST_STREAM
-bursts, CONTINUATION interleaving, flow-control overflow, concurrent stream
-limits, frames after GOAWAY. The assertion is the same: a protocol error closes
-the connection; no hang, unchecked exception, leaked thread or unbounded
-allocation.
+Malformed frame and HPACK blocks are covered by fixed-seed fuzz tests, and 2.0
+already covers targeted **valid-but-adversarial sequences**: SETTINGS changes,
+RST_STREAM bursts, CONTINUATION interleaving, flow-control errors, concurrent
+stream limits and frames after GOAWAY. The remaining layer is randomized
+stateful sequencing: generate valid transitions and interleave them under load.
+The assertion is the same: a protocol error closes the connection; no hang,
+unchecked exception, leaked thread or unbounded allocation.
 
 ### Canary traffic policy
 
@@ -68,12 +69,13 @@ fallback, not an automatic promotion.
 
 ### Internal surface shrink
 
-`api/internal-surface.txt` budgets the public types under `internal`. `Stepper`
-was moved back to its owner package (40 → 39); the rest cross module/package
-assembly boundaries and should be taken one at a time, each with a named reason,
-not in a batch. The built-in HTTP engine now has the same explicit budget in
-`api/http-engine-surface.txt`: its public types are only the cross-package
-assembly seams, and the unused public `http2.Bytes` helper is package-private.
+`api/internal-surface.txt` budgets the public types under `internal` (28
+entries today). `Stepper` is package-private in its owner package; the rest
+cross module/package assembly boundaries and should be taken one at a time,
+each with a named reason, not in a batch. The built-in HTTP engine has the same
+explicit budget in `api/http-engine-surface.txt` (13 entries today): its public
+types are only the cross-package assembly seams, and the unused public
+`http2.Bytes` helper is package-private.
 
 ### Metrics export adapters (ext)
 
@@ -88,9 +90,11 @@ OTLP/Prometheus push adapters are ext work. Do not add an SDK to core.
 - failure taxonomy plus the `Failure` classification view;
 - RPC async cancellation, per-service retry budget, zone-aware load balancing
   and per-method `@RemotePolicy`;
-- HPACK/HTTP/1/HTTP/2 malformed-input fuzz baselines and property tests for
-  JSON and SQL parameters;
-- configuration hot-reload matrix and the hot-reload contract test.
+- HPACK/HTTP/1/HTTP/2 malformed-input fuzz baselines, targeted HTTP/2
+  stateful sequences and property tests for JSON and SQL parameters;
+- configuration hot-reload matrix and the hot-reload contract test;
+- explicit public-surface budgets for `internal` (28 entries) and the HTTP
+  engine (13 entries).
 
 See [CHANGELOG.md](CHANGELOG.md) for behavior details and
 [docs/design/cloud.md](docs/design/cloud.md) for the design rationale.
