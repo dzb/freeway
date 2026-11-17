@@ -1,10 +1,12 @@
-# Freeway 2.0.1 Release Notes
+# Freeway 2.0.1 Release Notes (unreleased)
 
-> Version: 2.0.1 | Highlight: **Short `f2` / `F2` configuration aliases, config-driven static discovery, and one owner for membership, configuration and cloud package boundaries.**
+> Version: 2.0.1 (unreleased) | Highlight: **Short `f2` / `F2` configuration aliases, config-driven static discovery, and one owner for membership, configuration and cloud package boundaries.**
 
 2.0.1 is the post-2.0.0 consolidation release. It keeps the canonical
 `freeway.*` configuration namespace and removes duplicate internal owners; the
-Java API and member vocabulary are intentionally not aliased.
+Java API and member vocabulary are intentionally not aliased. No 2.0.1 artifact
+is published yet — Maven Central's latest is 2.0.0 — so this page describes the
+release as planned, not as shipped.
 
 ## Highlights
 
@@ -83,23 +85,25 @@ owns file parsing, and `ServiceKey.normalize` owns service-id normalization.
 The retired `ConfigSources`, `ConfigMaps`, `ConfigFileReader` and `ServiceIds`
 helpers are gone; module-facing configuration and binding behavior is unchanged.
 
-## Verification
+## Verification (2.0.1-SNAPSHOT)
 
 ```text
-mvn clean test
+mvn -o test
   commons 450 · ioc 344 · boot 141 · http 550
-  db 550 · flow 141 · cloud 382
-  total 2,558 — 0 failures, 0 errors, 0 skipped
+  db 550 · flow 147 · cloud 382
+  total 2,564 — 0 failures, 0 errors, 0 skipped
 ```
 
-`mvn -DskipTests -Dgpg.skip=true verify` succeeds for the core reactor, and
-`git diff --check` is clean. The extension repository builds against the
-installed 2.0.1 artifacts.
+`mvn -o -Pdemos -DskipTests compile` compiles the in-repo consumers, and
+`freeway-ext` on `2.0.1-SNAPSHOT` builds against the installed core snapshot and
+ran 188 tests with 0 failures (7 skipped: the Kafka integration cases need a
+broker). This is the state of the snapshot, not of a published release — re-run
+both before tagging 2.0.1.
 
 ## Compatibility
 
-- Core artifacts: `2.0.1`.
-- `freeway-ext`: `2.0.1`, built against this core release.
+- Core artifacts: `2.0.1` (unreleased; the latest published core is `2.0.0`).
+- `freeway-ext`: `2.0.1-SNAPSHOT`, built against this core snapshot.
 - Java: 25+.
 - The member Java types and configuration keys from 2.0.0 are renamed/removed
   without compatibility aliases; migrate through the compiler and the key table
