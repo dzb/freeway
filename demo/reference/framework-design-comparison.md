@@ -2,8 +2,7 @@
 
 > Setting aside "are the features complete", "is the ecosystem big", "are there many users" — this is only about the design itself.
 >
-> This document answers "**how well is it designed**"; it is an evergreen design commentary. For the engineering-dimension selection assessment (including Quarkus/Micronaut,
-> engine and performance, Agent friendliness), see [framework comparison](framework-comparison.md).
+> This document answers "**how well is it designed**"; it is an evergreen design commentary.
 
 ---
 

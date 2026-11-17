@@ -293,6 +293,34 @@ compile error.
 
 ---
 
+## 17. Do not write a claim the repository cannot keep true
+
+**Symptom.** Three documents asserted facts their own neighbours denied. The
+framework comparison said the built-in engine "performed best" at :222 and
+:390 while :332 withdrew that conclusion, and its table header still named
+Freeway 1.5.x. `ROADMAP.md` budgeted 28 internal entries where the code had 43
+and `CHANGELOG.md` said 39. `README.md` said adapters ship at the same version
+as the core while `freeway-ext` was 2.0.0 and the core 2.0.1, and it listed
+per-module test counts that move every release.
+
+**Cause.** Each sentence was true when written and cost nothing to keep. Nobody
+owns a number that lives in prose, no test compares it with the code, and a
+stale claim is not a broken link — it renders perfectly. A withdrawn conclusion
+is worse than a missing one: two parts of one document disagree and the reader
+cannot tell which is current.
+
+**Rule.**
+
+> Documentation states structure, contracts and decisions, not drifting
+> measurements. Test counts, entry budgets, version parity and performance
+> rankings belong to the release notes, or to the release that measured them.
+> When a claim is superseded, delete it in the change that supersedes it;
+> withdrawing it in one paragraph while it survives in another is a trap, not a
+> correction. If a sentence cannot be checked by a test, a single owner or a
+> dated snapshot, do not write it. 不要给自己挖坑.
+
+---
+
 ## Review checklist
 
 Before declaring a boundary refactor done:
@@ -309,3 +337,5 @@ Before declaring a boundary refactor done:
 10. Publishing and release order are explicit for moved artifacts.
 11. A rename covers code, current docs, contribution ids and tests; only
     historical release notes keep the historical spelling.
+12. No document carries an unowned number, a superseded claim, or a version
+    claim another repository must keep true.

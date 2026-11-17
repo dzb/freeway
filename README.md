@@ -215,16 +215,8 @@ under [`demo/reference/`](demo/reference/).
 
 ### Extensions
 
-Adapters and add-ons are released in [freeway-ext](https://github.com/dzb/freeway-ext)
-at the same version as the core:
-
-```xml
-<dependency>
-    <groupId>com.jujin8.freeway</groupId>
-    <artifactId>freeway-mq-kafka</artifactId>
-    <version>${freeway.version}</version>
-</dependency>
-```
+Adapters and add-ons live in [freeway-ext](https://github.com/dzb/freeway-ext);
+see that repository for module coordinates and versions.
 
 The Maven group id keeps its original `com.jujin8` spelling while Java packages
 are `com.jujin.freeway`. Renaming either would break every consumer's build for
@@ -252,18 +244,6 @@ Key changes:
 - `Extension` is read-only, `Scope.BOUNDARY` replaces `Scope.THREAD`, and `JsonCodec` is an IoC capability.
 - RPC and event mesh use `Rpc*` / `Mesh*` vocabulary; Fleet lives in freeway-ext.
 - `find(...): Optional<T>` is optional lookup, `require(...)` throws, and `withX(...)` returns a new value.
-
-Verification:
-
-```text
-mvn clean test
-  commons 450 · ioc 344 · boot 141 · http 550
-  db 550 · flow 141 · cloud 382
-  total 2,558 — 0 failures, 0 errors, 0 skipped
-```
-
-`mvn -Pdemos -DskipTests compile` also compiles the in-repo consumers against the
-reactor.
 
 ### License
 

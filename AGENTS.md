@@ -275,7 +275,6 @@ cases are contract tests and say so.
 - [docs/reference/metrics.md](docs/reference/metrics.md),
   [docs/reference/failures.md](docs/reference/failures.md) — metric and failure
   contracts.
-- [ROADMAP.md](ROADMAP.md) — evaluated future work.
 - [TASTE.md](TASTE.md) — the design judgments.
 - [LESSONS.md](LESSONS.md) — refactor failure modes and prevention rules.
 - [docs/](docs/) — samples, DB usage, feature summaries.
