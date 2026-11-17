@@ -1,20 +1,22 @@
 package com.jujin.freeway.cloud.event;
 
-import com.jujin.freeway.cloud.rpc.TransportSecurity;
-
 import com.jujin.freeway.cloud.discovery.ServiceDiscovery;
-import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
-import com.jujin.freeway.cloud.registration.HttpDeclaration;
-import com.jujin.freeway.ioc.MissingBindingException;
-import com.jujin.freeway.ioc.symbol.SymbolSpec;
+import com.jujin.freeway.cloud.event.internal.DiscoveryPeerSource;
+import com.jujin.freeway.cloud.member.HttpServiceDeclaration;
+import com.jujin.freeway.cloud.rpc.TransportSecurity;
 import com.jujin.freeway.commons.json.JsonCodec;
+import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.ioc.Container;
+import com.jujin.freeway.ioc.MissingBindingException;
 import com.jujin.freeway.ioc.RuntimeHook;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
+import com.jujin.freeway.ioc.symbol.SymbolSpec;
+
 import java.time.Duration;
 import java.util.List;
 import java.util.function.Function;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -96,7 +98,7 @@ final class MeshEventLifecycleHook implements RuntimeHook {
         // the same resolution, not a second derivation of it. This hook runs
         // after the HTTP server (see EventMeshModule), so host:port are the
         // ones this node actually serves on.
-        ServiceInstance self = HttpDeclaration.of(container);
+        ServiceInstance self = HttpServiceDeclaration.of(container);
         if (self == null) {
             throw new IllegalStateException(
                 "MeshEventBus needs the HTTP module: its mesh endpoint lives on "
@@ -256,7 +258,7 @@ final class MeshEventLifecycleHook implements RuntimeHook {
         if (tokenOverCleartext(scheme, token)) {
             LOG.warn("Event mesh token configured over cleartext {}:// — the token is only"
                 + " protected inside a service mesh or a trusted network; terminate TLS"
-                + " (freeway.cloud.registry.service-scheme=https for wss://) or remove the token",
+                + " (freeway.cloud.member.service-scheme=https for wss://) or remove the token",
                 scheme);
         }
     }

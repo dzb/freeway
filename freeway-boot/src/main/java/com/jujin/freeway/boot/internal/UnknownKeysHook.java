@@ -8,8 +8,10 @@ import com.jujin.freeway.ioc.symbol.KnownKeys;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -58,12 +60,15 @@ final class UnknownKeysHook implements RuntimeHook {
      * otherwise disable the check in silence.
      */
     static List<String> notices(Container container) {
+        rejectDuplicateSystemProperties();
         Set<String> universe = new HashSet<>(container.get(AppConfig.class).keys());
         // The system-properties tier is built by the container, not the
-        // config — read it here so a -D typo is caught too.
+        // config — read it here so a -D typo is caught too. The f2 spelling
+        // enters this universe in canonical form, never as a second key.
         for (String name : System.getProperties().stringPropertyNames()) {
-            if (name.startsWith(KnownKeys.ROOT_PREFIX)) {
-                universe.add(name);
+            String canonical = KnownKeys.canonicalize(name);
+            if (canonical.startsWith(KnownKeys.ROOT_PREFIX)) {
+                universe.add(canonical);
             }
         }
         return check(universe, container.extension(KnownKeys.class).all());
@@ -117,6 +122,24 @@ final class UnknownKeysHook implements RuntimeHook {
             // cannot be judged against, so silence (subset assembly).
         }
         return notices;
+    }
+
+    /**
+     * An alias and its canonical spelling in the same source are the same key.
+     * The  system-properties tier is enumerated here, so this is the one place
+     * that can report the collision before a component happens to read it.
+     */
+    private static void rejectDuplicateSystemProperties() {
+        Map<String, String> originals = new LinkedHashMap<>();
+        for (String name : System.getProperties().stringPropertyNames()) {
+            String canonical = KnownKeys.canonicalize(name);
+            String earlier = originals.putIfAbsent(canonical, name);
+            if (earlier != null) {
+                throw new IllegalArgumentException(
+                    "Duplicate config key '" + canonical + "': '"
+                        + earlier + "' and '" + name + "'");
+            }
+        }
     }
 
     /** Whether a prefix-only admission covers {@code key}. */

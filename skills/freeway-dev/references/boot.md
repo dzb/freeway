@@ -139,6 +139,17 @@ runtime.close();                                // stop the application
 
 ## Configuration Cascade
 
+Namespace ownership follows the reader: framework modules and adapters read
+`freeway.*`; application code reads an application prefix such as `order.*`.
+Do not put application business keys under `freeway.*` just to borrow its
+unknown-key detection, and do not treat `freeway.app.name` as a key namespace.
+See `docs/configuration.md#framework-vs-application-configuration-namespaces`.
+
+`f2.*` and `F2.*` are input aliases for `freeway.*`; `F2_*` / `f2_*` are their environment spellings.
+Alias and canonical spellings are the same key after normalization, and both
+spellings in one source are a duplicate-key error. Different source tiers keep
+normal precedence.
+
 Lowest to highest priority:
 
 | Precedence | Tier | Declared order |

@@ -1,28 +1,28 @@
 package com.jujin.freeway.cloud.rpc;
 
+import com.jujin.freeway.cloud.CloudHookIds;
 import com.jujin.freeway.cloud.CloudKeys;
 import com.jujin.freeway.cloud.annotation.Local;
-import com.jujin.freeway.cloud.discovery.LoadBalancerDefault;
-import com.jujin.freeway.ioc.OptionalBinding;
 import com.jujin.freeway.cloud.context.ContextCodec;
 import com.jujin.freeway.cloud.discovery.LoadBalancer;
+import com.jujin.freeway.cloud.discovery.LoadBalancerDefault;
 import com.jujin.freeway.cloud.discovery.ServiceDiscovery;
 import com.jujin.freeway.cloud.observe.Tracer;
 import com.jujin.freeway.cloud.resilience.CircuitBreaker;
 import com.jujin.freeway.cloud.resilience.RateLimiter;
 import com.jujin.freeway.cloud.resilience.RetryBudget;
 import com.jujin.freeway.cloud.resilience.Retryer;
-import com.jujin.freeway.commons.metrics.Metrics;
-import com.jujin.freeway.cloud.CloudHookIds;
 import com.jujin.freeway.commons.json.JsonCodec;
+import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.http.route.Route;
-import com.jujin.freeway.ioc.RuntimeHook;
 import com.jujin.freeway.ioc.Binder;
-import com.jujin.freeway.ioc.symbol.KnownKeys;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.ModuleEx;
+import com.jujin.freeway.ioc.OptionalBinding;
+import com.jujin.freeway.ioc.RuntimeHook;
 import com.jujin.freeway.ioc.annotation.Builtin;
 import com.jujin.freeway.ioc.annotation.Marker;
+import com.jujin.freeway.ioc.symbol.KnownKeys;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 import com.jujin.freeway.ioc.symbol.SymbolSpec;
 
@@ -30,7 +30,6 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.function.Function;
-
 
 /**
  * IoC wiring for remote invocation: {@link RpcHttpClient} →
@@ -177,7 +176,6 @@ public final class RpcModule implements ModuleEx {
             // Conditional: a pure RPC client has no server to precede.
             .beforeIfPresent(CloudHookIds.HTTP_SERVER);
     }
-
 
     /** Keys read by the RPC client module. */
     public static final class ConfigKeys {

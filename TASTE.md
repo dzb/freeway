@@ -38,7 +38,7 @@ below.
 - Cross-module dependencies point at public contracts. `internal` is not a
   shortcut across a boundary; an out-of-module consumer is evidence that a
   smaller public contract is missing.
-- One lifecycle per owner: registration in cloud, leases in the Fleet server,
+- One lifecycle per owner: service membership in cloud, leases in the Fleet server,
   protocol in the protocol module. Storage and transport are seams, not facts
   another module may reach through.
 - A module move/delete is complete only when root POM, consumers, tests, docs,
@@ -584,7 +584,7 @@ semantic channel and the two paths are not interchangeable.
 | `ScopedCache.computeIfAbsent` / `JsonUtils.toJson` / `JsonCodec.coerce` | side effects, serialization and type coercion each use an accurate verb |
 | `MeshEventBus` / `MeshEnvelope` / `MeshSubscription` | the mesh plane has its own vocabulary and does not mix names with the local EventBus |
 | `RpcRequest/RpcResponse/RpcException/RpcHttpClient` | within the RPC subdomain the package carries cloud and the class carries the role |
-| `RpcModule/RegistrationModule/StaticModule/...` | module types no longer repeat the package name |
+| `RpcModule/MemberModule/StaticModule/...` | module types no longer repeat the package name |
 | `ContextCodec` / `TraceCodec` / `AuthCodec` / `BaggageCodec` | encode/decode names the act; the old propagation vocabulary is not kept |
 | `ContextFilter` | inbound decode → merge → bind, not a broad "propagation filter" role |
 | `ScopeSession.wrap` / `ContextExecutor.wrap` | imperative wrapper verb, not the gerund `wrapping` |
@@ -657,7 +657,7 @@ core?" but "does every application need it?".
     core: commons / ioc / boot / http / db / flow / cloud
     ext:  fleet / fleet-server / consul / adapters / demo / benchmark
 
-Core keeps discovery contracts, static discovery, registration lifecycle and
+Core keeps discovery contracts, static discovery, service-membership lifecycle and
 the client-side load balancer. Fleet (client + server) is an optional control
 plane in ext. Ext is not only third-party adapters: it may host complete
 optional tools and applications — benchmark was the precedent, Fleet Server is
@@ -671,14 +671,14 @@ not a purity requirement.
 | Fixed endpoints / VIP | `StaticModule`; no write side |
 | Dynamic membership, self-hosted | Fleet in ext |
 | Existing Consul estate | Consul adapter in ext |
-| Registration/readiness tests | test-scope registry fixture |
+| Membership/readiness tests | test-scope registry fixture |
 
 No production in-process registry. `LocalModule` had no multi-replica role, so it
 was deleted rather than kept as a convenient default.
 
 ### 12.3 Lifecycle and storage belong to different owners
 
-`RegistrationModule` owns register/renew/readiness/drain for any
+`MemberModule` owns register/renew/readiness/drain for any
 `ServiceRegistry`; it knows no Fleet, Consul or H2. `LeaseStore` lives with the
 Fleet server: `H2LeaseStore` is the embedded single-node default,
 `MemLeaseStore` serves tests, and a PostgreSQL implementation is the HA path.
@@ -744,7 +744,7 @@ not finished.
 |---|---|
 | Fleet + server in ext; core is seven modules | optional product stays out of the framework |
 | Local deleted; test fixture added | test seam is not a production backend |
-| `RegistrationModule` backend-neutral | lifecycle owner independent of backend |
+| `MemberModule` backend-neutral | lifecycle owner independent of backend |
 | `LeaseStore` server-side; H2 default; PG later | storage belongs where its lifecycle lives |
 | `freeway-fleet-protocol` | shared contract is compiled, not imported from `internal` |
 | `/fleet`, `X-Fleet-*`, `freeway.fleet.*` | artifact, wire and config say one word |

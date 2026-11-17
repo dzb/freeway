@@ -5,6 +5,43 @@ All notable changes to Freeway will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [2.0.1] - 2026-11-17
+
+### Added
+
+- **Short `f2` / `F2` config-key alias**: `f2.*` and `F2.*` are normalized to
+  the canonical `freeway.*` before profile selection, source merging and
+  unknown-key checks; `F2_*` / `f2_*` are the environment spellings. Alias and
+  canonical keys in the same source are rejected as duplicates, while
+  different source tiers retain normal precedence.
+- **Config-driven static discovery** (`freeway-cloud`): `StaticModule` can be
+  placed without constructor arguments and reads
+  `freeway.cloud.discovery.static.services` as endpoint-only entries. Static
+  discovery still has no registry, heartbeat, readiness, eviction or hot reload.
+
+### Changed
+
+- **Service-membership naming** (`freeway-cloud`): the registration lifecycle
+  package is now `cloud.member`; its types are `MemberModule`, `MemberHook`,
+  `MemberState`, `MemberReadiness`, `NodeIdentity`, `HttpServiceDeclaration`
+  and `BackendGuardHook`. The local member identity/lifecycle keys moved from
+  `freeway.cloud.registry.*` to `freeway.cloud.member.*`, while
+  `freeway.cloud.registry.type` remains the registry-backend declaration. The
+  old member keys are removed without aliases.
+- **Cloud package shape** (`freeway-cloud`): event wire/transport helpers now
+  live in `cloud.event.internal`; RPC implementation machinery lives in
+  `cloud.rpc.internal`; the empty `cloud.discovery.internal` package is gone.
+  `cloud.http.HttpClients` remains the public shared outbound-client helper.
+  The public top-level and internal-package surfaces are pinned by
+  `api/cloud-surface.txt` and `api/internal-surface.txt`.
+- **Configuration and IoC internals have one owner**: `ConfigCascade.Sources`
+  owns the loaded source maps, `ConfigFilePlan.Reader` owns file parsing, and
+  `ServiceKey.normalize` owns service-id normalization. The duplicate helper
+  classes are removed; module-facing configuration and binding behavior is
+  unchanged.
+
 ## [2.0.0] - 2026-11-16
 
 ### Added
@@ -5062,7 +5099,8 @@ Behaviour changes (no call sites need changing, but worth knowing):
 - **freeway-db** — JDBC data access with ORM, connection pooling, transactions, and query builder with named parameters and collection expansion.
 - Extension adapters (robaho, undertow, jetty, hikari, kafka) available in [freeway-ext](https://github.com/dzb/freeway-ext).
 
-[Unreleased]: https://github.com/dzb/freeway/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/dzb/freeway/compare/v2.0.1...HEAD
+[2.0.1]: https://github.com/dzb/freeway/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/dzb/freeway/compare/v1.5.7...v2.0.0
 [1.5.1]: https://github.com/dzb/freeway/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/dzb/freeway/compare/v1.4.0...v1.5.0

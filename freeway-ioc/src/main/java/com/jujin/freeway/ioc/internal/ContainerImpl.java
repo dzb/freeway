@@ -11,20 +11,17 @@ import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.commons.metrics.NoopMetrics;
 import com.jujin.freeway.commons.scoped.ScopedCache;
 import com.jujin.freeway.ioc.Container;
-import com.jujin.freeway.ioc.event.EventBus;
 import com.jujin.freeway.ioc.LoggerSource;
 import com.jujin.freeway.ioc.MissingBindingException;
 import com.jujin.freeway.ioc.ModuleDeclaration;
-import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.RuntimeDescription;
 import com.jujin.freeway.ioc.ScopeBoundary;
 import com.jujin.freeway.ioc.annotation.Builtin;
 import com.jujin.freeway.ioc.annotation.Inject;
+import com.jujin.freeway.ioc.event.EventBus;
 import com.jujin.freeway.ioc.extension.Extension;
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.lang.annotation.Annotation;
 import java.util.Arrays;
@@ -34,6 +31,9 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Supplier;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** Default {@link Container} implementation: bindings, markers, extensions, scopes, and lifecycle. */
 public final class ContainerImpl implements Container {
@@ -346,7 +346,7 @@ public final class ContainerImpl implements Container {
                 "Service id must not be null for type " + type.getName()
             );
         }
-        BindingImpl<T> binding = bindingIndex.find(type, ServiceIds.normalize(id));
+        BindingImpl<T> binding = bindingIndex.find(type, ServiceKey.normalize(id));
         if (binding == null) {
             throw missingOrClosed(
                 "No service registered for type " + type.getName() + " and id " + id

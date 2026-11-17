@@ -1,7 +1,9 @@
 package com.jujin.freeway.cloud.rpc;
 
+import com.jujin.freeway.cloud.rpc.internal.RpcPaths;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.http.MediaTypes;
+
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;

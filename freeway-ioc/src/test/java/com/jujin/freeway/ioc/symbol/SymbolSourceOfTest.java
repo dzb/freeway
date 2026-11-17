@@ -28,7 +28,13 @@ class SymbolSourceOfTest {
 
     @AfterEach
     void clearProperties() {
-        for (String name : List.of(KEY, KEY + ".host", KEY + ".port")) {
+        for (String name : List.of(KEY, KEY + ".host", KEY + ".port",
+                "f2." + KEY.substring("freeway.".length()),
+                "f2." + KEY.substring("freeway.".length()) + ".host",
+                "f2." + KEY.substring("freeway.".length()) + ".port",
+                "F2." + KEY.substring("freeway.".length()),
+                "F2." + KEY.substring("freeway.".length()) + ".host",
+                "F2." + KEY.substring("freeway.".length()) + ".port")) {
             System.clearProperty(name);
         }
     }
@@ -44,6 +50,27 @@ class SymbolSourceOfTest {
 
         assertEquals("value", symbols.resolve(KEY));
         assertEquals("value", symbols.resolve(KEY, "fallback"));
+    }
+
+    @Test
+    void f2AliasResolvesThroughTheSystemPropertiesTier() {
+        String alias = "f2." + KEY.substring("freeway.".length());
+        System.setProperty(alias, "aliased");
+        SymbolSource symbols = standalone();
+
+        assertEquals("aliased", symbols.resolve(KEY));
+        assertEquals("aliased", symbols.resolve(alias));
+        assertEquals("aliased", symbols.resolve("F2." + KEY.substring("freeway.".length())));
+    }
+
+    @Test
+    void canonicalAndAliasSystemPropertiesInOneTierAreRejected() {
+        String alias = "f2." + KEY.substring("freeway.".length());
+        System.setProperty(KEY, "canonical");
+        System.setProperty(alias, "alias");
+
+        assertThrows(IllegalArgumentException.class,
+            () -> standalone().resolve(KEY));
     }
 
     @Test

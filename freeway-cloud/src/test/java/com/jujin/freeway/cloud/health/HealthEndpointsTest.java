@@ -1,31 +1,30 @@
 package com.jujin.freeway.cloud.health;
 
-import com.jujin.freeway.cloud.CloudModule;
-import com.jujin.freeway.cloud.discovery.TestDiscoveryModule;
-import com.jujin.freeway.cloud.registration.RegistrationModule;
-import com.jujin.freeway.cloud.health.CloudHealthContributor;
-import com.jujin.freeway.cloud.health.HealthModule;
-
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
+import com.jujin.freeway.cloud.CloudModule;
 import com.jujin.freeway.cloud.discovery.ServiceDiscovery;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.cloud.discovery.ServiceRegistry;
-import com.jujin.freeway.http.HttpModule;
+import com.jujin.freeway.cloud.discovery.TestDiscoveryModule;
+import com.jujin.freeway.cloud.member.MemberModule;
 import com.jujin.freeway.http.HealthResult;
+import com.jujin.freeway.http.HttpModule.ConfigKeys;
+import com.jujin.freeway.http.HttpModule;
+import com.jujin.freeway.http.HttpServer;
 import com.jujin.freeway.http.MediaTypes;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.ModuleEx;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
 
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.List;
-import com.jujin.freeway.http.HttpModule.ConfigKeys;
+
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -48,7 +47,7 @@ class HealthEndpointsTest {
 
     @Test
     void liveAndReadyAreOkByDefault() throws Exception {
-        try (AppRuntime app = FreewayApp.create(new HttpModule()).add(CloudModule.class).add(new RegistrationModule()).add(new TestDiscoveryModule()).start()) {
+        try (AppRuntime app = FreewayApp.create(new HttpModule()).add(CloudModule.class).add(new MemberModule()).add(new TestDiscoveryModule()).start()) {
             HttpResponse<String> live = get(app, "/health/live");
             assertEquals(200, live.statusCode());
             assertTrue(live.body().contains("\"ok\""));
@@ -57,8 +56,8 @@ class HealthEndpointsTest {
             assertEquals(200, ready.statusCode());
             assertTrue(ready.body().contains("\"ok\""));
             assertTrue(ready.body().contains("\"cloud\""));
-            assertTrue(ready.body().contains("registry"),
-                "the built-in registry contributor must be aggregated");
+            assertTrue(ready.body().contains("member"),
+                "the built-in member contributor must be aggregated");
             assertTrue(ready.body().contains("registered"),
                 "readiness reports the registration state, not a constant: " + ready.body());
         }
@@ -66,7 +65,7 @@ class HealthEndpointsTest {
 
     @Test
     void readyFailsWhenAContributorIsUnhealthy() throws Exception {
-        try (AppRuntime app = FreewayApp.create(new FailingContributorModule(), new HttpModule()).add(CloudModule.class).add(new RegistrationModule()).add(new TestDiscoveryModule()).start()) {
+        try (AppRuntime app = FreewayApp.create(new FailingContributorModule(), new HttpModule()).add(CloudModule.class).add(new MemberModule()).add(new TestDiscoveryModule()).start()) {
             HttpResponse<String> ready = get(app, "/health/ready");
             assertEquals(503, ready.statusCode());
             assertTrue(ready.body().contains("unhealthy"));
@@ -75,30 +74,30 @@ class HealthEndpointsTest {
     }
 
     @Test
-    void anExternalRegistryKeepsTheRegistryReadinessCheck() throws Exception {
+    void anExternalRegistryKeepsTheMemberReadinessCheck() throws Exception {
         // The state this contributor reports — registered / draining / heartbeat
-        // failing — belongs to Renewal and is updated by the
-        // registration hook whichever registry is bound. An external backend must not make
+        // failing — belongs to MemberState and is updated by the
+        // membership hook whichever registry is bound. An external backend must not make
         // /health/ready forget that it is deregistered or draining.
         try (AppRuntime app = FreewayApp.create(new BareExternalBackendModule(), new HttpModule())
-                .add(CloudModule.class).add(new RegistrationModule()).add(new TestDiscoveryModule()).start()) {
+                .add(CloudModule.class).add(new MemberModule()).add(new TestDiscoveryModule()).start()) {
             HttpResponse<String> ready = get(app, "/health/ready");
             assertEquals(200, ready.statusCode());
-            assertTrue(ready.body().contains("\"registry\""),
-                "the registry readiness check must survive an external registry binding: "
+            assertTrue(ready.body().contains("\"member\""),
+                "the member readiness check must survive an external registry binding: "
                     + ready.body());
             assertTrue(ready.body().contains("registered"), ready.body());
         }
     }
 
     @Test
-    void anExternalContributorAddsToTheRegistryCheckRatherThanReplacingIt() throws Exception {
-        try (AppRuntime app = FreewayApp.create(new ExternalBackendModule(), new HttpModule()).add(CloudModule.class).add(new RegistrationModule()).add(new TestDiscoveryModule()).start()) {
+    void anExternalContributorAddsToTheMemberCheckRatherThanReplacingIt() throws Exception {
+        try (AppRuntime app = FreewayApp.create(new ExternalBackendModule(), new HttpModule()).add(CloudModule.class).add(new MemberModule()).add(new TestDiscoveryModule()).start()) {
             HttpResponse<String> ready = get(app, "/health/ready");
             assertEquals(200, ready.statusCode());
             assertTrue(ready.body().contains("external-registry"),
                 "the external adapter's own readiness contributor must be present");
-            assertTrue(ready.body().contains("\"registry\""),
+            assertTrue(ready.body().contains("\"member\""),
                 "core keeps reporting registration/drain state alongside it");
         }
     }
@@ -111,7 +110,7 @@ class HealthEndpointsTest {
         // body literal is a silent downgrade — and K8s aside, any client that
         // parses a probe as JSON gets a different contract from the readiness
         // probe sitting next to it.
-        try (AppRuntime app = FreewayApp.create(new HttpModule()).add(CloudModule.class).add(new RegistrationModule()).add(new TestDiscoveryModule()).start()) {
+        try (AppRuntime app = FreewayApp.create(new HttpModule()).add(CloudModule.class).add(new MemberModule()).add(new TestDiscoveryModule()).start()) {
             for (String probe : List.of("/health/live", "/health/ready", "/healthz")) {
                 HttpResponse<String> response = get(app, probe);
                 String contentType = response.headers().firstValue("content-type").orElse("<none>");

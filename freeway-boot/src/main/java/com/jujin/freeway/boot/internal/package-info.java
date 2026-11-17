@@ -6,7 +6,7 @@
  * {@code FreewayApp} calls the static {@code ConfigCascade.load} and
  * constructs {@code AppRuntimeDefault} and {@code BootModule};
  * {@code AppConfigDefault.of(...)} is the custom-config building block;
- * {@code ConfigSources} is public because a cross-module test
+ * {@code ConfigCascade.Sources} is public because a cross-module test
  * ({@code CloudSymbolPrecedenceTest}) assembles tiered sources directly to pin
  * the cascade's precedence — the one member here whose visibility serves test
  * assembly rather than container assembly). Per

@@ -1,5 +1,7 @@
 package com.jujin.freeway.commons.util;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 
 /**
@@ -20,14 +22,21 @@ import java.util.Locale;
  *
  * <p><b>Bootstrap keys.</b> They cannot come from the cascade they configure,
  * so they have exactly two channels: the system property {@code -Dkey}, then
- * the environment variable {@code name(key)}. The {@code FREEWAY_} prefix is
- * fixed for them — honoring a custom prefix would require reading
- * {@code freeway.env.prefix} through the very mapping that prefix configures.
+ * the environment variable {@code name(key)}. The canonical environment prefix
+ * is fixed to {@code FREEWAY_}, with the short {@code F2_} / {@code f2_} aliases; honoring a
+ * custom prefix would require reading {@code freeway.env.prefix} through the
+ * very mapping that prefix configures.
  */
 public final class EnvKeys {
 
     /** The default namespace prefix for both spellings of a key. */
     public static final String DEFAULT_PREFIX = "FREEWAY_";
+
+    /** The upper-case environment spelling of the framework alias. */
+    public static final String ALIAS_PREFIX = "F2_";
+
+    /** The lower-case environment spelling of the same alias. */
+    public static final String LOWER_ALIAS_PREFIX = "f2_";
 
     /** The bootstrap key selecting the env-mapping prefix. */
     public static final String PREFIX_KEY = "freeway.env.prefix";
@@ -68,13 +77,22 @@ public final class EnvKeys {
 
     /**
      * Inverse for the boot cascade: a prefixed variable becomes the config key
-     * it spells. The default prefix adds the {@code freeway.} namespace; a
-     * custom prefix passes the remainder through verbatim.
+     * it spells. {@code F2_*} / {@code f2_*} are recognized as aliases for {@code f2.*}; the
+     * default prefix adds the {@code freeway.} namespace, while a custom prefix
+     * passes the remainder through verbatim.
      *
      * @return {@code null} when the name is outside {@code prefix}
      */
     public static String fromPrefixedName(String prefix, String envName) {
-        if (prefix == null || envName == null || !envName.startsWith(prefix)) {
+        if (envName == null) {
+            return null;
+        }
+        if (isAliasEnvName(envName)) {
+            String key = envName.substring(ALIAS_PREFIX.length())
+                .toLowerCase(Locale.ROOT).replace('_', '.');
+            return key.isEmpty() ? null : "f2." + key;
+        }
+        if (prefix == null || !envName.startsWith(prefix)) {
             return null;
         }
         String base = envName.substring(prefix.length());
@@ -87,15 +105,21 @@ public final class EnvKeys {
 
     /**
      * Inverse for the logging bootstrap: with the default prefix a
-     * {@code FREEWAY_*} name maps into {@code freeway.*}, while any other name
-     * is a logger name and maps by lowercasing dots; with a custom prefix the
-     * name must carry that prefix first. Mirrors {@link #name}.
+     * {@code FREEWAY_*} name maps into {@code freeway.*}, {@code F2_*} / {@code f2_*} are its
+     * short aliases, while any other name is a logger name and maps by
+     * lowercasing dots; with a custom prefix the name must carry that prefix
+     * first. Mirrors {@link #name}.
      *
      * @return {@code null} when a custom-prefixed name does not start with it
      */
     public static String fromName(String envName) {
         if (envName == null || envName.isEmpty()) {
             return null;
+        }
+        if (isAliasEnvName(envName)) {
+            String key = envName.substring(ALIAS_PREFIX.length())
+                .toLowerCase(Locale.ROOT).replace('_', '.');
+            return key.isEmpty() ? null : "freeway." + key;
         }
         String prefix = prefix();
         if (!DEFAULT_PREFIX.equals(prefix)) {
@@ -118,17 +142,89 @@ public final class EnvKeys {
     }
 
     /**
-     * The declared value of a bootstrap key: the system property first, then
-     * the {@code FREEWAY_}-prefixed environment variable. Blank counts as
-     * unset and the value is stripped; {@code null} when neither channel set
-     * it.
+     * The declared value of a bootstrap key: the canonical or {@code f2}
+     * system property first, then the {@code FREEWAY_}-, {@code F2_}-, or
+     * {@code f2_}-prefixed environment variable. Blank counts as unset and the value is
+     * stripped; a canonical/alias collision in one channel fails.
      */
     public static String bootstrap(String key) {
-        String property = System.getProperty(key);
-        if (property != null && !property.isBlank()) {
-            return property.strip();
+        String property = firstSystemProperty(key);
+        if (property != null) {
+            return property;
         }
-        String environment = System.getenv(name(key));
-        return environment == null || environment.isBlank() ? null : environment.strip();
+        return firstEnvironmentVariable(key);
+    }
+
+    private static String firstSystemProperty(String key) {
+        String selected = null;
+        String selectedName = null;
+        for (String name : propertyNames(key)) {
+            String value = System.getProperty(name);
+            if (value == null || value.isBlank()) {
+                continue;
+            }
+            if (selected != null) {
+                throw duplicateBootstrap(key, selectedName, name);
+            }
+            selected = value.strip();
+            selectedName = name;
+        }
+        return selected;
+    }
+
+    private static String firstEnvironmentVariable(String key) {
+        String selected = null;
+        String selectedName = null;
+        for (String name : environmentNames(key)) {
+            String value = System.getenv(name);
+            if (value == null || value.isBlank()) {
+                continue;
+            }
+            if (selected != null) {
+                throw duplicateBootstrap(key, selectedName, name);
+            }
+            selected = value.strip();
+            selectedName = name;
+        }
+        return selected;
+    }
+
+    private static List<String> propertyNames(String key) {
+        List<String> names = new ArrayList<>();
+        names.add(key);
+        String suffix = frameworkSuffix(key);
+        if (suffix != null) {
+            names.add("f2." + suffix);
+            names.add("F2." + suffix);
+        }
+        return names;
+    }
+
+    private static List<String> environmentNames(String key) {
+        List<String> names = new ArrayList<>();
+        names.add(name(key));
+        String suffix = frameworkSuffix(key);
+        if (suffix != null) {
+            String upper = suffix.toUpperCase(Locale.ROOT).replace('.', '_');
+            names.add(ALIAS_PREFIX + upper);
+            names.add(LOWER_ALIAS_PREFIX + upper);
+        }
+        return names;
+    }
+
+    private static String frameworkSuffix(String key) {
+        return key != null && key.startsWith("freeway.")
+            ? key.substring("freeway.".length()) : null;
+    }
+
+    private static boolean isAliasEnvName(String envName) {
+        return envName.startsWith(ALIAS_PREFIX) || envName.startsWith(LOWER_ALIAS_PREFIX);
+    }
+
+    private static IllegalArgumentException duplicateBootstrap(
+        String key, String first, String second
+    ) {
+        return new IllegalArgumentException(
+            "Duplicate config key '" + key + "': '" + first + "' and '" + second + "'");
     }
 }

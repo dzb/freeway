@@ -37,6 +37,48 @@ public record KnownKeys(Set<String> prefixes, Set<String> keys) {
     /** The framework namespace: every key the cascade owns starts with this. */
     public static final String ROOT_PREFIX = "freeway.";
 
+    /** The short input alias for the framework namespace; never a second namespace. */
+    public static final String ALIAS_PREFIX = "f2.";
+
+    /** The upper-case spelling of the same input alias. */
+    public static final String UPPER_ALIAS_PREFIX = "F2.";
+
+    /**
+     * Canonicalizes an input key spelling. {@code f2.*} and {@code F2.*} are
+     * aliases for {@code freeway.*}: after this call only the canonical
+     * namespace exists. Non-framework application keys are returned unchanged.
+     */
+    public static String canonicalize(String key) {
+        if (key != null && key.regionMatches(true, 0, ALIAS_PREFIX, 0, ALIAS_PREFIX.length())) {
+            return ROOT_PREFIX + key.substring(ALIAS_PREFIX.length());
+        }
+        return key;
+    }
+
+    /** The lower-case input alias for a canonical framework key, or {@code key} unchanged. */
+    public static String alias(String key) {
+        if (key != null && key.startsWith(ROOT_PREFIX)) {
+            return ALIAS_PREFIX + key.substring(ROOT_PREFIX.length());
+        }
+        return key;
+    }
+
+    /** The upper-case input alias for a canonical framework key, or {@code key} unchanged. */
+    public static String upperAlias(String key) {
+        if (key != null && key.startsWith(ROOT_PREFIX)) {
+            return UPPER_ALIAS_PREFIX + key.substring(ROOT_PREFIX.length());
+        }
+        return key;
+    }
+
+    /** Both accepted input aliases for a canonical framework key. */
+    public static List<String> aliases(String key) {
+        if (key == null || !key.startsWith(ROOT_PREFIX)) {
+            return List.of();
+        }
+        return List.of(alias(key), upperAlias(key));
+    }
+
     /** Suggestion rules, pinned by test. */
     private static final int MAX_DISTANCE = 2;
     private static final int MAX_SUGGESTIONS = 3;

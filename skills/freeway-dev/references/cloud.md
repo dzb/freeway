@@ -18,93 +18,81 @@ which modules are installed, never by classpath presence (there is no scanning).
 
 | Backend | Place | Infrastructure |
 |---|---|---|
-| In-process (default) | `CloudModule` or `DiscoveryModule` | none — single instance / static topology |
-| Freeway-native fleet | `CloudModule` + `FleetRegistryModule` | 1–N deployable registry nodes |
-| Consul | `CloudModule` + ext `ConsulModule` | Consul cluster |
+| Static | `CloudModule` + `StaticModule` | none — fixed endpoints or platform VIP |
+| Freeway-native fleet | `CloudModule` + `MemberModule` + `FleetModule` | 1–N deployable registry nodes |
+| Consul | `CloudModule` + `MemberModule` + ext `ConsulModule` | Consul cluster |
 
 Switching = swapping the module and its keys; application code (`@Inject
 ServiceDiscovery`, `RemoteProxyFactory`, `RpcExport`) never changes.
 
-### The registry node (deployable)
+For static discovery, either pass a typed map with `StaticModule.of(...)` or use
+configuration:
 
-A normal freeway application:
+```properties
+freeway.cloud.discovery.static.services=catalog=http://catalog.default.svc.cluster.local:8080,orders=https://orders.internal:443
+```
+
+`new StaticModule()` reads that key once at startup. Each entry is
+`serviceId=scheme://host:port[/basePath]`; repeat a service id for multiple
+instances. Explicit ports are required; userinfo, query and fragment are
+rejected. The instance id is the normalized endpoint URI. There is no
+registration, heartbeat, readiness, eviction or hot reload. The configuration
+form carries no weight/zone/canary metadata; use `StaticModule.of(...)` for those.
+
+### Fleet client and server (freeway-ext)
+
+`freeway-cloud` owns the backend-neutral membership lifecycle and contracts.
+The Fleet transport lives in **freeway-ext**: `FleetModule` is the client
+discovery/registrar adapter, and `FleetServerModule` is the deployable server.
+
+Application side:
 
 ```java
-FreewayApp.run(Launch.of(args), new HttpModule(),
-    new DiscoveryModule(), new RegistryServerModule());
+FreewayApp.run(
+    new HttpModule(),
+    new CloudModule(),
+    new MemberModule(),   // register, renew, readiness, drain
+    new FleetModule());   // Fleet client + client-side load balancer
+```
+
+Server side:
+
+```java
+FreewayApp.run(Launch.of(args), new HttpModule(), new FleetServerModule());
 ```
 
 ```properties
 freeway.http.server.port=8060
-freeway.cloud.registry.token=s3cret      # X-Registry-Token required on reads and writes
+freeway.fleet.token=s3cret
 ```
 
-Protocol and credentials (both are versioned/rotatable on a live node):
+The lifecycle is shared: `MemberHook` registers on start, renews, re-registers
+after a lost lease and deregisters on stop; `MemberReadiness` reports the state
+observed by the core. The Fleet adapter supplies transport only.
+
+Fleet client keys:
 
 ```properties
-freeway.cloud.registry.token=s3cret            # current shared secret
-freeway.cloud.registry.token-previous=old      # accepted during rotation, then cleared
+freeway.fleet.nodes=http://n1:8060,http://n2:8060   # required when FleetModule is active
+freeway.fleet.token=s3cret
+freeway.fleet.timeout-ms=3000
+freeway.fleet.cache-ttl=5s
 ```
 
-Rotation is online: move the current value into `token-previous`, put the new
-value in `token` (both are accepted while both are set), roll the writers over,
-then clear `token-previous`. The node re-reads the token per request, so neither
-step needs a restart; the previous value is accepted by a node only and a
-client never sends it.
+The server accepts `freeway.fleet.token-previous` during online token rotation
+and reads its store from `freeway.fleet.db.*`. The protocol and token header are
+owned by `FleetProtocol` / `FleetKeys`; see the ext Fleet documentation for
+deployment details.
 
-- wire protocol: clients send `X-Registry-Proto: 1`; an unsupported value is
-  answered `426` (with the supported version), never a 404. A node always
-  accepts older protocols, so nodes upgrade before clients.
-- `GET /registry` is readable without credentials: it announces the protocol,
-  the six routes and the auth posture — a mismatch is diagnosable before auth.
-- `POST …/instances/{id}/ready` (body `{"ready":true|false}` or `?ready=`)
-  flips readiness immediately; the same bit also rides the 10s heartbeat, so an
-  older node is a delay, not a divergence.
+**Readiness.** A warming application registers as
+`ServiceHealth.starting()` — present in the registry, absent from discovery
+results — and flips to ready only when every `CloudHealthContributor` passes.
+No contributors means ready on registration. `ReadinessAwareRegistry` is the
+optional backend capability; this is not a boolean flag on every registry.
 
-Run 2+ nodes for availability. Semantics by design: **no persistence** (the
-table is rebuildable — a restarted node is repopulated by the next heartbeat of
-every instance, which re-asserts itself on a 404), **no consensus replication**
-(clients fan writes out to all nodes and union reads — any node alive keeps the
-fleet serving; nodes are independent peers).
-
-### The fleet client (`FleetRegistryModule`)
-
-```properties
-freeway.cloud.registry.nodes=http://n1:8060,http://n2:8060   # required
-freeway.cloud.registry.token=s3cret                          # matches the nodes
-freeway.cloud.registry.timeout-ms=3000
-```
-
-- register: fan-out to every node; one node failing is logged and the rest keep serving — startup fails only when every node refuses
-- renew (every 10s): fan-out; a 404 re-asserts the instance this client
-  registered (cached, never guessed) on that node
-- instances: union across alive nodes by instance id; all nodes down throws
-- unregister: best-effort fan-out during shutdown (after the drain window)
-
-The lifecycle itself (register on start, the readiness gate, heartbeats,
-lost-lease self-heal, deregister, startup compensation) is driven by the core
-`RegistryLifecycleHook` — adapters implement transport only, and application code
-contains no registration logic.
-
-**Readiness (the instance is not discoverable until it can serve).** An
-application that contributes `CloudHealthContributor`s registers as
-`ServiceHealth.starting()` - present in the registry, absent from discovery
-results - and a gate flips it to ready only when **every** check passes (retried
-every second, off the startup thread). No contributors ⇒ ready as registered —
-the old behaviour, deliberately. `ReadinessAwareRegistry.markReady` is the seam; a registry opts into
-readiness by implementing the capability interface, not by flipping a boolean.
-
-**Caching is the discovery implementation's own policy.** A network-backed
-implementation wraps itself with `CachingServiceDiscovery.around(delegate, ttl,
-metrics)` — freshness, single-flight refresh, and serving the last answer while
-the backend is failing (grace = max(10×ttl, 30s)). The in-process store does
-not wrap (a map read), and a pushed backend (K8s informer) answers `0`.
-
-```properties
-freeway.cloud.registry.cache-ttl=5s                  # default; 0 disables caching
-freeway.cloud.registry.cache-ttl.checkout=1s         # per service, optional
-freeway.cloud.registry.cache-ttl.legacy=0            # no cache for this service
-```
+**Caching** is the discovery adapter's own policy. A network-backed adapter may
+wrap itself with `CachingDiscovery.around(delegate, ttlPolicy, metrics)`; static and
+pushed discovery do not need that wrapper.
 
 ## Remote Invocation
 
@@ -222,7 +210,7 @@ restart.
   token, re-read per request so rotation needs no restart) — changing any other
   key needs a restart
 - shutdown order: registry hook first (draining → deregister → drain window
-  `freeway.cloud.registry.shutdown-drain`, default `auto` answered by the
+  `freeway.cloud.member.shutdown-drain`, default `auto` answered by the
   backend), then the HTTP server stops accepting; in-flight outbound calls get
   `freeway.cloud.rpc.shutdown-grace` (5s); mesh peers receive `1001 going away`
 - `freeway.cloud.*.type` declares intent, never selects an implementation — the

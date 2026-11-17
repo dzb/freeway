@@ -1,12 +1,13 @@
 package com.jujin.freeway.cloud.secret;
 
-import com.jujin.freeway.cloud.CloudModule;
-
 import com.jujin.freeway.boot.AppConfig;
-import com.jujin.freeway.boot.internal.AppConfigDefault;
-import com.jujin.freeway.boot.internal.ConfigSources;
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
+import com.jujin.freeway.boot.internal.AppConfigDefault;
+import com.jujin.freeway.boot.internal.ConfigCascade;
+import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
+import com.jujin.freeway.cloud.CloudModule;
+import com.jujin.freeway.http.HttpModule;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 
 import java.nio.file.Files;
@@ -17,8 +18,6 @@ import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
-import com.jujin.freeway.http.HttpModule;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -91,7 +90,7 @@ class CloudSymbolPrecedenceTest {
         // The custom config replaces the default cascade, so the ephemeral
         // HTTP port has to ride the file tier instead of a system property.
         AppConfig config = new AppConfigDefault(
-            new ConfigSources(
+            new ConfigCascade.Sources(
                 cli, env, Map.of(KEY, "from-file", HttpModule.ConfigKeys.SERVER_PORT, "0"),
                 List.of()),
             List.of());

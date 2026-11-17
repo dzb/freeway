@@ -3,19 +3,19 @@ package com.jujin.freeway.boot.internal;
 import com.jujin.freeway.boot.AppConfig;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.coercion.CoercerDefault;
-import com.jujin.freeway.ioc.symbol.SymbolSpec;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Freeway;
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
+import com.jujin.freeway.ioc.symbol.SymbolSpec;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.LinkedHashMap;
-import java.util.Set;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -113,7 +113,7 @@ class AppConfigDefaultTest {
         assertTieredSources(AppConfigDefault.of(Map.of("k", "static"), List.of()));
         // Tiered form: cli/env sources plus a files baseline.
         assertTieredSources(new AppConfigDefault(
-            new ConfigSources(
+            new ConfigCascade.Sources(
                 Map.of("k", "cli"), Map.of("k", "env"), Map.of("k", "from-file"),
                 List.of()),
             List.of()));
@@ -137,7 +137,7 @@ class AppConfigDefaultTest {
         // The declared universe for the unknown-key check: names from every tier the chain answers
         // from. Losing one tier here silently weakens the check, so all three are pinned.
         AppConfigDefault config = new AppConfigDefault(
-            new ConfigSources(
+            new ConfigCascade.Sources(
                 Map.of("freeway.cli.key", "1"), Map.of("freeway.env.key", "2"),
                 Map.of("freeway.file.key", "3"),
                 List.of()),
@@ -279,7 +279,7 @@ class AppConfigDefaultTest {
         // externalize config next to a deployed jar.
         Path file = dir.resolve("late.properties");
         AppConfigDefault config = new AppConfigDefault(
-            new ConfigSources(Map.of(), Map.of(), Map.of("k", "v"), List.of()),
+            new ConfigCascade.Sources(Map.of(), Map.of(), Map.of("k", "v"), List.of()),
             List.of(file));
         try {
             assertNull(value(config, HOT_KEY));
@@ -296,7 +296,7 @@ class AppConfigDefaultTest {
         // The runtime hook closes the config, and a failed startup closes it
         // too — a second close must not throw or corrupt the file tier.
         AppConfigDefault config = new AppConfigDefault(
-            new ConfigSources(Map.of(), Map.of(), Map.of("k", "v"), List.of()),
+            new ConfigCascade.Sources(Map.of(), Map.of(), Map.of("k", "v"), List.of()),
             List.of(dir.resolve("missing.properties")));
         config.close();
         config.close();

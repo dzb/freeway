@@ -1,24 +1,26 @@
 package com.jujin.freeway.boot.internal;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
-import java.util.Set;
-import org.junit.jupiter.api.Assumptions;
+import com.jujin.freeway.ioc.symbol.SymbolProvider;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.logging.Handler;
 import java.util.logging.Level;
 import java.util.logging.LogRecord;
 import java.util.logging.Logger;
+
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * The override-file tier: later files win, and a key two of them declare is
@@ -37,7 +39,7 @@ class OverrideFileTierTest {
 
     private static AppConfigDefault of(List<Path> overrideFiles) {
         return new AppConfigDefault(
-            new ConfigSources(Map.of(), Map.of(), Map.of(), List.of()),
+            new ConfigCascade.Sources(Map.of(), Map.of(), Map.of(), List.of()),
             overrideFiles);
     }
 
@@ -95,7 +97,7 @@ class OverrideFileTierTest {
         // This class owns the override tier only; the baseline is a channel
         // logging reads, and its class-load-only keys are named by the loader.
         AppConfigDefault config = new AppConfigDefault(
-            new ConfigSources(Map.of(), Map.of(),
+            new ConfigCascade.Sources(Map.of(), Map.of(),
                 Map.of("freeway.log.level", "DEBUG"), List.of()),
             List.of());
         try {
@@ -123,7 +125,7 @@ class OverrideFileTierTest {
         Path extra = Files.writeString(dir.resolve("extra.properties"), "freeway.db.url=jdbc:override\n");
         List<String> warnings = captureWarnings(() -> {
             AppConfigDefault config = new AppConfigDefault(
-                new ConfigSources(Map.of(), Map.of(),
+                new ConfigCascade.Sources(Map.of(), Map.of(),
                     Map.of("freeway.db.url", "jdbc:baseline"), List.of()),
                 List.of(extra));
             try {
@@ -186,7 +188,7 @@ class OverrideFileTierTest {
             dir.resolve("application-dev.properties"),
             "freeway.profile=prod\napp.name=demo\n");
         AppConfigDefault config = new AppConfigDefault(
-            new ConfigSources(Map.of(), Map.of(), Map.of(), List.of("dev")),
+            new ConfigCascade.Sources(Map.of(), Map.of(), Map.of(), List.of("dev")),
             new ConfigFilePlan(List.of(
                 new ConfigFilePlan.File(variant, ConfigFilePlan.Role.PROFILE_VARIANT))));
         try {
@@ -232,7 +234,7 @@ class OverrideFileTierTest {
         Path missing = dir.resolve("declared-but-absent.properties");
         List<String> warnings = captureWarnings(() -> {
             AppConfigDefault config = new AppConfigDefault(
-                new ConfigSources(Map.of(), Map.of(), Map.of(), List.of()),
+                new ConfigCascade.Sources(Map.of(), Map.of(), Map.of(), List.of()),
                 new ConfigFilePlan(List.of(
                     new ConfigFilePlan.File(missing, ConfigFilePlan.Role.DECLARED))));
             config.close();

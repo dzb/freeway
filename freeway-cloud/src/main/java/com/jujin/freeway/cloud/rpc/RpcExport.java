@@ -1,5 +1,7 @@
 package com.jujin.freeway.cloud.rpc;
 
+import com.jujin.freeway.cloud.rpc.internal.RpcPaths;
+
 import java.util.Objects;
 
 /**

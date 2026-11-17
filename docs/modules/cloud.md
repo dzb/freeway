@@ -11,8 +11,8 @@ and no retries; "having neighbors" is expressed by the composition root (which m
 ## Modules and Composition
 
 `CloudModule` is the cloud capability bundle: it declares 7 standard modules with `@SubModule` — context propagation, secrets,
-remote invocation, observability, resilience, health, and object storage. Discovery and registration are deliberately separate:
-for fixed endpoints place `StaticModule`; for dynamic membership place `RegistrationModule` plus `FleetModule` or an ext adapter. Placing the bundle installs these seven;
+remote invocation, observability, resilience, health, and object storage. Discovery and service membership are deliberately separate:
+for fixed endpoints place `StaticModule`; for dynamic membership place `MemberModule` plus `FleetModule` or an ext adapter. Placing the bundle installs these seven;
 each submodule is also an ordinary module, so **for a subset, place the subset directly** — there is no exclusion list:
 
 ```java
@@ -32,7 +32,7 @@ These modules are reached through exactly three layers:
 
 | Layer | What the application writes | What it covers |
 |------|-----------------------------|--------------|
-| **Environment layer** | Nothing for the bundle; registration is explicit | With `RegistrationModule`, automatic instance registration (heartbeat renewal, deregistration on shutdown); `GET /health/live`, `/health/ready`, `/metrics`; every outbound call carries metrics/tracing/resilience/context propagation |
+| **Environment layer** | Nothing for the bundle; service membership is explicit | With `MemberModule`, automatic instance registration (heartbeat renewal, deregistration on shutdown); `GET /health/live`, `/health/ready`, `/metrics`; every outbound call carries metrics/tracing/resilience/context propagation |
 | **Declaration layer** | Data contributions: `binder.bind(Handlers.class)` + `contribute(RpcExport.class)`, `contribute(MeshSubscription.class)` (mesh), `contribute(CloudHealthContributor.class)` | What this service provides to others |
 | **Consumption layer** | `@Inject ServiceDiscovery` / `ObjectStorage` / `SecretStore` / `Metrics` / `Tracer`, plus `binder.bind(Api.class).to(...)` | What this service uses from others |
 
@@ -44,8 +44,8 @@ with zero changes to business code:
 | Backend | Placement | Infrastructure |
 |---|---|---|
 | Static | `CloudModule` + `StaticModule` | None — fixed endpoint list or VIP, no registration; no write side |
-| Fleet | `CloudModule` + `RegistrationModule` + ext `FleetModule` | Self-hosted Fleet server nodes |
-| Consul | `CloudModule` + `RegistrationModule` + ext `ConsulModule` | Consul cluster |
+| Fleet | `CloudModule` + `MemberModule` + ext `FleetModule` | Self-hosted Fleet server nodes |
+| Consul | `CloudModule` + `MemberModule` + ext `ConsulModule` | Consul cluster |
 
 There is no public in-process registry module. Tests use a test-scope registry
 fixture (`TestDiscoveryModule` in `freeway-cloud`'s test sources); it is not
@@ -58,11 +58,101 @@ endpoint is the VIP form, where an external load balancer owns selection. It
 never registers or renews, so it is the right mode for fixed endpoints and the
 wrong mode for membership that changes without a deployment.
 
-Fleet and Consul are optional adapters in **freeway-ext**. Registration
-lifecycle remains here (`RegistrationModule`); the backend module supplies
+### Config-driven static discovery
+
+Use `StaticModule.of(...)` when the map is already a typed value in the
+composition root. Use `new StaticModule()` when the topology comes from the
+configuration cascade:
+
+```java
+FreewayApp.run(new HttpModule(), new RpcModule(), new StaticModule());
+```
+
+The required key is:
+
+```properties
+freeway.cloud.discovery.static.services=catalog=http://catalog.default.svc.cluster.local:8080,orders=https://orders.internal:443
+```
+
+Each comma-separated entry has the form:
+
+```text
+serviceId=scheme://host:port[/basePath]
+```
+
+Single VIP:
+
+```properties
+freeway.cloud.discovery.static.services=orders=https://orders.internal:443
+```
+
+Several instances of one service: repeat the service ID. The client-side
+`LoadBalancerDefault` receives both entries.
+
+```properties
+freeway.cloud.discovery.static.services=orders=https://orders-a.internal:443,orders=https://orders-b.internal:443
+```
+
+The same value can be supplied through JSON, environment variables or CLI:
+
+```json
+{
+  "freeway": {
+    "cloud": {
+      "discovery": {
+        "static": {
+          "services": [
+            "catalog=http://catalog.default.svc.cluster.local:8080",
+            "orders=https://orders.internal:443"
+          ]
+        }
+      }
+    }
+  }
+}
+```
+
+```bash
+FREEWAY_CLOUD_DISCOVERY_STATIC_SERVICES='catalog=http://catalog.default.svc.cluster.local:8080,orders=https://orders.internal:443'
+```
+
+```bash
+--freeway.cloud.discovery.static.services=catalog=http://catalog.default.svc.cluster.local:8080,orders=https://orders.internal:443
+```
+
+Format and validation rules:
+
+- `serviceId` must be non-blank and must not contain `,` or `=`
+- URI must include `scheme`, `host` and an explicit `port`
+- optional base path is supported, for example `http://catalog:8080/api`
+- userinfo, query and fragment are rejected
+- repeated service IDs add instances in input order
+- the instance ID is the normalized endpoint URI
+- duplicate endpoint entries for one service fail startup
+- an entry with an invalid URI fails startup and names the key and entry number
+
+`new StaticModule()` requires a non-empty `freeway.cloud.discovery.static.services`
+value. If an intentionally empty static map is needed, use the explicit
+programmatic form:
+
+```java
+StaticModule.of(Map.of())
+```
+
+The configuration is read once at startup. It has no registration, heartbeat,
+readiness propagation, eviction or hot reload. Configuration-driven entries do
+not carry weight/zone/canary metadata in this version; use
+`StaticModule.of(...)` when those metadata values are required.
+
+`freeway.cloud.discovery.type=static` is optional declaration only. Installing
+`StaticModule` is what selects static discovery; the type key never selects an
+implementation automatically.
+
+Fleet and Consul are optional adapters in **freeway-ext**. The service-membership
+lifecycle remains here (`MemberModule`); the backend module supplies
 `ServiceRegistry` / `ServiceDiscovery`.
 
-Registration behavior is lifecycle-level: declared endpoints are registered,
+Membership behavior is lifecycle-level: declared endpoints are registered,
 renewed, marked ready, and deregistered on shutdown. Backend-specific behavior
 (Fleet fan-out/protocol/cache, Consul sessions) is documented with that adapter
 in **freeway-ext**.
@@ -89,7 +179,7 @@ Dispatch goes through `RpcHttpClient`, so discovery, load balancing, retries, ci
 only a decision of the composition root:
 
 ```java
-// monolith: local implementation
+// monolith: built-in implementation
 binder.bind(UserApi.class).to(UserApiImpl.class);
 
 // split: typed remote client
@@ -230,9 +320,9 @@ no redelivery by design, and legacy class-channel frames are parsed and then dro
 
 ## Health and Readiness
 
-`contribute(CloudHealthContributor.class)` adds a readiness check for your own dependencies. The built-in registration check reports the state the heartbeat has
+`contribute(CloudHealthContributor.class)` adds a readiness check for your own dependencies. The built-in membership check reports the state the heartbeat has
 **verified** — registered / draining / consecutive heartbeat failures — not a constant; `/health/live` and
-`/health/ready` are served by the framework. An external backend adapter may **append** its own connectivity check; it does not replace the core registration
+`/health/ready` are served by the framework. An external backend adapter may **append** its own connectivity check; it does not replace the core membership
 state check.
 
 ## Observability, Resilience, Secrets, Storage, Context
@@ -246,7 +336,7 @@ state check.
 | Secrets | `@Inject SecretStore`; secrets can also be resolved as symbols (`@Symbol("db.password")`). Files are re-read when size/mtime changes (rotation without restart) | `freeway.cloud.secret.*` (system properties only) |
 | Object storage | `@Inject ObjectStorage`; `ObjectStoredEvent` / `ObjectDeletedEvent` are published to the event bus | `freeway.cloud.storage.*` |
 
-Runtime capabilities have local defaults (env/file secrets, filesystem storage, built-in metrics registry); discovery does not:
+Runtime capabilities have built-in defaults (env/file secrets, filesystem storage, built-in metrics registry); discovery does not:
 static (`StaticModule`) is the zero-infrastructure choice, while registration/dynamic membership needs Fleet or an ext adapter.
 
 **`freeway.cloud.*.type` declares intent; it does not choose an implementation.** The framework never loads by class name (no scanning, no config reflection);
@@ -269,8 +359,8 @@ client captured — changing `freeway.cloud.rpc.request-timeout` takes effect on
 `RemoteCaller`/`RemoteProxyFactory` are the exception; secret files are re-read on size/mtime change).
 Read at the point of use only where a "live value" is genuinely needed.
 
-**Shutdown is ordered, deliberately so.** The registration hook stops before the HTTP server: set readiness to `draining`,
-deregister first, then wait for `freeway.cloud.registry.shutdown-drain` (default `auto`, with the registry backend answering its own
+**Shutdown is ordered, deliberately so.** The membership hook stops before the HTTP server: set readiness to `draining`,
+deregister first, then wait for `freeway.cloud.member.shutdown-drain` (default `auto`, with the registry backend answering its own
 propagation window — the bound adapter answers its own number), and only then does the server stop accepting. In-flight outbound calls have
 `freeway.cloud.rpc.shutdown-grace` (default `5s`) to finish; event mesh peers receive a `1001 going away`
 close frame rather than an RST.

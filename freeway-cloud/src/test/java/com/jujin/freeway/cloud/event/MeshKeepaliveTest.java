@@ -1,7 +1,6 @@
 package com.jujin.freeway.cloud.event;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import com.jujin.freeway.cloud.event.internal.MeshKeepalive;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
@@ -9,8 +8,12 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * The probe's own contract, without sockets: a tick pings, an unanswered probe

@@ -959,9 +959,13 @@ the wrong order.
 
 The symbol chain resolves every config lookup (`@Symbol` and
 `SymbolSource.resolve` — the single read entry; `AppConfig` only carries
-profiles, the sources it contributes and lifecycle). Lowest to highest priority —
-every tier is a `SymbolProvider` with a declared `order()`, and each
-answers one ownership question:
+profiles, the sources it contributes and lifecycle). Key namespace follows the
+reader: framework-owned keys stay under `freeway.*`, while application-owned
+keys use an application prefix such as `order.*`. The boundary is documented in
+[configuration keys](configuration.md#framework-vs-application-configuration-namespaces).
+
+Lowest to highest priority — every tier is a `SymbolProvider` with a declared
+`order()`, and each answers one ownership question:
 
 1. Config files (`TIER_FILES` 20): `application.properties` →
    `application.json` → `application-{profile}.*` (classpath baseline, then
@@ -2197,9 +2201,18 @@ classification and its HTTP boundary.
 static discovery (fixed endpoints/VIP, no write side), the freeway-native fleet
 (`FleetModule` + `FleetServerModule`, both in **freeway-ext**; writes fan out to
 every node, reads union the answers), and third-party ext adapters (Consul). The registration
-lifecycle is shared: `RegistrationModule` drives whichever backend is installed.
+lifecycle is shared: `MemberModule` drives whichever backend is installed.
 Switching is swapping the module and its keys; application code never changes. The event mesh feeds itself from whichever backend is bound
 (`freeway.cloud.event.discovery-feed-ms`).
+
+Static discovery can be configured without a Java map with
+`freeway.cloud.discovery.static.services`, for example:
+
+```properties
+freeway.cloud.discovery.static.services=\
+  catalog=http://catalog.default.svc.cluster.local:8080,\
+  orders=https://orders.internal:443
+```
 
 **The full cloud development guide — backend deployment and semantics, remote
 invocation with its error/idempotency model, the event mesh, health and

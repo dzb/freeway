@@ -1,23 +1,25 @@
 package com.jujin.freeway.boot.internal;
 
 import com.jujin.freeway.boot.AppConfig;
-import com.jujin.freeway.ioc.symbol.SymbolProvider;
+import com.jujin.freeway.boot.internal.BootModule.ConfigKeys;
 import com.jujin.freeway.commons.util.EnvKeys;
+import com.jujin.freeway.ioc.symbol.KnownKeys;
+import com.jujin.freeway.ioc.symbol.SymbolProvider;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.WeakHashMap;
-import java.util.Set;
 import java.util.regex.Pattern;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import com.jujin.freeway.boot.internal.BootModule.ConfigKeys;
 
 /**
  * The standard config cascade. Loads configuration from
@@ -46,10 +48,32 @@ import com.jujin.freeway.boot.internal.BootModule.ConfigKeys;
  * mean two different things across the repository.</p>
  *
  * <p>Returns an {@link AppConfigDefault} built from the loaded
- * {@link ConfigSources}: the file tier is watched and re-read on change, so
- * config edits are visible to later symbol lookups without a restart.
+ * {@link Sources}: the file tier is watched and re-read on change, so config
+ * edits are visible to later symbol lookups without a restart.
  */
 public final class ConfigCascade {
+
+    /**
+     * The loaded cascade inputs: one flat {@code key=value} map per source,
+     * plus the active profiles. The maps stay separate so the symbol chain can
+     * answer which tier supplied a value.
+     */
+    public record Sources(
+        Map<String, String> cli,
+        Map<String, String> environment,
+        Map<String, String> files,
+        List<String> profiles
+    ) {
+        public Sources {
+            cli = Map.copyOf(canonicalize("CLI", Objects.requireNonNull(cli, "cli")));
+            environment = Map.copyOf(canonicalize(
+                "environment variables", Objects.requireNonNull(environment, "environment")));
+            files = Map.copyOf(canonicalize(
+                "config files", Objects.requireNonNull(files, "files")));
+            profiles = List.copyOf(Objects.requireNonNull(profiles, "profiles"));
+        }
+    }
+
     private static final Logger LOG = LoggerFactory.getLogger(
         ConfigCascade.class
     );
@@ -73,7 +97,7 @@ public final class ConfigCascade {
         CONFIG_FILE_KEY, ENV_PREFIX_KEY);
 
     /** The bootstrap log cascade's view, parsed once per class loader. */
-    private static final Map<ClassLoader, ConfigSources> BOOTSTRAP_LAYERS =
+    private static final Map<ClassLoader, Sources> BOOTSTRAP_LAYERS =
         Collections.synchronizedMap(new WeakHashMap<>());
 
     /** A value that begins with a minus sign but is a number (e.g. {@code -1}, {@code -2.5}, {@code -1e5}). */
@@ -94,7 +118,7 @@ public final class ConfigCascade {
         // the classpath base (filesystem wins, env/CLI win over both). The
         // snapshot is carried into the full read below, so these files are
         // parsed once even though the profile variants are only knowable now.
-        ConfigSources sources = loadLayers(loader, base.values(), args);
+        Sources sources = loadLayers(loader, base.values(), args);
 
         warnAboutBootstrapKeys("the classpath config files", sources.files());
         warnAboutBootstrapKeys("the command-line arguments", sources.cli());
@@ -135,7 +159,7 @@ public final class ConfigCascade {
 
     /** The classpath sources without filesystem base files — the form the
      *  bootstrap log cascade reads ({@link AppLogSource}). */
-    static ConfigSources loadLayers(ClassLoader loader, String... args) {
+    static Sources loadLayers(ClassLoader loader, String... args) {
         return loadLayers(loader, Map.of(), args);
     }
 
@@ -147,7 +171,7 @@ public final class ConfigCascade {
      * loader) rather than done twice — and the two readers cannot drift on what
      * the files say.
      */
-    static ConfigSources bootstrapLayers(ClassLoader loader) {
+    static Sources bootstrapLayers(ClassLoader loader) {
         return BOOTSTRAP_LAYERS.computeIfAbsent(loader, l -> loadLayers(l, new String[0]));
     }
 
@@ -162,7 +186,7 @@ public final class ConfigCascade {
      *                       file tier (the loader passes them separately as
      *                       watched override files)
      */
-    static ConfigSources loadLayers(
+    static Sources loadLayers(
         ClassLoader loader,
         Map<String, String> filesystemBase,
         String... args
@@ -207,12 +231,24 @@ public final class ConfigCascade {
         fileLayers.addAll(profileProperties);
         fileLayers.addAll(profileJson);
 
-        return new ConfigSources(
+        return new Sources(
             cli,
             environment,
-            ConfigMaps.overlay(fileLayers),
+            overlay(fileLayers),
             profiles
         );
+    }
+
+    /**
+     * The one place cascade precedence is applied: overlays the layers in
+     * list order, with a later layer winning a duplicate key.
+     */
+    static Map<String, String> overlay(List<Map<String, String>> layers) {
+        Map<String, String> merged = new LinkedHashMap<>();
+        for (Map<String, String> layer : layers) {
+            merged.putAll(layer);
+        }
+        return Map.copyOf(merged);
     }
 
     /** One cascade layer and the symbol tier it belongs to. */
@@ -220,11 +256,11 @@ public final class ConfigCascade {
 
     /**
      * Folds layers by the symbol chain's tier order: a lower {@code TIER_*}
-     * is higher precedence, and {@link ConfigMaps#overlay} applies the later
+     * is higher precedence, and {@link #overlay} applies the later
      * entry last — so the layers are sorted by descending tier.
      */
     private static Map<String, String> overlayByTier(List<Tier> layers) {
-        return ConfigMaps.overlay(
+        return overlay(
             layers.stream()
                 .sorted(java.util.Comparator.comparingInt(Tier::order).reversed())
                 .map(Tier::values)
@@ -272,19 +308,18 @@ public final class ConfigCascade {
         String prefix = EnvKeys.prefix();
         Map<String, String> values = new LinkedHashMap<>();
         for (Map.Entry<String, String> entry : environment.entrySet()) {
-            String key = entry.getKey();
-            if (key.startsWith(prefix)) {
-                values.put(EnvKeys.fromPrefixedName(prefix, key), entry.getValue());
+            String key = EnvKeys.fromPrefixedName(prefix, entry.getKey());
+            if (key != null) {
+                values.put(key, entry.getValue());
             }
         }
-        return values;
+        return canonicalize("environment variables", values);
     }
 
-
-
     /** Loads a classpath config resource; a missing resource is "no config".
-     *  Parsing and the read cap live inside {@link ConfigFileReader#read}, so
-     *  a classpath resource is bounded exactly like a filesystem file. */
+     *  Parsing and the read cap live inside
+     *  {@link ConfigFilePlan.Reader#read}, so a classpath resource is bounded
+     *  exactly like a filesystem file. */
     private static Map<String, String> loadResource(ClassLoader loader, String name) {
         ClassLoader effectiveLoader =
             loader != null ? loader : ConfigCascade.class.getClassLoader();
@@ -293,7 +328,7 @@ public final class ConfigCascade {
             return Map.of();
         }
         try (stream) {
-            return ConfigFileReader.read(name, stream);
+            return ConfigFilePlan.Reader.read(name, stream);
         } catch (IOException ex) {
             throw new IllegalStateException("Unable to load " + name, ex);
         }
@@ -349,7 +384,7 @@ public final class ConfigCascade {
                 );
             }
         }
-        return values;
+        return canonicalize("the command-line arguments", values);
     }
 
     /**
@@ -394,6 +429,28 @@ public final class ConfigCascade {
     private static boolean isConsumableValue(String next) {
         return !next.startsWith("-")
             || NEGATIVE_NUMBER_PATTERN.matcher(next).matches();
+    }
+
+    /**
+     * Canonicalizes every key from one source and rejects an alias/canonical
+     * collision in that same source. Duplicate keys in different tiers remain
+     * ordinary precedence overrides and are not rejected here.
+     */
+    static Map<String, String> canonicalize(String source, Map<String, String> values) {
+        Map<String, String> normalized = new LinkedHashMap<>();
+        Map<String, String> originals = new LinkedHashMap<>();
+        for (Map.Entry<String, String> entry : values.entrySet()) {
+            String original = entry.getKey();
+            String canonical = KnownKeys.canonicalize(original);
+            String earlier = originals.putIfAbsent(canonical, original);
+            if (earlier != null) {
+                throw new IllegalArgumentException(
+                    "Duplicate config key '" + canonical + "' in " + source
+                        + ": '" + earlier + "' and '" + original + "'");
+            }
+            normalized.put(canonical, entry.getValue());
+        }
+        return normalized;
     }
 
     private static List<String> parseProfiles(String value) {

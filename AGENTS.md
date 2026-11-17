@@ -47,7 +47,7 @@ Core — only what every Freeway application needs:
 | `freeway-http` | Routing, built-in HTTP engine, WebSocket, SSE | ioc + commons (+ boot, test) |
 | `freeway-db` | JDBC, ORM, pooling, transactions, migrations | commons (+ ioc for `DbModule`) |
 | `freeway-flow` | Graph workflow engine, v3 DAG, task vocabulary | ioc + commons |
-| `freeway-cloud` | Registration lifecycle, RPC, mesh events, observability, resilience, health, secrets, storage, discovery contracts, static discovery | ioc + commons + http (+ boot, test) |
+| `freeway-cloud` | Service-membership lifecycle, RPC, mesh events, observability, resilience, health, secrets, storage, discovery contracts, static discovery | ioc + commons + http (+ boot, test) |
 
 Optional modules live in [freeway-ext](https://github.com/dzb/freeway-ext):
 Fleet client/protocol, Fleet server, Consul, HTTP engines, Kafka, Hikari,
@@ -190,13 +190,18 @@ construction and `@SubModule`; `ModuleNode` is internal to `ioc.internal`;
   files/profiles. Each feature module owns its key declarations, vocabularies and
   presence criteria; a mechanism carrying application data moves down only when
   it names no keys.
+- **`f2.*` / `F2.*` are input aliases, never a second namespace.** Normalize
+  `f2.*`, `F2.*`, `F2_*`, and `f2_*` at the configuration boundary to the
+  canonical `freeway.*` key; `ConfigKeys`, `KnownKeys`, and modules never list
+  an alias spelling. Any alias/canonical collision in one source is a
+  duplicate-key error.
 - **One `ConfigKeys` per reading module, full literals.** Keys are never
   composed from `PREFIX + "..."`; the table answers "what is the exact key?".
   `PREFIX` only fences the namespace; `KnownKeys.of(ConfigKeys.class,
   ConfigKeys.PREFIX, ...)` must name every namespace. Identity strings (hook
   ids, route paths, contribution ids) stay out of `ConfigKeys`.
 - Current ownership: `CloudModule.ConfigKeys` owns application identity only;
-  `RegistrationModule.ConfigKeys`, `RpcModule.ConfigKeys`,
+  `MemberModule.ConfigKeys`, `RpcModule.ConfigKeys`,
   `ResilienceModule.ConfigKeys`, `EventMeshModule.ConfigKeys`,
   `SecretModule.ConfigKeys`, `StorageModule.ConfigKeys`,
   `ContextModule.ConfigKeys` and `LoadBalancer.ConfigKeys` own their own

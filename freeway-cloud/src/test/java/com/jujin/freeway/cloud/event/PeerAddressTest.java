@@ -1,5 +1,7 @@
 package com.jujin.freeway.cloud.event;
 
+import com.jujin.freeway.cloud.event.internal.PeerAddress;
+
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;

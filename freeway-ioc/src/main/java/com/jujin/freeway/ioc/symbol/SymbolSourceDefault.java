@@ -118,8 +118,26 @@ final class SymbolSourceDefault implements SymbolSource {
     }
 
     private String raw(String name) {
+        String canonical = KnownKeys.canonicalize(name);
+        List<String> candidates = new ArrayList<>();
+        candidates.add(canonical);
+        candidates.addAll(KnownKeys.aliases(canonical));
         for (SymbolProvider provider : orderedProviders()) {
-            String value = provider.lookup(name);
+            String value = null;
+            String valueName = null;
+            for (String candidate : candidates) {
+                String candidateValue = provider.lookup(candidate);
+                if (candidateValue == null) {
+                    continue;
+                }
+                if (value != null) {
+                    throw new IllegalArgumentException(
+                        "Duplicate config key '" + canonical + "': '"
+                            + valueName + "' and '" + candidate + "'");
+                }
+                value = candidateValue;
+                valueName = candidate;
+            }
             if (value != null) {
                 return value;
             }

@@ -29,7 +29,7 @@ import com.jujin.freeway.ioc.symbol.KnownKeys;
  * <p>{@code EventMeshModule} is intentionally absent: it opens listeners and
  * dials peers, so a mesh is something an application asks for explicitly.
  * Discovery implementations are also absent: registration lives in
- * {@code RegistrationModule}, backends in {@code freeway-fleet} or ext.
+ * {@code MemberModule}, backends in {@code freeway-fleet} or ext.
  */
 @SubModule({
     ContextModule.class,
@@ -53,7 +53,7 @@ public final class CloudModule implements ModuleEx {
     /**
      * Application identity keys shared across cloud features. Feature keys live
      * with the module that reads them (for example
-     * {@code RpcModule.ConfigKeys}, {@code RegistrationModule.ConfigKeys}).
+     * {@code RpcModule.ConfigKeys}, {@code MemberModule.ConfigKeys}).
      */
     public static final class ConfigKeys {
         private ConfigKeys() {}

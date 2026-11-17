@@ -39,7 +39,7 @@ final class BindingImpl<T> implements Binding<T> {
     BindingImpl(ContainerImpl container, Class<T> type) {
         this.container = Objects.requireNonNull(container, "container");
         this.type = Objects.requireNonNull(type, "type");
-        this.id = ServiceIds.normalize(type.getSimpleName()) + "@" + ID_COUNTER.getAndIncrement();
+        this.id = ServiceKey.normalize(type.getSimpleName()) + "@" + ID_COUNTER.getAndIncrement();
     }
 
     Class<T> type() {
@@ -196,7 +196,7 @@ final class BindingImpl<T> implements Binding<T> {
     @Override
     public Binding<T> id(String id) {
         requireOpen("id()");
-        this.id = ServiceIds.normalize(id);
+        this.id = ServiceKey.normalize(id);
         this.explicitId = true;
         return this;
     }

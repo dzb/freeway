@@ -1,29 +1,34 @@
 package com.jujin.freeway.cloud.event;
 
-import com.jujin.freeway.commons.util.ConstantTime;
+import com.jujin.freeway.cloud.event.internal.MeshFrame;
+import com.jujin.freeway.cloud.event.internal.MeshKeepalive;
 import com.jujin.freeway.commons.json.JsonArray;
 import com.jujin.freeway.commons.json.JsonCodec;
+import com.jujin.freeway.commons.json.JsonObject;
+import com.jujin.freeway.commons.util.ConstantTime;
 import com.jujin.freeway.http.websocket.WebSocketEndpoint;
 import com.jujin.freeway.http.websocket.WebSocketListener;
 import com.jujin.freeway.http.websocket.WebSocketSession;
+
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.LongConsumer;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * The hub: registry of live peer connections + the server-side WS endpoint
  * ({@code /cloud/event}) + the inbound dispatch pipeline.
  *
  * <p>Lifecycle: constructed by {@link EventMeshModule} at bind time,
- * {@link #wire(Wiring)} runs from a RuntimeHook ordered <em>after</em>
+ * {@link #wire(Deps, Options)} runs from a RuntimeHook ordered <em>after</em>
  * {@code freeway.http.server}: the mesh origin is the node identity, which
  * needs the port the node actually serves on. A peer that dials during that
  * short window is closed with 1013 and reconnects on its backoff.</p>

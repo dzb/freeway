@@ -45,7 +45,7 @@ reachability metadata is ever needed.
 | `http.HttpModule` | `getFields()` over `HttpModule.ConfigKeys` (retired-prefix notice) | once per startup | startup |
 | `ioc.ModuleDeclaration.ClassDeclaration` | `getDeclaredConstructor()` module instantiation (class declarations) | none (cold, once per declared class per load) | composition assembly — the single owner used by both `Freeway` and `FreewayApp` |
 | `db.internal.RowMapperResolver` | row mapper per type (BeanPlan-backed) | `ConcurrentHashMap` **per container instance** — deliberate: mapper creation reads resolver-owned coercer/ORM state, not just the class | queries |
-| `cloud.rpc.RpcTarget` | declared-type `getMethods()` → dispatch table; call via MH handle | built once per export at startup | RPC dispatch |
+| `cloud.rpc.internal.RpcTarget` | declared-type `getMethods()` → dispatch table; call via MH handle | built once per export at startup | RPC dispatch |
 | `cloud.rpc.RemoteProxyFactory` | JDK `Proxy` over the exported API interface | per call site, once | client |
 
 ## SPI and service files (what native would additionally need, someday)

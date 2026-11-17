@@ -1,7 +1,6 @@
 package com.jujin.freeway.boot.internal;
 
 import com.jujin.freeway.boot.AppConfig;
-
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
 
 import java.nio.file.Path;
@@ -40,15 +39,15 @@ import org.slf4j.LoggerFactory;
  * startup-static.
  *
  * <p><b>No global state.</b> Everything this class serves arrives through
- * {@link ConfigSources} — the loader reads the JVM and the environment once,
- * at startup. A directly constructed instance therefore cannot be surprised
- * by a system property.
+ * {@link ConfigCascade.Sources} — the loader reads the JVM and the environment
+ * once, at startup. A directly constructed instance therefore cannot be
+ * surprised by a system property.
  */
 public final class AppConfigDefault implements AppConfig {
 
     private static final Logger LOG = LoggerFactory.getLogger(AppConfigDefault.class);
 
-    private final ConfigSources sources;
+    private final ConfigCascade.Sources sources;
     /** Standard file family, roles, order and the one file-read implementation. */
     private final ConfigFilePlan filePlan;
 
@@ -74,17 +73,17 @@ public final class AppConfigDefault implements AppConfig {
      *
      * @param overrideFiles ordered filesystem files merged over the baseline
      */
-    public AppConfigDefault(ConfigSources sources, List<Path> overrideFiles) {
+    public AppConfigDefault(ConfigCascade.Sources sources, List<Path> overrideFiles) {
         this(sources, ConfigFilePlan.paths(overrideFiles), null);
     }
 
     /** Package-visible role-preserving form for boot and its tests. */
-    AppConfigDefault(ConfigSources sources, ConfigFilePlan filePlan) {
+    AppConfigDefault(ConfigCascade.Sources sources, ConfigFilePlan filePlan) {
         this(sources, filePlan, null);
     }
 
     AppConfigDefault(
-        ConfigSources sources,
+        ConfigCascade.Sources sources,
         ConfigFilePlan filePlan,
         ConfigFilePlan.Snapshot initialFiles
     ) {
@@ -105,7 +104,7 @@ public final class AppConfigDefault implements AppConfig {
      */
     public static AppConfigDefault of(Map<String, String> values, List<String> profiles) {
         return new AppConfigDefault(
-            new ConfigSources(
+            new ConfigCascade.Sources(
                 Map.of(),          // no CLI tier
                 Map.of(),          // no environment mapping
                 cleaned(values),   // the given map IS the file tier
@@ -174,7 +173,7 @@ public final class AppConfigDefault implements AppConfig {
             warnAboutDuplicateKeys(path, values, declaredBy);
             values.keySet().forEach(key -> declaredBy.putIfAbsent(key, path));
         }
-        fileTier = ConfigMaps.overlay(List.of(sources.files(), snapshot.values()));
+        fileTier = ConfigCascade.overlay(List.of(sources.files(), snapshot.values()));
     }
 
     /**

@@ -1,8 +1,5 @@
 package com.jujin.freeway.boot.internal;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -13,7 +10,11 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
+
 import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * The config surface stays consistent with its documentation and its samples:
@@ -69,7 +70,7 @@ class ConfigDocsConsistencyTest {
 
     /** Every key a sample sets — parsed by the framework's own config reader. */
     private static Set<String> sampleKeys(Path sample) throws IOException {
-        return new LinkedHashSet<>(ConfigFileReader.read(sample).keySet());
+        return new LinkedHashSet<>(ConfigFilePlan.Reader.read(sample).keySet());
     }
 
     @Test

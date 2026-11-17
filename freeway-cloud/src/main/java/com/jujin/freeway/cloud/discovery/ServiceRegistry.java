@@ -45,7 +45,7 @@ public interface ServiceRegistry {
     /**
      * How long this registry needs after an {@link #unregister unregister} for
      * the removal to reach the consumers that route to the instance — the
-     * window {@code freeway.cloud.registry.shutdown-drain=auto} waits out
+     * window {@code freeway.cloud.member.shutdown-drain=auto} waits out
      * before the socket closes.
      *
      * <p>The default is zero for an adapter whose removal is immediately

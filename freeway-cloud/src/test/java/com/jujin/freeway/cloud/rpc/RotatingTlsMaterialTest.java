@@ -1,15 +1,18 @@
 package com.jujin.freeway.cloud.rpc;
 
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
-import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import com.jujin.freeway.cloud.rpc.internal.RotatingTlsMaterial;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * The rotating material's own rules: a zero interval keeps the resolved-once

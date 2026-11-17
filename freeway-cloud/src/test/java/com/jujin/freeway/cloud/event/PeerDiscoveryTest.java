@@ -1,25 +1,28 @@
 package com.jujin.freeway.cloud.event;
 
+import com.jujin.freeway.boot.AppRuntime;
+import com.jujin.freeway.boot.FreewayApp;
+import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
+import com.jujin.freeway.cloud.discovery.ServiceDiscovery;
+import com.jujin.freeway.cloud.discovery.ServiceEndpoint;
+import com.jujin.freeway.cloud.discovery.ServiceInstance;
+import com.jujin.freeway.cloud.event.internal.PeerAddress;
+import com.jujin.freeway.http.HttpModule;
+import com.jujin.freeway.http.HttpServer;
+import com.jujin.freeway.ioc.ModuleEx;
+
+import java.net.ServerSocket;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-
-import com.jujin.freeway.boot.AppRuntime;
-import com.jujin.freeway.boot.FreewayApp;
-import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
-import com.jujin.freeway.http.HttpModule;
-import com.jujin.freeway.http.HttpServer;
-import com.jujin.freeway.ioc.ModuleEx;
-import java.net.ServerSocket;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import com.jujin.freeway.cloud.discovery.ServiceEndpoint;
-import com.jujin.freeway.cloud.discovery.ServiceDiscovery;
-import com.jujin.freeway.cloud.discovery.ServiceInstance;
-import java.util.List;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Test;
 
 /**
  * The discovery-fed half of the peer roster: a registry adapter replaces it

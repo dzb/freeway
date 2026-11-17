@@ -31,9 +31,9 @@
 ## 2. Positioning and Principles
 
 `freeway-cloud` is a **core module** (not a collection of ext adapters): it provides the
-**seams + runnable local defaults** for its runtime capabilities, so an application can
+**seams + runnable built-in defaults** for its runtime capabilities, so an application can
 start, invoke, observe, rate-limit and probe health without any third-party cloud SDK.
-Discovery is the exception: it has no local default — place static discovery, Fleet, or an
+Discovery is the exception: it has no built-in default — place static discovery, Fleet, or an
 adapter explicitly.
 Implementations that genuinely depend on external infrastructure (Nacos/Consul,
 S3, Vault, OTel, gRPC) are **optional alternatives**, overridden by extension modules with `.primary()`.
@@ -100,7 +100,7 @@ the whole tree before bind.
 
 ```
 com.jujin.freeway.cloud
-├── CloudModule (contains nested ConfigKeys) / CloudHookIds
+├── CloudModule (contains nested ConfigKeys) / CloudKeys / CloudHookIds
 ├── annotation/   @Local backend marker
 ├── context/      InvocationContext, TraceContext, PrincipalContext, Baggage,
 │                 ContextCodec, ContextModule
@@ -108,15 +108,20 @@ com.jujin.freeway.cloud
 │                 ServiceRegistry, ReadinessAwareRegistry, ServiceDeclaration,
 │                 LoadBalancer(+Default), StaticDiscovery,
 │                 StaticModule
-├── registration/ RegistrationModule, RegistrationHook,
-│                 Renewal, RegistrationHealth,
-│                 HttpDeclaration, Identity, ReadinessGate
+├── member/      MemberModule, MemberHook,
+│                 MemberState, MemberReadiness,
+│                 HttpServiceDeclaration, NodeIdentity, ReadinessGate
 ├── rpc/          RpcHttpClient(+Default), RpcRequest/RpcResponse,
 │                 RpcException, TransportSecurity(+Default), RemoteCaller,
 │                 RemoteProxyFactory, Idempotent, RpcExport, RpcEndpoint,
 │                 RpcModule
+│   └── internal/ ResiliencePolicy, RotatingTlsMaterial,
+│                 RpcPaths, RpcTarget, Reloading*Manager
 ├── event/        EventMeshModule, PeerHub, PeerConnection, MeshEnvelope,
 │                 MeshInterceptor (optional add-on)
+│   └── internal/ DiscoveryPeerSource, MeshFrame, MeshKeepalive,
+│                 PeerAddress, TextMessageAssembler
+├── http/         HttpClients (shared outbound client base)
 ├── observe/      Tracer(+Default), MetricsDefault, MetricsSnapshot, ObserveModule
 ├── resilience/   CircuitBreaker/RateLimiter/Retryer(+Default), ResilienceModule
 ├── health/       CloudHealthContributor, HealthModule (HealthResult is the shared HTTP value type)
@@ -133,27 +138,34 @@ com.jujin.freeway.cloud
 
 Fleet moved out of this repository in 2.0: the client/protocol
 (`FleetModule`) and the server (`FleetServerModule` + `LeaseStore`) live in
-**freeway-ext**. `freeway-cloud` depends on neither; `RegistrationModule` is
+**freeway-ext**. `freeway-cloud` depends on neither; `MemberModule` is
 the backend-neutral lifecycle in cloud.
 
-Visibility is deliberate: types in `internal/` may be `public` (cross-package assembly needs it)
-but carry no stability promise; conversely `PeerConnector` / `RpcTarget` /
-`RpcExportHook` / `RpcPaths` are **package-private implementations**, and `PeerHub` / `PeerConnection`
-are the public **inspection surface** (operations and tests read connection state), not extension points.
+Visibility is deliberate: types in `internal/` may be `public` (cross-package
+assembly needs it) but carry no stability promise. The RPC implementation
+machinery lives in `rpc.internal`; the event wire/transport helpers live in
+`event.internal`. `RpcExportHook`, `PeerConnector` and `MeshEventLifecycleHook`
+remain in their feature packages because they are tightly coupled to the
+route/connection-state collaboration surface. `PeerHub` / `PeerConnection` are
+the public **inspection surface** (operations and tests read connection state),
+not extension points. `cloud.http.HttpClients` is the intentionally public shared
+outbound-client base (TASTE §12.5), not an internal helper. The public
+top-level surface is pinned by `api/cloud-surface.txt`; internal packages are
+pinned separately by `api/internal-surface.txt`.
 
 ### 3.3 Backend Markers and Assembly Protocol
 
 - The composition unit is the list of modules placed at the entry point; the cloud side provides the bundle class `CloudModule` (`@SubModule` declares the standard modules).
-- Local default implementations (secrets, storage, resilience) are bound through `.marker(Local.class)`; the assembly surface can use
-  `@Inject @Local SecretStore` to name "the built-in one" explicitly. Discovery/registration have no local default. `@Local` is allowed only
+- Built-in default implementations (secrets, storage, resilience) are bound through `.marker(Local.class)`; the assembly surface can use
+  `@Inject @Local SecretStore` to name "the built-in one" explicitly. Discovery/registration have no built-in default. `@Local` is allowed only
   on **parameters and fields** — no code reads it from a class, so putting it on an implementation class would compile
   yet be silently ineffective; the `TYPE` target was therefore removed outright, and misuse is a compile error.
 - A replacement implementation = bind the same interface and use `.primary()`; an adapter with its own backend
   annotation defines and registers its marker itself (core does not pre-provision anything like `@Nacos` / `@S3` / `@OTel`).
 - If the assembly surface references an unregistered marker, ioc ignores the annotation and falls back to the default
   binding, warning once per `(annotation, owner)` pair.
-- When a backend type key (`freeway.cloud.secret/storage.type`) is set while the local implementation is still effective,
-  `BackendTypeGuard.warnIfExternal` warns once. For discovery/registration, which have no local default, `warnIfMissing`
+- When a backend type key (`freeway.cloud.secret/storage.type`) is set while the built-in implementation is still effective,
+  `BackendTypeGuard.warnIfExternal` warns once. For discovery/registration, which have no built-in default, `warnIfMissing`
   warns when the configured type has no binding at all.
 
 ### 3.4 RuntimeHook Ordering
@@ -247,21 +259,21 @@ public record ServiceHealth(boolean live, boolean ready, Instant lastSeen) {
   lease expired, backend restarted), and the caller should `register` again. Heartbeat self-healing follows from
   this — a registry returning `true` for an instance it does not hold would make the caller believe it is reachable.
 - `ServiceDeclaration.resolve(container)` is called after the HTTP server starts
-  (host:port is settled); the built-in `HttpDeclaration` registers the `HttpServer` address;
+  (host:port is settled); the built-in `HttpServiceDeclaration` registers the `HttpServer` address;
   other protocols/multiple ports are contributed by their own modules. Backend adapters for cross-process discovery (Nacos/K8s
   endpoints, etc.) go through `.primary()` (**not delivered**, §8.1).
-- serviceId resolves from `freeway.cloud.registry.service-id` → `freeway.app.name`;
-  instanceId is derived by default and can be pinned with `registry.service-instance-id`.
+- serviceId resolves from `freeway.cloud.member.service-id` → `freeway.app.name`;
+  instanceId is derived by default and can be pinned with `member.service-instance-id`.
 - **The two identity `auto` values** (the value cannot be written down, only derived, and one line is logged at startup stating which was chosen):
-  `registry.service-scheme=auto` (default) follows whether the HTTP server has TLS enabled
+  `member.service-scheme=auto` (default) follows whether the HTTP server has TLS enabled
   (`HttpServer.isSecure()`, which since 1.5.5 relays `HttpEngine.isSecure()`: whoever terminates TLS answers, so an
   adapter engine that ignores `freeway.http.ssl.*` will not register an https node as `http://`) —
   the registered `http/https` and the mesh dial's `ws/wss` come from
-  the same derivation, so enabling TLS cannot be overlooked and no `http://` URL is registered by mistake; `registry.service-host=auto`
+  the same derivation, so enabling TLS cannot be overlooked and no `http://` URL is registered by mistake; `member.service-host=auto`
   (default) uses that address when the server binds a concrete address (it only listens there), and when bound to
   `0.0.0.0`/`::` prefers `POD_IP`, then the first routable local address, and only falls back to the bind
   address with a startup warning if neither exists. Multi-NIC hosts should name it explicitly.
-- `registry.shutdown-drain=auto` (default) is answered by the registry backend
+- `member.shutdown-drain=auto` (default) is answered by the registry backend
   (`ServiceRegistry.drainWindow()`): a registry adapter answers with its own propagation window (Nacos/K8s endpoints usually a few seconds),
   so it need not be written once per deployment; an explicit duration wins, and a negative value fails at startup.
 - Static third-party services (PostgreSQL/Redis, etc.) get their address from configuration and **do not go through discovery**.
@@ -513,7 +525,7 @@ rateLimiter.tryAcquire()
 - `/health/ready` — aggregates the `CloudHealthContributor` set (contribute mode);
   all healthy `200`, otherwise `503`.
 
-Registry readiness is provided by `RegistrationHealth` (delivered with `RegistrationModule` in `freeway-cloud`),
+Member readiness is provided by `MemberReadiness` (delivered with `MemberModule` in `freeway-cloud`),
 and its semantics declare only facts the framework **can verify**:
 
 - Never registered (no HTTP module, no service declaration) → reports `not registered`, rather than a
@@ -616,12 +628,12 @@ only fixes how keys are read and the three shapes, so the same list does not dri
   `yes/no`, `on/off`, `1/0`); an unrecognized value fails at startup and names the key and value — silently becoming
   `false` would quietly turn off switches like `auth.extract.enabled`.
 - **Special case of shape one: `auto`** — used only when the value must be derived and cannot be written down, and the derived result must be
-  visible in the startup log (`registry.service-scheme` / `service-host` /
+  visible in the startup log (`member.service-scheme` / `service-host` /
   `shutdown-drain`, §5.1). Adding `auto` to a constant default would merely be a second way of saying the same rule;
   it is not done.
 - **Shape two: declaration keys** — `freeway.cloud.secret/discovery/registry/storage.type`.
   They **do not select an implementation**: the framework does no class-name reflective loading or classpath scanning; what actually
-  selects an implementation is a `.primary()` binding and which adapter module is installed. For roles with a local default,
+  selects an implementation is a `.primary()` binding and which adapter module is installed. For roles with a built-in default,
   `warnIfExternal` reports a type key that is still ignored; for discovery/registration, `warnIfMissing` reports a configured type
   with no binding.
 - **Shape three: presence switches** — a few keys decide behaviour by whether they appear, most typically
@@ -718,7 +730,7 @@ bring your own backend marker and type-key consumption when needed, and it must 
 
 ### 8.3 Delivery Criteria (Carried Over from the Implementation Plan)
 
-Runs without any third-party cloud SDK; runtime capabilities other than discovery have local defaults; discovery/registration are explicit;
+Runs without any third-party cloud SDK; runtime capabilities other than discovery have built-in defaults; discovery/registration are explicit;
 RPC, observability, resilience and health can each work independently and their assembly is optional; `freeway-ext` is responsible only for third-party adaptation and enhancement and does not affect core's
 runnability or default semantics; anything that can be closed inside core is done in core first, anything depending on a specific cloud platform or
 infrastructure goes to ext, and ingress traffic governance / cluster scheduling / certificate platform are out of core; every capability has
@@ -730,17 +742,17 @@ circuit breaking/rate limiting/retry, security propagation, live/ready probes, o
 
 | Date | Change |
 |---|---|
-| 2026-08-19 | Overall design finalized (Phases 0–7 landed): core objects + local defaults, service discovery and remote invocation, observability, resilience, security, object storage; supersedes the earlier design-A/design-B parallel proposals |
+| 2026-08-19 | Overall design finalized (Phases 0–7 landed): core objects + built-in defaults, service discovery and remote invocation, observability, resilience, security, object storage; supersedes the earlier design-A/design-B parallel proposals |
 | 2026-08-27 | RPC v1: `RemoteCaller` + `RemoteInvocationException` + `RemoteProxyFactory` (local-first/remote-only dual mode) + `RpcEndpoint.of(...)`; `callAsync` and per-call timeout wired end to end |
 | 2026-08-28/29 | Event mesh revision: in-frame timestamp `fwtimes` removed (CloudEvents `time` used instead); deduplication moved from an "interceptor" to the single funnel `EventBus.publishInbound` |
 | 2026-09-03 | Configuration center deleted wholesale (`CloudConfig` / `ConfigRef` / `ConfigSubscription` / the `config/` package): configuration cascade and hot reload belong uniformly to boot (`AppConfigDefault` / `freeway.config.file`), and cloud contributes only `SecretSymbolSource` (order 15) |
 | 2026-09-04 | Documentation closure: default implementations in the feature package (not `internal/`), the single-argument `choose(instances)` signature, health endpoint paths fixed and non-configurable, and the core/ext boundary rewritten around "ext currently contains no cloud adapter" |
 | 2026-09-12 | RPC v2: export became **declarative** (`RpcExport` data contribution + one `/rpc/{mapping}/{method}` wildcard route + a `.before(HTTP_SERVER)` assembly hook), `RemoteCaller` is bound by the framework, and standalone assembly uses `RpcEndpoint.route(...)`; on the same day v3 designed a `CallBridge` to make `CallBus` automatically go cross-process on a local miss, **withdrawn before implementation in the finalized design** |
 | 2026-09-12 | RPC v4: **`CallBus` deleted** along with its satellite types; `RpcEndpoint` calls the container-resolved handler directly (the `RpcTarget` method table, with overloads failing at startup); `RemoteProxyFactory` converged to remote-only; the document was renamed from `freeway-remote-callbus-design.md` |
-| 2026-09-12 | Audit round: failures gained `kind()` (13 values); `ServiceRegistry.renew` returns boolean and self-heals; readiness states only what the framework verifies (3 failures mark unhealthy, unregistered reports `not registered`, shutdown is unhealthy); secrets rotate on size + full-precision mtime; mesh outbound TLS shares one security surface with RPC, with a startup warning for plaintext + token; shutdown gained `registry.shutdown-drain` / `rpc.shutdown-grace` and WS `1001 going away`; contribution ids unified as `freeway.cloud.*`; `@Local` narrowed to parameters/fields and extended to `Metrics` / `TransportSecurity`; added the optional-input rule and the `Wiring` compatibility constructor |
+| 2026-09-12 | Audit round: failures gained `kind()` (13 values); `ServiceRegistry.renew` returns boolean and self-heals; readiness states only what the framework verifies (3 failures mark unhealthy, unregistered reports `not registered`, shutdown is unhealthy); secrets rotate on size + full-precision mtime; mesh outbound TLS shares one security surface with RPC, with a startup warning for plaintext + token; shutdown gained `member.shutdown-drain` / `rpc.shutdown-grace` and WS `1001 going away`; contribution ids unified as `freeway.cloud.*`; `@Local` narrowed to parameters/fields and extended to `Metrics` / `TransportSecurity`; added the optional-input rule and the `Wiring` compatibility constructor |
 | 2026-09-13 | Module composition switched to a tree: `ModuleEx.subModules()` and `ModuleTree` deleted, composition became the `ModuleNode` value built by the entry point (held by the container, `Container.moduleTree()`); the umbrella module `CloudModule` became the fragment factory `CloudModules.standard()`, from which an application can replace or extract any module |
 | 2026-09-14 | Structural nodes changed from "named groups" to "bundle modules": the `group` concept deleted, and `ModuleEx`'s bundle class declares submodules with `@SubModule` (expanded when building the tree, not a callback); the `CloudModules.standard()` factory deleted, restored to `CloudModule` + `@SubModule`, and submodules can still be placed individually for a subset (no exclusion API) |
-| 2026-09-12 | Configuration surface audit: `registry.service-scheme` / `service-host` / `shutdown-drain` defaulted to `auto` (following HTTP server TLS, deriving a routable address, and answered by the registry backend respectively), and the mesh dial scheme reads the resolved instance endpoint; boolean keys uniformly parsed by `Coercer` (garbage values fail at startup, no more silent `false`); a duplicate key in an override file warns at startup and names both files; added `HttpServer.isSecure()` and `ServiceRegistry.drainWindow()` |
+| 2026-09-12 | Configuration surface audit: `member.service-scheme` / `service-host` / `shutdown-drain` defaulted to `auto` (following HTTP server TLS, deriving a routable address, and answered by the registry backend respectively), and the mesh dial scheme reads the resolved instance endpoint; boolean keys uniformly parsed by `Coercer` (garbage values fail at startup, no more silent `false`); a duplicate key in an override file warns at startup and names both files; added `HttpServer.isSecure()` and `ServiceRegistry.drainWindow()` |
 | 2026-09-12 | Document merge: this document supersedes `freeway-cloud-unified-design.md` / `freeway-cloud-events-design.md` / `freeway-cloud-rpc-design.md` / `freeway-cloud-implementation-plan.md`; the still-valid exclusions and capability boundaries of the four documents (no application-level heartbeat, MQ semantics, global membership view, webhook outbound, `@CloudEvent` annotated entities) and the core follow-ups (including `Advisor` weaving and mesh heartbeat) are merged into §5 / §7 / §8; the configuration key list moved out to an index into `docs/configuration.md` |
 | 2026-09-14 | Compatibility is no longer a goal: the optional-input rule in `AGENTS.md` removed "record the old-arity delegating constructor kept as an adapter assembly point" (written in the previous 09-12 round) — adding a component directly changes the canonical constructor shape, and the compile error is the migration path; accordingly the 9-arg compatibility constructor of `RpcHttpClientDefault.Wiring` was deleted (ext `RemoteRpcContract` changed to pass 10 args in the same batch) along with the transitional read of `freeway-log.properties` (the old name is only detected and warned about, not loaded) |
 | 2026-09-24 | Broadcast domain plane separation: dismantled the `EventSink` bridge — `EventBridge`/`EventBridgePolicy`/`EventBusInbound`/`@Topic`/`Keyed` deleted, and the four keys `subscriptions`/`allowed-types`/`allowed-topics`/`dedup.*` retired; `MeshEventBus` is an explicit facade (`publish` addressed by topic, Defer commit coupling, subscriptions declaration-only and the subscription table = the inbound gate); ext kafka switched to the independent plane `KafkaEvents`; in-flight CLASS frames are parsed, dropped by reason and counted, with the wire format unchanged |

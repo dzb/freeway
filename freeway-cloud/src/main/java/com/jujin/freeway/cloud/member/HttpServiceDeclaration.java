@@ -1,0 +1,91 @@
+package com.jujin.freeway.cloud.member;
+
+import com.jujin.freeway.cloud.CloudModule;
+import com.jujin.freeway.cloud.discovery.ServiceDeclaration;
+import com.jujin.freeway.cloud.discovery.ServiceEndpoint;
+import com.jujin.freeway.cloud.discovery.ServiceInstance;
+import com.jujin.freeway.http.HttpServer;
+import com.jujin.freeway.ioc.Container;
+import com.jujin.freeway.ioc.MissingBindingException;
+import com.jujin.freeway.ioc.symbol.SymbolSource;
+import com.jujin.freeway.ioc.symbol.SymbolSpec;
+
+import java.util.Map;
+import java.util.function.Function;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * Built-in {@link ServiceDeclaration} for the HTTP endpoint: registers the
+ * {@link HttpServer}'s address under the configured service id (fallback
+ * chain: {@code freeway.cloud.member.service-id} →
+ * {@code freeway.app.name} → {@code freeway-app}).
+ *
+ * <p>Returns {@code null} when no {@link HttpServer} is bound (HTTP module not
+ * installed) — the registry hook skips it. Scheme and host default to
+ * {@code auto} ({@link NodeIdentity}): the scheme follows the server's
+ * transport, the host prefers {@code POD_IP} and then a routable local
+ * address, so a container does not register a bind-all endpoint by omission.
+ * The instance id defaults to a derived key and can be pinned via
+ * {@code freeway.cloud.member.service-instance-id}.
+ */
+public final class HttpServiceDeclaration implements ServiceDeclaration {
+
+    private static final Logger LOG = LoggerFactory.getLogger(HttpServiceDeclaration.class);
+
+    /** Malformed values fail with the key named; unset falls back to the live server port. */
+    private static final SymbolSpec<Integer> SERVICE_PORT = SymbolSpec.of(
+        MemberModule.ConfigKeys.MEMBER_SERVICE_PORT, Integer.class, null, Integer::parseInt);
+
+    /** Scheme/host defaults are the {@code auto} token; the derivation lives in
+     *  {@link NodeIdentity}, shared with the event mesh. */
+    private static final SymbolSpec<String> SERVICE_SCHEME = SymbolSpec.of(
+        MemberModule.ConfigKeys.MEMBER_SERVICE_SCHEME, String.class,
+        MemberModule.ConfigKeys.MEMBER_SERVICE_SCHEME_DEFAULT, Function.identity());
+    private static final SymbolSpec<String> SERVICE_HOST = SymbolSpec.of(
+        MemberModule.ConfigKeys.MEMBER_SERVICE_HOST, String.class,
+        MemberModule.ConfigKeys.MEMBER_SERVICE_HOST_DEFAULT, Function.identity());
+
+    /**
+     * The instance this node registers — and the identity it presents to the
+     * rest of the system. Every consumer resolves it here: the registry through
+     * {@link #resolve}, the event mesh through this factory, so a node cannot
+     * present two names. Null when there is no HTTP module (nothing to
+     * register).
+     */
+    @Override
+    public ServiceInstance resolve(Container container) {
+        return of(container);
+    }
+
+    /** @see #resolve */
+    public static ServiceInstance of(Container container) {
+        HttpServer server;
+        try {
+            server = container.get(HttpServer.class);
+        } catch (MissingBindingException e) {
+            return null; // no HTTP module — nothing to register
+        }
+        SymbolSource symbols = container.get(SymbolSource.class);
+        String serviceId = symbols.resolve(MemberModule.ConfigKeys.MEMBER_SERVICE_ID,
+            symbols.resolve(CloudModule.ConfigKeys.APP_NAME, CloudModule.ConfigKeys.APP_NAME_DEFAULT));
+        String scheme = NodeIdentity.scheme(
+            symbols.resolve(SERVICE_SCHEME), server.isSecure(), serviceId);
+        String host = NodeIdentity.host(
+            symbols.resolve(SERVICE_HOST), server.host(), serviceId);
+        // The default port is the live server's port, not a static value —
+        // resolve raw and fall back manually.
+        Integer configuredPort = symbols.resolve(SERVICE_PORT);
+        int port = configuredPort != null ? configuredPort : server.port();
+        String instanceId = symbols.resolve(MemberModule.ConfigKeys.MEMBER_SERVICE_INSTANCE_ID,
+            serviceId + "@" + host + ":" + port);
+        if (NodeIdentity.isBindAll(host)) {
+            LOG.warn("Registering unroutable host '{}' for service '{}' — peers cannot call it;"
+                    + " set {} to the address other nodes should use (e.g. a Pod IP)",
+                host, serviceId, MemberModule.ConfigKeys.MEMBER_SERVICE_HOST);
+        }
+        return ServiceInstance.of(serviceId, instanceId,
+            ServiceEndpoint.of(scheme, host, port), Map.of());
+    }
+}

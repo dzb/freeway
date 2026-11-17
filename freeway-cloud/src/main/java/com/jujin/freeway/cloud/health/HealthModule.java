@@ -1,13 +1,13 @@
 package com.jujin.freeway.cloud.health;
 
 import com.jujin.freeway.cloud.health.internal.ReadyHandler;
+import com.jujin.freeway.http.HttpStatus;
 import com.jujin.freeway.http.route.Route;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.annotation.Builtin;
 import com.jujin.freeway.ioc.annotation.Marker;
 
-import com.jujin.freeway.http.HttpStatus;
 import java.util.Map;
 
 /**
@@ -16,7 +16,7 @@ import java.util.Map;
  *   <li>{@code /health/live} — process liveness (always ok while serving).</li>
  *   <li>{@code /health/ready} — dependency readiness, aggregating
  *       {@link CloudHealthContributor} contributions. The registry
- *       contributor ships with {@code RegistrationModule} and answers
+ *       contributor ships with {@code MemberModule} and answers
  *       {@code not registered} before registration, 503 while the drain window
  *       runs, 503 after three consecutive heartbeat failures, and otherwise the
  *       instance count; external-backend connectivity is contributed by adapters

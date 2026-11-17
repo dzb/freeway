@@ -25,7 +25,7 @@ class BootConfigTierTest {
 
     private static AppConfig layered(String cliValue, String envValue, String fileValue) {
         return new AppConfigDefault(
-            new ConfigSources(
+            new ConfigCascade.Sources(
                 cliValue == null ? Map.of() : Map.of(KEY, cliValue),
                 envValue == null ? Map.of() : Map.of(KEY, envValue),
                 fileValue == null ? Map.of() : Map.of(KEY, fileValue),

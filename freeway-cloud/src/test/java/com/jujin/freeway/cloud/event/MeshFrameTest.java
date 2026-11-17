@@ -1,10 +1,12 @@
 package com.jujin.freeway.cloud.event;
 
+import com.jujin.freeway.cloud.event.internal.MeshFrame;
+
+import org.junit.jupiter.api.Test;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-
-import org.junit.jupiter.api.Test;
 
 /**
  * The frame classification both mesh legs now share.

@@ -1,6 +1,7 @@
 package com.jujin.freeway.cloud.rpc;
 
 import com.jujin.freeway.commons.util.Proxies;
+
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.time.Duration;
@@ -24,7 +25,7 @@ import java.util.Objects;
  * <p>Binding the client once at the composition root is the intended shape:
  * call sites stay {@code @Inject UserApi} and never learn whether the
  * implementation is in-process or remote — that decision belongs to the
- * composition (bind the local implementation, or this client), which is also
+ * composition (bind the built-in implementation, or this client), which is also
  * why the interface can be shared without the modules depending on each
  * other.</p>
  *
@@ -32,7 +33,7 @@ import java.util.Objects;
  * answered locally and never dispatched. Remote failures surface unchanged:
  * {@link RpcException} for transport failures, with
  * {@link RemoteInvocationException} as its cause when the remote handler threw
- * a business failure. {@link #timeout(Duration)} bounds a call end to end,
+ * a business failure. {@link #withTimeout(Duration)} bounds a call end to end,
  * retries included; without it the transport's configured request timeout
  * applies.</p>
  *

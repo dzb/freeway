@@ -6,6 +6,7 @@ import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -32,6 +33,26 @@ class KnownKeysTest {
     public static final class EmptyKeys {
         public static final String NOT_A_KEY = "unrelated";
         public static final int NUMBER = 1;
+    }
+
+    @Test
+    void f2IsAnInputAliasForTheFrameworkNamespace() {
+        assertEquals("freeway.http.server.port",
+            KnownKeys.canonicalize("f2.http.server.port"));
+        assertEquals("freeway.http.server.port",
+            KnownKeys.canonicalize("F2.http.server.port"));
+        assertEquals("f2.http.server.port",
+            KnownKeys.alias("freeway.http.server.port"));
+        assertEquals("F2.http.server.port",
+            KnownKeys.upperAlias("freeway.http.server.port"));
+        assertEquals(List.of("f2.http.server.port", "F2.http.server.port"),
+            KnownKeys.aliases("freeway.http.server.port"));
+        assertEquals("freeway.http.server.port",
+            KnownKeys.canonicalize("freeway.http.server.port"));
+        assertEquals("order.pricing.currency",
+            KnownKeys.canonicalize("order.pricing.currency"));
+        assertNull(KnownKeys.canonicalize(null));
+        assertNull(KnownKeys.alias(null));
     }
 
     @Test

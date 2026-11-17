@@ -1,21 +1,15 @@
 package com.jujin.freeway.cloud.rpc;
 
-import com.jujin.freeway.cloud.CloudModule;
-import com.jujin.freeway.cloud.discovery.TestDiscoveryModule;
-import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
 import com.jujin.freeway.cloud.CloudHookIds;
+import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
+import com.jujin.freeway.cloud.CloudModule;
 import com.jujin.freeway.cloud.discovery.ServiceEndpoint;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.cloud.discovery.ServiceRegistry;
+import com.jujin.freeway.cloud.discovery.TestDiscoveryModule;
+import com.jujin.freeway.cloud.rpc.internal.RpcTarget;
 import com.jujin.freeway.commons.json.JsonCodecDefault;
 import com.jujin.freeway.http.HttpModule;
 import com.jujin.freeway.http.HttpServer;
@@ -24,12 +18,19 @@ import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.RuntimeHook;
 import com.jujin.freeway.ioc.annotation.Inject;
+
 import java.lang.reflect.Type;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Wiring contracts of the export declaration: what the framework guarantees

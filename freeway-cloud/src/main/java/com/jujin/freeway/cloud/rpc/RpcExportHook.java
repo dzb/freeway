@@ -1,14 +1,18 @@
 package com.jujin.freeway.cloud.rpc;
 
+import com.jujin.freeway.cloud.rpc.internal.RpcPaths;
+import com.jujin.freeway.cloud.rpc.internal.RpcTarget;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.http.HttpExchange;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.MissingBindingException;
 import com.jujin.freeway.ioc.RuntimeHook;
+
 import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,7 +33,7 @@ import org.slf4j.LoggerFactory;
  * intermediate registry that could disagree with what was declared. There is
  * nothing to undo on stop for the same reason, so the default no-op stands.
  */
-final class RpcExportHook implements RuntimeHook {
+public final class RpcExportHook implements RuntimeHook {
 
     private static final Logger LOG = LoggerFactory.getLogger(RpcExportHook.class);
 
@@ -81,7 +85,7 @@ final class RpcExportHook implements RuntimeHook {
     }
 
     /** The framework route's handler: gate on the export table, then the protocol. */
-    void serve(HttpExchange ctx) throws IOException {
+    public void serve(HttpExchange ctx) throws IOException {
         Map<String, RpcTarget> resolved = this.targets;
         JsonCodec json = this.codec;
         if (json == null) {

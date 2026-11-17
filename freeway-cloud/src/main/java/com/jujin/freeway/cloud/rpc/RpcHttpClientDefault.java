@@ -1,7 +1,7 @@
 package com.jujin.freeway.cloud.rpc;
 
-import com.jujin.freeway.cloud.context.InvocationContext;
 import com.jujin.freeway.cloud.context.ContextCodec;
+import com.jujin.freeway.cloud.context.InvocationContext;
 import com.jujin.freeway.cloud.discovery.LoadBalancer;
 import com.jujin.freeway.cloud.discovery.ServiceDiscovery;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
@@ -11,11 +11,12 @@ import com.jujin.freeway.cloud.resilience.CircuitBreaker;
 import com.jujin.freeway.cloud.resilience.CircuitBreakerDefault;
 import com.jujin.freeway.cloud.resilience.RateLimiter;
 import com.jujin.freeway.cloud.resilience.RateLimiterDefault;
+import com.jujin.freeway.cloud.resilience.ResilienceModule;
 import com.jujin.freeway.cloud.resilience.RetryBudget;
 import com.jujin.freeway.cloud.resilience.RetryBudgetDefault;
 import com.jujin.freeway.cloud.resilience.Retryer;
-import com.jujin.freeway.cloud.resilience.ResilienceModule;
 import com.jujin.freeway.cloud.resilience.RetryerDefault;
+import com.jujin.freeway.cloud.rpc.internal.ResiliencePolicy;
 import com.jujin.freeway.commons.metrics.Metrics;
 
 import java.io.IOException;
@@ -29,15 +30,14 @@ import java.net.http.HttpTimeoutException;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Default {@link RpcHttpClient} — a JDK {@link HttpClient}-backed

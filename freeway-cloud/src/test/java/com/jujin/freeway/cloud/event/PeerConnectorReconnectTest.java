@@ -2,16 +2,17 @@ package com.jujin.freeway.cloud.event;
 
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
+import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
+import com.jujin.freeway.cloud.event.internal.PeerAddress;
 import com.jujin.freeway.http.HttpModule;
 import com.jujin.freeway.http.HttpServer;
+import com.jujin.freeway.ioc.ModuleEx;
 
 import java.net.ServerSocket;
 import java.util.List;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
-import com.jujin.freeway.cloud.CloudModule.ConfigKeys;
-import com.jujin.freeway.cloud.CloudModule;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 

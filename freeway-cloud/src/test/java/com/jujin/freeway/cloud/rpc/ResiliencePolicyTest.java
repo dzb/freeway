@@ -5,6 +5,7 @@ import com.jujin.freeway.cloud.resilience.RateLimiter;
 import com.jujin.freeway.cloud.resilience.RetryBudget;
 import com.jujin.freeway.cloud.resilience.RetryBudgetDefault;
 import com.jujin.freeway.cloud.resilience.Retryer;
+import com.jujin.freeway.cloud.rpc.internal.ResiliencePolicy;
 
 import java.io.IOException;
 import java.util.Map;

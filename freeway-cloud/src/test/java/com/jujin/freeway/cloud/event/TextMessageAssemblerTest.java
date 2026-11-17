@@ -1,10 +1,12 @@
 package com.jujin.freeway.cloud.event;
 
+import com.jujin.freeway.cloud.event.internal.TextMessageAssembler;
+
+import org.junit.jupiter.api.Test;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-
-import org.junit.jupiter.api.Test;
 
 /**
  * Fragment reassembly on the client leg of the mesh: a peer's server fragments

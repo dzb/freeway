@@ -1,10 +1,11 @@
 package com.jujin.freeway.cloud.internal;
 
 import com.jujin.freeway.cloud.annotation.Local;
-import com.jujin.freeway.ioc.MissingBindingException;
 import com.jujin.freeway.ioc.Container;
+import com.jujin.freeway.ioc.MissingBindingException;
 import com.jujin.freeway.ioc.RuntimeHook;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -13,9 +14,9 @@ import org.slf4j.LoggerFactory;
  * keys select an external backend (Nacos/Consul/K8s/S3/Vault/...) provided by
  * a backend bound primary — an extension adapter (Consul ships in freeway-ext)
  * or the freeway-native fleet ({@code FleetModule}). For roles that still have a
- * built-in local default, an external value is ignored while that local binding
- * is primary; {@link #warnIfExternal} reports that once. Discovery and
- * registration have no local default, so their guard asks whether any binding
+ * built-in default, a non-blank declaration is ignored while that built-in
+ * binding is primary; {@link #warnIfExternal} reports that once. Discovery and
+ * registration have no built-in default, so their guard asks whether any binding
  * exists instead ({@link #warnIfMissing}).
  */
 public final class BackendTypeGuard {
@@ -25,9 +26,9 @@ public final class BackendTypeGuard {
     private BackendTypeGuard() {}
 
     /**
-     * A lifecycle hook whose whole job is the missing-adapter warning above.
-     * Modules that own one local backend contribute this instead of restating
-     * the anonymous RuntimeHook skeleton.
+     * A lifecycle hook whose whole job is the declaration warning above.
+     * Modules that own one built-in backend contribute this instead of
+     * restating the anonymous RuntimeHook skeleton.
      */
     public static <T> RuntimeHook warnHook(
         Class<T> type,
@@ -43,10 +44,10 @@ public final class BackendTypeGuard {
     }
 
     /**
-     * Warns when an external backend is declared but the role has no binding at
-     * all. This is the discovery/registration case after the local default was
-     * removed: there is no {@code @Local} marker to inspect, and a missing
-     * provider is the fact that matters.
+     * Warns when a non-blank backend type is declared but the role has no
+     * binding at all. This is the discovery/service-membership case: there is
+     * no {@code @Local} marker to inspect, and a missing provider is the fact
+     * that matters.
      *
      * @return true when a warning was emitted
      */
@@ -57,8 +58,7 @@ public final class BackendTypeGuard {
         String subsystem
     ) {
         String configured = container.get(SymbolSource.class).resolve(typeKey, "");
-        if (configured == null || configured.isBlank()
-                || "local".equalsIgnoreCase(configured.trim())) {
+        if (configured == null || configured.isBlank()) {
             return false;
         }
         try {
@@ -75,12 +75,11 @@ public final class BackendTypeGuard {
     }
 
     /**
-     * Warns when {@code typeKey} resolves to a non-blank value other than
-     * {@code local} AND the {@code @Local} binding is still the active one —
-     * i.e. the user asked for an ext backend that is not installed. When a
-     * extension adapter is bound primary, the configured type is honored
-     * and no warning is emitted. Silent when the value is blank or
-     * {@code local}.
+     * Warns when {@code typeKey} resolves to a non-blank value AND the
+     * {@code @Local} binding is still the active one — i.e. an adapter backend
+     * declaration has no adapter installed. When an extension adapter is bound
+     * primary, the configured type is honored and no warning is emitted. Silent
+     * when the value is blank.
      */
     public static <T> void warnIfExternal(
         Container container,
@@ -89,15 +88,14 @@ public final class BackendTypeGuard {
         String subsystem
     ) {
         String configured = container.get(SymbolSource.class).resolve(typeKey, "");
-        if (configured == null || configured.isBlank()
-                || "local".equalsIgnoreCase(configured.trim())) {
+        if (configured == null || configured.isBlank()) {
             return;
         }
         if (container.isActiveBindingMarked(type, Local.class)) {
             LOG.warn(
-                "freeway.cloud.{} type '{}' requires an extension adapter bound primary;"
-                    + " none is installed, using the built-in local implementation"
-                    + " and ignoring the setting",
+                "freeway.cloud.{} type '{}' is configured, but the built-in"
+                    + " implementation is still primary; bind an adapter primary"
+                    + " or clear the key — the configured type is ignored",
                 subsystem,
                 configured.trim());
         }

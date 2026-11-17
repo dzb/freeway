@@ -1,11 +1,100 @@
 # Freeway Configuration Reference
 
-> All configuration keys are dot-separated hierarchical keys, unified under the `freeway.*` namespace.
-> Configuration source precedence (low → high): `application.properties` → `application.json` → `application-{profile}.properties` → `application-{profile}.json` → **working-directory/`freeway.config.file` override files** (with the same names and order; the filesystem as a whole outranks the classpath baseline and is hot-reloadable) → **module-contributed sources** (for example a cloud secret store, `order()=15`) → environment variables (`FREEWAY_*`, `order()=10`) → **JVM system properties** (`-Dkey=value` before the main class starts, keys verbatim, `order()=5`) → CLI arguments (`--key=value`, `order()=0`).
+> Framework configuration keys are dot-separated hierarchical keys under the
+> `freeway.*` namespace. Application-owned keys live outside that namespace
+> (for example `order.*`); the boundary is defined by the code that reads the key.
+> Configuration source precedence (low → high): `application.properties` → `application.json` → `application-{profile}.properties` → `application-{profile}.json` → **working-directory/`freeway.config.file` override files** (with the same names and order; the filesystem as a whole outranks the classpath baseline and is hot-reloadable) → **module-contributed sources** (for example a cloud secret store, `order()=15`) → environment variables (`FREEWAY_*` or the short `F2_*` / `f2_*` aliases, `order()=10`) → **JVM system properties** (`-Dkey=value` before the main class starts, keys verbatim, `order()=5`) → CLI arguments (`--key=value`, `order()=0`).
 > Precedence is determined by each source's declared `SymbolProvider.order()` (ascending lookup, first match wins), independent of module installation order.
 > See the configuration cascade chapter of [architecture.md](architecture.md).
 
 ---
+
+## Short `f2` / `F2` input alias
+
+The canonical framework namespace is always `freeway.*`. `f2.*` and `F2.*`
+are input aliases, not a second configuration namespace:
+
+```text
+f2.http.server.port  ->  freeway.http.server.port
+F2.http.server.port  ->  freeway.http.server.port
+```
+
+The alias is accepted in properties/JSON files, CLI arguments, JVM system
+properties and the environment:
+
+```properties
+f2.http.server.port=8080
+F2.http.server.host=localhost
+```
+
+```bash
+--f2.http.server.port=8080
+--F2.http.server.host=localhost
+-Df2.http.server.port=8080
+-DF2.http.server.host=localhost
+F2_HTTP_SERVER_PORT=8080
+f2_HTTP_SERVER_HOST=localhost
+```
+
+`F2_` / `f2_` are the environment spellings; `FREEWAY_` remains canonical.
+The alias is normalized before profile selection, configuration merging and
+unknown-key checking, so modules and `ConfigKeys` only ever see `freeway.*`.
+
+Within one source, declaring both spellings is a duplicate-key error, not a
+precedence choice:
+
+```text
+Duplicate config key 'freeway.http.server.port':
+'f2.http.server.port' and 'F2.http.server.port'
+```
+
+Across different source tiers, normal precedence applies: for example, an
+`F2_*` environment variable overrides a file-level `freeway.*` value.
+`f2.*` / `F2.*` are reserved for this input alias; application-owned keys
+remain under their own prefix such as `order.*`.
+
+## Framework vs application configuration namespaces
+
+A key belongs to the code that reads it, not to the file or environment variable
+that supplies it.
+
+| Namespace | Owner | Examples |
+|---|---|---|
+| Framework (`freeway.*`) | Framework modules and adapters | `freeway.http.server.port`, `freeway.db.url`, `freeway.cloud.discovery.static.services`, `freeway.kafka.*` |
+| `<app-name>.*` | Application code | `order.pricing.currency`, `order.checkout.timeout`, `order.feature.new-flow` |
+| Bootstrap/platform names | Boot, logging or the JDK | `freeway.config.file`, `freeway.env.prefix`, `app.name`, `slf4j.provider` |
+
+Rules:
+
+- If a Freeway module or extension adapter reads the key, it must be under
+  `freeway.*`, declared by that module's `ConfigKeys`, and covered by its
+  `KnownKeys` vocabulary.
+- If only application code reads the key, it belongs outside `freeway.*`; use a
+  stable application prefix such as `order.*` rather than a generic bare key.
+- A key read by both framework and application code has two owners. Move the
+  policy to one side instead of creating a shared key.
+- Adapter configuration remains framework-owned even when the adapter lives in
+  `freeway-ext`: Kafka uses `freeway.kafka.*`, Fleet uses `freeway.fleet.*`, and
+  so on.
+- `freeway.app.name` is the framework's application-identity input. It is not a
+  configuration namespace and does not automatically create `order.*` keys.
+- Service IDs and endpoint values inside a framework key are data, not a new key
+  namespace. In
+  `freeway.cloud.discovery.static.services=orders=https://orders.internal:443`,
+  the key is framework-owned while `orders` is a service ID value.
+
+Unknown-key detection follows the same boundary: boot checks configured
+`freeway.*` keys against the vocabularies contributed by modules. Keys outside
+`freeway.*` are deliberately outside that check, so an application namespace
+needs its own `ConfigKeys` table, validation or startup test. Do not put
+application secrets or business settings under `freeway.*` merely to borrow the
+framework's unknown-key warning.
+
+Command-line keys are literal and are not rewritten into either namespace.
+Environment mapping is a separate mechanism: the default `FREEWAY_` prefix maps
+into `freeway.*`; a custom `freeway.env.prefix` passes through the remaining
+variable name. It does not infer an application namespace from the application
+name.
 
 ## Configuration classification rules
 
@@ -20,16 +109,16 @@ Each key's **class** is stated in the tables below. Classification is not a matt
 
 Two further classes are **not "decisions"** — do not mix them with the above:
 
-- **declaration** (`freeway.cloud.{secret,storage,discovery,registry}.type`): expresses only "which backend I intend to use"; it **does not select an implementation** (selection = a `.primary()` binding, an `@Local` marker, which adapter module is installed). When a local default is still in use and the declaration is non-empty, startup warns once; for discovery/registration (no local default), startup warns when the declared type has no binding.
+- **declaration** (`freeway.cloud.{secret,storage,discovery,registry}.type`): expresses only "which backend I intend to use"; it **does not select an implementation** (selection = a `.primary()` binding, an `@Local` marker, which adapter module is installed). When a built-in default is still in use and the declaration is non-empty, startup warns once; for discovery/registration (no built-in default), startup warns when the declared type has no binding.
 - **mechanism** (`freeway.config.file`, `freeway.env.prefix`, `freeway.cloud.secret.file/.keys`): these configure the configuration system itself, and writing them into any configuration file has no effect. The first two may come from `-D` or `FREEWAY_CONFIG_FILE`/`FREEWAY_ENV_PREFIX`; the latter two **honour `-D` only** — they are read through the symbol resolution chain, and going through the cascade once would recurse.
 
 A **shape suffix** describes where the value comes from (it determines whether the value can be "hidden"):
 
 | Suffix | Meaning | Example |
 |------|------|------|
-| `·auto` | The value must be **derived**; it cannot be written literally | `log.file=auto` (the path embeds the runtime's `app.name`), `registry.service-scheme=auto` (follows whether the HTTP server has TLS enabled), `registry.service-host=auto` (POD_IP → the first routable local address), `registry.shutdown-drain=auto` (answered by the registry backend) |
+| `·auto` | The value must be **derived**; it cannot be written literally | `log.file=auto` (the path embeds the runtime's `app.name`), `member.service-scheme=auto` (follows whether the HTTP server has TLS enabled), `member.service-host=auto` (POD_IP → the first routable local address), `member.shutdown-drain=auto` (answered by the registry backend) |
 | `·presence` | Only once the primary key appears do the cluster's sub-keys become meaningful | `ssl.key-store` (the path is what enables HTTPS), `event.peers`, `rpc.tls.key-store` |
-| `·sentinel` | Empty/`0` = defer to the platform, the JDK or the runtime | `dialect=""` (inferred from the JDBC URL), `registry.service-port` (empty = the actual listening port), `max-connections=0` (OS default) |
+| `·sentinel` | Empty/`0` = defer to the platform, the JDK or the runtime | `dialect=""` (inferred from the JDBC URL), `member.service-port` (empty = the actual listening port), `max-connections=0` (OS default) |
 | `·aggregate switch` | One key governs a whole cluster of tuning keys | `rpc.resilience=auto\|off` (when `off`, all `retry.*`/`circuit-breaker.*`/`rate-limit.*` are ignored) |
 
 **Classes you do not need to read**: for the four classes `posture` / `tuning` / `declaration` / `mechanism`, the default is the recommended value; only `required` and `decision` need an answer per deployment. A service that does not involve HTTPS and does not face browsers needs only 2 of them:
@@ -42,7 +131,7 @@ A **shape suffix** describes where the value comes from (it determines whether t
 | **HTTP** | `freeway.http.cors.allowed-origins` | The default `*` is a development posture; write the real domain when deploying |
 | **Cloud** | `freeway.cloud.event.peers` + `.token` | Both are needed when the event mesh is enabled (non-empty peers is the switch; the token must be identical on all nodes) |
 | **Cloud** | `freeway.cloud.rpc.tls.key-store` + `-password` | When outbound RPC uses mTLS (the path is what enables it) |
-| **Cloud** | `freeway.cloud.registry.service-host` | `auto` is usually enough in a container; a multi-NIC host must be named explicitly |
+| **Cloud** | `freeway.cloud.member.service-host` | `auto` is usually enough in a container; a multi-NIC host must be named explicitly |
 | **Cloud** | `freeway.cloud.secret.file` / `.keys` | The secret backend's own configuration, **readable only via `-D`** (environment variables do not work; see §V · Secrets) |
 
 **Why the tuning class needs no "master switch"**: each cluster already has one key governing it, and adding another would only state "off" in different words — `rpc.resilience` governs the nine resilience keys, the `event.enabled` presence governs the four `event.*-ms` transport timeouts (which are meaningless when no mesh exists), the `ssl.enabled` presence governs the whole TLS cluster, and tuning keys themselves say "use the platform default" (`0` = OS/JDK default, empty = JDK default).
@@ -543,9 +632,9 @@ default or no limit, and empty means the JDK default.
 
 **Classification** (rules in "Configuration classification rules" at the top): decision = `event.peers` + `event.token`,
 `rpc.tls.key-store` + `-password` (when using mTLS),
-`registry.service-host` (`auto` is usually enough in a container; a multi-NIC host must be named explicitly); posture = each
-`.enabled`, presence primary keys, and the three `auto` keys (`registry.service-scheme` /
-`.service-host` / `registry.shutdown-drain`); declaration = the four `*.type`; mechanism =
+`member.service-host` (`auto` is usually enough in a container; a multi-NIC host must be named explicitly); posture = each
+`.enabled`, presence primary keys, and the three `auto` keys (`member.service-scheme` /
+`.service-host` / `member.shutdown-drain`); declaration = the four `*.type`; mechanism =
 `secret.file`/`secret.keys` (`-D` only); the rest is **tuning**, and each cluster already has a key governing it
 (`rpc.resilience=auto|off`, the `event.enabled` presence).
 
@@ -553,8 +642,8 @@ default or no limit, and empty means the JDK default.
 
 | Category | Example | Role |
 |---|---|---|
-| **Selection key** | a `.primary()` binding, an `@Local` marker, the adapter module itself | **Actually decides which implementation is used**: during container resolution the primary binding wins and the local default steps aside |
-| **Declaration key** | `freeway.cloud.discovery.type` / `registry.type` / `secret.type` / `storage.type` | **Expresses intent only**: "I intend to use Nacos / Consul / S3 / Vault". The framework **does not use it to select an implementation** (no reflective class-name loading and no classpath scanning); an adapter **may** read it for validation/warnings (the Consul adapter treats it as a pure intent declaration that does not participate in selection). `BackendTypeGuard.warnIfExternal` warns for roles with a local default; `warnIfMissing` warns when discovery/registration has no binding at all |
+| **Selection key** | a `.primary()` binding, an `@Local` marker, the adapter module itself | **Actually decides which implementation is used**: during container resolution the primary binding wins and the built-in default steps aside |
+| **Declaration key** | `freeway.cloud.discovery.type` / `registry.type` / `secret.type` / `storage.type` | **Expresses intent only**: "I intend to use Nacos / Consul / S3 / Vault". The framework **does not use it to select an implementation** (no reflective class-name loading and no classpath scanning); an adapter **may** read it for validation/warnings (the Consul adapter treats it as a pure intent declaration that does not participate in selection). `BackendTypeGuard.warnIfExternal` warns for roles with a built-in default; `warnIfMissing` warns when discovery/registration has no binding at all |
 
 So: to switch backends, write an adapter module and `.primary()` it; `*.type` is a
 declaration and self-check for humans and adapters — a wrong value (or a missing adapter) does not
@@ -564,7 +653,7 @@ silently take effect, but warns once at startup.
 
 | Key | Class | Type | Default | Required | Meaning |
 |----|------|------|--------|------|------|
-| `freeway.cloud.secret.type` | declaration | String | *(empty)* | no | Secret backend type. Empty (or `local`) = the built-in env/file implementation; external backends (Vault etc.) are plugged in by an adapter via `.primary()` (not yet delivered in freeway-ext) — if an external value is configured while the local implementation is still active, startup warns once |
+| `freeway.cloud.secret.type` | declaration | String | *(empty)* | no | Secret backend type. Empty = the built-in env/file implementation; external backends (Vault etc.) are plugged in by an adapter via `.primary()` (not yet delivered in freeway-ext) — any non-empty value while the built-in implementation is still active warns once |
 | `freeway.cloud.secret.file` | mechanism·-D | String | `application-secrets.properties` | no | Secret file path (key=value format). **Takes effect only via `-D` system properties**: the secret provider participates in symbol resolution and cannot read its own configuration through that chain, so writing it into a configuration file or an environment variable has no effect. When the file is replaced (size/mtime change) the change takes effect **without a restart** (throttled to at most 1s); a failed read or a momentarily missing file keeps the loaded values and warns |
 | `freeway.cloud.secret.keys` | mechanism·-D | String | *(empty)* | no | Allowlist of symbol names that may be resolved from the secret store (comma-separated). **Takes effect only via `-D` system properties** (same as above). Leaving it empty is the sharp default of "look up the environment variable for any symbol name", and startup prints a WARN |
 
@@ -572,29 +661,36 @@ silently take effect, but warns once at startup.
 
 | Key | Class | Type | Default | Required | Meaning |
 |----|------|------|--------|------|------|
-| `freeway.cloud.storage.type` | declaration | String | *(empty)* | no | Storage backend type. Empty (or `local`) = the built-in local filesystem implementation; external backends (S3 etc.) are plugged in by an adapter via `.primary()` (not yet delivered in freeway-ext) — if an external value is configured while the local implementation is still active, startup warns once |
+| `freeway.cloud.storage.type` | declaration | String | *(empty)* | no | Storage backend type. Empty = the built-in local filesystem implementation; external backends (S3 etc.) are plugged in by an adapter via `.primary()` (not yet delivered in freeway-ext) — any non-empty value while the built-in implementation is still active warns once |
 | `freeway.cloud.storage.base-path` | tuning | String | `cloud-storage` | no | Root path of the local backend (relative to the working directory, for example `cloud-storage`; absolute paths also work) |
 
-#### Service discovery / registration
+#### Service discovery / service membership / registry backends
 
-The keys in this section are declared by `RegistrationModule.ConfigKeys`
-(endpoint identity and drain), `LoadBalancer.ConfigKeys` (local-zone), and
-`CloudModule.ConfigKeys` (`freeway.app.name`).
+The keys in this section are declared by `StaticModule.ConfigKeys` (static
+services), `MemberModule.ConfigKeys` (member identity and drain),
+`LoadBalancer.ConfigKeys` (local-zone), and `CloudModule.ConfigKeys`
+(`freeway.app.name`).
+
+The member keys previously used the `freeway.cloud.registry.*` prefix. They now
+use `freeway.cloud.member.*`; only the backend declaration
+`freeway.cloud.registry.type` remains under `registry`. The old member keys are
+not aliases and should be removed from deployment configuration.
 Fleet keys (`nodes`, `token`, `cache-ttl`, `timeout-ms`) are documented with the
 Fleet modules in **freeway-ext**.
 
 | Key | Class | Type | Default | Required | Meaning |
 |----|------|------|--------|------|------|
 | `freeway.cloud.discovery.type` | declaration | String | *(empty)* | no | Discovery backend type declaration. Backends are plugged in by a module via `.primary()` — static, Fleet, or an ext adapter (Consul is delivered in freeway-ext; Nacos etc. are not). Empty = no discovery backend configured; a declared external type with no adapter warns once at startup |
+| `freeway.cloud.discovery.static.services` | tuning | comma list | *(empty)* | no | Config-driven `StaticModule` entries, each `serviceId=scheme://host:port[/basePath]`. Repeating a service ID adds instances. URI must be absolute, include an explicit port and contain no userinfo, query or fragment; instance IDs are the normalized endpoint URIs. Read once at startup; no registration, heartbeat, eviction or hot reload. Configuration entries carry no weight/zone/canary metadata. Required when `new StaticModule()` is installed without an explicit service map. See [the complete grammar and examples](modules/cloud.md#config-driven-static-discovery) |
 | `freeway.cloud.discovery.local-zone` | tuning·sentinel | String | *(empty)* | no | This process's zone. When set and at least one instance declares a `zone` metadata, the default balancer runs weighted round-robin over local-zone candidates; if none match it falls back to the full list. Empty = no zone preference. `canary` stays a weight/custom-policy input; the default never routes all traffic to a canary just because one exists |
 | `freeway.cloud.registry.type` | declaration | String | *(empty)* | no | Registry backend type. Same as above: Fleet or an ext adapter binds the role; there is no built-in in-process fallback. |
-| `freeway.cloud.registry.service-id` | tuning·sentinel | String | *(empty)* | no | Logical service name for registration. Empty = fall back to `freeway.app.name` (then `freeway-app`) |
-| `freeway.app.name` | tuning·sentinel | String | `freeway-app` | no | Generic fallback key for the service name, read by cloud registration; note that the JVM `-D app.name` (without the `freeway.` prefix) is something else — it only determines the default log file name |
-| `freeway.cloud.registry.service-host` | posture·auto | String | `auto` | no | Hostname to register. `auto` = if the bind address is a concrete address, use it (the server listens only there); with a `0.0.0.0`/`::` bind, prefer `POD_IP`, otherwise the first routable local address, and only when neither exists fall back to the bind address and warn. Multi-NIC hosts should name it explicitly |
-| `freeway.cloud.registry.service-scheme` | posture·auto | String | `auto` | no | Registration scheme, which also decides whether the event mesh dials `ws` or `wss`. `auto` = follow whether the HTTP server has TLS enabled; an explicit value accepts only `http`/`https`, and any other value fails startup |
-| `freeway.cloud.registry.shutdown-drain` | posture·auto | Duration | `auto` | no | **Shutdown drain window**: after deregistering and setting readiness to draining, keep serving for this period before stopping. `auto` = answered by the registry backend (`ServiceRegistry.drainWindow()`): registry adapters carry their own propagation window (for example `5s`; static has no registration lifecycle), so it need not be written per deployment; an explicit duration takes precedence, and a negative value fails startup |
-| `freeway.cloud.registry.service-port` | tuning·sentinel | Integer | *(empty)* | no | Registration port. Empty = the HTTP server's actual listening port |
-| `freeway.cloud.registry.service-instance-id` | tuning·sentinel | String | *(empty)* | no | Stable instance-level identifier. Empty = the derived key `service-id@host:port` |
+| `freeway.cloud.member.service-id` | tuning·sentinel | String | *(empty)* | no | Logical service-member name. Empty = fall back to `freeway.app.name` (then `freeway-app`) |
+| `freeway.app.name` | tuning·sentinel | String | `freeway-app` | no | Generic fallback key for the service-member name; note that the JVM `-D app.name` (without the `freeway.` prefix) is something else — it only determines the default log file name |
+| `freeway.cloud.member.service-host` | posture·auto | String | `auto` | no | Hostname published for this member. `auto` = if the bind address is a concrete address, use it (the server listens only there); with a `0.0.0.0`/`::` bind, prefer `POD_IP`, otherwise the first routable local address, and only when neither exists fall back to the bind address and warn. Multi-NIC hosts should name it explicitly |
+| `freeway.cloud.member.service-scheme` | posture·auto | String | `auto` | no | Scheme published for this member, which also decides whether the event mesh dials `ws` or `wss`. `auto` = follow whether the HTTP server has TLS enabled; an explicit value accepts only `http`/`https`, and any other value fails startup |
+| `freeway.cloud.member.shutdown-drain` | posture·auto | Duration | `auto` | no | **Member shutdown drain window**: after deregistering and setting readiness to draining, keep serving for this period before stopping. `auto` = answered by the registry backend (`ServiceRegistry.drainWindow()`): registry adapters carry their own propagation window (for example `5s`; static has no membership lifecycle), so it need not be written per deployment; an explicit duration takes precedence, and a negative value fails startup |
+| `freeway.cloud.member.service-port` | tuning·sentinel | Integer | *(empty)* | no | Published member port. Empty = the HTTP server's actual listening port |
+| `freeway.cloud.member.service-instance-id` | tuning·sentinel | String | *(empty)* | no | Stable member instance identifier. Empty = the derived key `service-id@host:port` |
 
 #### RPC / Remote invocation
 

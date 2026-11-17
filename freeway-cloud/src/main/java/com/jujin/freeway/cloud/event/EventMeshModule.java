@@ -1,16 +1,17 @@
 package com.jujin.freeway.cloud.event;
 
+import com.jujin.freeway.cloud.CloudHookIds;
 import com.jujin.freeway.cloud.CloudKeys;
 import com.jujin.freeway.cloud.CloudModule;
-import com.jujin.freeway.cloud.CloudHookIds;
+import com.jujin.freeway.cloud.member.MemberModule;
+import com.jujin.freeway.commons.json.JsonCodec;
+import com.jujin.freeway.http.websocket.WebSocketRoute;
 import com.jujin.freeway.ioc.Binder;
-import com.jujin.freeway.ioc.symbol.KnownKeys;
-import com.jujin.freeway.cloud.registration.RegistrationModule;
 import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.RuntimeHook;
 import com.jujin.freeway.ioc.annotation.Builtin;
 import com.jujin.freeway.ioc.annotation.Marker;
-import com.jujin.freeway.http.websocket.WebSocketRoute;
+import com.jujin.freeway.ioc.symbol.KnownKeys;
 
 /**
  * Assembles the {@link MeshEventBus} — the cloud-native broadcast plane:
@@ -56,15 +57,15 @@ public final class EventMeshModule implements ModuleEx {
 
     @Override
     public void bind(Binder binder) {
-        // The mesh origin reuses the registration identity: HttpDeclaration
-        // reads app.name / registry.service-* from these two tables, so this
-        // module must declare them even when RegistrationModule is absent.
+        // The mesh origin reuses the registration identity: HttpServiceDeclaration
+        // reads app.name / member.service-* from these two tables, so this
+        // module must declare them even when MemberModule is absent.
         binder.contribute(KnownKeys.class)
             .add(KnownKeys.of(ConfigKeys.class, CloudKeys.PREFIX,
                 CloudKeys.APP_PREFIX))
             .add(KnownKeys.of(CloudModule.ConfigKeys.class, CloudKeys.PREFIX,
                 CloudKeys.APP_PREFIX))
-            .add(KnownKeys.of(RegistrationModule.ConfigKeys.class,
+            .add(KnownKeys.of(MemberModule.ConfigKeys.class,
                 CloudKeys.PREFIX, CloudKeys.APP_PREFIX));
         var hub = new PeerHub();
 

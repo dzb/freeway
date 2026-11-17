@@ -1,12 +1,20 @@
 package com.jujin.freeway.cloud.event;
 
+import com.jujin.freeway.cloud.event.internal.MeshFrame;
+import com.jujin.freeway.cloud.event.internal.MeshKeepalive;
+import com.jujin.freeway.cloud.event.internal.PeerAddress;
+import com.jujin.freeway.cloud.event.internal.TextMessageAssembler;
+import com.jujin.freeway.cloud.http.HttpClients;
+import com.jujin.freeway.cloud.resilience.Backoff;
+import com.jujin.freeway.commons.json.JsonObject;
+
 import java.net.http.HttpClient;
 import java.net.http.WebSocket;
 import java.time.Duration;
 import java.util.LinkedHashSet;
-import java.util.Objects;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
@@ -15,10 +23,9 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import com.jujin.freeway.cloud.http.HttpClients;
-import com.jujin.freeway.cloud.resilience.Backoff;
 
 /**
  * Outbound dialer for the event mesh: connects to configured peers

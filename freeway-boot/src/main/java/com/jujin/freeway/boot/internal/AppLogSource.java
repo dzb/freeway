@@ -42,7 +42,7 @@ public final class AppLogSource implements LogConfigSource {
         // cascade may use a launcher-supplied loader; that divergence is a
         // documented boundary, not a parity claim.
         ClassLoader loader = Thread.currentThread().getContextClassLoader();
-        ConfigSources sources = ConfigCascade.bootstrapLayers(
+        ConfigCascade.Sources sources = ConfigCascade.bootstrapLayers(
             loader != null ? loader : AppLogSource.class.getClassLoader());
         return logSubset(sources.files());
     }

@@ -1,8 +1,9 @@
 package com.jujin.freeway.boot.internal;
-import java.util.Arrays;
 
 import com.jujin.freeway.boot.AppConfig;
 import com.jujin.freeway.commons.util.EnvKeys;
+import com.jujin.freeway.ioc.symbol.SymbolProvider;
+
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -10,6 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -17,7 +19,7 @@ import java.util.logging.Handler;
 import java.util.logging.Level;
 import java.util.logging.LogRecord;
 import java.util.logging.Logger;
-import com.jujin.freeway.ioc.symbol.SymbolProvider;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -33,7 +35,7 @@ class ConfigCascadeTest {
 
     @Test
     void loadsEverySourceSeparatelyAndFoldsTheFilesBaseline() {
-        ConfigSources sources = ConfigCascade.loadLayers(
+        ConfigCascade.Sources sources = ConfigCascade.loadLayers(
             Thread.currentThread().getContextClassLoader(),
             "--freeway.profile=dev",
             "--app.name=Overridden",
@@ -59,6 +61,47 @@ class ConfigCascadeTest {
         // CLI outranks every file layer in the merged picture.
         assertEquals("Overridden", merged(sources).get("app.name"));
         assertEquals("7070", merged(sources).get("server.port"));
+    }
+
+    @Test
+    void f2AliasIsCanonicalizedInCliAndEnvironmentSources() {
+        Map<String, String> args = ConfigCascade.parseArgs("--f2.http.server.port=8080");
+        assertEquals("8080", args.get("freeway.http.server.port"));
+        assertEquals("8081", ConfigCascade.parseArgs("--F2.http.server.port=8081")
+            .get("freeway.http.server.port"));
+        assertThrows(IllegalArgumentException.class,
+            () -> ConfigCascade.parseArgs(
+                "--f2.http.server.port=8080", "--freeway.http.server.port=9090"));
+
+        Map<String, String> environment = ConfigCascade.loadEnvironment(
+            Map.of("F2_HTTP_SERVER_PORT", "8080"));
+        assertEquals("8080", environment.get("freeway.http.server.port"));
+        assertEquals("8081", ConfigCascade.loadEnvironment(
+            Map.of("f2_HTTP_SERVER_PORT", "8081")).get("freeway.http.server.port"));
+        assertThrows(IllegalArgumentException.class,
+            () -> ConfigCascade.loadEnvironment(Map.of(
+                "F2_HTTP_SERVER_PORT", "8080",
+                "FREEWAY_HTTP_SERVER_PORT", "9090")));
+
+        assertThrows(IllegalArgumentException.class,
+            () -> new ConfigCascade.Sources(
+                Map.of("freeway.http.server.port", "8080",
+                    "f2.http.server.port", "9090"),
+                Map.of(), Map.of(), List.of()));
+    }
+
+    @Test
+    void f2AliasIsCanonicalizedInFilesAndDuplicateAliasesFail() throws IOException {
+        Path alias = Files.writeString(dir.resolve("alias.properties"),
+            "f2.http.server.port=8080\nF2.http.server.host=localhost\n");
+        assertEquals("8080", ConfigFilePlan.Reader.read(alias).get("freeway.http.server.port"));
+        assertEquals("localhost",
+            ConfigFilePlan.Reader.read(alias).get("freeway.http.server.host"));
+
+        Path duplicate = Files.writeString(dir.resolve("duplicate.properties"),
+            "f2.http.server.port=8080\nF2.http.server.port=8081\nfreeway.http.server.port=9090\n");
+        assertThrows(IllegalArgumentException.class,
+            () -> ConfigFilePlan.Reader.read(duplicate));
     }
 
     @Test
@@ -226,7 +269,7 @@ class ConfigCascadeTest {
 
     @Test
     void emptyJsonResourceIsTreatedAsNoConfig() {
-        ConfigSources sources =
+        ConfigCascade.Sources sources =
             ConfigCascade.loadLayers(new MultiContentLoader("application.json", ""));
 
         assertEquals("Freeway Boot", sources.files().get("app.name"),
@@ -237,7 +280,7 @@ class ConfigCascadeTest {
 
     @Test
     void blankJsonResourceIsTreatedAsNoConfig() {
-        ConfigSources sources =
+        ConfigCascade.Sources sources =
             ConfigCascade.loadLayers(new MultiContentLoader(
                 "application.json", "  \n\t \r\n  "));
 
@@ -375,7 +418,7 @@ class ConfigCascadeTest {
         // environment layer maps vars (still FREEWAY_, JVM-property-driven).
         ClassLoader loader = new MultiContentLoader(
             "application.properties", "freeway.env.prefix=APP_\n");
-        ConfigSources sources =
+        ConfigCascade.Sources sources =
             ConfigCascade.loadLayers(loader);
 
         assertEquals("APP_", merged(sources).get("freeway.env.prefix"),
@@ -388,7 +431,7 @@ class ConfigCascadeTest {
 
     @Test
     void multipleProfilesParseInOrder() {
-        ConfigSources sources = ConfigCascade.loadLayers(
+        ConfigCascade.Sources sources = ConfigCascade.loadLayers(
             Thread.currentThread().getContextClassLoader(),
             "--freeway.profile=dev,prod"
         );
@@ -416,7 +459,7 @@ class ConfigCascadeTest {
 
         // Activation via the base properties layer (no CLI override): without
         // the fix the profile layer's "prod" outranks base "dev" in merged().
-        ConfigSources sources =
+        ConfigCascade.Sources sources =
             ConfigCascade.loadLayers(loader);
         assertEquals(List.of("dev"), sources.profiles());
         assertEquals("dev", merged(sources).get("freeway.profile"),
@@ -437,7 +480,7 @@ class ConfigCascadeTest {
 
     @Test
     void jsonOutranksPropertiesInTheClasspathBaseline() {
-        ConfigSources sources = ConfigCascade.loadLayers(new MultiContentLoader(
+        ConfigCascade.Sources sources = ConfigCascade.loadLayers(new MultiContentLoader(
             "application.properties", "app.name=from-properties\n",
             "application.json", "{\"app.name\": \"from-json\"}"));
 
@@ -452,7 +495,7 @@ class ConfigCascadeTest {
         // the profile order: application-dev.json beats
         // application-prod.properties. Pinned because the rule is otherwise
         // invisible (and was undocumented).
-        ConfigSources sources = ConfigCascade.loadLayers(new MultiContentLoader(
+        ConfigCascade.Sources sources = ConfigCascade.loadLayers(new MultiContentLoader(
             "application.properties", "freeway.profile=dev,prod\n",
             "application-dev.json", "{\"app.name\": \"from-dev-json\"}",
             "application-prod.properties", "app.name=from-prod-properties\n"));
@@ -607,8 +650,8 @@ class ConfigCascadeTest {
      * The full layered view the tests assert on: file baseline + env + cli —
      * the same overlay the symbol chain applies tier by tier.
      */
-    private static Map<String, String> merged(ConfigSources sources) {
-        return ConfigMaps.overlay(
+    private static Map<String, String> merged(ConfigCascade.Sources sources) {
+        return ConfigCascade.overlay(
             List.of(sources.files(), sources.environment(), sources.cli()));
     }
 
@@ -674,7 +717,7 @@ class ConfigCascadeTest {
         @Override
         public InputStream getResourceAsStream(String name) {
             if ("application.properties".equals(name)) {
-                return new RepeatingInputStream(ConfigFileReader.MAX_BYTES + 1);
+                return new RepeatingInputStream(ConfigFilePlan.Reader.MAX_BYTES + 1);
             }
             return null;
         }
@@ -684,7 +727,7 @@ class ConfigCascadeTest {
         @Override
         public InputStream getResourceAsStream(String name) {
             if ("application.json".equals(name)) {
-                return new RepeatingInputStream(ConfigFileReader.MAX_BYTES + 1);
+                return new RepeatingInputStream(ConfigFilePlan.Reader.MAX_BYTES + 1);
             }
             return null;
         }

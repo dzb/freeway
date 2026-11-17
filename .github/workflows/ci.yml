@@ -66,7 +66,7 @@ jobs:
           distribution: temurin
           java-version: '25'
           cache: maven
-      # The adapters pin 2.0.0, and a core change is only verified by
+      # The adapters pin 2.0.1, and a core change is only verified by
       # a clean build there (see freeway-ext/AGENTS.md). Installing this tree
       # first makes that check run against the change under review instead of
       # whatever release Central happens to hold.
