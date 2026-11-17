@@ -66,10 +66,12 @@ jobs:
           distribution: temurin
           java-version: '25'
           cache: maven
-      # The adapters pin 2.0.1, and a core change is only verified by
-      # a clean build there (see freeway-ext/AGENTS.md). Installing this tree
-      # first makes that check run against the change under review instead of
-      # whatever release Central happens to hold.
+      # The adapters pin the same version line as this tree, and a core change
+      # is only verified by a clean build there (see freeway-ext/AGENTS.md).
+      # Installing this tree first makes that check run against the change under
+      # review instead of whatever release Central happens to hold. The parent
+      # POM comes from that install: `freeway-parent` is never published, so a
+      # version line that disagrees with this checkout fails here first.
       - name: Install core snapshot
         run: mvn -B -ntp -DskipTests -Dgpg.skip=true install
       - name: Check out adapters
