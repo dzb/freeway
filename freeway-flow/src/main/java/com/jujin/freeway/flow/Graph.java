@@ -73,10 +73,12 @@ public final class Graph {
         }
 
         // Shape check at the one place every graph goes through: a join fed
-        // from different iteration domains cannot be counted, and refusing it
+        // from different iteration domains cannot be counted, and a flow a
+        // conditional split may skip cannot feed a PARALLEL join. Refusing both
         // here means no entry point (load, eval(Graph), eval(GraphSpec)) can
         // hand the executor a graph the accounting has no answer for.
         JoinDomains.rejectMixed(this);
+        JoinArrivals.rejectSkippableInputs(this);
         this.metas = blueprint.metadata().isEmpty()
                 ? Map.of()
                 : Collections.unmodifiableMap(new LinkedHashMap<>(blueprint.metadata()));

@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **A `PARALLEL` join fed by a conditional split is refused at build time**
+  (`freeway-flow`): a `PARALLEL` join waits for its static in-degree and is
+  never told that a skipped branch carries no token — only an `INCLUSIVE` join
+  is told, by the dead-path accounting. Such a graph could therefore only end
+  as `dead end at node 'j'`, a message naming the join while the mistake sat at
+  the split that skipped the branch. Graph construction now rejects it, naming
+  the join, the input that may stay empty, and the conditional step that gates
+  it, including an input one hop further downstream. An `EXCLUSIVE` split
+  feeding an `INCLUSIVE` join remains legal; so does a `PARALLEL` join whose
+  inputs all run on every traversal. Known limit: a `LOOP` whose iteration set
+  is empty leaves its downstream flows empty too, and that is a runtime data
+  property rather than a graph shape, so it is not covered. A condition that
+  happens to evaluate true is still read as "may be skipped".
+- **A write that lost its branch frame is refused** (`freeway-flow`): while a
+  branch scope is open, a write from a thread that carries no frame throws
+  `IllegalStateException` instead of reaching the root map. The frame follows
+  the work, not the thread, so a task that starts its own thread or pool lost
+  it: that write had no buffer, no conflict check and no merge, and the fork's
+  declared isolation disappeared without an error. The refusal names the key
+  and the cause; the engine's own forks are unaffected, since they carry the
+  frame to their workers. Known limit: the error is thrown on the thread that
+  attempted the write, so the run aborts only if the task passes it back —
+  a task that swallows it continues with the write refused rather than with the
+  root map silently changed.
+
 ## [2.0.1] - 2026-11-17
 
 ### Added

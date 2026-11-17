@@ -321,6 +321,58 @@ cannot tell which is current.
 
 ---
 
+## 18. A test that writes outside the binding tests the wrong layer
+
+**Symptom.** Three branch-isolation tests called `ctx.put(...)` between
+`beginBranch()` and `commit()`, outside `run()`. The frame is bound only inside
+`run()`, so those writes went to the root map, and the assertions ("a branch
+reads back its own write", "clean merge lands the write in the parent")
+described root behaviour: they would have passed with the whole branch
+mechanism deleted. One of them ended in `assertNull(null)` placeholders, which
+is what a test looks like when nobody re-read what it proves.
+
+**Cause.** The isolation primitive is a `ScopedValue` bound by `run()`; outside
+it the same call is an ordinary root write. The tests exercised the state
+machine around the buffer (open → write → commit) without the binding that
+makes a write belong to it, and the expectations matched both behaviours, so
+nothing failed.
+
+**Rule.**
+
+> A test of a scoped mechanism must enter the scope, and at least one assertion
+> must prove the two sides differ — the parent sees nothing while the branch
+> runs, and a second branch writing the same key fails on merge. If the off-scope
+> call is a legal but wrong write, make it refuse: a guard turns the next
+> slide into a failure instead of a green test that proves nothing.
+
+---
+
+## 19. A guard for a lost binding belongs on the writer
+
+**Symptom.** Branch isolation is a `ScopedValue` frame; a task that starts its
+own thread loses it, and its write then landed in the root map — no buffer, no
+conflict check, no merge, no error. Every other misuse of the same scope
+already threw (`run`/`commit` after the scope settled, LIFO merge, write-write
+conflict). The first instinct was to mark "a frame is expected" when the fork
+starts, which cannot work: the marker would be a `ScopedValue` too, so the
+escaping thread carries neither the frame nor the marker.
+
+**Cause.** A binding travels only along the propagation the code performs
+(`Branch.run`, `ContextExecutor.wrap`). A thread created by hand inherits
+nothing, so every signal that depends on inheritance is missing exactly where
+the guard needs it.
+
+**Rule.**
+
+> Detect the loss where it is observable — at the use, on the thread that uses
+> it. The context knows how many layers are open, so a write with no frame while
+> one is open is the loss; refusing it is the honest answer, because that write
+> cannot be honoured. Do not build the guard on a second inherited marker: it
+> disappears together with the first, and the guard then protects nothing while
+> looking like protection.
+
+---
+
 ## Review checklist
 
 Before declaring a boundary refactor done:
@@ -339,3 +391,7 @@ Before declaring a boundary refactor done:
     historical release notes keep the historical spelling.
 12. No document carries an unowned number, a superseded claim, or a version
     claim another repository must keep true.
+13. Every scope/binding test enters the binding and asserts the outside view
+    (what the parent does not see), not only the post-commit result.
+14. A scope that fails loudly on every other misuse has no silent path left:
+    a lost binding is refused at the use, not inferred at the entry.

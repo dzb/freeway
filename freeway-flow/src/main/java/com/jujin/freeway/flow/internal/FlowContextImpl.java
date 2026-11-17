@@ -42,6 +42,15 @@ import java.util.concurrent.Executor;
  * <p>A null value means "cleared": it reads back as null and disappears from
  * {@code containsKey} (the backing map forbids null values, so a sentinel
  * stores the clearing inside a layer).</p>
+ *
+ * <p>A write that carries no frame while a branch scope is open is refused.
+ * The frame follows the work, not the thread, so a task that starts a thread
+ * or pool of its own loses it: that thread's write would land in the root map
+ * with no buffer, no conflict detection and no merge, and the isolation the
+ * fork declared would disappear without an error. Silence was the one failure
+ * mode this class could still produce, and it was the only one left unguarded
+ * — every other misuse (running after the scope ended, folding out of LIFO
+ * order, a write-write conflict) already fails loudly.</p>
  */
 public final class FlowContextImpl implements FlowContext, FlowBranching {
     /** Sentinel for "cleared in this layer" (the CHM root simply drops the key). */
@@ -69,6 +78,9 @@ public final class FlowContextImpl implements FlowContext, FlowBranching {
 
     private final Map<String, Object> root = new ConcurrentHashMap<>();
     private final Object mergeLock = new Object();
+    /** Open branch layers; a frame-less write is only legal while this is 0. */
+    private final java.util.concurrent.atomic.AtomicInteger openLayers =
+        new java.util.concurrent.atomic.AtomicInteger();
 
     /**
      * Wraps an executor so each task runs with the submitting thread's branch
@@ -123,6 +135,7 @@ public final class FlowContextImpl implements FlowContext, FlowBranching {
         if (parent != null) {
             parent.layer().openChildren.incrementAndGet();
         }
+        openLayers.incrementAndGet();
         return new LayerScope(new BranchFrame(new Layer(), parent));
     }
 
@@ -174,6 +187,7 @@ public final class FlowContextImpl implements FlowContext, FlowBranching {
             mergeLayer(frame);
             settled = true;
             releaseParent();
+            openLayers.decrementAndGet();
         }
 
         @Override
@@ -189,6 +203,7 @@ public final class FlowContextImpl implements FlowContext, FlowBranching {
             settled = true;
             frame.layer().settled = true; // a discarded parent rejects late children
             releaseParent();
+            openLayers.decrementAndGet();
         }
 
         private void releaseParent() {
@@ -215,6 +230,22 @@ public final class FlowContextImpl implements FlowContext, FlowBranching {
         BranchFrame frame = currentFrame();
         Object stored = value == null ? REMOVED : value;
         if (frame == null) {
+            int open = openLayers.get();
+            if (open > 0) {
+                // The thread lost the frame it should have carried. Writing the
+                // root map here would undo the branch's isolation silently, so
+                // the refusal replaces the write it cannot honour.
+                throw new IllegalStateException(
+                    "Branch write isolation was lost: this thread carries no branch frame while "
+                        + open + " branch scope(s) are open in this context, so the write to '"
+                        + key + "' would land in the root map — no buffer, no conflict check, no"
+                        + " merge, and no error. A task that starts its own thread or pool loses"
+                        + " the frame exactly this way; so does handing the context to a callback"
+                        + " that runs on another thread. Do the write inside the branch body, and"
+                        + " use a PARALLEL node to overlap work instead of a thread inside a task:"
+                        + " the engine's forks carry the frame to their workers, a thread you start"
+                        + " does not.");
+            }
             if (value == null) root.remove(key);
             else root.put(key, value);
             return;

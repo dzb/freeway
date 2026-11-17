@@ -1492,28 +1492,173 @@ class FlowEngineTest {
     }
 
     @Test
-    void parallelJoinMissingArrivalThrows() {
-        // Same shape for a PARALLEL join node with multiple incoming links.
+    void aConditionalLinkFeedingAParallelJoinIsRefusedWhenTheGraphIsBuilt() {
+        // The shape used to build and then die at the join with "dead end at
+        // node 'j'", naming the node that waited instead of the split that
+        // skipped a branch. A PARALLEL join is never told about a dead path
+        // (only an INCLUSIVE join is), so the graph refuses the shape while it
+        // is still a document.
+        IllegalArgumentException direct = assertThrows(IllegalArgumentException.class,
+            () -> GraphSpec.create("par_cond", spec -> {
+                spec.entry("s");
+                spec.addStart("s").linkTo("act");
+                spec.addActivity("act").task("@dummy")
+                    .linkTo("a", link -> link.when("false == true"))
+                    .linkTo("b");
+                spec.addActivity("a").task("@dummy").linkTo("j");
+                spec.addActivity("b").task("@dummy").linkTo("j");
+                spec.addParallel("j").task("@dummy").linkTo("e");
+                spec.addEnd("e");
+            }).create());
+        assertTrue(direct.getMessage().contains("'j'"),
+            "the refusal must name the join it protects: " + direct.getMessage());
+        assertTrue(direct.getMessage().contains("'a' is reachable only through conditional"),
+            "the refusal must name the skipped branch: " + direct.getMessage());
+
+        // One hop away: 'mid' is reachable only through the skipped branch, so
+        // the join's input is just as conditional as the link itself.
+        IllegalArgumentException indirect = assertThrows(IllegalArgumentException.class,
+            () -> GraphSpec.create("par_cond_indirect", spec -> {
+                spec.entry("s");
+                spec.addStart("s").linkTo("act");
+                spec.addActivity("act").task("@dummy")
+                    .linkTo("a", link -> link.when("false == true"))
+                    .linkTo("b");
+                spec.addActivity("a").task("@dummy").linkTo("mid");
+                spec.addActivity("mid").task("@dummy").linkTo("j");
+                spec.addActivity("b").task("@dummy").linkTo("j");
+                spec.addParallel("j").task("@dummy").linkTo("e");
+                spec.addEnd("e");
+            }).create());
+        assertTrue(indirect.getMessage().contains(
+                "'mid' is reachable only through conditional link 'act->a'"),
+            "the refusal must trace the loss back to the split: " + indirect.getMessage());
+    }
+
+    @Test
+    void anExclusiveSplitFeedingAParallelJoinIsRefusedWhenTheGraphIsBuilt() {
+        // No conditions here: a multi-branch EXCLUSIVE picks one branch, so
+        // every other branch may be skipped on any run.
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+            () -> GraphSpec.create("par_xor", spec -> {
+                spec.entry("s");
+                spec.addStart("s").linkTo("x");
+                spec.addExclusive("x").task("@dummy")
+                    .linkTo("a")
+                    .linkTo("b");
+                spec.addActivity("a").task("@dummy").linkTo("j");
+                spec.addActivity("b").task("@dummy").linkTo("j");
+                spec.addParallel("j").task("@dummy").linkTo("e");
+                spec.addEnd("e");
+            }).create());
+        assertTrue(ex.getMessage().contains("EXCLUSIVE 'x'"),
+            "the refusal must name the split that chooses the branch: " + ex.getMessage());
+    }
+
+    @Test
+    void aSkipThroughASubgraphCallStillReachesTheParentJoin() {
+        // Dead-path reachability walks the parent graph's links; a `#graphId`
+        // call is an ordinary node on that walk, not a boundary. A skipped flow
+        // that passes through one must still tell the parent join it is absent,
+        // and the sub-graph must not be invoked for a branch that never runs.
         var executed = new ArrayList<String>();
-        FlowEngine engine = newEngine(tasksRun(node -> executed.add(node.id())));
-        Graph g = GraphSpec.create("par_dead", spec -> {
+        FlowEngine engine = newEngine(tasksRun(
+            node -> executed.add(node.graph().id() + ":" + node.id())));
+        Graph sub = GraphSpec.create("skipSub", spec -> {
+            spec.entry("cs");
+            spec.addStart("cs").linkTo("ce");
+            spec.addEnd("ce");
+        }).create();
+        Graph main = GraphSpec.create("skipMain", spec -> {
+            spec.entry("s");
+            spec.addStart("s").linkTo("x");
+            spec.addExclusive("x").task("@dummy")
+                .linkTo("call", link -> link.when("false == true"))
+                .linkTo("b", link -> link.when("true == true"));
+            spec.addActivity("call").task("#skipSub").linkTo("gw");
+            spec.addActivity("b").task("@dummy").linkTo("gw");
+            spec.addInclusive("gw").task("@dummy").linkTo("e");
+            spec.addEnd("e");
+        }).create();
+        engine.load(sub);
+        engine.load(main);
+
+        assertDoesNotThrow(() -> engine.run("skipMain", FlowContext.of()),
+            "the join must learn that the flow behind the sub-graph call is absent");
+        assertTrue(executed.contains("skipMain:gw"),
+            "the inclusive join must activate on its one active flow, got " + executed);
+        assertFalse(executed.contains("skipMain:call"),
+            "the skipped branch must not run its node, got " + executed);
+        assertFalse(executed.contains("skipSub:cs"),
+            "the skipped branch must not invoke the sub-graph, got " + executed);
+    }
+
+    @Test
+    void anUnloadedGraphIdDoesNotReuseTheOldSkipReachability() {
+        // Skip reachability is cached per (graph, node), keyed by the graph id.
+        // A graph is replaced by unloading its id and loading the new shape, so
+        // the unload must drop the cache: a stale destination would name a join
+        // of the previous shape and complete or starve the new one silently.
+        var joinRuns = new AtomicInteger();
+        FlowEngine engine = newEngine(tasksRun(node -> {
+            if ("j1".equals(node.id())) {
+                joinRuns.incrementAndGet();
+            }
+        }));
+        Graph first = GraphSpec.create("shared-id", spec -> {
+            spec.entry("s");
+            spec.addStart("s").linkTo("x");
+            spec.addExclusive("x").task("@dummy")
+                .linkTo("a", link -> link.when("false == true"))
+                .linkTo("b", link -> link.when("true == true"));
+            spec.addActivity("a").task("@dummy").linkTo("j1");
+            spec.addActivity("b").task("@dummy").linkTo("j1");
+            spec.addInclusive("j1").task("@dummy").linkTo("e");
+            spec.addEnd("e");
+        }).create();
+        engine.load(first);
+        engine.run("shared-id", FlowContext.of()); // caches a -> j1
+        joinRuns.set(0); // count activations of the second run only
+
+        // Same id, different shape: the skipped branch no longer reaches j1,
+        // which is now fed by two real flows.
+        Graph second = GraphSpec.create("shared-id", spec -> {
+            spec.entry("s");
+            spec.addStart("s").linkTo("x").linkTo("c");
+            spec.addExclusive("x").task("@dummy")
+                .linkTo("a", link -> link.when("false == true"))
+                .linkTo("b", link -> link.when("true == true"));
+            spec.addActivity("a").task("@dummy").linkTo("e");
+            spec.addActivity("b").task("@dummy").linkTo("j1");
+            spec.addActivity("c").task("@dummy").linkTo("j1");
+            spec.addInclusive("j1").task("@dummy").linkTo("e");
+            spec.addEnd("e");
+        }).create();
+        engine.unload("shared-id");
+        engine.load(second);
+
+        assertDoesNotThrow(() -> engine.run("shared-id", FlowContext.of()),
+            "a stale skip destination would complete or starve the replaced join");
+        assertEquals(1, joinRuns.get(),
+            "the join must activate once for its two real flows");
+    }
+
+    @Test
+    void aConditionalSplitFeedingAnInclusiveJoinStaysLegal() {
+        // The same split feeding an INCLUSIVE join is the supported shape:
+        // that join is told which flows are absent, so its count still adds up.
+        Graph g = GraphSpec.create("inc_cond", spec -> {
             spec.entry("s");
             spec.addStart("s").linkTo("x");
             spec.addExclusive("x").task("@dummy")
                 .linkTo("a", link -> link.when("true == true"))
                 .linkTo("b", link -> link.when("false == true"));
-            spec.addActivity("a").task("@dummy").linkTo("j");
-            spec.addActivity("b").task("@dummy").linkTo("j");
-            spec.addParallel("j").task("@dummy").linkTo("e");
+            spec.addActivity("a").task("@dummy").linkTo("gw");
+            spec.addActivity("b").task("@dummy").linkTo("gw");
+            spec.addInclusive("gw").task("@dummy").linkTo("e");
             spec.addEnd("e");
         }).create();
-        engine.load(g);
-        FlowException ex = assertThrows(FlowException.class,
-            () -> engine.run("par_dead", FlowContext.of()));
-        assertTrue(ex.getMessage().contains("j"),
-            "error must name the stuck join, got: " + ex.getMessage());
-        assertFalse(executed.contains("e"),
-            "the join body and downstream must not run");
+        assertNotNull(g);
     }
 
     @Test
@@ -2016,17 +2161,23 @@ class FlowEngineTest {
 
     @Test
     void branchBufferIsolatesWritesUntilMerge() {
-        // Direct unit of the isolation mechanism: inside a branch a write (or
-        // a clear) is visible to the branch only; the parent sees the change
-        // exactly when the merger runs.
+        // Direct unit of the isolation mechanism: inside a branch body a write
+        // (or a clear) is visible to the branch only, and the parent sees the
+        // change exactly when the merger runs. The writes must happen inside
+        // run(): outside the binding they belong to the root, and the guard now
+        // refuses them while a layer is open.
         FlowContextImpl ctx = new FlowContextImpl();
         ctx.put("base", "1");
 
         FlowBranching.Branch merge = ctx.beginBranch();
-        ctx.put("k", "A");
-        ctx.remove("base");
-        assertEquals("A", ctx.get("k"), "a branch reads back its own write");
-        assertNull(ctx.get("base"), "a branch-local remove shadows the parent");
+        merge.run(() -> {
+            ctx.put("k", "A");
+            ctx.remove("base");
+            assertEquals("A", ctx.get("k"), "a branch reads back its own write");
+            assertNull(ctx.get("base"), "a branch-local remove shadows the parent");
+        });
+        assertNull(ctx.get("k"), "the parent must not see the write before the merge");
+        assertEquals("1", ctx.get("base"), "the parent keeps its value until the merge");
 
         merge.commit();
         assertEquals("A", ctx.get("k"), "clean merge lands the write in the parent");
@@ -2247,38 +2398,98 @@ class FlowEngineTest {
 
     @Test
     void branchBufferReadsSeeOwnWritesAndParentWrites() {
-        // Direct unit of the isolation mechanism: inside a branch, a write is
-        // visible to the same branch; the parent sees it only after merge.
+        // Read side of the same mechanism: a branch body sees parent values,
+        // its own write shadows them, and a branch that never commits leaves
+        // the parent untouched.
         FlowContextImpl ctx = new FlowContextImpl();
         ctx.put("base", "1");
+        ctx.put("untouched", "root");
 
-        FlowBranching.Branch merge = ctx.beginBranch();
-        ctx.put("own", "w");
-        assertEquals("w", ctx.get("own"), "a branch reads back its own write");
-        assertEquals("1", ctx.get("base"), "parent values are readable");
-        assertNull(ctx.data().get("own") == null ? "x" : null); // no-op touch
+        try (FlowBranching.Branch discarded = ctx.beginBranch()) {
+            discarded.run(() -> {
+                assertEquals("1", ctx.get("base"), "parent values stay readable");
+                ctx.put("base", "2");
+                assertEquals("2", ctx.get("base"), "the branch's write shadows the parent");
+                assertNull(ctx.get("absent"), "a missing key stays missing");
+                assertEquals("root", ctx.get("untouched"));
+            });
+        }
 
-        Map<String, Object> parentBefore = new HashMap<>();
-        parentBefore.put("base", ctx.get("base"));
-        assertNull(null); // placeholder guard removed below
+        assertEquals("1", ctx.get("base"), "a discarded branch keeps the parent value");
+        assertEquals("root", ctx.get("untouched"));
     }
 
     @Test
-    void branchWritesMergeIntoParentAndConflictFails() {
+    void branchWritesMergeIntoParentAndSiblingConflictFails() {
+        // Conflict detection needs two branches that both moved the same key:
+        // the first merge lands, and the second sees a parent value that is no
+        // longer the baseline its write started from.
         FlowContextImpl ctx = new FlowContextImpl();
         ctx.put("base", "1");
 
-        FlowBranching.Branch merge = ctx.beginBranch();
-        ctx.put("k", "A");
-        // Parent changed under the branch's feet: the value the branch based
-        // its write on (null) moved before merge — conflict.
-        merge.commit();
-        assertEquals("A", ctx.get("k"), "clean merge lands in the parent");
+        FlowBranching.Branch a = ctx.beginBranch();
+        FlowBranching.Branch b = ctx.beginBranch();
+        a.run(() -> ctx.put("k", "A"));
+        b.run(() -> ctx.put("k", "B"));
+        a.commit();
 
-        FlowBranching.Branch second = ctx.beginBranch();
-        ctx.put("base", "2"); // write outside the branch (root thread continues)
-        second.commit();
-        assertEquals("2", ctx.get("base"));
+        FlowException conflict = assertThrows(FlowException.class, b::commit,
+            "the second branch wrote a key whose parent value moved underneath it");
+        assertTrue(conflict.getMessage().contains("'k'"),
+            "the conflict must name the key: " + conflict.getMessage());
+        assertEquals("A", ctx.get("k"), "the losing merge must not overwrite the winner");
+        b.close();
+
+        // A sibling that writes a different key merges cleanly, and a top-level
+        // write after every branch closed still belongs to the root.
+        FlowBranching.Branch c = ctx.beginBranch();
+        c.run(() -> ctx.put("other", "C"));
+        c.commit();
+        ctx.put("after", "root");
+        assertEquals("C", ctx.get("other"));
+        assertEquals("root", ctx.get("after"));
+    }
+
+    @Test
+    void aWriteFromAThreadWithoutTheBranchFrameIsRefused() {
+        // The frame follows the work, not the thread: a task that starts its
+        // own thread loses it. That thread's write used to land in the root map
+        // silently, which made the fork's isolation disappear with no error at
+        // all. The refusal is now the only outcome.
+        FlowContextImpl ctx = new FlowContextImpl();
+        java.util.concurrent.atomic.AtomicReference<Throwable> escaped =
+            new java.util.concurrent.atomic.AtomicReference<>();
+        try (FlowBranching.Branch scope = ctx.beginBranch()) {
+            scope.run(() -> {
+                Thread own = new Thread(() -> {
+                    try {
+                        ctx.put("escaped", "v");
+                    } catch (Throwable t) {
+                        escaped.set(t);
+                    }
+                }, "task-owned-thread");
+                own.start();
+                try {
+                    own.join();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException(e);
+                }
+            });
+        }
+
+        assertTrue(escaped.get() instanceof IllegalStateException,
+            "a frame-less write while a branch is open must be refused, got " + escaped.get());
+        assertTrue(escaped.get().getMessage().contains("Branch write isolation was lost"),
+            "the refusal must say what was lost: " + escaped.get().getMessage());
+        assertTrue(escaped.get().getMessage().contains("'escaped'"),
+            "the refusal must name the key: " + escaped.get().getMessage());
+        assertNull(ctx.get("escaped"), "the refused write must not reach the root map");
+
+        // The guard is scoped to an open layer: with every branch closed, a
+        // top-level write is the normal root write again.
+        ctx.put("top", "level");
+        assertEquals("level", ctx.get("top"));
     }
 
     /** The public FlowContext contract must be enough to run a graph. */

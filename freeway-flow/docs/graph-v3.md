@@ -11,7 +11,8 @@
 1. **Separate definition, compilation, and execution**: the definition expresses only the business graph; `create()` is compilation (validation + read-only conversion);
    execution walks only the iterative frontier and never goes back to compensate for structure.
 2. **Everything statically knowable is known at boot**: cycles, entry, link references, task vocabulary, condition expressions,
-   `join` declarations and values, `data` keys — failures at build time are never encountered at runtime.
+   `join` declarations and values, `data` keys, and a `PARALLEL` join fed by a conditional split (its static in-degree can never be met)
+   — failures at build time are never encountered at runtime.
 3. **Closed vocabulary**: the legal forms of task and when are an enumeration rather than heuristics; unrecognized spellings report an error and point the way,
    never "guess the closest one".
 4. **Runtime state is not written back to the model**: context, stop signals, join counts, and dead-end markers all belong to a single evaluation and do not enter the graph definition.
@@ -109,6 +110,7 @@ The body iterates sequentially (no back links; the graph must be a DAG); each ro
 - **Stop**: `ctx.stop()` = deliberate early completion, legal, and does not trigger a dead-end error. An interceptor that does not call `proceed()`
   vetoes the entire evaluation, which is equally legal.
 - **Loud dead ends**: EXCLUSIVE with no match and no default, or a join not fully collected → the evaluation ends with `FlowException` naming the node and the graph.
+  A `PARALLEL` join cannot reach that state through a skipped branch: that shape is refused at build time (see §1, principle 2).
 - **Pairing invariant**: every `onNodeStart` has exactly one `onNodeEnd` (including failure paths).
 - **Branch isolation**: `merge` branch write buffering + clean merge + a conflict is an error; `shared` is an explicit opt-out.
 - **Failure classification**: configuration errors (`IllegalArgumentException`/`IllegalStateException`) are rethrown as-is;

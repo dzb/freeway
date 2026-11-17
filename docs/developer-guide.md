@@ -2283,8 +2283,11 @@ otherwise discover late: unknown node type, link references to undeclared
 nodes, cycles (LOOP is driven by `$in`, never back-edges), duplicate
 unconditional links, a missing/ambiguous entry, a `when` expression that does
 not compile, a task descriptor outside the vocabulary (with a hint for the
-removed v2 `$meta`/`!marker` forms), a misplaced or unknown `join`, or a blank
-`data` key.
+removed v2 `$meta`/`!marker` forms), a misplaced or unknown `join`, a blank
+`data` key, or a `PARALLEL` join fed by a conditional split — a `PARALLEL` join
+waits for every incoming flow and is never told that a skipped branch is
+absent, so its branches must run on every traversal; the refusal names the
+join, the input that may stay empty and the conditional step that gates it.
 
 **Task vocabulary** — closed; a string the builder does not recognize is a
 build error, never a runtime guess:
@@ -2340,7 +2343,11 @@ it on failure — nesting no longer escapes to the root. Declare
 `{"type":"parallel","meta":{"join":"shared"}}` to opt the fork back into shared
 writes (single-writer discipline is then the graph's job); its writes land in
 the fork's enclosing branch scope, or the root at top level. The join counter
-re-arms each LOOP iteration for a fork-join inside a loop body.
+re-arms each LOOP iteration for a fork-join inside a loop body. A write that
+carries no frame while a branch scope is open is refused with
+`IllegalStateException`: a task that starts its own thread or pool loses the
+frame, and its write would otherwise land in the root map with no buffer, no
+conflict check and no merge.
 
 **Key types:**
 
