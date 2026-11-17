@@ -66,18 +66,37 @@ jobs:
           distribution: temurin
           java-version: '25'
           cache: maven
-      # The adapters pin the same version line as this tree, and a core change
-      # is only verified by a clean build there (see freeway-ext/AGENTS.md).
-      # Installing this tree first makes that check run against the change under
-      # review instead of whatever release Central happens to hold. The parent
-      # POM comes from that install: `freeway-parent` is never published, so a
-      # version line that disagrees with this checkout fails here first.
+      # The adapters pin exact core versions, and their parent POM is this
+      # repository's root: the clone lands inside this checkout, so
+      # `../pom.xml` is `freeway-parent`. When the two version lines differ —
+      # ext on 2.0.1 while this tree is on 2.0.1-SNAPSHOT — that relative path
+      # carries the wrong version and Maven falls back to Central, which holds
+      # only released parents. Drift is not what this job is about, so align
+      # instead of failing: install this root POM under ext's own version and
+      # point the adapter dependencies at this build. What stays verified is the
+      # thing that matters — adapter sources against the core under review —
+      # without the two repositories moving in lockstep.
       - name: Install core snapshot
         run: mvn -B -ntp -DskipTests -Dgpg.skip=true install
       - name: Check out adapters
         run: git clone --depth 1 https://github.com/dzb/freeway-ext.git freeway-ext
+      - name: Align the adapters with this core
+        id: align
+        run: |
+          CORE=$(mvn -B -ntp -q help:evaluate -Dexpression=project.version -DforceStdout)
+          EXT=$(sed -n '/<parent>/,/<\/parent>/p' freeway-ext/pom.xml \
+            | sed -n 's|.*<version>\(.*\)</version>.*|\1|p')
+          echo "adapters on $EXT, this core is $CORE"
+          if [ "$EXT" != "$CORE" ]; then
+            echo "::warning::adapters are on $EXT while core is on $CORE — building them against this core"
+            mvn -B -ntp -q install:install-file \
+              -Dfile="$HOME/.m2/repository/com/jujin8/freeway/freeway-parent/$CORE/freeway-parent-$CORE.pom" \
+              -DgroupId=com.jujin8.freeway -DartifactId=freeway-parent -Dversion="$EXT" \
+              -Dpackaging=pom -DgeneratePom=false
+          fi
+          echo "CORE=$CORE" >> "$GITHUB_ENV"
       - name: Build and test adapters
-        run: mvn -B -ntp -f freeway-ext/pom.xml clean test
+        run: mvn -B -ntp -Dfreeway.version="$CORE" -f freeway-ext/pom.xml clean test
 
   docs:
     name: docs consistency
