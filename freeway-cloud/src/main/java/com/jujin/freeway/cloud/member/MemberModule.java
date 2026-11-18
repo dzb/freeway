@@ -4,6 +4,7 @@ import com.jujin.freeway.cloud.CloudHookIds;
 import com.jujin.freeway.cloud.CloudKeys;
 import com.jujin.freeway.cloud.discovery.ServiceDeclaration;
 import com.jujin.freeway.cloud.health.CloudHealthContributor;
+import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.RuntimeHook;
@@ -29,8 +30,8 @@ public final class MemberModule implements ModuleEx {
         b.contribute(KnownKeys.class)
             .add(KnownKeys.of(ConfigKeys.class, CloudKeys.PREFIX,
                 CloudKeys.APP_PREFIX));
-        MemberState state = new MemberState();
-        b.bind(MemberState.class).to(container -> state);
+        b.bind(MemberState.class)
+            .to(container -> new MemberState(container.get(Metrics.class)));
 
         b.contribute(ServiceDeclaration.class)
             .add("freeway.cloud.declaration.http", new HttpServiceDeclaration());
@@ -41,7 +42,9 @@ public final class MemberModule implements ModuleEx {
             .add(CloudHookIds.DISCOVERY, new BackendGuardHook())
             .beforeIfPresent(CloudHookIds.HTTP_SERVER);
         b.contribute(RuntimeHook.class)
-            .add(CloudHookIds.MEMBER, new MemberHook(state))
+            .addDeferred(
+                CloudHookIds.MEMBER,
+                container -> new MemberHook(container.get(MemberState.class)))
             .afterIfPresent(CloudHookIds.HTTP_SERVER);
     }
 

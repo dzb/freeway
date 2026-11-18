@@ -1,6 +1,6 @@
 ---
 name: freeway-dev
-description: Build Java applications on the Freeway framework. Trigger it when the user mentions Freeway, module, ModuleEx, SubModule, FreewayApp, IoC container, DbModule, HttpModule, AppRuntime, routing, ORM, EventBus, Defer, ScopedCache, HealthCheck, HealthFilter, PooledConnection, PostgresDialect, SchemaEntity, freeway-ext, CloudModule, ServiceDiscovery, FleetRegistryModule, RemoteCaller, RemoteProxyFactory, RpcExport, MeshEventBus, event mesh, service discovery, microservices, or any framework-related term. Covers module authoring, dependency injection, HTTP APIs, database access, transactions, event buses, type coercion, deferred execution, validation, connection pools, SQL dialects, schema migrations, and more. Also applies to questions about Freeway API usage, project structure, best practices, and code generation.
+description: Build Java applications on the Freeway framework. Trigger it when the user mentions Freeway, module, ModuleEx, SubModule, FreewayApp, IoC container, DbModule, HttpModule, AppRuntime, routing, ORM, EventBus, Defer, ScopedCache, HealthCheck, HealthFilter, PooledConnection, PostgresDialect, SchemaEntity, freeway-ext, CloudModule, ServiceDiscovery, FleetModule, RemoteCaller, RemoteProxyFactory, RpcExport, MeshEventBus, event mesh, service discovery, microservices, or any framework-related term. Covers module authoring, dependency injection, HTTP APIs, database access, transactions, event buses, type coercion, deferred execution, validation, connection pools, SQL dialects, schema migrations, and more. Also applies to questions about Freeway API usage, project structure, best practices, and code generation.
 ---
 
 # Freeway Development Skill
@@ -14,10 +14,10 @@ Freeway is a JDK 25+ Java framework built around compose-first modules, explicit
 - `HttpModule`, `HttpServer`, `Route`, `HttpFilter`, `HealthCheck`
 - `DbModule`, `Database.create`, `Orm`, `Schema`, `MigrationRunner`
 - `EventBus`, `RuntimeHook`, `Defer`, `ScopedCache`, `ScopeBoundary`
-- `CloudModule`, `ServiceDiscovery`, `ServiceRegistry`, `FleetRegistryModule`,
+- `CloudModule`, `ServiceDiscovery`, `ServiceRegistry`, `FleetModule`,
   `RemoteCaller`, `RemoteProxyFactory`, `RpcExport`, `MeshEventBus`,
   `MeshSubscription`
-- service registration/discovery, registry node deployment, RPC between services,
+- service membership/discovery, registry node deployment, RPC between services,
   event mesh configuration; API usage, module layout, and code generation for Freeway projects
 
 ## Working Rules

@@ -157,7 +157,7 @@ pinned separately by `api/internal-surface.txt`.
 
 - The composition unit is the list of modules placed at the entry point; the cloud side provides the bundle class `CloudModule` (`@SubModule` declares the standard modules).
 - Built-in default implementations (secrets, storage, resilience) are bound through `.marker(Local.class)`; the assembly surface can use
-  `@Inject @Local SecretStore` to name "the built-in one" explicitly. Discovery/registration have no built-in default. `@Local` is allowed only
+  `@Inject @Local SecretStore` to name "the built-in one" explicitly. Discovery/membership has no built-in default. `@Local` is allowed only
   on **parameters and fields** — no code reads it from a class, so putting it on an implementation class would compile
   yet be silently ineffective; the `TYPE` target was therefore removed outright, and misuse is a compile error.
 - A replacement implementation = bind the same interface and use `.primary()`; an adapter with its own backend
@@ -165,7 +165,7 @@ pinned separately by `api/internal-surface.txt`.
 - If the assembly surface references an unregistered marker, ioc ignores the annotation and falls back to the default
   binding, warning once per `(annotation, owner)` pair.
 - When a backend type key (`freeway.cloud.secret/storage.type`) is set while the built-in implementation is still effective,
-  `BackendTypeGuard.warnIfExternal` warns once. For discovery/registration, which have no built-in default, `warnIfMissing`
+  `BackendTypeGuard.warnIfExternal` warns once. For discovery/membership, which has no built-in default, `warnIfMissing`
   warns when the configured type has no binding at all.
 
 ### 3.4 RuntimeHook Ordering
@@ -176,7 +176,7 @@ Hook names are centralized in `CloudHookIds`; cross-module ordering references o
 start:
   freeway.cloud.discovery / rpc   before("freeway.http.server")  connection lease, resolve exports, mount /rpc routes
   freeway.http.server                                            server starts, host:port becomes known
-  freeway.cloud.registry / event  after ("freeway.http.server")  unified registration + heartbeat; mesh origin = actual identity
+  freeway.cloud.registry / event  after ("freeway.http.server")  unified membership + heartbeat; mesh origin = actual identity
   freeway.cloud.secret / storage / resilience                     startup-time validation only, no ordering constraint
 
 stop (reverse order):
@@ -634,7 +634,7 @@ only fixes how keys are read and the three shapes, so the same list does not dri
 - **Shape two: declaration keys** — `freeway.cloud.secret/discovery/registry/storage.type`.
   They **do not select an implementation**: the framework does no class-name reflective loading or classpath scanning; what actually
   selects an implementation is a `.primary()` binding and which adapter module is installed. For roles with a built-in default,
-  `warnIfExternal` reports a type key that is still ignored; for discovery/registration, `warnIfMissing` reports a configured type
+  `warnIfExternal` reports a type key that is still ignored; for discovery/membership, `warnIfMissing` reports a configured type
   with no binding.
 - **Shape three: presence switches** — a few keys decide behaviour by whether they appear, most typically
   `freeway.cloud.event.enabled`: an explicit `true`/`false` wins; when unset, "`event.peers`
@@ -730,7 +730,7 @@ bring your own backend marker and type-key consumption when needed, and it must 
 
 ### 8.3 Delivery Criteria (Carried Over from the Implementation Plan)
 
-Runs without any third-party cloud SDK; runtime capabilities other than discovery have built-in defaults; discovery/registration are explicit;
+Runs without any third-party cloud SDK; runtime capabilities other than discovery have built-in defaults; discovery/membership are explicit;
 RPC, observability, resilience and health can each work independently and their assembly is optional; `freeway-ext` is responsible only for third-party adaptation and enhancement and does not affect core's
 runnability or default semantics; anything that can be closed inside core is done in core first, anything depending on a specific cloud platform or
 infrastructure goes to ext, and ingress traffic governance / cluster scheduling / certificate platform are out of core; every capability has

@@ -4,6 +4,8 @@ import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.cloud.discovery.TestDiscoveryModule;
+import com.jujin.freeway.cloud.observe.MetricsDefault;
+import com.jujin.freeway.cloud.observe.ObserveModule;
 import com.jujin.freeway.http.HttpModule;
 import com.jujin.freeway.http.HttpServer;
 
@@ -16,7 +18,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** The registration lifecycle is backend-neutral: it registers through a
+/** The membership lifecycle is backend-neutral: it registers through a
  *  fixture backend, without the removed local registry. */
 class MemberLifecycleTest {
 
@@ -47,6 +49,22 @@ class MemberLifecycleTest {
         }
         assertTrue(fixture.backend().instances("lifecycle-svc").isEmpty(),
             "shutdown unregisters before the container closes");
+    }
+
+    @Test
+    void memberMetricsAreRecordedThroughTheModule() {
+        System.setProperty(MemberModule.ConfigKeys.MEMBER_SERVICE_ID, "metrics-svc");
+        TestDiscoveryModule fixture = new TestDiscoveryModule();
+        MetricsDefault metrics;
+        try (AppRuntime app =
+                FreewayApp.create(
+                        new HttpModule(), new MemberModule(), fixture, new ObserveModule())
+                    .start()) {
+            metrics = app.get(MetricsDefault.class);
+            assertEquals(1, metrics.counterValue("cloud.member.register.attempts"));
+            assertEquals(1, metrics.counterValue("cloud.member.register.successes"));
+        }
+        assertEquals(1, metrics.counterValue("cloud.member.drain.started"));
     }
 
     @Test

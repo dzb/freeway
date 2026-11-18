@@ -129,6 +129,16 @@ custom metrics that only need count/average.
 | `eventbus.subscriber.failures` | counter | failures | Subscriber callbacks that threw |
 | `eventbus.dead.events` | counter | events | Events with no matching subscriber |
 | `eventbus.stream.drops` | counter | events | Stream events dropped under backpressure |
+| `cloud.member.register.attempts` | counter | attempts | Register calls issued by the membership hook |
+| `cloud.member.register.successes` | counter | calls | Register calls accepted by the registry |
+| `cloud.member.register.failures` | counter | calls | Register calls that failed |
+| `cloud.member.renew.attempts` | counter | attempts | Heartbeat renew calls issued by the membership hook |
+| `cloud.member.renew.successes` | counter | calls | Heartbeats the registry confirmed |
+| `cloud.member.renew.failures` | counter | calls | Heartbeats that failed or found no lease |
+| `cloud.member.readiness.gate.checks` | counter | checks | Readiness gate evaluations |
+| `cloud.member.readiness.gate.passed` | counter | checks | Readiness gate evaluations that passed |
+| `cloud.member.readiness.gate.failures` | counter | checks | Readiness gate evaluations that failed |
+| `cloud.member.drain.started` | counter | drains | Shutdown drain windows started |
 | `cloud.rpc.calls` | counter | calls | Logical RPC calls started |
 | `cloud.rpc.failures` | counter | failures | Logical RPC calls that failed |
 | `cloud.rpc.retry.budget.denied` | counter | retries | Retries refused by the per-service retry budget |

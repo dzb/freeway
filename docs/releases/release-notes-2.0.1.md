@@ -65,6 +65,26 @@ freeway.cloud.member.shutdown-drain
 `freeway.cloud.registry.shutdown-drain` keys are removed without aliases. Fleet
 and Consul adapters continue to supply transport, not lifecycle.
 
+Membership is observable without becoming a second lifecycle owner. The
+`MemberModule` records register/renew attempts and outcomes, readiness-gate
+checks and drain starts through the optional `Metrics` SPI:
+
+```text
+cloud.member.register.attempts
+cloud.member.register.successes
+cloud.member.register.failures
+cloud.member.renew.attempts
+cloud.member.renew.successes
+cloud.member.renew.failures
+cloud.member.readiness.gate.checks
+cloud.member.readiness.gate.passed
+cloud.member.readiness.gate.failures
+cloud.member.drain.started
+```
+
+`register` remains the operation; `member` remains the lifecycle group. Fleet
+and Consul do not duplicate these counters.
+
 `BackendTypeGuard` no longer has a special `local` type: a non-blank
 `freeway.cloud.{registry,discovery,secret,storage}.type` declaration is checked
 against the bindings that are actually present.
@@ -90,8 +110,8 @@ helpers are gone; module-facing configuration and binding behavior is unchanged.
 ```text
 mvn -o test
   commons 450 · ioc 344 · boot 141 · http 550
-  db 550 · flow 147 · cloud 382
-  total 2,564 — 0 failures, 0 errors, 0 skipped
+  db 550 · flow 147 · cloud 383
+  total 2,565 — 0 failures, 0 errors, 0 skipped
 ```
 
 `mvn -o -Pdemos -DskipTests compile` compiles the in-repo consumers, and

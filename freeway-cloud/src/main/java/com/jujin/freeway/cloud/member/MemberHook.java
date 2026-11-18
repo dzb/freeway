@@ -98,10 +98,17 @@ final class MemberHook implements RuntimeHook {
                 if (instance == null) {
                     continue; // declaration not applicable this boot
                 }
-                if (readinessRegistry != null) {
-                    readinessRegistry.register(instance, initialHealth);
-                } else {
-                    registry.register(instance);
+                state.registerAttempt();
+                try {
+                    if (readinessRegistry != null) {
+                        readinessRegistry.register(instance, initialHealth);
+                    } else {
+                        registry.register(instance);
+                    }
+                    state.registerSuccess();
+                } catch (RuntimeException failed) {
+                    state.registerFailure();
+                    throw failed;
                 }
                 registered.add(instance);
                 LOG.info("Registered service '{}' instance '{}' at {}", instance.serviceId(),
@@ -124,7 +131,7 @@ final class MemberHook implements RuntimeHook {
 
         if (!registered.isEmpty()) {
             if (readinessRegistry != null) {
-                readinessGate = ReadinessGate.arm(container, readinessRegistry, registered);
+                readinessGate = ReadinessGate.arm(container, readinessRegistry, registered, state);
                 if (readinessGate != null) {
                     readinessGate.start();
                 }
@@ -190,17 +197,21 @@ final class MemberHook implements RuntimeHook {
         boolean healthy = true;
         for (ServiceInstance instance : registered) {
             boolean stillHeld;
+            state.renewAttempt();
             try {
                 stillHeld = registry.renew(instance.serviceId(), instance.instanceId());
             } catch (Exception ex) {
+                state.renewFailure();
                 LOG.warn("Heartbeat renew failed for {} instance {}: {}",
                     instance.serviceId(), instance.instanceId(), ex.getMessage());
                 healthy = false;
                 continue;
             }
             if (stillHeld) {
+                state.renewSuccess();
                 continue;
             }
+            state.renewFailure();
             healthy = false;
             if (stopped) {
                 // A deregistration is in flight (stop() set the flag before it
@@ -214,14 +225,17 @@ final class MemberHook implements RuntimeHook {
                 ServiceHealth health = readinessGate != null && !readinessGate.ready()
                     ? ServiceHealth.starting()
                     : ServiceHealth.up();
+                state.registerAttempt();
                 if (readinessRegistry != null) {
                     readinessRegistry.register(instance, health);
                 } else {
                     registry.register(instance);
                 }
-                LOG.warn("Registration for {} instance {} was gone — re-registered",
+                state.registerSuccess();
+                LOG.warn("Membership for {} instance {} was gone — re-registered",
                     instance.serviceId(), instance.instanceId());
             } catch (Exception ex) {
+                state.registerFailure();
                 LOG.warn("Re-registration failed for {} instance {}: {}",
                     instance.serviceId(), instance.instanceId(), ex.getMessage());
             }
@@ -253,6 +267,7 @@ final class MemberHook implements RuntimeHook {
 
     @Override
     public void stop(Container container) {
+        state.drainingStarted();
         // Set before touching the scheduler: a heartbeat already inside renew()
         // must see it and skip the re-registration that would undo the
         // deregistration below.
