@@ -59,7 +59,7 @@ class HealthEndpointsTest {
             assertTrue(ready.body().contains("member"),
                 "the built-in member contributor must be aggregated");
             assertTrue(ready.body().contains("registered"),
-                "readiness reports the registration state, not a constant: " + ready.body());
+                "readiness reports the membership state, not a constant: " + ready.body());
         }
     }
 

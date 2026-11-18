@@ -43,7 +43,7 @@ form carries no weight/zone/canary metadata; use `StaticModule.of(...)` for thos
 
 `freeway-cloud` owns the backend-neutral membership lifecycle and contracts.
 The Fleet transport lives in **freeway-ext**: `FleetModule` is the client
-discovery/registrar adapter, and `FleetServerModule` is the deployable server.
+discovery/registry adapter, and `FleetServerModule` is the deployable server.
 
 Application side:
 
@@ -80,9 +80,10 @@ freeway.fleet.cache-ttl=5s
 ```
 
 The server accepts `freeway.fleet.token-previous` during online token rotation
-and reads its store from `freeway.fleet.db.*`. The protocol and token header are
-owned by `FleetProtocol` / `FleetKeys`; see the ext Fleet documentation for
-deployment details.
+and reads its store from `freeway.fleet.db.*`. The wire vocabulary and shared
+token keys are owned by `FleetProtocol` / `FleetKeys`; client-only node,
+timeout and cache keys live in `FleetModule.ConfigKeys`. See the ext Fleet
+documentation for deployment details.
 
 **Readiness.** A warming application registers as
 `ServiceHealth.starting()` — present in the registry, absent from discovery

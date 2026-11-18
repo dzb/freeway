@@ -14,9 +14,9 @@ Examples below are minimal snippets. They omit imports and app-specific domain t
 | `freeway-db` | JDBC: ORM, connection pool, transactions, SQL builder, migrations; HikariCP pool in `freeway-ext` |
 | `freeway-cloud` | Cloud-native: service registry and discovery, RPC, event mesh, health, observability, resilience, secrets, object storage |
 
-Inside `freeway-cloud`, `RegistryServerModule` is a deployable registry node - a
-normal application assembled from `HttpModule` + `DiscoveryModule` + it.
-`FleetRegistryModule` binds a fleet of those nodes as the registry/discovery
+The deployable Fleet server is `FleetServerModule` in `freeway-ext`, a normal
+application assembled from `HttpModule` + the server module. `FleetModule` in
+`freeway-cloud-fleet` binds a fleet of those nodes as the registry/discovery
 backend: writes fan out, reads union the nodes.
 
 Third-party adapters (`freeway-http-undertow`, `freeway-http-jetty`,

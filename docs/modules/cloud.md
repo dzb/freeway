@@ -32,7 +32,7 @@ These modules are reached through exactly three layers:
 
 | Layer | What the application writes | What it covers |
 |------|-----------------------------|--------------|
-| **Environment layer** | Nothing for the bundle; service membership is explicit | With `MemberModule`, automatic instance registration (heartbeat renewal, deregistration on shutdown); `GET /health/live`, `/health/ready`, `/metrics`; every outbound call carries metrics/tracing/resilience/context propagation |
+| **Environment layer** | Nothing for the bundle; service membership is explicit | With `MemberModule`, automatic service membership (register, heartbeat renewal, deregistration on shutdown); `GET /health/live`, `/health/ready`, `/metrics`; every outbound call carries metrics/tracing/resilience/context propagation |
 | **Declaration layer** | Data contributions: `binder.bind(Handlers.class)` + `contribute(RpcExport.class)`, `contribute(MeshSubscription.class)` (mesh), `contribute(CloudHealthContributor.class)` | What this service provides to others |
 | **Consumption layer** | `@Inject ServiceDiscovery` / `ObjectStorage` / `SecretStore` / `Metrics` / `Tracer`, plus `binder.bind(Api.class).to(...)` | What this service uses from others |
 
@@ -43,13 +43,18 @@ with zero changes to business code:
 
 | Backend | Placement | Infrastructure |
 |---|---|---|
-| Static | `CloudModule` + `StaticModule` | None — fixed endpoint list or VIP, no registration; no write side |
+| Static | `CloudModule` + `StaticModule` | None — fixed endpoint list or VIP, no membership; no write side |
 | Fleet | `CloudModule` + `MemberModule` + ext `FleetModule` | Self-hosted Fleet server nodes |
 | Consul | `CloudModule` + `MemberModule` + ext `ConsulModule` | Consul cluster |
 
 There is no public in-process registry module. Tests use a test-scope registry
 fixture (`TestDiscoveryModule` in `freeway-cloud`'s test sources); it is not
 shipped and not a production backend.
+
+Membership metrics are recorded by `MemberHook` / `MemberState` through the
+optional `Metrics` SPI: `cloud.member.register.*`, `cloud.member.renew.*`,
+`cloud.member.readiness.gate.*` and `cloud.member.drain.started`. Fleet and
+Consul remain transport adapters and do not own these counters.
 
 Static discovery needs no registry process: `StaticDiscovery` (or
 `StaticModule`) binds a service-id → instance-list map. Several
@@ -139,7 +144,7 @@ programmatic form:
 StaticModule.of(Map.of())
 ```
 
-The configuration is read once at startup. It has no registration, heartbeat,
+The configuration is read once at startup. It has no membership, heartbeat,
 readiness propagation, eviction or hot reload. Configuration-driven entries do
 not carry weight/zone/canary metadata in this version; use
 `StaticModule.of(...)` when those metadata values are required.
@@ -157,7 +162,7 @@ renewed, marked ready, and deregistered on shutdown. Backend-specific behavior
 (Fleet fan-out/protocol/cache, Consul sessions) is documented with that adapter
 in **freeway-ext**.
 
-**Readiness gate**: registration happens before the application can serve, so a process with `CloudHealthContributor`s registers as
+**Readiness gate**: membership publication happens before the application can serve, so a process with `CloudHealthContributor`s registers as
 "not ready" first (`ServiceHealth.starting()`: in the registry, not in discovery results), and flips to
 ready only after **all** contributors pass — a slow-starting connection pool/migration no longer takes traffic it cannot handle. An application with no contributors is **ready on registration** (preserving the old behavior:
 no wait added to an application that exposes no signal). The flip is immediate (`POST …/instances/{id}/ready`) and is also carried on the next heartbeat,
@@ -337,7 +342,7 @@ state check.
 | Object storage | `@Inject ObjectStorage`; `ObjectStoredEvent` / `ObjectDeletedEvent` are published to the event bus | `freeway.cloud.storage.*` |
 
 Runtime capabilities have built-in defaults (env/file secrets, filesystem storage, built-in metrics registry); discovery does not:
-static (`StaticModule`) is the zero-infrastructure choice, while registration/dynamic membership needs Fleet or an ext adapter.
+static (`StaticModule`) is the zero-infrastructure choice, while dynamic membership needs Fleet or an ext adapter.
 
 **`freeway.cloud.*.type` declares intent; it does not choose an implementation.** The framework never loads by class name (no scanning, no config reflection);
 the selector is the binding: an adapter binds the role with `.primary()`, and the built-in default steps aside. The `type` key is a declaration for humans and adapters;

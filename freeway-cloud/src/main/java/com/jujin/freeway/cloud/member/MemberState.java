@@ -1,5 +1,7 @@
 package com.jujin.freeway.cloud.member;
 
+import com.jujin.freeway.commons.metrics.Metrics;
+import com.jujin.freeway.commons.metrics.NoopMetrics;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -23,9 +25,55 @@ final class MemberState {
     /** Consecutive failed heartbeats before readiness reports unhealthy. */
     public static final int UNHEALTHY_AFTER = 3;
 
+    private final Metrics metrics;
     private final AtomicInteger consecutiveFailures = new AtomicInteger();
     private volatile boolean tracking;
     private volatile boolean draining;
+
+    public MemberState() {
+        this(NoopMetrics.INSTANCE);
+    }
+
+    MemberState(Metrics metrics) {
+        this.metrics = metrics == null ? NoopMetrics.INSTANCE : metrics;
+    }
+
+    void registerAttempt() {
+        metrics.counter("cloud.member.register.attempts").increment();
+    }
+
+    void registerSuccess() {
+        metrics.counter("cloud.member.register.successes").increment();
+    }
+
+    void registerFailure() {
+        metrics.counter("cloud.member.register.failures").increment();
+    }
+
+    void renewAttempt() {
+        metrics.counter("cloud.member.renew.attempts").increment();
+    }
+
+    void renewSuccess() {
+        metrics.counter("cloud.member.renew.successes").increment();
+    }
+
+    void renewFailure() {
+        metrics.counter("cloud.member.renew.failures").increment();
+    }
+
+    void readinessChecked(boolean healthy) {
+        metrics.counter("cloud.member.readiness.gate.checks").increment();
+        if (healthy) {
+            metrics.counter("cloud.member.readiness.gate.passed").increment();
+        } else {
+            metrics.counter("cloud.member.readiness.gate.failures").increment();
+        }
+    }
+
+    void drainingStarted() {
+        metrics.counter("cloud.member.drain.started").increment();
+    }
 
     /** Called once this boot has registered at least one instance. */
     void track() {

@@ -87,7 +87,7 @@ Boundary rules:
   not `CloudRpcModule`; `FleetModule`, not `CloudFleetRegistryModule`. Abbreviate
   only unambiguous domain words (`ioc`, `db`, `http`, `rpc`, `fleet`), never
   vowel surgery (`Reg`, `Svc`) or ambiguous acronyms. The same word spans
-  artifact, wire and config: `freeway-fleet`, `/fleet`, `X-Fleet-*`,
+  artifact, wire and config: `freeway-cloud-fleet`, `/fleet`, `X-Fleet-*`,
   `freeway.fleet.*`.
 - **Factory verbs.** `of` builds a value from its parts (records, `List.of`);
   `create` is an entry point (`Freeway.create`, `FlowEngine.create`); `.builder()`
@@ -205,8 +205,9 @@ construction and `@SubModule`; `ModuleNode` is internal to `ioc.internal`;
   `ResilienceModule.ConfigKeys`, `EventMeshModule.ConfigKeys`,
   `SecretModule.ConfigKeys`, `StorageModule.ConfigKeys`,
   `ContextModule.ConfigKeys` and `LoadBalancer.ConfigKeys` own their own
-  keys. Fleet keys live in ext: `FleetKeys` (`freeway.fleet.*`) and
-  `FleetServerModule.ConfigKeys` (`freeway.fleet.db.*`). `commons` is not a
+  keys. Fleet shared token keys live in ext `FleetKeys`; client-only Fleet
+  keys live in `FleetModule.ConfigKeys`; `FleetServerModule.ConfigKeys` owns
+  `freeway.fleet.db.*`. `commons` is not a
   module: logging stays in package-private `LogKeys`, published via `LogConfig`.
 - **One chain, one tier definition.** A tier is a `SymbolProvider`
   (`SymbolProvider.systemProperties()` at `TIER_SYS_PROPS`); a source is the

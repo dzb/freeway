@@ -45,6 +45,7 @@ final class ReadinessGate implements AutoCloseable {
     private final List<CloudHealthContributor> checks;
     private final ReadinessAwareRegistry registry;
     private final List<ServiceInstance> instances;
+    private final MemberState state;
     private final Duration retry;
     private volatile Thread runner;
     /** Set by close(); the loop checks it so a gate closed before start() can
@@ -52,10 +53,11 @@ final class ReadinessGate implements AutoCloseable {
     private final AtomicBoolean closed = new AtomicBoolean();
 
     private ReadinessGate(List<CloudHealthContributor> checks, ReadinessAwareRegistry registry,
-                          List<ServiceInstance> instances, Duration retry) {
+                          List<ServiceInstance> instances, MemberState state, Duration retry) {
         this.checks = checks;
         this.registry = registry;
         this.instances = instances;
+        this.state = state;
         this.retry = retry;
     }
 
@@ -67,13 +69,13 @@ final class ReadinessGate implements AutoCloseable {
      *     instance that is in fact ready
      */
     static ReadinessGate arm(Container container, ReadinessAwareRegistry registry,
-                             List<ServiceInstance> instances) {
+                             List<ServiceInstance> instances, MemberState state) {
         List<CloudHealthContributor> checks =
             container.extension(CloudHealthContributor.class).all();
         if (checks.isEmpty() || instances.isEmpty()) {
             return null;
         }
-        ReadinessGate gate = new ReadinessGate(checks, registry, instances, RETRY);
+        ReadinessGate gate = new ReadinessGate(checks, registry, instances, state, RETRY);
         if (gate.allHealthy()) {
             // Everything is already healthy at boot: there is nothing to wait
             // for. The instance was registered as starting (the hook knows a
@@ -124,18 +126,22 @@ final class ReadinessGate implements AutoCloseable {
 
     /** Every contributor must answer healthy; a throwing check is a failed one. */
     private boolean allHealthy() {
+        boolean healthy = true;
         for (CloudHealthContributor check : checks) {
             try {
                 if (!check.check().healthy()) {
-                    return false;
+                    healthy = false;
+                    break;
                 }
             } catch (RuntimeException failed) {
                 LOG.debug("Readiness check '{}' threw — treating as not ready: {}",
                     check.name(), failed.getMessage());
-                return false;
+                healthy = false;
+                break;
             }
         }
-        return true;
+        state.readinessChecked(healthy);
+        return healthy;
     }
 
     @Override

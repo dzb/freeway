@@ -53,8 +53,9 @@ below.
   acronym with two plausible expansions.
 - A shorter name must still state the missing-value behaviour, read/write
   direction, and owning domain. Brevity never buys ambiguity.
-- The same word spans artifact, package, wire and config: `freeway-fleet`,
-  `/fleet`, `X-Fleet-*`, `freeway.fleet.*`. One namespace, not four dialects.
+- The same word spans artifact, package, wire and config:
+  `freeway-cloud-fleet` / `freeway-fleet-protocol`, `/fleet`, `X-Fleet-*`,
+  `freeway.fleet.*`. One domain, one vocabulary, separate wire artifact.
 
 ### One owner per fact
 
@@ -419,7 +420,7 @@ contracts on the public API. It is not cosmetic: it answers the same question:
 `cloud.rpc.RpcModule` has one fewer layer of noise than
 `cloud.rpc.CloudRpcModule`; `cloud.event.MeshEventBus` is explicitly the mesh
 plane while the local `EventBus` remains the local plane; the Fleet client,
-registrar and protocol live in `com.jujin.freeway.fleet`, so the package carries
+registry adapter and protocol live in `com.jujin.freeway.fleet`, so the package carries
 the domain and the class carries the role.
 
 The principle is not "remove every prefix", but:
@@ -645,6 +646,16 @@ Before submitting a "refactor/cleanup", ask in order:
     semantic, replace it; if a runtime id or test still speaks the old
     vocabulary, the rename is incomplete.
 
+13. Does this input alias normalize to the canonical key before any module can
+    read it?
+    If the alias appears in a `ConfigKeys` or `KnownKeys` vocabulary, it is a
+    second namespace, not an alias.
+
+14. Does this package move shrink or clarify the public surface without
+    widening `internal`?
+    If it requires making a package-private collaborator public, keep the type
+    beside its collaborator instead.
+
 ---
 
 ## 12. The boundary round: framework, optional control planes, data planes
@@ -655,7 +666,7 @@ core?" but "does every application need it?".
 ### 12.1 Core is a framework, not a product bundle
 
     core: commons / ioc / boot / http / db / flow / cloud
-    ext:  fleet / fleet-server / consul / adapters / demo / benchmark
+    ext:  cloud-fleet / fleet-server / consul / k8s / adapters / demo / benchmark
 
 Core keeps discovery contracts, static discovery, service-membership lifecycle and
 the client-side load balancer. Fleet (client + server) is an optional control
@@ -691,12 +702,13 @@ protocol or client.
     ├── FleetProtocol   routes, headers, version
     └── FleetKeys       shared keys
 
-    freeway-fleet        -> protocol + cloud
+    freeway-cloud-fleet  -> protocol + cloud + http
     freeway-fleet-server -> protocol + cloud/http
 
-The four names agree: module `freeway-fleet`, wire `/fleet`, headers
-`X-Fleet-*`, config `freeway.fleet.*`. The server must not depend on the client
-to learn the wire shape.
+The domain names agree: `freeway-cloud-fleet` is the client adapter,
+`freeway-fleet-protocol` is the shared wire contract, `/fleet` / `X-Fleet-*` /
+`freeway.fleet.*` are the runtime vocabulary. The server must not depend on the
+client to learn the wire shape.
 
 ### 12.5 Promote public helpers; never widen `internal`
 
@@ -747,13 +759,106 @@ not finished.
 | `MemberModule` backend-neutral | lifecycle owner independent of backend |
 | `LeaseStore` server-side; H2 default; PG later | storage belongs where its lifecycle lives |
 | `freeway-fleet-protocol` | shared contract is compiled, not imported from `internal` |
+| `freeway-cloud-fleet` -> protocol + cloud + http | client adapter is optional and backend-neutral |
 | `/fleet`, `X-Fleet-*`, `freeway.fleet.*` | artifact, wire and config say one word |
 | ext no longer imports `cloud.internal` | promote the smallest public contract |
 | gateway is a non-goal; external ingress | mature data planes exist; duplicate only for a Freeway need |
 | Fleet stays in ext; no separate repo yet | split by real release/ownership pressure |
 | H2 embedded, not shared-file HA | document the limit; don't pretend it is a cluster |
 
-## 13. One-sentence summary
+## 13. The shape round: one canonical fact at every boundary
+
+This round changed shape without adding a second model. The test was whether a
+new alias, package or backend name removed a caller's ambiguity while keeping
+one canonical fact.
+
+### 13.1 An input alias belongs at the boundary
+
+The canonical namespace remains `freeway.*`. `f2.*` and `F2.*` are input
+aliases, not a second namespace:
+
+- they are normalized before source merging, profile selection, symbol lookup
+  and unknown-key checking;
+- `ConfigKeys`, `KnownKeys` and module code never list the alias spelling;
+- `F2_*` / `f2_*` are the environment spellings of the same input;
+- an alias/canonical collision in one source is a duplicate-key error, while
+  different source tiers retain normal precedence.
+
+An alias is justified when it removes caller friction without creating a second
+contract. It is not an API compatibility alias, and it must not become a second
+default or a second vocabulary.
+
+### 13.2 A package move must make the surface smaller or clearer
+
+Moving a type into `internal` is a visibility decision, not a directory
+aesthetics exercise:
+
+- feature machinery lives in `cloud.<domain>.internal`;
+- top-level `cloud.internal` holds only cross-domain support such as
+  `BackendTypeGuard`;
+- public inspection/facade types such as `PeerHub`, `PeerConnection` and
+  `MeshEventBus` stay public;
+- `RpcExportHook`, `PeerConnector` and `MeshEventLifecycleHook` stay beside
+  their package-private collaborators when moving them would force
+  implementation types public.
+
+Promote the smallest public helper instead of widening `internal` for another
+module: `HttpClients` belongs at `cloud.http.HttpClients`, not in a shared
+internal dump. `api/cloud-surface.txt` and `api/internal-surface.txt` make the
+permission explicit; adding or moving a public type updates the budget in the
+same change.
+
+### 13.3 A backend contract is also defined by what it does not do
+
+Static discovery is not a registry with features removed. Its config form
+carries endpoint data only; it has no heartbeat, readiness, eviction, hot reload
+or invented weight/zone/canary metadata. Use `StaticModule.of(...)` when
+metadata is genuinely supplied by the caller.
+
+The absence is the contract, not a missing implementation. A backend should
+state the facts it owns and refuse to pretend it owns the rest.
+
+### 13.4 Name the whole lifecycle, not its first step
+
+`register` names one operation in a larger lifecycle; `member` names the
+lifecycle owner. The lifecycle is register, renew, readiness and drain. That is
+why the vocabulary is `MemberModule`, `MemberHook`, `MemberState` and
+`MemberReadiness`, with the runtime name `member`. Do not turn the operation's
+action noun into a second package, metric-family or module group.
+
+Member identity/lifecycle keys live under `freeway.cloud.member.*`, while
+`freeway.cloud.registry.type` remains the backend declaration. The key
+namespace follows the owner, not the first method it happens to call.
+
+### 13.5 Merge a helper when it has no independent fact
+
+`ConfigCascade.Sources` owns the loaded source maps, `ConfigFilePlan.Reader`
+owns file parsing, and `ServiceKey.normalize` owns service-id normalization.
+The retired helper classes did not own a separate fact; keeping them created
+parallel owners and extra navigation.
+
+A helper is worth keeping only when it has its own contract or can be tested
+independently without the owner. "It is convenient to have a separate class" is
+not enough.
+
+### 13.6 Ledger
+
+| Decision | Taste |
+|---|---|
+| `f2.*` / `F2.*` input aliases | alias at the boundary; canonical `freeway.*` remains the one vocabulary |
+| same-source alias collision | an alias must not create an ambiguous precedence choice |
+| `cloud.<domain>.internal` | feature machinery stays with its feature |
+| `cloud.internal` only `BackendTypeGuard` | cross-domain support is exceptional and explicit |
+| root `RpcExportHook` / `PeerConnector` / `MeshEventLifecycleHook` | do not widen implementation visibility for a package move |
+| `api/cloud-surface.txt` / `api/internal-surface.txt` | public permission is declared, not accidental |
+| `StaticModule` config form | a backend states only the facts it owns |
+| `MemberModule` / `MemberReadiness` | name the whole lifecycle, not its first step |
+| member keys + `registry.type` | lifecycle namespace and backend declaration are different facts |
+| `ConfigCascade.Sources` / `ConfigFilePlan.Reader` / `ServiceKey.normalize` | merge duplicate owners instead of keeping convenience layers |
+| `FleetRegistrar` -> `FleetRegistry` | the write-side adapter names the `ServiceRegistry` role and pairs with `FleetDiscovery` |
+| `freeway-fleet` -> `freeway-cloud-fleet` | the adapter artifact names its cloud role; protocol/server keep their Fleet names |
+
+## 14. One-sentence summary
 
 **Freeway's aesthetic is not "less code", but "fewer structures that need an
 explanation".**

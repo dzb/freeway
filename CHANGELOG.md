@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Membership metrics** (`freeway-cloud`): `MemberModule` now records
+  register/renew attempts and outcomes, readiness-gate checks and drain starts
+  into the optional `Metrics` SPI. The counters live under `cloud.member.*`
+  (`cloud.member.register.attempts`, `cloud.member.renew.failures`, and
+  friends); no Fleet-specific lifecycle code was added.
 - **A `PARALLEL` join fed by a conditional split is refused at build time**
   (`freeway-flow`): a `PARALLEL` join waits for its static in-degree and is
   never told that a skipped branch carries no token — only an `INCLUSIVE` join

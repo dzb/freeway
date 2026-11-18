@@ -2197,10 +2197,10 @@ retry SQL/flow failures blindly. The
 [failure taxonomy](reference/failures.md) lists every public exception, its
 classification and its HTTP boundary.
 
-**Service registration & discovery ships with three production backends behind one seam:**
+**Service membership & discovery ships with three production backends behind one seam:**
 static discovery (fixed endpoints/VIP, no write side), the freeway-native fleet
 (`FleetModule` + `FleetServerModule`, both in **freeway-ext**; writes fan out to
-every node, reads union the answers), and third-party ext adapters (Consul). The registration
+every node, reads union the answers), and third-party ext adapters (Consul). The membership
 lifecycle is shared: `MemberModule` drives whichever backend is installed.
 Switching is swapping the module and its keys; application code never changes. The event mesh feeds itself from whichever backend is bound
 (`freeway.cloud.event.discovery-feed-ms`).
