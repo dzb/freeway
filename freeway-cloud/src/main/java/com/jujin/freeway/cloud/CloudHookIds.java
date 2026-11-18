@@ -27,6 +27,9 @@ public final class CloudHookIds {
     /** Config validation for a config-driven static discovery; runs before the HTTP server. */
     public static final String STATIC_DISCOVERY = "freeway.cloud.discovery.static";
 
+    /** Config validation + warm-up for a config-driven DNS discovery; runs before the HTTP server. */
+    public static final String DNS_DISCOVERY = "freeway.cloud.discovery.dns";
+
     /** RPC export wiring: resolves the declared exports, registers their
      *  handlers on the container bus and arms the {@code /rpc/} route; runs
      *  before the HTTP server so a call can never arrive unwired. */

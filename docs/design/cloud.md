@@ -284,8 +284,58 @@ public record ServiceHealth(boolean live, boolean ready, Instant lastSeen) {
 - **Reusing discovery results is the discovery implementation's own policy** (`CachingDiscovery`, Fleet's
   `freeway.fleet.cache-ttl=5s`): TTL + single-flight refresh + keep-stale-on-failure. The implementation wraps the cache itself,
   so every consumer (RPC, the mesh feeder, the application reading for itself) gets it while the seam still has a single method;
-  keep-stale-on-failure also lands in the layer that knows about the failure. Static discovery and push-style backends (K8s informer)
-  do not wrap or answer `0`.
+  keep-stale-on-failure also lands in the layer that knows about the failure. Static discovery does not wrap (a fixed list has no
+  freshness policy) and push-style backends (K8s informer) answer `0`; a network-backed implementation wraps itself —
+  `DnsModule` does so with its `refresh` window.
+
+**DNS discovery (`DnsModule`) — a name, every address it resolves to, no registry.** The only query-only backend besides static
+that ships in core, because it needs nothing but the JDK (`InetAddress`): it fills the gap between "a fixed endpoint list" and
+"a registry" for the common case where the *name* is stable and the members behind it change with every deployment. Like static
+it binds no `ServiceRegistry`, so it cannot be paired with `MemberModule` — nothing would be registered.
+
+- **Configuration reuses the static grammar** — `freeway.cloud.discovery.dns.services`, comma-separated
+  `serviceId=scheme://host:port[/basePath]` — with two deliberate differences that keep the backends apart: the host must be a
+  **DNS name** (an IP literal is rejected at startup and the message points at `StaticModule`), and a **repeated service id is
+  rejected** (static repeats build a replica set; here membership comes from the answer, so two names for one service is a
+  second, undefined concept). Two keys tune the query: `freeway.cloud.discovery.dns.refresh` (Duration, default `30s`; `0` =
+  resolve on every call) and `freeway.cloud.discovery.dns.family` (`any | ipv4 | ipv6`, default `any`). `refresh` is one
+  **global** value in v1; a per-service override family is deliberately absent until a deployment needs one.
+- **Resolution** is `InetAddress.getAllByName`; each address becomes one `ServiceInstance` whose endpoint carries the
+  **literal address** (`getHostAddress()`, never a reverse lookup), filtered by `family`, deduplicated by literal and sorted
+  for a stable snapshot. The instance id is `serviceId@ip:port` — the shape `HttpServiceDeclaration` derives by default, so the
+  mesh feeder's self-exclusion matches. (A pinned `member.service-instance-id`, or a non-IP `service-host`, breaks that match;
+  dialing yourself is then closed at the hello, not fatal.) An unknown service id answers empty, exactly as static does.
+- **Eviction is the snapshot diff.** A successful refresh replaces the whole list atomically; an instance absent from the new
+  answer is evicted at that moment — no per-instance grace, no drain signal, no sticky state: an instance that returns with the
+  same IP:port is the same instance id and simply resumes. An attempt already running keeps the endpoint it chose; retries and
+  later calls re-resolve, so a just-evicted instance cannot be hit by a retry.
+- **Refresh expiry with a failing resolver keeps the last snapshot** instead of emptying the topology: the re-resolution throws,
+  `CachingDiscovery` serves the previous answer while it is younger than `max(10 × refresh, 30s)`, counts
+  `cloud.registry.cache.stale` and logs one WARN naming the service; past the grace the failure propagates (RPC surfaces
+  `RpcException`, the mesh feeder keeps its previous peer set). Before the first successful resolution there is nothing to
+  serve, so the first call fails. The JDK reports NODATA and NXDOMAIN the same way (`UnknownHostException`), so "the service
+  scaled to zero" and "DNS is unreachable" deliberately share this path; separating them would need a raw DNS client and is a
+  non-goal.
+- **No drain, no health.** DNS says who a name points to now, not who is leaving or sick. Kubernetes mitigates the drain side:
+  a headless Service publishes only ready endpoints, so readiness-gated termination removes an address before the process
+  stops — with a propagation delay of `max(refresh, the JVM's InetAddress cache — about 30s positive by default)` plus the DNS
+  servers' own caches. Health-based eviction and per-instance failure ejection are separate concerns (the latter belongs to the
+  resilience layer, for every backend).
+- **Static vs DNS**: a DNS name in static configuration is still **one** endpoint — multiple A records are not expanded. The
+  decision rule: one stable entry (a VIP, a ClusterIP) → static; a name whose members change without a redeploy (a headless
+  Service, VM round-robin DNS) → `DnsModule`; metadata (weight/zone/version), registration and drain → Fleet or Consul.
+- **Startup posture**: a grammar error fails startup like static; a resolution failure never does — a service with no ready
+  pods, or a resolver that is not up in the first milliseconds, is a runtime state. One warm-up attempt per configured service
+  runs at startup and reports INFO (how many addresses) or WARN (the failure), so a typo in a name is visible in the log without
+  being fatal. Counters: `cloud.registry.dns.resolve.ok` / `.fail`; cache hits and stale answers stay under the shared
+  `cloud.registry.cache.*` names.
+- **TLS consequence**: resolved endpoints carry IP literals and the client's default endpoint identification is untouched, so
+  `https` to a discovered address requires a certificate with an IP SAN. In-cluster plaintext or mesh-mTLS workloads are
+  unaffected; hostname certificates over multiple addresses would need an SNI/verification override, which is separate from
+  discovery.
+- **Not in v1**: SRV records (the natural extension — port, weight and priority map onto `ServiceEndpoint` and
+  `ServiceInstance.weight()`), record TTL (the fixed `refresh` is the knob, and the JVM's own address cache stacks on top), a
+  raw DNS client, and any hot reload of configuration.
 
 ### 5.2 Cross-Process Invocation (rpc)
 
@@ -757,3 +807,4 @@ circuit breaking/rate limiting/retry, security propagation, live/ready probes, o
 | 2026-09-14 | Compatibility is no longer a goal: the optional-input rule in `AGENTS.md` removed "record the old-arity delegating constructor kept as an adapter assembly point" (written in the previous 09-12 round) — adding a component directly changes the canonical constructor shape, and the compile error is the migration path; accordingly the 9-arg compatibility constructor of `RpcHttpClientDefault.Wiring` was deleted (ext `RemoteRpcContract` changed to pass 10 args in the same batch) along with the transitional read of `freeway-log.properties` (the old name is only detected and warned about, not loaded) |
 | 2026-09-24 | Broadcast domain plane separation: dismantled the `EventSink` bridge — `EventBridge`/`EventBridgePolicy`/`EventBusInbound`/`@Topic`/`Keyed` deleted, and the four keys `subscriptions`/`allowed-types`/`allowed-topics`/`dedup.*` retired; `MeshEventBus` is an explicit facade (`publish` addressed by topic, Defer commit coupling, subscriptions declaration-only and the subscription table = the inbound gate); ext kafka switched to the independent plane `KafkaEvents`; in-flight CLASS frames are parsed, dropped by reason and counted, with the wire format unchanged |
 | 2026-09-28 | Composition surface convergence: `ModuleNode` moved into `ioc.internal` as package-private (`Container.moduleTree()` deleted, so the public tree value recorded in historical rows is no longer valid), and application naming goes through `FreewayApp.name` / `Freeway.create(String, …)` |
+| 2026-11-19 | DNS discovery (`DnsModule` / `DnsDiscovery`) added as the query-only backend between static and a registry: a name expanded to every resolved address, global `refresh` freshness with keep-stale-on-failure, snapshot-diff eviction, instance id `serviceId@ip:port` (matches the default registration identity for the mesh feeder), IP literals and repeated service ids rejected (static keeps both); no drain, no health, no registration — `MemberModule` does not apply |

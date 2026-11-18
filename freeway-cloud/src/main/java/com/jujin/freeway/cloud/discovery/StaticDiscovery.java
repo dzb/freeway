@@ -1,9 +1,7 @@
 package com.jujin.freeway.cloud.discovery;
 
 import com.jujin.freeway.ioc.symbol.SymbolSource;
-import com.jujin.freeway.ioc.symbol.SymbolSpec;
 
-import java.net.URI;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -68,57 +66,24 @@ public final class StaticDiscovery implements ServiceDiscovery {
      */
     public static StaticDiscovery of(SymbolSource symbols) {
         Objects.requireNonNull(symbols, "symbols");
-        List<String> entries = symbols.resolve(
-            SymbolSpec.list(StaticModule.ConfigKeys.SERVICES, List.of()));
-        if (entries.isEmpty()) {
-            throw new IllegalArgumentException(
-                StaticModule.ConfigKeys.SERVICES
-                    + " must contain at least one serviceId=scheme://host:port[/basePath] entry");
-        }
+        List<DiscoveryEntries.Entry> entries = DiscoveryEntries.parse(
+            symbols, StaticModule.ConfigKeys.SERVICES);
 
         Map<String, List<ServiceInstance>> services = new LinkedHashMap<>();
-        for (int i = 0; i < entries.size(); i++) {
-            String entry = entries.get(i).trim();
-            int separator = entry.indexOf('=');
-            if (separator <= 0 || separator == entry.length() - 1) {
-                throw invalidEntry(i, "expected serviceId=scheme://host:port[/basePath]");
-            }
-            String serviceId = entry.substring(0, separator).trim();
-            String address = entry.substring(separator + 1).trim();
-            if (serviceId.isBlank() || serviceId.contains(",")) {
-                throw invalidEntry(i, "serviceId must not be blank or contain a comma");
-            }
-
-            URI uri;
-            try {
-                uri = URI.create(address);
-            } catch (IllegalArgumentException e) {
-                throw invalidEntry(i, "invalid endpoint URI '" + address + "': " + e.getMessage());
-            }
-            if (uri.getScheme() == null || uri.getHost() == null
-                    || uri.getPort() < 1 || uri.getRawUserInfo() != null
-                    || uri.getRawQuery() != null || uri.getRawFragment() != null) {
-                throw invalidEntry(i,
-                    "endpoint must be an absolute URI with scheme, host, explicit port "
-                        + "and no userinfo, query or fragment: '" + address + "'");
-            }
-            ServiceEndpoint endpoint = ServiceEndpoint.of(
-                uri.getScheme(), uri.getHost(), uri.getPort(), uri.getPath());
-            String instanceId = endpoint.uri().toString();
+        for (DiscoveryEntries.Entry entry : entries) {
+            String serviceId = entry.serviceId();
+            String instanceId = entry.endpoint().uri().toString();
             List<ServiceInstance> instances = services.computeIfAbsent(
                 serviceId, ignored -> new ArrayList<>());
             if (instances.stream().anyMatch(instance -> instance.instanceId().equals(instanceId))) {
-                throw invalidEntry(i,
-                    "duplicate instance endpoint for service '" + serviceId + "': " + address);
+                throw DiscoveryEntries.invalidEntry(
+                    StaticModule.ConfigKeys.SERVICES, entry.index(),
+                    "duplicate instance endpoint for service '" + serviceId + "': "
+                        + entry.address());
             }
-            instances.add(ServiceInstance.of(serviceId, instanceId, endpoint));
+            instances.add(ServiceInstance.of(serviceId, instanceId, entry.endpoint()));
         }
         return of(services);
-    }
-
-    private static IllegalArgumentException invalidEntry(int index, String detail) {
-        return new IllegalArgumentException(
-            StaticModule.ConfigKeys.SERVICES + " entry " + (index + 1) + ": " + detail);
     }
 
     @Override

@@ -13,6 +13,9 @@ freeway-cloud/src/main/java/com/jujin/freeway/cloud/context/InvocationContext.ja
 freeway-cloud/src/main/java/com/jujin/freeway/cloud/context/PrincipalContext.java#PrincipalContext
 freeway-cloud/src/main/java/com/jujin/freeway/cloud/context/TraceContext.java#TraceContext
 freeway-cloud/src/main/java/com/jujin/freeway/cloud/discovery/CachingDiscovery.java#CachingDiscovery
+freeway-cloud/src/main/java/com/jujin/freeway/cloud/discovery/DnsDiscovery.java#DnsDiscovery
+freeway-cloud/src/main/java/com/jujin/freeway/cloud/discovery/DnsModule.java#DnsModule
+freeway-cloud/src/main/java/com/jujin/freeway/cloud/discovery/HostResolver.java#HostResolver
 freeway-cloud/src/main/java/com/jujin/freeway/cloud/discovery/LoadBalancer.java#LoadBalancer
 freeway-cloud/src/main/java/com/jujin/freeway/cloud/discovery/LoadBalancerDefault.java#LoadBalancerDefault
 freeway-cloud/src/main/java/com/jujin/freeway/cloud/discovery/ReadinessAwareRegistry.java#ReadinessAwareRegistry

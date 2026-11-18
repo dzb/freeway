@@ -667,9 +667,9 @@ silently take effect, but warns once at startup.
 #### Service discovery / service membership / registry backends
 
 The keys in this section are declared by `StaticModule.ConfigKeys` (static
-services), `MemberModule.ConfigKeys` (member identity and drain),
-`LoadBalancer.ConfigKeys` (local-zone), and `CloudModule.ConfigKeys`
-(`freeway.app.name`).
+services), `DnsModule.ConfigKeys` (DNS discovery), `MemberModule.ConfigKeys`
+(member identity and drain), `LoadBalancer.ConfigKeys` (local-zone), and
+`CloudModule.ConfigKeys` (`freeway.app.name`).
 
 The member keys previously used the `freeway.cloud.registry.*` prefix. They now
 use `freeway.cloud.member.*`; only the backend declaration
@@ -680,8 +680,11 @@ Fleet modules in **freeway-ext**.
 
 | Key | Class | Type | Default | Required | Meaning |
 |----|------|------|--------|------|------|
-| `freeway.cloud.discovery.type` | declaration | String | *(empty)* | no | Discovery backend type declaration. Backends are plugged in by a module via `.primary()` — static, Fleet, or an ext adapter (Consul is delivered in freeway-ext; Nacos etc. are not). Empty = no discovery backend configured; a declared external type with no adapter warns once at startup |
+| `freeway.cloud.discovery.type` | declaration | String | *(empty)* | no | Discovery backend type declaration. Backends are plugged in by a module via `.primary()` — static, DNS, Fleet, or an ext adapter (Consul is delivered in freeway-ext; Nacos etc. are not). Empty = no discovery backend configured; a declared external type with no adapter warns once at startup |
 | `freeway.cloud.discovery.static.services` | tuning | comma list | *(empty)* | no | Config-driven `StaticModule` entries, each `serviceId=scheme://host:port[/basePath]`. Repeating a service ID adds instances. URI must be absolute, include an explicit port and contain no userinfo, query or fragment; instance IDs are the normalized endpoint URIs. Read once at startup; no membership, heartbeat, eviction or hot reload. Configuration entries carry no weight/zone/canary metadata. Required when `new StaticModule()` is installed without an explicit service map. See [the complete grammar and examples](modules/cloud.md#config-driven-static-discovery) |
+| `freeway.cloud.discovery.dns.services` | tuning | comma list | *(empty)* | no | Config-driven `DnsModule` entries with the same grammar as static discovery, but the host must be a **DNS name** (an IP literal fails startup and points at `StaticModule`) and a repeated service ID is rejected (membership comes from the answer: every resolved address becomes one instance, so one service maps to one name). No registration, heartbeat or drain; `MemberModule` does not apply. Required when `new DnsModule()` is installed without an explicit map. See [the complete grammar and examples](modules/cloud.md#dns-discovery) |
+| `freeway.cloud.discovery.dns.refresh` | tuning | Duration | `30s` | no | How long one DNS answer is reused before re-resolving. One global value for every service. `0` = resolve on every call; a negative value fails startup. A refresh that fails does not empty the topology: the last answer is served for `max(10 × refresh, 30s)` (counted as `cloud.registry.cache.stale`) and the failure propagates only after that grace; before the first successful resolution there is nothing to serve and the call fails. Actual change latency also includes the JVM's `InetAddress` cache (about 30s positive by default) and the DNS servers' caches |
+| `freeway.cloud.discovery.dns.family` | tuning | token | `any` | no | Which resolved addresses become instances: `any`, `ipv4` or `ipv6`. An answer filtered entirely is an empty (successful) membership, not a failure |
 | `freeway.cloud.discovery.local-zone` | tuning·sentinel | String | *(empty)* | no | This process's zone. When set and at least one instance declares a `zone` metadata, the default balancer runs weighted round-robin over local-zone candidates; if none match it falls back to the full list. Empty = no zone preference. `canary` stays a weight/custom-policy input; the default never routes all traffic to a canary just because one exists |
 | `freeway.cloud.registry.type` | declaration | String | *(empty)* | no | Registry backend type. Same as above: Fleet or an ext adapter binds the role; there is no built-in in-process fallback. |
 | `freeway.cloud.member.service-id` | tuning·sentinel | String | *(empty)* | no | Logical service-member name. Empty = fall back to `freeway.app.name` (then `freeway-app`) |

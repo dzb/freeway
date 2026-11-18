@@ -38,12 +38,13 @@ These modules are reached through exactly three layers:
 
 ## Service Registry and Discovery
 
-The same seam (`ServiceRegistry` / `ServiceDiscovery`), three production backends; switching = changing the module + changing the keys,
+The same seam (`ServiceRegistry` / `ServiceDiscovery`), four production backends; switching = changing the module + changing the keys,
 with zero changes to business code:
 
 | Backend | Placement | Infrastructure |
 |---|---|---|
 | Static | `CloudModule` + `StaticModule` | None — fixed endpoint list or VIP, no membership; no write side |
+| DNS | `CloudModule` + `DnsModule` | A DNS server answering `A`/`AAAA` (cluster DNS/CoreDNS, internal DNS); no membership, no write side |
 | Fleet | `CloudModule` + `MemberModule` + ext `FleetModule` | Self-hosted Fleet server nodes |
 | Consul | `CloudModule` + `MemberModule` + ext `ConsulModule` | Consul cluster |
 
@@ -148,6 +149,96 @@ The configuration is read once at startup. It has no membership, heartbeat,
 readiness propagation, eviction or hot reload. Configuration-driven entries do
 not carry weight/zone/canary metadata in this version; use
 `StaticModule.of(...)` when those metadata values are required.
+
+### DNS discovery
+
+Use `DnsModule` when the *name* is stable and the members behind it change
+without a redeploy: a Kubernetes headless Service (one `A` record per ready
+pod), an internal DNS name round-robining a fleet, any DNS answer with several
+addresses. Static discovery sees such a name as **one** endpoint; `DnsModule`
+expands it into one instance per resolved address. It binds no
+`ServiceRegistry`, so `MemberModule` does not apply — nothing is registered,
+renewed or drained.
+
+```java
+FreewayApp.run(new HttpModule(), new RpcModule(), new DnsModule());
+```
+
+The keys are:
+
+```properties
+freeway.cloud.discovery.dns.services=orders=http://orders.default.svc.cluster.local:8080,catalog=http://catalog.default.svc.cluster.local:8080/api
+freeway.cloud.discovery.dns.refresh=30s
+freeway.cloud.discovery.dns.family=any
+```
+
+| Key | Default | Meaning |
+|---|---|---|
+| `...dns.services` | required | Comma-separated `serviceId=scheme://host:port[/basePath]` entries — the same grammar as static discovery |
+| `...dns.refresh` | `30s` | How long one answer is reused before re-resolving; one global value for every service. `0` = resolve on every call; a negative value fails startup |
+| `...dns.family` | `any` | Which resolved addresses become instances: `any`, `ipv4` or `ipv6` |
+
+The same value can be supplied through JSON, environment variables or CLI, as
+with static discovery:
+
+```bash
+FREEWAY_CLOUD_DISCOVERY_DNS_SERVICES='orders=http://orders.default.svc.cluster.local:8080'
+```
+
+Two rules differ from static discovery on purpose:
+
+- the host must be a **DNS name**; an IP literal fails startup and names
+  `StaticModule` — a literal endpoint is a static entry
+- a **repeated service id** fails startup: membership comes from the answer, so
+  one service maps to one name
+
+What one answer becomes: every resolved address is one instance whose endpoint
+carries the literal address (no reverse lookup), the instance ID is
+`serviceId@ip:port` (the default registration identity shape, so the event mesh
+can exclude itself), and answers are filtered by `family`, deduplicated and
+sorted into a stable snapshot. An unknown service ID answers empty. An answer
+filtered entirely by `family` is an empty (successful) membership, not a
+failure.
+
+**Freshness and eviction.** A successful refresh replaces the whole list
+atomically: an instance absent from the new answer is evicted at that moment —
+no per-instance grace, no drain signal, no sticky state (an address that comes
+back is the same instance ID). An attempt already running keeps the endpoint it
+chose; retries re-resolve, so a just-evicted instance is never hit by a retry.
+
+**A failing refresh never empties the topology.** When re-resolution throws,
+the previous answer keeps serving while it is younger than
+`max(10 × refresh, 30s)`, counted as `cloud.registry.cache.stale` with a WARN
+naming the service; past that grace the failure propagates (RPC surfaces
+`RpcException`, the event mesh keeps its previous peer set). Before the first
+successful resolution there is nothing to serve, so the first call fails. The
+JDK reports NODATA and NXDOMAIN the same way (`UnknownHostException`), so "the
+service scaled to zero" and "DNS is unreachable" deliberately share this path.
+
+**No drain, no health.** DNS says who a name points to now, not who is leaving
+or sick. Kubernetes mitigates the drain side: a headless Service publishes only
+ready endpoints, so readiness-gated termination removes an address before the
+process stops — with a propagation delay of `max(refresh, the JVM's address
+cache — about 30s positive by default)` plus the DNS servers' own caches.
+
+**Startup posture.** A grammar error fails startup like static discovery; a
+resolution failure never does — a service with no ready pods, or a resolver not
+up yet, is a runtime state. One warm-up attempt per configured service reports
+INFO (address count) or WARN (the failure), so a typo in a name is visible in
+the log without being fatal. Counters: `cloud.registry.dns.resolve.ok` /
+`.fail`; cache hits and stale answers stay under `cloud.registry.cache.*`.
+
+**TLS.** Resolved endpoints carry IP literals and the client's default endpoint
+identification is untouched, so `https` to a discovered address needs a
+certificate with an IP SAN. In-cluster plaintext or mesh-mTLS workloads are
+unaffected.
+
+For a typed topology, use `DnsModule.of(Map.of("orders",
+ServiceEndpoint.of("http", "orders.svc", 8080)))`, or construct `DnsDiscovery`
+with a custom `HostResolver` and `AddressFamily` and pass it to
+`DnsModule.of(discovery)`. Not in this version: SRV records, DNS record TTLs
+(the fixed `refresh` is the knob), a raw DNS client, and configuration hot
+reload.
 
 `freeway.cloud.discovery.type=static` is optional declaration only. Installing
 `StaticModule` is what selects static discovery; the type key never selects an
