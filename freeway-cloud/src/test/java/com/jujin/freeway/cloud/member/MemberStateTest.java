@@ -4,6 +4,7 @@ import com.jujin.freeway.cloud.discovery.ServiceDeclaration;
 import com.jujin.freeway.cloud.discovery.ServiceEndpoint;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.cloud.discovery.ServiceRegistry;
+import com.jujin.freeway.cloud.observe.MetricsDefault;
 import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Freeway;
@@ -232,5 +233,32 @@ class MemberStateTest {
             Thread.sleep(10);
         }
         return condition.getAsBoolean();
+    }
+
+    @Test
+    void recordsEveryMembershipCounter() {
+        MetricsDefault metrics = new MetricsDefault();
+        MemberState state = new MemberState(metrics);
+
+        state.registerAttempt();
+        state.registerSuccess();
+        state.registerFailure();
+        state.renewAttempt();
+        state.renewSuccess();
+        state.renewFailure();
+        state.readinessChecked(true);
+        state.readinessChecked(false);
+        state.drainingStarted();
+
+        assertEquals(1, metrics.counterValue("cloud.member.register.attempts"));
+        assertEquals(1, metrics.counterValue("cloud.member.register.successes"));
+        assertEquals(1, metrics.counterValue("cloud.member.register.failures"));
+        assertEquals(1, metrics.counterValue("cloud.member.renew.attempts"));
+        assertEquals(1, metrics.counterValue("cloud.member.renew.successes"));
+        assertEquals(1, metrics.counterValue("cloud.member.renew.failures"));
+        assertEquals(2, metrics.counterValue("cloud.member.readiness.gate.checks"));
+        assertEquals(1, metrics.counterValue("cloud.member.readiness.gate.passed"));
+        assertEquals(1, metrics.counterValue("cloud.member.readiness.gate.failures"));
+        assertEquals(1, metrics.counterValue("cloud.member.drain.started"));
     }
 }

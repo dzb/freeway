@@ -110,8 +110,8 @@ helpers are gone; module-facing configuration and binding behavior is unchanged.
 ```text
 mvn -o test
   commons 450 · ioc 344 · boot 141 · http 550
-  db 550 · flow 147 · cloud 383
-  total 2,565 — 0 failures, 0 errors, 0 skipped
+  db 550 · flow 147 · cloud 384
+  total 2,566 — 0 failures, 0 errors, 0 skipped
 ```
 
 `mvn -o -Pdemos -DskipTests compile` compiles the in-repo consumers, and
