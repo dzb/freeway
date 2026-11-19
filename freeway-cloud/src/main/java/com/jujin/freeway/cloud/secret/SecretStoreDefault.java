@@ -26,7 +26,17 @@ import org.slf4j.LoggerFactory;
  * is throttled — a lookup must not stat the filesystem on every call — and it
  * is fail-safe: an unreadable or momentarily absent file keeps the values
  * already loaded and warns, because dropping live secrets mid-rotation is worse
- * than serving the previous generation for another moment.</p>
+ * than serving the previous generation for another moment. A rotation that
+ * parses to zero entries (an empty file, a half-written projected volume, a
+ * file of malformed lines) is treated the same way: the previous generation
+ * stays and the reason is logged, because {@link Properties} silently drops
+ * lines it cannot parse.</p>
+ *
+ * <p>Every skipped rotation reports one of four reasons — {@code file-missing},
+ * {@code stat-failed}, {@code read-failed}, {@code empty-file} — together with
+ * the path, the underlying cause when there is one, and how many previously
+ * loaded values were kept. The last reason is also readable through the
+ * package-private {@link #lastSkippedRotation()} seam for tests.</p>
  */
 public final class SecretStoreDefault implements SecretStore {
 
@@ -34,6 +44,11 @@ public final class SecretStoreDefault implements SecretStore {
 
     /** Stat at most this often; a rotation is visible one lookup later. */
     private static final Duration CHECK_INTERVAL = Duration.ofSeconds(1);
+
+    /** Why the last rotation attempt was skipped, or null after a clean load. */
+    private volatile String lastSkippedRotation;
+    /** The reason+detail already warned about, so a persistent failure logs once. */
+    private volatile String lastSkipReported;
 
     private final Path file;
     private final long checkIntervalNanos;
@@ -89,18 +104,18 @@ public final class SecretStoreDefault implements SecretStore {
                 // even if it looks identical to what was loaded before.
                 lastModified = null;
                 lastSize = -1;
+                lastSkippedRotation = "file-missing";
                 if (!keepOnFailure) {
                     cached = Map.of();
-                } else if (!cached.isEmpty()) {
-                    LOG.warn("Secrets file {} is gone — keeping the {} value(s) already loaded",
-                        file, cached.size());
+                } else {
+                    skipRotation("file-missing", file + " is missing");
                 }
                 return;
             }
             modified = Files.getLastModifiedTime(file);
             size = Files.size(file);
         } catch (IOException e) {
-            LOG.warn("Could not stat secrets file {}: {}", file, e.getMessage());
+            skipRotation("stat-failed", file + ": " + e.getMessage());
             return;
         }
         if (modified.equals(lastModified) && size == lastSize) {
@@ -110,18 +125,61 @@ public final class SecretStoreDefault implements SecretStore {
         try (Reader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
             props.load(reader);
         } catch (IOException e) {
-            LOG.warn("Failed to read secrets file {}: {}", file, e.getMessage());
+            skipRotation("read-failed", file + ": " + e.getMessage());
             return;
         }
         Map<String, String> next = new java.util.HashMap<>();
         props.forEach((k, v) -> next.put(String.valueOf(k), String.valueOf(v)));
         Map<String, String> previous = cached;
+        if (keepOnFailure && next.isEmpty() && !previous.isEmpty()) {
+            // A projected-volume swap can expose an empty or half-written
+            // file, and Properties drops unparsable lines without a word, so
+            // "parsed nothing" is the only signal there is. Never empty a
+            // store that already had values. The stamp is still remembered:
+            // re-reading the same bad generation on every lookup would only
+            // repeat the warning.
+            lastModified = modified;
+            lastSize = size;
+            skipRotation("empty-file",
+                file + " parsed to 0 entries (empty, truncated or malformed)");
+            return;
+        }
         cached = Map.copyOf(next);
         lastModified = modified;
         lastSize = size;
+        lastSkippedRotation = null;
+        lastSkipReported = null;
         if (keepOnFailure && !previous.isEmpty()) {
             LOG.info("Reloaded {} secret(s) from {}", cached.size(), file);
         }
+    }
+
+    /**
+     * Keeps the generation already loaded and records why. A persistent
+     * condition (a file that stays missing, a permission that stays wrong) is
+     * warned about once; the throttled lookup path would otherwise repeat it
+     * every check interval.
+     */
+    private void skipRotation(String reason, String detail) {
+        lastSkippedRotation = reason;
+        var report = reason + "|" + detail;
+        if (report.equals(lastSkipReported)) {
+            return;
+        }
+        lastSkipReported = report;
+        if (cached.isEmpty()) {
+            LOG.warn("Secrets unavailable ({}): {} — the store stays empty",
+                reason, detail);
+        } else {
+            LOG.warn(
+                "Secrets rotation skipped ({}): {} — keeping {} previously loaded value(s)",
+                reason, detail, cached.size());
+        }
+    }
+
+    /** Test seam: the reason recorded by the last refused load or rotation. */
+    String lastSkippedRotation() {
+        return lastSkippedRotation;
     }
 
     static String envKey(String key) {

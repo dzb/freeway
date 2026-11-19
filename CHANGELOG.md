@@ -79,6 +79,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   classes are removed; module-facing configuration and binding behavior is
   unchanged.
 
+### Fixed
+
+- **A secret rotation that parses to nothing no longer empties the store**
+  (`freeway-cloud`): an empty or half-written projected volume, or a file of
+  comments only, was applied as a valid new generation because `Properties`
+  drops unparsable lines without a word — successfully rotating every secret
+  away. Such a rotation is now refused and the previous generation stays.
+  Every skipped load or rotation reports one reason — `file-missing`,
+  `stat-failed`, `read-failed`, `empty-file` — with the path, the underlying
+  cause and the number of values kept; `SecretStoreDefaultTest` covers the
+  empty-parse guard and the recorded reasons.
+
 ## [2.0.0] - 2026-11-16
 
 ### Added
