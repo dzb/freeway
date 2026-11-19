@@ -43,6 +43,20 @@ Static discovery has no registry, heartbeat, readiness, eviction or hot reload.
 Use `StaticModule.of(...)` when instance metadata is required. The
 configuration form deliberately carries no weight, zone or canary metadata.
 
+### DNS discovery and passive ejection
+
+`DnsModule` adds a core, JDK-only discovery backend for stable names whose
+addresses change with deployment. It reuses the static-discovery configuration
+grammar, rejects IP literals and repeated service IDs, filters IPv4/IPv6 and
+uses `CachingDiscovery` for refresh and stale-on-failure behavior. It binds no
+registry, so `MemberModule` does not apply.
+
+RPC clients also gain per-instance passive ejection: repeated instance-level
+wire failures are taken out of this node's rotation with a bounded backoff and
+a percentage cap, while all-ejected topology falls back to the full answer.
+The policy is controlled by `freeway.cloud.rpc.ejection.*` and respects the
+aggregate `freeway.cloud.rpc.resilience=off` switch.
+
 ### Membership has one backend-neutral vocabulary
 
 `freeway-cloud` now owns the membership lifecycle in `cloud.member`:
@@ -110,13 +124,13 @@ helpers are gone; module-facing configuration and binding behavior is unchanged.
 ```text
 mvn -o test
   commons 450 · ioc 344 · boot 141 · http 550
-  db 550 · flow 147 · cloud 384
-  total 2,566 — 0 failures, 0 errors, 0 skipped
+  db 550 · flow 147 · cloud 431
+  total 2,613 — 0 failures, 0 errors, 0 skipped
 ```
 
 `mvn -o -Pdemos -DskipTests compile` compiles the in-repo consumers, and
 `freeway-ext` on `2.0.1-SNAPSHOT` builds against the installed core snapshot and
-ran 188 tests with 0 failures (7 skipped: the Kafka integration cases need a
+ran 291 tests with 0 failures (7 skipped: the Kafka integration cases need a
 broker). This is the state of the snapshot, not of a published release — re-run
 both before tagging 2.0.1.
 

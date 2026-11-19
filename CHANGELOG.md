@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **DNS service discovery** (`freeway-cloud`): `DnsModule` maps service ids to
+  DNS names, expands every resolved address into a literal-endpoint instance,
+  filters by address family and wraps the resolver in `CachingDiscovery` with
+  stale-on-failure behavior. It binds no registry, so `MemberModule` is not
+  part of this mode.
+- **Per-instance passive ejection** (`freeway-cloud`): RPC clients remove a
+  repeatedly failing instance from this node's rotation using existing call
+  outcomes, with threshold/backoff, a percentage guard, all-ejected fallback
+  and zone-aware composition. Ejection is enabled by default and respects
+  `freeway.cloud.rpc.resilience=off`.
 - **Membership metrics** (`freeway-cloud`): `MemberModule` now records
   register/renew attempts and outcomes, readiness-gate checks and drain starts
   into the optional `Metrics` SPI. The counters live under `cloud.member.*`
