@@ -20,6 +20,8 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -59,6 +61,55 @@ class InstanceEjectionTest {
         fail(ejection, a, 2);
 
         assertEquals(List.of(a, b), ejection.filter("svc", List.of(a, b)));
+    }
+
+    @Test
+    void theFilteredViewIsReusedWhileTheAnswerAndStateAreUnchanged() {
+        var clock = new AtomicLong();
+        var ejection = ejection(clock, 5, 30, 300, 50);
+        var a = instance("a");
+        var b = instance("b");
+        var answer = List.of(a, b);
+
+        var first = ejection.filter("svc", answer);
+        fail(ejection, a, 1);                            // below the threshold: filtering cannot change
+        var second = ejection.filter("svc", answer);
+
+        assertSame(first, second, "a stable answer and state reuse the memoized view");
+    }
+
+    @Test
+    void anEjectionInvalidatesTheCachedView() {
+        var clock = new AtomicLong();
+        var ejection = ejection(clock, 1, 30, 300, 100);
+        var a = instance("a");
+        var b = instance("b");
+        var answer = List.of(a, b);
+
+        var before = ejection.filter("svc", answer);
+        assertEquals(2, before.size());
+        fail(ejection, a, 1);
+        var after = ejection.filter("svc", answer);
+
+        assertEquals(List.of(b), after);
+        assertNotSame(before, after, "the ejection bumps the version: the old view is not reused");
+    }
+
+    @Test
+    void anExpiredWindowInvalidatesTheCachedView() {
+        var clock = new AtomicLong();
+        var ejection = ejection(clock, 1, 1, 300, 100);
+        var a = instance("a");
+        var b = instance("b");
+        var answer = List.of(a, b);
+
+        ejection.filter("svc", answer);
+        fail(ejection, a, 1);
+        assertEquals(List.of(b), ejection.filter("svc", answer));
+
+        clock.set(1001 * MILLIS);                        // past the 1s window
+        assertEquals(answer, ejection.filter("svc", answer),
+            "the earliest window expiry forces a recompute even without a state write");
     }
 
     @Test

@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.LongSupplier;
 
 import org.slf4j.Logger;
@@ -48,6 +49,14 @@ import org.slf4j.LoggerFactory;
  * model) and bounded: the service map is capped like the breaker shards, and a
  * per-service instance map prunes idle, non-ejected entries. Entries for
  * instances that leave discovery simply go idle and are pruned.</p>
+ *
+ * <p><b>The steady-state attempt path allocates nothing.</b> The filtered view
+ * is memoized per service and reused while the discovery answer is the same
+ * immutable snapshot, the state version is unchanged (ejections and recoveries
+ * bump it) and no ejection window has expired — the three conditions that can
+ * change the answer. A miss recomputes once; discovery snapshots are stable
+ * between refreshes by the framework's caching convention, so misses are rare
+ * events, not the common path.</p>
  */
 final class InstanceEjection {
 
@@ -191,24 +200,41 @@ final class InstanceEjection {
     /**
      * The candidates a caller may choose from: the answer minus ejected members,
      * or the full answer when that would leave nothing (a partial topology must
-     * never become an outage). Records the answer itself, so the percentage
-     * guard's numerator and denominator describe the same population.
+     * never become an outage). The result is memoized: a hit costs one identity
+     * check, one version check and one deadline check, with no allocation and no
+     * per-instance lookup. A miss (new discovery snapshot, an ejection or
+     * recovery, or an expired window) recomputes once and republishes the view.
      */
     List<ServiceInstance> filter(String serviceId, List<ServiceInstance> instances) {
         if (!enabled || instances.isEmpty()) {
             return instances;
         }
         ServiceEjection service = service(serviceId);
-        service.answer = instances;
         long now = clock.getAsLong();
+        long version = service.version.get();
+        View cached = service.view;
+        if (cached != null && cached.answer() == instances
+                && cached.version() == version && now < cached.validUntil()) {
+            return cached.filtered();
+        }
+
         List<ServiceInstance> candidates = new ArrayList<>(instances.size());
+        long earliestExpiry = Long.MAX_VALUE;
         for (ServiceInstance instance : instances) {
             InstanceState state = service.byInstance.get(instance.instanceId());
             if (state == null || !state.isEjected(now)) {
                 candidates.add(instance);
+            } else if (state.ejectedUntil < earliestExpiry) {
+                // The earliest window expiry is the first moment this view can
+                // change without a state write; until then it stays valid.
+                earliestExpiry = state.ejectedUntil;
             }
         }
-        return candidates.isEmpty() ? instances : candidates;
+        List<ServiceInstance> filtered = candidates.isEmpty()
+            ? instances
+            : List.copyOf(candidates);
+        service.view = new View(instances, version, earliestExpiry, filtered);
+        return filtered;
     }
 
     /** A success clears the failure streak and any ejection (recovery is a successful call). */
@@ -230,6 +256,7 @@ final class InstanceEjection {
             state.ejectedUntil = 0;
             if (state.ejectionCount > 0) {
                 state.ejectionCount = 0;
+                service.version.incrementAndGet();   // the cached view now excludes one less
                 recovered = true;
             }
             state.lastTouched = clock.getAsLong();
@@ -291,7 +318,7 @@ final class InstanceEjection {
                 if (++state.consecutiveFailures < failureThreshold) {
                     return;
                 }
-                List<ServiceInstance> answer = service.answer;
+                List<ServiceInstance> answer = service.answer();
                 int ejectedNow = service.ejectedCount(now);
                 if (answer.isEmpty()
                         || (long) (ejectedNow + 1) * 100 > (long) maxPercent * answer.size()) {
@@ -305,6 +332,7 @@ final class InstanceEjection {
                 state.ejectionCount++;
                 ejectionNumber = state.ejectionCount;
                 state.consecutiveFailures = 0;
+                service.version.incrementAndGet();       // the cached view is stale now
                 ejected = true;
             }
         }
@@ -402,15 +430,30 @@ final class InstanceEjection {
     private record Settings(boolean enabled, int threshold, long baseNanos, long maxNanos,
                             int percent) {}
 
+    /**
+     * A memoized filtered view. Valid while the discovery answer is the same
+     * snapshot, the state version is unchanged and no ejection window listed
+     * here has expired — the only three ways the filtered set can change.
+     */
+    private record View(List<ServiceInstance> answer, long version, long validUntil,
+                        List<ServiceInstance> filtered) {}
+
     /** One service's last discovery answer plus its per-instance state. */
     private static final class ServiceEjection {
         private final ConcurrentHashMap<String, InstanceState> byInstance = new ConcurrentHashMap<>();
-        /** Last answer seen by {@link #filter}; the percentage is of and within it. */
-        private volatile List<ServiceInstance> answer = List.of();
+        /** Bumps on every ejection and recovery — the writes that alter filtering. */
+        private final AtomicLong version = new AtomicLong();
+        /** Most recent filtered view; immutable, safe to hand to any caller. */
+        private volatile View view;
+
+        List<ServiceInstance> answer() {
+            View current = view;
+            return current == null ? List.of() : current.answer();
+        }
 
         int ejectedCount(long now) {
             int ejected = 0;
-            for (ServiceInstance instance : answer) {
+            for (ServiceInstance instance : answer()) {
                 InstanceState state = byInstance.get(instance.instanceId());
                 if (state != null && state.isEjected(now)) {
                     ejected++;
