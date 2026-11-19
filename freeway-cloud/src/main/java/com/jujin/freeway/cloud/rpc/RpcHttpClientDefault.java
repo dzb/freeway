@@ -68,6 +68,8 @@ public final class RpcHttpClientDefault implements RpcHttpClient {
 
     private final ServiceDiscovery discovery;
     private final LoadBalancer loadBalancer;
+    /** Per-instance passive ejection; never null (library defaults when unset). */
+    private final InstanceEjection ejection;
     private final Duration requestTimeout;
     private final List<ContextCodec> codecs;
     private final CircuitBreaker injectedBreaker;
@@ -222,21 +224,25 @@ public final class RpcHttpClientDefault implements RpcHttpClient {
     public RpcHttpClientDefault(
         ServiceDiscovery discovery, LoadBalancer loadBalancer,
         Deps deps, Options options) {
-        this(discovery, loadBalancer, deps, options, null);
+        this(discovery, loadBalancer, deps, options, null, null);
     }
 
     /**
-     * Package-visible assembly used by {@link RpcModule}, which resolves the
-     * optional {@link RetryBudget} binding without widening {@link Deps}.
-     * A null budget uses the library default.
+     * The full package-visible assembly used by {@link RpcModule}, which
+     * resolves the optional {@link RetryBudget} binding and the configured
+     * ejection policy without widening {@link Deps}. A null budget uses the
+     * library default; a null ejection policy uses the library default
+     * (enabled, threshold 5, 30s doubling to 300s, 50% cap) wired to this
+     * client's {@link Deps#metrics()}.
      */
     RpcHttpClientDefault(
         ServiceDiscovery discovery, LoadBalancer loadBalancer,
-        Deps deps, Options options, RetryBudget retryBudget) {
+        Deps deps, Options options, RetryBudget retryBudget, InstanceEjection ejection) {
         Objects.requireNonNull(deps, "deps");
         Objects.requireNonNull(options, "options");
         this.discovery = Objects.requireNonNull(discovery, "discovery");
         this.loadBalancer = Objects.requireNonNull(loadBalancer, "loadBalancer");
+        this.ejection = ejection != null ? ejection : InstanceEjection.defaults(deps.metrics());
         this.codecs = deps.codecs();
         // A default-implementation breaker/limiter is used as the per-service
         // shard configuration template; any other implementation (or NOOP) is
@@ -501,18 +507,32 @@ public final class RpcHttpClientDefault implements RpcHttpClient {
     /**
      * One transport attempt: resolve the instance, send, map transport
      * failures. The instance is re-chosen on every attempt so retries do not
-     * hammer the same dead endpoint. Any unmapped local failure (bad URL or
-     * header, a discovery backend bug) is converted to a {@link RpcException}
-     * — the caller sees one failure type, and a half-open probe still gets an
-     * outcome instead of being lost to an escaping RuntimeException.
+     * hammer the same dead endpoint, and the candidates are filtered through
+     * the per-instance ejection state first — a retry therefore cannot hit an
+     * instance ejected by the failure that just happened. Any unmapped local
+     * failure (bad URL or header, a discovery backend bug) is converted to a
+     * {@link RpcException} — the caller sees one failure type, and a half-open
+     * probe still gets an outcome instead of being lost to an escaping
+     * RuntimeException.
      */
     private RpcResponse attempt(String serviceId, RpcRequest request, boolean async,
                                 long deadlineNanos, long callStart, CallState state) {
         try {
-            List<ServiceInstance> instances = discovery.instances(serviceId);
+            List<ServiceInstance> instances = ejection.filter(
+                serviceId, discovery.instances(serviceId));
             ServiceInstance instance = loadBalancer.choose(instances)
                 .orElseThrow(() -> RpcException.noInstance(serviceId));
-            return doCall(instance, request, async, deadlineNanos, callStart, state);
+            try {
+                RpcResponse response = doCall(
+                    instance, request, async, deadlineNanos, callStart, state);
+                ejection.onSuccess(serviceId, instance);
+                return response;
+            } catch (RpcException failure) {
+                // The classifier inside keeps business/local failures out of
+                // the accounting; this call site already knows the instance.
+                ejection.onFailure(serviceId, instance, failure);
+                throw failure;
+            }
         } catch (RpcException e) {
             throw e;
         } catch (RuntimeException e) {
@@ -535,6 +555,11 @@ public final class RpcHttpClientDefault implements RpcHttpClient {
         // The deadline owns this attempt: a fixed request timeout let a send
         // keep running past the caller's bound (orTimeout only ends the future).
         java.time.Duration attemptTimeout = requestTimeout;
+        // Whether the caller's remaining budget, not the configured request
+        // timeout, is the effective bound. A timeout that fires under a
+        // narrowed caller deadline is the caller's choice, not the instance's
+        // fault — the ejection classifier must not charge it (see below).
+        boolean callerBounded = false;
         if (deadlineNanos > 0) {
             long remaining = deadlineNanos - (System.nanoTime() - callStart);
             if (remaining <= 0) {
@@ -543,6 +568,7 @@ public final class RpcHttpClientDefault implements RpcHttpClient {
             java.time.Duration remainingTimeout = java.time.Duration.ofNanos(remaining);
             if (remainingTimeout.compareTo(attemptTimeout) < 0) {
                 attemptTimeout = remainingTimeout;
+                callerBounded = true;
             }
         }
         HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url))
@@ -605,7 +631,11 @@ public final class RpcHttpClientDefault implements RpcHttpClient {
             throw RpcException.connect(instance.serviceId(), e);
         } catch (HttpTimeoutException e) {
             // Response never arrived in time: the peer may have applied it.
-            throw RpcException.timeout(instance.serviceId(), e);
+            // A no-cause timeout is how the ejection classifier knows the
+            // caller's budget — not the instance — was the effective bound.
+            throw callerBounded
+                ? RpcException.timeout(instance.serviceId())
+                : RpcException.timeout(instance.serviceId(), e);
         } catch (IOException e) {
             // Mid-flight I/O failure (reset after send, broken pipe): the
             // request may have reached the peer — ambiguous outcome.

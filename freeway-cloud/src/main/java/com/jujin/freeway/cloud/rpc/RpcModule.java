@@ -10,6 +10,7 @@ import com.jujin.freeway.cloud.discovery.ServiceDiscovery;
 import com.jujin.freeway.cloud.observe.Tracer;
 import com.jujin.freeway.cloud.resilience.CircuitBreaker;
 import com.jujin.freeway.cloud.resilience.RateLimiter;
+import com.jujin.freeway.cloud.resilience.ResilienceModule;
 import com.jujin.freeway.cloud.resilience.RetryBudget;
 import com.jujin.freeway.cloud.resilience.Retryer;
 import com.jujin.freeway.commons.json.JsonCodec;
@@ -29,6 +30,7 @@ import com.jujin.freeway.ioc.symbol.SymbolSpec;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Function;
 
 /**
@@ -91,7 +93,19 @@ public final class RpcModule implements ModuleEx {
             .add(KnownKeys.of(ConfigKeys.class, CloudKeys.PREFIX,
                 CloudKeys.APP_PREFIX))
             // The no-discovery fallback still honors the shared zone policy.
-            .add(KnownKeys.of(LoadBalancer.ConfigKeys.class, CloudKeys.PREFIX));
+            .add(KnownKeys.of(LoadBalancer.ConfigKeys.class, CloudKeys.PREFIX))
+            // The client reads these from the resilience table even when that
+            // module is absent (a pure-RPC client), so they need a vocabulary
+            // here too or the unknown-key check reports them as read by no one.
+            .add(new KnownKeys(
+                Set.of(CloudKeys.PREFIX, CloudKeys.APP_PREFIX),
+                Set.of(
+                    ResilienceModule.ConfigKeys.RPC_RESILIENCE,
+                    ResilienceModule.ConfigKeys.RPC_EJECTION_ENABLED,
+                    ResilienceModule.ConfigKeys.RPC_EJECTION_FAILURE_THRESHOLD,
+                    ResilienceModule.ConfigKeys.RPC_EJECTION_BASE_WINDOW,
+                    ResilienceModule.ConfigKeys.RPC_EJECTION_MAX_WINDOW,
+                    ResilienceModule.ConfigKeys.RPC_EJECTION_MAX_PERCENT)));
         b.bind(TransportSecurity.class)
             .to((Container container) -> {
                 SymbolSource symbols = container.get(SymbolSource.class);
@@ -134,14 +148,28 @@ public final class RpcModule implements ModuleEx {
                     loadBalancer = new LoadBalancerDefault(
                         symbols.resolve(LoadBalancer.ConfigKeys.LOCAL_ZONE, ""));
                 }
+                // The aggregate switch is a master switch in the RPC-only
+                // subset too: without ResilienceModule installed the client
+                // would otherwise fall back to retry/breaker library defaults
+                // while `off` disabled only ejection.
+                boolean resilienceOff = ResilienceModule.resilienceDisabled(symbols);
+                Retryer retryer = resilienceOff
+                    ? Retryer.NO_RETRY
+                    : OptionalBinding.get(container, Retryer.class);
+                CircuitBreaker breaker = resilienceOff
+                    ? CircuitBreaker.NOOP
+                    : OptionalBinding.get(container, CircuitBreaker.class);
+                RateLimiter rateLimiter = resilienceOff
+                    ? RateLimiter.UNLIMITED
+                    : OptionalBinding.get(container, RateLimiter.class);
                 return new RpcHttpClientDefault(
                     discovery,
                     loadBalancer,
                     new RpcHttpClientDefault.Deps(
                         container.extension(ContextCodec.class).all(),
-                        OptionalBinding.get(container, Retryer.class),
-                        OptionalBinding.get(container, CircuitBreaker.class),
-                        OptionalBinding.get(container, RateLimiter.class),
+                        retryer,
+                        breaker,
+                        rateLimiter,
                         container.get(TransportSecurity.class),
                         traceEnabled ? OptionalBinding.get(container, Tracer.class) : null,
                         // Metrics has a NoopMetrics builtin — always resolvable;
@@ -151,7 +179,8 @@ public final class RpcModule implements ModuleEx {
                         Duration.ofMillis(requestMs),
                         Duration.ofMillis(connectMs),
                         shutdownGrace),
-                    OptionalBinding.get(container, RetryBudget.class));
+                    OptionalBinding.get(container, RetryBudget.class),
+                    InstanceEjection.from(symbols, container.get(Metrics.class)));
             })
             .marker(Local.class)
             ;
@@ -175,6 +204,11 @@ public final class RpcModule implements ModuleEx {
             .add(CloudHookIds.RPC, exportHook)
             // Conditional: a pure RPC client has no server to precede.
             .beforeIfPresent(CloudHookIds.HTTP_SERVER);
+        // Client-side policy keys fail startup like the server side's exports
+        // do: a typo in the ejection bounds must not wait for the first call.
+        b.contribute(RuntimeHook.class)
+            .add(CloudHookIds.RPC_CLIENT, (Container container) ->
+                InstanceEjection.validate(container.get(SymbolSource.class)));
     }
 
     /** Keys read by the RPC client module. */

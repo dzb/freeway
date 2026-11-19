@@ -567,6 +567,74 @@ rateLimiter.tryAcquire()
 - The `@Retry` / `@CircuitBreak` / `@RateLimit` annotations + `Advisor` weaving are **not delivered**
   (§8.2).
 
+**Per-instance passive ejection (outlier detection) — inside the RPC attempt loop.** A discovered list says who *should*
+serve, not who *can*: a member stays alive in the registry (heartbeats keep succeeding) while every call to it fails — a
+dead local dependency, a saturated thread pool, a half-open network path. Nothing notices today: `LoadBalancerDefault`
+has no memory of failures, and the circuit breaker cannot help per member. Its window resets on every interleaved
+success, so one bad member beside healthy siblings never opens it — while the bad member keeps absorbing its share of
+calls: every N-th call pays a failed attempt (up to the connect timeout), retry budget is burned, and a non-idempotent
+call whose ambiguous timeout/5xx may not be replayed fails outright although healthy members exist. When the breaker is
+open for any reason, its half-open probe is chosen from the full list, so a probe landing on the bad member re-opens the
+service for another 30s. Passive ejection closes these gaps using signals the caller already has — it adds no probing
+traffic.
+
+- **Placement — in the client, before the choice.** `RpcHttpClientDefault.attempt` filters the discovered answer through
+  the ejection state and hands the survivors to the `LoadBalancer`, so every policy (weights, zone preference, a custom
+  `LoadBalancer`) keeps working on a healthy subset: `discovery.instances → ejection.filter → loadBalancer.choose →
+  send`, and the attempt reports `onSuccess` / `onFailure(kind)` for the instance it chose. A `LoadBalancer` decorator was
+  rejected: only the transport layer knows *why* a call failed, and the kind is what keeps business errors out of the
+  accounting. The component is package-private in `com.jujin.freeway.cloud.rpc`; `RpcModule` builds it from
+  `ResilienceModule.ConfigKeys` (and honours `rpc.resilience=off`) and passes it through the package-visible client
+  constructor, so no public type or `Deps` arity changes.
+- **Only the instance's own wire failures count.** The classification reads `RpcException.Kind`: `CONNECT`, `TIMEOUT`
+  *with a cause* (the send happened under the configured request timeout), `TRANSPORT` and `HTTP` with status ≥ 500
+  count; `4xx`, `429` (peer backpressure), `BUSINESS` (the handler threw), `REJECTED` (version/mapping skew — the peer
+  answered), `REPLY_UNREADABLE` (schema skew), `INTERRUPTED`, `RATE_LIMITED`, `CIRCUIT_OPEN`, `NO_INSTANCE` and
+  `DISPATCH` do not. Two timeouts carry no cause and are therefore not the instance's fault: the deadline-exhausted
+  timeout the client throws *before* a send, and a send timeout that fired inside the caller's narrowed remaining
+  budget rather than the configured request timeout.
+- **State — three numbers per `(serviceId, instanceId)`.** `consecutiveFailures` (reset by any success), `ejectionCount`
+  (how many times in a row this instance was ejected; reset by a success) and `ejectedUntil`.
+  `failure-threshold` (default **5**) consecutive qualifying failures eject the instance; the first ejection lasts
+  `base-window` (default **30s**), a repeat doubles the window up to `max-window` (default **300s**), and any success
+  clears the count — a successful call is the probe, and an in-flight request that completes during the window counts
+  too. There is no separate half-open phase: normal traffic is the probe, and a still-broken instance re-ejects after
+  the threshold, not after a single failure.
+- **The topology must never be emptied.** Two guards: at most `max-percent` (default **50**) of the *current answer* may
+  be ejected — a one-instance answer therefore ejects nothing — and when the filter would exclude everything it falls
+  back to the full answer. That is the same rule zone preference already follows ("a partial topology must not become an
+  outage").
+- **Interaction with the rest of the pipeline.** The breaker stays per service and unchanged; ejection stops a bad
+  member's failures from reaching it and keeps it out of half-open probes, so a probe cannot re-arm a service-wide
+  breaker from a healthy topology. Retries re-enter at the filter, so a retry cannot hit an instance ejected by the
+  failure that just happened — but the first `threshold` failures still consume retries on purpose, because noise must
+  not eject. Non-idempotent calls gain the most: once the bad member is out, their timeout/5xx failures (which the
+  idempotency gate forbids replaying) stop happening at all.
+- **Configuration** (read once at client construction, like the other `rpc.*` keys):
+  `freeway.cloud.rpc.ejection.enabled` (default **true**), `.failure-threshold` (5), `.base-window` (30s),
+  `.max-window` (300s), `.max-percent` (50). The aggregate `freeway.cloud.rpc.resilience=off` disables ejection with
+  the rest of the bundle; `enabled=false` disables it alone. Out-of-range values (threshold or percent < 1, percent >
+  100, max-window < base-window, negative windows) fail startup naming the key.
+- **Default on, conservative on purpose.** The failure mode it removes — a member that is alive but cannot serve,
+  silently failing its share of calls and re-arming an open breaker on probes — is worse than the failure mode it can
+  introduce: a burst of timeouts caused by the caller's own overload ejecting members that were healthy. The threshold
+  needs five *consecutive* instance-level failures, the 50% cap bounds the blast radius, and a shared-dependency outage
+  fails all members alike: the cap keeps the last healthy few in rotation and the service breaker still opens as it
+  should.
+- **State is per client node and bounded.** No coordination between callers — each node judges from its own traffic (the
+  Envoy outlier-detection model). Per-service maps are keyed by instance id; an entry that is not ejected and untouched
+  for `10 × max-window` is pruned, and a per-service map is capped at 256 entries with the oldest idle entry evicted
+  first, the same bounded-shard discipline the breakers use, because instance ids come from the discovery source.
+- **Instrumentation**: counters `cloud.rpc.ejection.ejected` and `cloud.rpc.ejection.recovered`, both labelled with
+  `service` (the same bounded dimension as `cloud.rpc.calls`); state changes are DEBUG-logged. A suppressed ejection
+  (the max-percent guard) is visible through the absence of the expected increase — no separate series in v1.
+- **Tests**: one component test per rule (threshold, reset, doubling cap, percent guard, all-ejected fallback, every
+  failure-kind row, pruning) and a client-level test with a scripted discovery (a live endpoint beside a dead port) and
+  the default balancer, asserting the dead endpoint stops being chosen after the threshold.
+- **Not in v1**: active health probing, latency-based (slow-instance) ejection, 4xx/429/business-error ejection,
+  cross-node state sharing, and a public SPI/binding for the policy (the implementation stays package-private; revisit
+  only if a deployment needs a custom classifier).
+
 ### 5.6 Health Checks (health)
 
 `HealthModule` contributes two K8s-semantics endpoints with **fixed (non-configurable) paths**:
@@ -808,3 +876,4 @@ circuit breaking/rate limiting/retry, security propagation, live/ready probes, o
 | 2026-09-24 | Broadcast domain plane separation: dismantled the `EventSink` bridge — `EventBridge`/`EventBridgePolicy`/`EventBusInbound`/`@Topic`/`Keyed` deleted, and the four keys `subscriptions`/`allowed-types`/`allowed-topics`/`dedup.*` retired; `MeshEventBus` is an explicit facade (`publish` addressed by topic, Defer commit coupling, subscriptions declaration-only and the subscription table = the inbound gate); ext kafka switched to the independent plane `KafkaEvents`; in-flight CLASS frames are parsed, dropped by reason and counted, with the wire format unchanged |
 | 2026-09-28 | Composition surface convergence: `ModuleNode` moved into `ioc.internal` as package-private (`Container.moduleTree()` deleted, so the public tree value recorded in historical rows is no longer valid), and application naming goes through `FreewayApp.name` / `Freeway.create(String, …)` |
 | 2026-11-19 | DNS discovery (`DnsModule` / `DnsDiscovery`) added as the query-only backend between static and a registry: a name expanded to every resolved address, global `refresh` freshness with keep-stale-on-failure, snapshot-diff eviction, instance id `serviceId@ip:port` (matches the default registration identity for the mesh feeder), IP literals and repeated service ids rejected (static keeps both); no drain, no health, no registration — `MemberModule` does not apply |
+| 2026-11-19 | Per-instance passive ejection implemented: inside the RPC attempt loop, before `LoadBalancer.choose`; only the instance's own wire failures count (CONNECT, caused TIMEOUT, TRANSPORT, HTTP ≥ 500); consecutive-failure threshold 5, 30s base window doubling to 300s, 50% cap, all-ejected fallback; `rpc.ejection.*` keys default on and gated by `rpc.resilience=off` |

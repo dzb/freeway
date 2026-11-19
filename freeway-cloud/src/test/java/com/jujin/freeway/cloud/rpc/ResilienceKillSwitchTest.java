@@ -60,6 +60,28 @@ class ResilienceKillSwitchTest {
     }
 
     @Test
+    void offIsTheMasterSwitchInTheRpcOnlyAssemblyToo() {
+        System.setProperty(ResilienceModule.ConfigKeys.RPC_RESILIENCE, "off");
+        // A generous retry budget the kill switch must ignore — here without
+        // ResilienceModule installed, so the client's library defaults would
+        // otherwise retry.
+        System.setProperty(ResilienceModule.ConfigKeys.RPC_RETRY_MAX_ATTEMPTS, "5");
+        System.setProperty(ResilienceModule.ConfigKeys.RPC_RETRY_BACKOFF_BASE, "10");
+        try (AppRuntime app = FreewayApp.create(
+                new RpcHttpClientTest.CountingFailModule(), new HttpModule())
+            .add(new RpcModule())
+            .add(new TestDiscoveryModule())
+            .start()) {
+            WebServerHolder.register(app, "failing");
+
+            assertThrows(RpcException.class, () ->
+                app.get(RpcHttpClient.class).call("failing", RpcRequest.get("/api/fail")));
+            assertEquals(1, RpcHttpClientTest.CountingFailModule.gets.get(),
+                "off is the master switch even without ResilienceModule: no library-default retry");
+        }
+    }
+
+    @Test
     void offKeepsBreakerAndLimiterInert() {
         System.setProperty(ResilienceModule.ConfigKeys.RPC_RESILIENCE, "off");
         // Both would reject rapid calls on their own (1/s limiter, breaker

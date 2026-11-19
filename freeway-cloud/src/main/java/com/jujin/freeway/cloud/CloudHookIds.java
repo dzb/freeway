@@ -35,6 +35,10 @@ public final class CloudHookIds {
      *  before the HTTP server so a call can never arrive unwired. */
     public static final String RPC = "freeway.cloud.rpc";
 
+    /** Startup validation for the RPC client's local policies (per-instance
+     *  ejection); no ordering constraint. */
+    public static final String RPC_CLIENT = "freeway.cloud.rpc.client";
+
     /** Service-member registration + heartbeat; runs after the HTTP server. */
     public static final String MEMBER = "freeway.cloud.member";
 

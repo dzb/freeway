@@ -119,7 +119,7 @@ A **shape suffix** describes where the value comes from (it determines whether t
 | `·auto` | The value must be **derived**; it cannot be written literally | `log.file=auto` (the path embeds the runtime's `app.name`), `member.service-scheme=auto` (follows whether the HTTP server has TLS enabled), `member.service-host=auto` (POD_IP → the first routable local address), `member.shutdown-drain=auto` (answered by the registry backend) |
 | `·presence` | Only once the primary key appears do the cluster's sub-keys become meaningful | `ssl.key-store` (the path is what enables HTTPS), `event.peers`, `rpc.tls.key-store` |
 | `·sentinel` | Empty/`0` = defer to the platform, the JDK or the runtime | `dialect=""` (inferred from the JDBC URL), `member.service-port` (empty = the actual listening port), `max-connections=0` (OS default) |
-| `·aggregate switch` | One key governs a whole cluster of tuning keys | `rpc.resilience=auto\|off` (when `off`, all `retry.*`/`circuit-breaker.*`/`rate-limit.*` are ignored) |
+| `·aggregate switch` | One key governs a whole cluster of tuning keys | `rpc.resilience=auto\|off` (when `off`, all `retry.*`/`circuit-breaker.*`/`rate-limit.*`/`ejection.*` are ignored) |
 
 **Classes you do not need to read**: for the four classes `posture` / `tuning` / `declaration` / `mechanism`, the default is the recommended value; only `required` and `decision` need an answer per deployment. A service that does not involve HTTPS and does not face browsers needs only 2 of them:
 
@@ -703,7 +703,7 @@ Fleet modules in **freeway-ext**.
 | `freeway.cloud.rpc.request-timeout` | tuning | Long | `10000` | no | Request timeout (milliseconds) |
 | `freeway.cloud.rpc.shutdown-grace` | tuning | Duration | `5s` | no | **Outbound call finishing window**: at shutdown, reject new calls first, then wait for in-flight calls to complete; only calls that still have no result when the timeout expires fail with `RpcHttpClient is closed`. An idle process closes immediately (no in-flight calls means no wait), so the default only costs time when there really are calls; keep it within the deployment's terminationGracePeriod |
 | `freeway.cloud.rpc.trace.enabled` | posture | Boolean | `true` | no | Enable RPC call tracing |
-| `freeway.cloud.rpc.resilience` | tuning·aggregate switch | String | `auto` | no | **Aggregate switch**: `auto` = the detailed keys below take effect individually; `off` = master off (no retries, NOOP circuit breaker, unlimited rate limiting), ignoring all detailed keys. Use it when the mesh takes over (the platform already does retries/circuit breaking, so the application layer must step aside) and to isolate variables during fault diagnosis. An invalid value fails startup |
+| `freeway.cloud.rpc.resilience` | tuning·aggregate switch | String | `auto` | no | **Aggregate switch**: `auto` = the detailed keys below take effect individually; `off` = master off (no retries, NOOP circuit breaker, unlimited rate limiting, no per-instance ejection), ignoring all detailed keys. Use it when the mesh takes over (the platform already does retries/circuit breaking, so the application layer must step aside) and to isolate variables during fault diagnosis. An invalid value fails startup |
 
 #### Resilience — retry
 
@@ -740,6 +740,23 @@ connection-class failure means the request never arrived, so any operation can b
 |----|------|------|--------|------|------|
 | `freeway.cloud.rpc.rate-limit.enabled` | posture | Boolean | `false` | no | Enable rate limiting. Opt-in (ignored when `resilience=off`) |
 | `freeway.cloud.rpc.rate-limit.per-second` | tuning | Double | `100` | no | Maximum requests per second |
+
+#### Resilience — per-instance ejection (outlier detection)
+
+| Key | Class | Type | Default | Required | Meaning |
+|----|------|------|--------|------|------|
+| `freeway.cloud.rpc.ejection.enabled` | posture | Boolean | `true` | no | Take a discovered instance out of this node's rotation after repeated instance-level failures. On by default; ignored when `resilience=off` |
+| `freeway.cloud.rpc.ejection.failure-threshold` | tuning | Integer | `5` | no | Consecutive qualifying failures that eject the instance; any success on it resets the count |
+| `freeway.cloud.rpc.ejection.base-window` | tuning | Long | `30` | no | First ejection duration (seconds); a repeated ejection doubles it |
+| `freeway.cloud.rpc.ejection.max-window` | tuning | Long | `300` | no | Cap for the doubled window (seconds) |
+| `freeway.cloud.rpc.ejection.max-percent` | tuning | Integer | `50` | no | At most this percentage of the current discovery answer may be ejected; a single-instance answer therefore never ejects |
+
+Only the instance's own wire failures count: connect failures, wire timeouts bounded by the configured
+request timeout (a timeout bounded by the caller's remaining budget carries no cause and does not count),
+mid-flight I/O failures and 5xx answers. Business errors, 4xx, 429, version/schema rejections, local
+rejections and the caller's own deadline exhaustion do not. The state is per client node (no coordination
+between nodes), and when every instance is ejected the filter falls back to the full answer — a partial
+topology never becomes an outage. Counters: `cloud.rpc.ejection.ejected` / `.recovered`.
 
 #### MeshEventBus — cross-node event mesh
 

@@ -154,6 +154,16 @@ public final class ResilienceModule implements ModuleEx {
             symbols.resolve(RESILIENCE_MODE), BY_TOKEN, Mode.AUTO);
     }
 
+    /**
+     * The aggregate switch, validated like {@link #mode(SymbolSource)}: true
+     * when {@code freeway.cloud.rpc.resilience=off}. The RPC client consults it
+     * for the policies it builds itself (per-instance ejection), so the master
+     * switch keeps one meaning whether or not this module is installed.
+     */
+    public static boolean resilienceDisabled(SymbolSource symbols) {
+        return mode(symbols) == Mode.OFF;
+    }
+
     private static final java.util.Map<String, Mode> BY_TOKEN = java.util.Map.of(
         ResilienceModule.ConfigKeys.RPC_RESILIENCE_AUTO, Mode.AUTO,
         ResilienceModule.ConfigKeys.RPC_RESILIENCE_OFF, Mode.OFF);
@@ -183,5 +193,16 @@ public final class ResilienceModule implements ModuleEx {
         public static final String RPC_RATE_LIMIT_ENABLED = "freeway.cloud.rpc.rate-limit.enabled";
         public static final String RPC_RATE_LIMIT_PER_SECOND = "freeway.cloud.rpc.rate-limit.per-second";
         public static final double RPC_RATE_LIMIT_PER_SECOND_DEFAULT = 100;
+
+        /** Per-instance passive ejection (outlier detection); on by default. */
+        public static final String RPC_EJECTION_ENABLED = "freeway.cloud.rpc.ejection.enabled";
+        public static final String RPC_EJECTION_FAILURE_THRESHOLD = "freeway.cloud.rpc.ejection.failure-threshold";
+        public static final int RPC_EJECTION_FAILURE_THRESHOLD_DEFAULT = 5;
+        public static final String RPC_EJECTION_BASE_WINDOW = "freeway.cloud.rpc.ejection.base-window";
+        public static final long RPC_EJECTION_BASE_WINDOW_DEFAULT = 30;
+        public static final String RPC_EJECTION_MAX_WINDOW = "freeway.cloud.rpc.ejection.max-window";
+        public static final long RPC_EJECTION_MAX_WINDOW_DEFAULT = 300;
+        public static final String RPC_EJECTION_MAX_PERCENT = "freeway.cloud.rpc.ejection.max-percent";
+        public static final int RPC_EJECTION_MAX_PERCENT_DEFAULT = 50;
     }
 }
