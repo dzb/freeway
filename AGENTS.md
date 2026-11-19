@@ -35,6 +35,26 @@ snapshot. CI is verification-only: it never signs, deploys or publishes, and
 holds no release credentials. Releases are manual and belong to the signing
 machine.
 
+### Transient CI failures
+
+A job that dies seconds into a step — before any compile or test output —
+while the same command passes locally and the sibling gates pass is a
+runner/cache/network flake, not a code failure. Re-run the failed jobs
+yourself through the API; never send the user looking for the "Re-run"
+button in the UI.
+
+```bash
+RUN=44448993369
+TOKEN=$(printf 'protocol=https\nhost=github.com\n\n' | git credential fill \
+  | sed -n 's/^password=//p')
+curl -sS -X POST -H "Authorization: Bearer $TOKEN" \
+  "https://api.github.com/repos/dzb/freeway/actions/runs/$RUN/rerun-failed-jobs"
+# 201 = queued; poll GET /actions/runs/$RUN until status=completed
+```
+
+Job logs are admin-only through the API; when the re-run fails again the
+failure is deterministic, so fetch the log before touching code.
+
 ## Module Map
 
 Core — only what every Freeway application needs:
