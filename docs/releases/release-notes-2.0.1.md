@@ -1,12 +1,11 @@
-# Freeway 2.0.1 Release Notes (unreleased)
+# Freeway 2.0.1 Release Notes
 
-> Version: 2.0.1 (unreleased) | Highlight: **Short `f2` / `F2` configuration aliases, config-driven static discovery, and one owner for membership, configuration and cloud package boundaries.**
+> Version: 2.0.1 (2026-11-20) | Highlight: **Short `f2` / `F2` configuration aliases, config-driven static discovery, DNS discovery, per-instance passive ejection, and one owner for membership, configuration and cloud package boundaries.**
 
 2.0.1 is the post-2.0.0 consolidation release. It keeps the canonical
 `freeway.*` configuration namespace and removes duplicate internal owners; the
-Java API and member vocabulary are intentionally not aliased. No 2.0.1 artifact
-is published yet — Maven Central's latest is 2.0.0 — so this page describes the
-release as planned, not as shipped.
+Java API and member vocabulary are intentionally not aliased. This page
+describes the 2.0.1 release.
 
 ## Highlights
 
@@ -119,24 +118,36 @@ owns file parsing, and `ServiceKey.normalize` owns service-id normalization.
 The retired `ConfigSources`, `ConfigMaps`, `ConfigFileReader` and `ServiceIds`
 helpers are gone; module-facing configuration and binding behavior is unchanged.
 
-## Verification (2.0.1-SNAPSHOT)
+## Fixed
+
+### A secret rotation that parses to nothing no longer empties the store
+
+An empty or half-written projected volume, or a file of comments only, parsed to
+zero entries — and `Properties` drops unparsable lines without a word, so the
+rotation was applied as a valid new generation and could remove every secret.
+Such a rotation is now refused and the previous generation stays. Every skipped
+load or rotation reports one reason — `file-missing`, `stat-failed`,
+`read-failed`, `empty-file` — with the path, the underlying cause and the number
+of values kept, and a persistent condition is warned once rather than on every
+throttled lookup.
+
+## Verification (2.0.1)
 
 ```text
 mvn -o test
   commons 450 · ioc 344 · boot 141 · http 550
-  db 550 · flow 147 · cloud 431
-  total 2,613 — 0 failures, 0 errors, 0 skipped
+  db 550 · flow 147 · cloud 433
+  total 2,615 — 0 failures, 0 errors, 0 skipped
 ```
 
 `mvn -o -Pdemos -DskipTests compile` compiles the in-repo consumers, and
 `freeway-ext` on `2.0.1-SNAPSHOT` builds against the installed core snapshot and
-ran 291 tests with 0 failures (7 skipped: the Kafka integration cases need a
-broker). This is the state of the snapshot, not of a published release — re-run
-both before tagging 2.0.1.
+ran 303 tests with 0 failures (7 skipped: the Kafka integration cases need a
+broker). Both suites were re-run on the release commit before tagging.
 
 ## Compatibility
 
-- Core artifacts: `2.0.1` (unreleased; the latest published core is `2.0.0`).
+- Core artifacts: `2.0.1`.
 - `freeway-ext`: `2.0.1-SNAPSHOT`, built against this core snapshot.
 - Java: 25+.
 - The member Java types and configuration keys from 2.0.0 are renamed/removed
