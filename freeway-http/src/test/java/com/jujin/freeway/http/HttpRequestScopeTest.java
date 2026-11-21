@@ -71,8 +71,15 @@ class HttpRequestScopeTest {
             assertEquals(200, response.statusCode());
             assertEquals("same", response.body(),
                 "one boundary-scoped instance per request boundary");
+            // Response bytes can reach the client before the server's boundary
+            // finally block runs, so wait for destruction instead of sampling
+            // it at response time.
+            long deadline = System.currentTimeMillis() + 2_000;
+            while (destroyed.get() == 0 && System.currentTimeMillis() < deadline) {
+                Thread.sleep(10);
+            }
             assertEquals(1, destroyed.get(),
-                "the request boundary destroys the scoped instance before the response returns");
+                "the request boundary destroys the scoped instance once the request ends");
         }
     }
 }
