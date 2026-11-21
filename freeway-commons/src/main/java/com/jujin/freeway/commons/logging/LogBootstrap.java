@@ -2,8 +2,11 @@ package com.jujin.freeway.commons.logging;
 
 import com.jujin.freeway.commons.util.EnvKeys;
 import java.util.Locale;
+import java.util.ServiceConfigurationError;
+import java.util.ServiceLoader;
 
 import org.slf4j.LoggerFactory;
+import org.slf4j.spi.SLF4JServiceProvider;
 
 /**
  * Bootstraps SLF4J provider selection and Freeway's JUL logging enhancements
@@ -14,7 +17,11 @@ import org.slf4j.LoggerFactory;
  * not prefer any particular provider among several on the classpath, so Freeway
  * makes the choice explicit: {@code freeway.log.system} selects the backend and
  * {@link #ensureProvider()} pins {@code slf4j.provider} to it before SLF4J
- * initializes. The default is {@code freeway} — Freeway's own JUL-backed
+ * initializes whenever the choice is explicit or more than one provider is
+ * present. With the default selection and a single provider, the pin is
+ * redundant and is skipped, so SLF4J does not print its own
+ * "Attempting to load provider ..." INFO line. The default is
+ * {@code freeway} — Freeway's own JUL-backed
  * provider — so a transitive Logback/Log4j dependency does not silently replace
  * the framework's logging. Third-party backends stay fully usable: select one
  * explicitly ({@code logback}, {@code log4j2}, {@code simple}, or a
@@ -80,8 +87,9 @@ public final class LogBootstrap {
 
     /**
      * Detects external SLF4J providers, resolves {@code freeway.log.system},
-     * pins {@code slf4j.provider} so the choice is deterministic, configures
-     * JUL enhancement only for the JUL backend, and reports the outcome.
+     * pins {@code slf4j.provider} when the choice is explicit or ambiguous,
+     * configures JUL enhancement only for the JUL backend, and reports the
+     * outcome.
      *
      * @throws IllegalStateException when an explicitly named backend is not on
      *         the classpath — an explicit choice must not degrade silently
@@ -96,16 +104,19 @@ public final class LogBootstrap {
             }
             String nativeProvider = System.getProperty(SLF4J_PROVIDER_PROPERTY);
             String systemValue = EnvKeys.bootstrap(SYSTEM_KEY);
+            ClassLoader loader = contextLoader();
             Selection selection;
             try {
-                selection = select(systemValue, nativeProvider, contextLoader());
+                selection = select(systemValue, nativeProvider, loader);
             } catch (IllegalStateException e) {
                 // Nothing is logged yet: the fix must reach the operator.
                 System.err.println("[Freeway] " + e.getMessage());
                 throw e;
             }
             if (nativeProvider == null || nativeProvider.isBlank()) {
-                System.setProperty(SLF4J_PROVIDER_PROPERTY, selection.provider());
+                if (requiresPinning(selection, loader)) {
+                    System.setProperty(SLF4J_PROVIDER_PROPERTY, selection.provider());
+                }
             }
             providerChecked = true;
             if (bannerEnabled(EnvKeys.bootstrap(LogKeys.BANNER))) {
@@ -179,6 +190,35 @@ public final class LogBootstrap {
             }
         }
         return report.toString();
+    }
+
+    /**
+     * Pinning is needed when the choice is explicit or ambiguous. With the
+     * default selection and exactly one provider on the classpath, SLF4J finds
+     * that provider on its own; leaving {@code slf4j.provider} unset avoids
+     * SLF4J's "Attempting to load provider ..." INFO report.
+     * Package-visible for tests.
+     */
+    static boolean requiresPinning(Selection selection, ClassLoader loader) {
+        if (!"default".equals(selection.source())
+                || selection.detectedExternal() != null) {
+            return true;
+        }
+        return providerCount(loader) != 1;
+    }
+
+    /**
+     * The number of registered SLF4J providers, counted without instantiating
+     * them ({@code ServiceLoader.stream()} does not call {@code get()}).
+     * {@code -1} means the classpath could not be inspected — keep pinning.
+     */
+    private static long providerCount(ClassLoader loader) {
+        try {
+            return ServiceLoader.load(SLF4JServiceProvider.class, loader)
+                .stream().count();
+        } catch (ServiceConfigurationError | LinkageError e) {
+            return -1;
+        }
     }
 
     /**

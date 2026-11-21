@@ -22,6 +22,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `freeway.config.file` extras accept it like the other formats. Parse
   failures carry the line and column (`TomlParseException`, listed in the
   failure catalog).
+- **Quieter provider selection** (`freeway-commons` logging): Freeway only
+  sets `slf4j.provider` when the backend was selected explicitly or more than
+  one SLF4J provider is on the classpath. With the default and a single
+  provider, SLF4J's own `Attempting to load provider ...` INFO line no longer
+  appears.
 - **`freeway.log.banner`** (`freeway-commons` logging): a class-load-time
   switch (`-D` or `FREEWAY_LOG_BANNER`, default `true`). `false` silences the
   one-line `[Freeway] logging: ...` startup report so libraries and CLIs can

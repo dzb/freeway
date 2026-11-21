@@ -872,7 +872,7 @@ public final class UserService {
 Logger log = container.get(LoggerSource.class).get(UserService.class);
 ```
 
-`freeway-commons` registers a JUL-backed SLF4J 2 provider **unconditionally** via `META-INF/services` — zero-dependency. Because SLF4J 2.x does not prefer any provider on its own, `LogBootstrap.ensureProvider()` runs at startup (`FreewayApp`/`Freeway` static initialization, before any `LoggerFactory.getLogger()` call) and resolves `freeway.log.system` to pin `slf4j.provider` deterministically:
+`freeway-commons` registers a JUL-backed SLF4J 2 provider **unconditionally** via `META-INF/services` — zero-dependency. Because SLF4J 2.x does not prefer any provider on its own, `LogBootstrap.ensureProvider()` runs at startup (`FreewayApp`/`Freeway` static initialization, before any `LoggerFactory.getLogger()` call) and resolves `freeway.log.system` to pin `slf4j.provider` whenever the choice is explicit or more than one provider is present; a lone provider needs no pin:
 
 - `freeway` (default) — Freeway's JUL backend wins even when Logback/Log4j is on the classpath; the startup report names the unselected provider and the switch;
 - `auto` — external provider first (Logback > Log4j 2 > slf4j-simple), JUL as fallback (the pre-2.0 behaviour);
@@ -2500,7 +2500,7 @@ summary.
 - **`ScopedCache` triggers:** per-scope lookup tables, connections or handles held for the length of one `within()` block, repeated resolution of `Scope.BOUNDARY` services, values that need one cleanup action when the scope exits. The access window is the block (and the action drain); outside it `isActive()` is false and `get` does not cache, even if an enclosing action scope still holds the values.
 - Thread-scoped services use **`ScopeBoundary.within()`** to enter an execution boundary. Backed by JDK 25 `ScopedValue` — no `ThreadLocal` overhead on virtual threads. When nested in a `Defer` action scope, the scope attaches and its beans live until that action scope closes.
 - **`RuntimeHook`** provides start/stop extension points for modules. Ordered via `add(id, value).before()` / `.after()`. HTTP startup uses hook id `"freeway.http.server"` — no longer a side effect of resolving `HttpServer`.
-- **`LoggerSource`** is the built-in logger service. Commons registers a JUL-backed SLF4J provider unconditionally via `META-INF/services`; at startup `LogBootstrap.ensureProvider()` resolves `freeway.log.system` (default `freeway`, i.e. the JUL backend) and pins `slf4j.provider` before SLF4J initializes. `auto` keeps the external-first behaviour (Logback, Log4j, slf4j-simple); a named backend or provider class selects it explicitly and fails startup when missing. `-Dslf4j.provider` overrides the Freeway key.
+- **`LoggerSource`** is the built-in logger service. Commons registers a JUL-backed SLF4J provider unconditionally via `META-INF/services`; at startup `LogBootstrap.ensureProvider()` resolves `freeway.log.system` (default `freeway`, i.e. the JUL backend) and pins `slf4j.provider` when the choice is explicit or more than one provider is present (a lone provider needs no pin). `auto` keeps the external-first behaviour (Logback, Log4j, slf4j-simple); a named backend or provider class selects it explicitly and fails startup when missing. `-Dslf4j.provider` overrides the Freeway key.
 
 ### Conventions
 

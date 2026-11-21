@@ -271,7 +271,10 @@ classpath, startup fails and names the missing dependency. `-Dslf4j.provider`
 is SLF4J's own escape hatch and takes precedence. Every startup prints one
 report: `[Freeway] logging: freeway-logging (JUL) | provider=... | selected by ...`;
 `freeway.log.banner=false` silences that report while warnings and errors still
-print.
+print. When only one SLF4J provider is on the classpath and no backend was
+selected explicitly, Freeway leaves `slf4j.provider` unset — SLF4J finds the
+provider itself and does not print its own
+`Attempting to load provider ...` INFO line.
 
 With a non-JUL backend selected, Freeway pins the SLF4J binding and **leaves
 `java.util.logging` untouched**: it attaches no JUL handlers, formatters or

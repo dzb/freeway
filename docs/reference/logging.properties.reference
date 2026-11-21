@@ -44,6 +44,9 @@
 #                              provider class name); startup fails and names the
 #                              missing dependency when it is absent
 # -Dslf4j.provider=<class>     outranks this key (SLF4J's own escape hatch)
+#                              With one provider and no explicit backend,
+#                              Freeway leaves slf4j.provider unset (SLF4J then
+#                              prints no "Attempting to load provider" INFO).
 # freeway.log.banner=false     silence the [Freeway] logging startup report;
 #                              warnings and errors still print
 #

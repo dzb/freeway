@@ -99,8 +99,10 @@ freeway-commons         zero deps
   making several dialect bindings primary would not select one deterministically.
 - **Logging** — commons registers a JUL-backed SLF4J provider. At startup
   `LogBootstrap.ensureProvider()` resolves `freeway.log.system` (class-load time,
-  `-D`/env only; default `freeway`) and pins `slf4j.provider` before SLF4J
-  initializes: `freeway` selects Freeway's JUL backend even when Logback/Log4j is
+  `-D`/env only; default `freeway`) and pins `slf4j.provider` when the choice is
+  explicit or more than one provider is present; a lone provider needs no pin,
+  which keeps SLF4J's own provider-loading INFO line quiet. `freeway` selects
+  Freeway's JUL backend even when Logback/Log4j is
   on the classpath, `auto` keeps "external wins, JUL as fallback", and a named
   backend or provider class selects it explicitly (a missing one fails startup).
   A startup report names the active backend and any unselected provider seen on

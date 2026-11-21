@@ -227,6 +227,33 @@ class LogBootstrapProviderTest {
         assertTrue(report.contains("selected by freeway.log.system=" + custom), report);
     }
 
+    // ── pinning decision ───────────────────────────────────────
+
+    @Test
+    void defaultSelectionSkipsPinningWhenTheJulProviderIsAlone() {
+        ClassLoader loader = getClass().getClassLoader();
+        LogBootstrap.Selection selection = LogBootstrap.select(null, null, loader);
+        assertFalse(LogBootstrap.requiresPinning(selection, loader),
+            "a single provider needs no slf4j.provider pin");
+    }
+
+    @Test
+    void explicitSelectionAlwaysPinsEvenWithOneProvider() {
+        ClassLoader loader = getClass().getClassLoader();
+        LogBootstrap.Selection selection = LogBootstrap.select("freeway", null, loader);
+        assertTrue(LogBootstrap.requiresPinning(selection, loader),
+            "an explicit freeway.log.system choice stays deterministic");
+    }
+
+    @Test
+    void detectedExternalProviderForcesPinning() {
+        ClassLoader loader = new FakeProviderLoader(
+            getClass().getClassLoader(), LOGBACK);
+        LogBootstrap.Selection selection = LogBootstrap.select(null, null, loader);
+        assertTrue(LogBootstrap.requiresPinning(selection, loader),
+            "a competing provider must be outranked explicitly");
+    }
+
     // ── fake provider classloader ─────────────────────────────
 
     /**
