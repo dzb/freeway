@@ -42,7 +42,7 @@ class DocsLayoutConsistencyTest {
     private static final Pattern KEBAB_MD =
         Pattern.compile("[a-z0-9]+(?:[.-][a-z0-9]+)*\\.md");
     private static final Pattern SAMPLE =
-        Pattern.compile("application(?:-[a-z0-9]+)?\\.(?:json|properties)\\.sample");
+        Pattern.compile("application(?:-[a-z0-9]+)?\\.(?:json|properties|toml)\\.sample");
 
     private static Path findRepoRoot() {
         Path candidate = Path.of("").toAbsolutePath().normalize();

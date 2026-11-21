@@ -1,6 +1,7 @@
 package com.jujin.freeway.boot.internal;
 
 import com.jujin.freeway.boot.AppConfig;
+import com.jujin.freeway.commons.toml.TomlParseException;
 import com.jujin.freeway.commons.util.EnvKeys;
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
 
@@ -47,7 +48,8 @@ class ConfigCascadeTest {
         assertEquals("7070", sources.cli().get("server.port"));
 
         // The file baseline folds the classpath layers: base properties →
-        // base json → profile properties → profile json, later winning.
+        // base json → base toml → profile properties → profile json →
+        // profile toml, later winning.
         assertEquals("Dev Boot", sources.files().get("app.name"),
             "the dev profile properties override the base application.properties");
         assertEquals("9191", sources.files().get("server.port"),
@@ -57,6 +59,10 @@ class ConfigCascadeTest {
         assertEquals("dev.localhost", sources.files().get("server.host"));
         assertEquals("1.0.0", sources.files().get("app.version"),
             "a base json key with no profile counterpart survives the fold");
+        assertEquals("Dev Boot via TOML", sources.files().get("app.tagline"),
+            "the dev profile toml overrides the base application.toml");
+        assertEquals("dev-boot-a,dev-boot-b", sources.files().get("server.aliases"),
+            "a toml string array joins into the config system's list encoding");
 
         // CLI outranks every file layer in the merged picture.
         assertEquals("Overridden", merged(sources).get("app.name"));
@@ -250,7 +256,7 @@ class ConfigCascadeTest {
     @Test
     void rejectsOversizedPropertiesResource() {
         IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
-            ConfigCascade.loadLayers(new OversizedPropertiesLoader()));
+            ConfigCascade.loadLayers(new OversizedResourceLoader("application.properties")));
 
         assertTrue(ex.getMessage().contains("Unable to load application.properties"));
         assertTrue(ex.getCause().getMessage().contains("exceeds"));
@@ -259,7 +265,7 @@ class ConfigCascadeTest {
     @Test
     void rejectsOversizedJsonResource() {
         IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
-            ConfigCascade.loadLayers(new OversizedJsonLoader()));
+            ConfigCascade.loadLayers(new OversizedResourceLoader("application.json")));
 
         assertTrue(ex.getMessage().contains("Unable to load application.json"));
         // The read cap is the direct cause — no intermediate wrapper.
@@ -296,6 +302,39 @@ class ConfigCascadeTest {
 
         assertTrue(ex.getMessage().contains("Unable to load application.json"),
             "malformed JSON must still fail startup, got: " + ex.getMessage());
+    }
+
+    @Test
+    void blankTomlResourceIsTreatedAsNoConfig() {
+        ConfigCascade.Sources sources =
+            ConfigCascade.loadLayers(new MultiContentLoader("application.toml", "  \n\t \r\n  "));
+
+        assertEquals("Freeway Boot", merged(sources).get("app.name"),
+            "a whitespace-only application.toml must be skipped, not crash the load");
+    }
+
+    @Test
+    void malformedTomlResourceStillFails() {
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
+            ConfigCascade.loadLayers(new MultiContentLoader(
+                "application.toml", "[app]\nname =\n")));
+
+        assertTrue(ex.getMessage().contains("Unable to load application.toml"),
+            "malformed TOML must still fail startup, got: " + ex.getMessage());
+        // The cause names the position — TomlParseException carries line/column.
+        assertTrue(ex.getCause() instanceof TomlParseException, "got: " + ex.getCause());
+        assertTrue(((TomlParseException) ex.getCause()).line() == 2, "got: " + ex.getCause().getMessage());
+    }
+
+    @Test
+    void rejectsOversizedTomlResource() {
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
+            ConfigCascade.loadLayers(new OversizedResourceLoader("application.toml")));
+
+        assertTrue(ex.getMessage().contains("Unable to load application.toml"));
+        // The read cap is the direct cause — no intermediate wrapper.
+        assertTrue(ex.getCause() != null
+                && ex.getCause().getMessage().contains("exceeds"));
     }
 
     @Test
@@ -489,6 +528,38 @@ class ConfigCascadeTest {
     }
 
     @Test
+    void tomlOutranksJsonInTheClasspathBaseline() {
+        // The family order is properties → json → toml, later winning: the
+        // new format joins in the last slot, so a key it declares outranks
+        // the same key in the earlier formats. Pinned because the order is
+        // invisible without a file present.
+        ConfigCascade.Sources sources = ConfigCascade.loadLayers(new MultiContentLoader(
+            "application.properties", "app.name=from-properties\n",
+            "application.json", "{\"app.name\": \"from-json\"}",
+            "application.toml", "[app]\nname = \"from-toml\"\n"));
+
+        assertEquals("from-toml", sources.files().get("app.name"),
+            "application.toml outranks application.json");
+    }
+
+    @Test
+    void profileTomlOutranksAnotherProfilesJson() {
+        // The profile band merges as three format passes — every profile's
+        // properties, then every profile's json, then every profile's toml —
+        // so the file format outranks the profile order inside the band:
+        // application-dev.toml beats application-prod.json. Pinned because the
+        // rule is otherwise invisible.
+        ConfigCascade.Sources sources = ConfigCascade.loadLayers(new MultiContentLoader(
+            "application.properties", "freeway.profile=dev,prod\n",
+            "application-dev.json", "{\"app.name\": \"from-dev-json\"}",
+            "application-prod.toml", "[app]\nname = \"from-prod-toml\"\n"));
+
+        assertEquals(List.of("dev", "prod"), sources.profiles());
+        assertEquals("from-prod-toml", sources.files().get("app.name"),
+            "toml outranks json across profiles, not the later profile");
+    }
+
+    @Test
     void profileJsonOutranksAnotherProfilesProperties() {
         // The profile band merges as two format passes — every profile's
         // properties, then every profile's json — so the file format outranks
@@ -508,9 +579,10 @@ class ConfigCascadeTest {
     @Test
     void filesystemOverrideFilesMirrorTheClasspathBandOrder() {
         // The filesystem half of the same rule: the base files, then every
-        // profile's properties, then every profile's json — so the format
-        // outranks the profile order on both sides of the baseline — and
-        // finally the freeway.config.file extras, in the declared order.
+        // profile's properties, then every profile's json, then every
+        // profile's toml — so the format outranks the profile order on both
+        // sides of the baseline — and finally the freeway.config.file extras,
+        // in the declared order.
         System.setProperty("freeway.config.file",
             " extra.properties , second.properties ");
         try {
@@ -522,15 +594,17 @@ class ConfigCascadeTest {
                 .toList();
 
             assertEquals(List.of(
-                "application.properties", "application.json",
+                "application.properties", "application.json", "application.toml",
                 "application-dev.properties", "application-prod.properties",
                 "application-dev.json", "application-prod.json",
+                "application-dev.toml", "application-prod.toml",
                 "extra.properties", "second.properties"), names);
             // Roles, not just order: only the variants ignore their own
             // freeway.profile, and only the declared extras are worth a warning
             // when the path does not exist.
             assertEquals(List.of(
-                ConfigFilePlan.Role.BASE, ConfigFilePlan.Role.BASE,
+                ConfigFilePlan.Role.BASE, ConfigFilePlan.Role.BASE, ConfigFilePlan.Role.BASE,
+                ConfigFilePlan.Role.PROFILE_VARIANT, ConfigFilePlan.Role.PROFILE_VARIANT,
                 ConfigFilePlan.Role.PROFILE_VARIANT, ConfigFilePlan.Role.PROFILE_VARIANT,
                 ConfigFilePlan.Role.PROFILE_VARIANT, ConfigFilePlan.Role.PROFILE_VARIANT,
                 ConfigFilePlan.Role.DECLARED, ConfigFilePlan.Role.DECLARED),
@@ -713,20 +787,17 @@ class ConfigCascadeTest {
         return messages;
     }
 
-    private static final class OversizedPropertiesLoader extends ClassLoader {
-        @Override
-        public InputStream getResourceAsStream(String name) {
-            if ("application.properties".equals(name)) {
-                return new RepeatingInputStream(ConfigFilePlan.Reader.MAX_BYTES + 1);
-            }
-            return null;
-        }
-    }
+    /** Serves one classpath resource one byte past the read cap; everything else is absent. */
+    private static final class OversizedResourceLoader extends ClassLoader {
+        private final String resource;
 
-    private static final class OversizedJsonLoader extends ClassLoader {
+        private OversizedResourceLoader(String resource) {
+            this.resource = resource;
+        }
+
         @Override
         public InputStream getResourceAsStream(String name) {
-            if ("application.json".equals(name)) {
+            if (resource.equals(name)) {
                 return new RepeatingInputStream(ConfigFilePlan.Reader.MAX_BYTES + 1);
             }
             return null;

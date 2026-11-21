@@ -744,7 +744,7 @@ final class JULEnhancer {
      * freeway.log.file.<name>.path=logs/name.log   (required)
      * freeway.log.file.<name>.logger=com.example   (optional; root if absent)
      * freeway.log.file.<name>.level=FINE           (optional; inherits parent)
-     * freeway.log.file.<name>.max-size=104857600   (optional; default 100 MB)
+     * freeway.log.file.<name>.max-size=268435456   (optional; default 256 MB)
      * freeway.log.file.<name>.max-history=30       (optional; default 30 days)
      * freeway.log.file.<name>.compress=true        (optional; default true)
      * }</pre>

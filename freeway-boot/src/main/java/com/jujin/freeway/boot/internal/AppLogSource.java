@@ -11,8 +11,9 @@ import java.util.Map;
  * subset of the application's classpath config files through the SAME read the
  * main cascade performs — {@link ConfigCascade#loadLayers} and the
  * {@code files} source it returns — so a log key in {@code application.properties}/
- * {@code application.json} (or a profile variant) is parsed by one shared
- * implementation and the file-family knowledge exists exactly once.
+ * {@code application.json}/{@code application.toml} (or a profile variant) is
+ * parsed by one shared implementation and the file-family knowledge exists
+ * exactly once.
  *
  * <p>The boundary is the classpath baseline: filesystem overrides and their
  * hot reload deliberately stay out, so a {@code freeway.log.*} key set only in

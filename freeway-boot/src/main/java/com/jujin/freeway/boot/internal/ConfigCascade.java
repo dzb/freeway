@@ -25,10 +25,10 @@ import org.slf4j.LoggerFactory;
  * The standard config cascade. Loads configuration from
  * the following sources in ascending priority order:
  * <ol>
- *   <li>{@code application.properties} / {@code application.json} (classpath
- *       baseline, packaged with the app)</li>
- *   <li>{@code application-{profile}.properties} / {@code application-{profile}.json}
- *       (classpath)</li>
+ *   <li>{@code application.properties} / {@code application.json} /
+ *       {@code application.toml} (classpath baseline, packaged with the app)</li>
+ *   <li>{@code application-{profile}.properties} / {@code application-{profile}.json} /
+ *       {@code application-{profile}.toml} (classpath)</li>
  *   <li>filesystem overrides: the same standard names in the working
  *       directory plus any files listed in {@code freeway.config.file}
  *       (comma-separated) — externalized config, hot-reloaded</li>
@@ -74,9 +74,6 @@ public final class ConfigCascade {
         }
     }
 
-    private static final Logger LOG = LoggerFactory.getLogger(
-        ConfigCascade.class
-    );
     private static final Pattern PROFILE_NAME_PATTERN = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]*");
 
     /** The profile-activation key — see {@link #loadLayers}. */
@@ -103,6 +100,17 @@ public final class ConfigCascade {
     /** A value that begins with a minus sign but is a number (e.g. {@code -1}, {@code -2.5}, {@code -1e5}). */
     private static final Pattern NEGATIVE_NUMBER_PATTERN =
         Pattern.compile("-\\d+(\\.\\d+)?([eE][+-]?\\d+)?");
+
+    /**
+     * Declared <b>after</b> every constant and {@link #BOOTSTRAP_LAYERS}: the
+     * first {@code getLogger} can trigger the JUL enhancement, whose
+     * {@code AppLogSource} re-enters this class through
+     * {@link #bootstrapLayers}; the fields that path reads must already be
+     * initialized or the bootstrap log configuration fails with an NPE.
+     */
+    private static final Logger LOG = LoggerFactory.getLogger(
+        ConfigCascade.class
+    );
 
     /**
      * Loads the cascade and returns it: classpath files plus filesystem
@@ -192,44 +200,49 @@ public final class ConfigCascade {
         String... args
     ) {
         Map<String, String> environment = loadEnvironment(System.getenv());
-        Map<String, String> properties = loadResource(loader, ConfigFilePlan.APPLICATION_PROPERTIES);
-        Map<String, String> json = loadResource(loader, ConfigFilePlan.APPLICATION_JSON);
+        // The base family in plan order: ConfigFilePlan owns the file names,
+        // so a format joins the classpath load without a second hand-written
+        // list drifting from the filesystem plan.
+        Map<String, Map<String, String>> baseByFormat = new LinkedHashMap<>();
+        for (String name : ConfigFilePlan.APPLICATION_FILES) {
+            baseByFormat.put(name, loadResource(loader, name));
+        }
         Map<String, String> cli = parseArgs(args);
 
         // Ascending precedence, derived from the symbol chain's own tiers
         // rather than a second hand-ordered list: the chain says a lower
         // TIER_* number wins, and overlay() gives the last entry the win, so
         // the layers are ordered by descending tier. Within one tier the list
-        // order is the precedence (stable sort keeps it) — properties, then
-        // json, then the filesystem base. profile.* layers cannot participate
-        // here — their file names ARE the profile selection. Environment must
-        // outrank files: FREEWAY_PROFILE driving profile selection would
-        // otherwise silently lose to a freeway.profile key in a file.
-        Map<String, String> base = overlayByTier(List.of(
-            new Tier(SymbolProvider.TIER_FILES, properties),
-            new Tier(SymbolProvider.TIER_FILES, json),
-            new Tier(SymbolProvider.TIER_FILES, filesystemBase),
-            new Tier(SymbolProvider.TIER_ENV, environment),
-            new Tier(SymbolProvider.TIER_CLI, cli)));
+        // order is the precedence (stable sort keeps it) — the plan's file
+        // family, then the filesystem base. profile.* layers cannot
+        // participate here — their file names ARE the profile selection.
+        // Environment must outrank files: FREEWAY_PROFILE driving profile
+        // selection would otherwise silently lose to a freeway.profile key in
+        // a file.
+        List<Tier> baseTiers = new ArrayList<>(baseByFormat.size() + 3);
+        for (Map<String, String> layer : baseByFormat.values()) {
+            baseTiers.add(new Tier(SymbolProvider.TIER_FILES, layer));
+        }
+        baseTiers.add(new Tier(SymbolProvider.TIER_FILES, filesystemBase));
+        baseTiers.add(new Tier(SymbolProvider.TIER_ENV, environment));
+        baseTiers.add(new Tier(SymbolProvider.TIER_CLI, cli));
+        Map<String, String> base = overlayByTier(baseTiers);
         List<String> profiles = parseProfiles(base.get(PROFILE_KEY));
 
-        // The profile band merges in two passes: every profile's properties,
-        // then every profile's json. The file format therefore outranks the
-        // profile order inside the band (application-a.json beats
-        // application-b.properties) — the rule is pinned by a test.
-        List<Map<String, String>> profileProperties = new ArrayList<>(profiles.size());
-        List<Map<String, String>> profileJson = new ArrayList<>(profiles.size());
-        for (String profile : profiles) {
-            profileProperties.add(withoutActivationKey(
-                loadResource(loader, ConfigFilePlan.profileVariant(ConfigFilePlan.APPLICATION_PROPERTIES, profile))));
-            profileJson.add(withoutActivationKey(
-                loadResource(loader, ConfigFilePlan.profileVariant(ConfigFilePlan.APPLICATION_JSON, profile))));
+        // The profile band merges in one pass per format, in plan order:
+        // every profile's properties, then every profile's json, then every
+        // profile's toml. The file format therefore outranks the profile
+        // order inside the band (application-a.toml beats
+        // application-b.json) — the rule is pinned by a test.
+        List<Map<String, String>> fileLayers =
+            new ArrayList<>(baseByFormat.size() * (1 + profiles.size()));
+        fileLayers.addAll(baseByFormat.values());
+        for (String name : ConfigFilePlan.APPLICATION_FILES) {
+            for (String profile : profiles) {
+                fileLayers.add(withoutActivationKey(
+                    loadResource(loader, ConfigFilePlan.profileVariant(name, profile))));
+            }
         }
-        List<Map<String, String>> fileLayers = new ArrayList<>(2 + profiles.size() * 2);
-        fileLayers.add(properties);
-        fileLayers.add(json);
-        fileLayers.addAll(profileProperties);
-        fileLayers.addAll(profileJson);
 
         return new Sources(
             cli,

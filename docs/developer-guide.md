@@ -882,12 +882,12 @@ Logger log = container.get(LoggerSource.class).get(UserService.class);
 
 With a non-JUL backend selected, Freeway pins the SLF4J binding and **leaves `java.util.logging` untouched**: it attaches no JUL handlers and does not forward JUL records. JDK-internal logging (for example the JDK's own HttpClient) therefore stays on JUL's configuration; if you want it in your backend, add the standard `jul-to-slf4j` bridge yourself (the dependency plus the usual `LogManager` reset). Freeway's JUL enhancement (formatters, files, rotation) is configured only for its own JUL backend.
 
-Logging works **out of the box** with sensible defaults: ANSI-colored console output, rotating file logging at `logs/{app.name}.log`. Log keys have two file homes: the dedicated `freeway-logging.properties` on the classpath root (not bundled in the JAR), or the app's main config files — `application.properties` / `application.json` plus their active profile variants (the main cascade's classpath file baseline) contribute their `freeway.log.*` keys; the dedicated file outranks them. System properties (`-D`) and env vars override both file homes — the env prefix follows `freeway.env.prefix` (default `FREEWAY_`), same convention as the config cascade: `freeway.log.level` ↔ `FREEWAY_LOG_LEVEL`, or `APP_FREEWAY_LOG_LEVEL` under a custom prefix. Per-logger levels (`<logger>.level`) stay in `freeway-logging.properties` — inside the app config they are indistinguishable from ordinary dotted keys.
+Logging works **out of the box** with sensible defaults: ANSI-colored console output, rotating file logging at `logs/{app.name}.log`. Log keys have two file homes: the dedicated `freeway-logging.properties` on the classpath root (not bundled in the JAR), or the app's main config files — `application.properties` / `application.json` / `application.toml` plus their active profile variants (the main cascade's classpath file baseline) contribute their `freeway.log.*` keys; the dedicated file outranks them. System properties (`-D`) and env vars override both file homes — the env prefix follows `freeway.env.prefix` (default `FREEWAY_`), same convention as the config cascade: `freeway.log.level` ↔ `FREEWAY_LOG_LEVEL`, or `APP_FREEWAY_LOG_LEVEL` under a custom prefix. Per-logger levels (`<logger>.level`) stay in `freeway-logging.properties` — inside the app config they are indistinguishable from ordinary dotted keys.
 
 ```properties
 freeway.log.level=INFO
 freeway.log.file=auto                    # logs/{app.name}.log, rotation + GZIP
-freeway.log.file.max-size=104857600      # 100 MB before size-based rotation
+freeway.log.file.max-size=268435456      # 256 MB before size-based rotation
 freeway.log.file.max-history=30          # days kept
 freeway.log.file.compress=true           # GZIP rotated archives
 freeway.log.file.flush-interval=250      # ms; 0 = flush per record
@@ -968,8 +968,8 @@ Lowest to highest priority — every tier is a `SymbolProvider` with a declared
 `order()`, and each answers one ownership question:
 
 1. Config files (`TIER_FILES` 20): `application.properties` →
-   `application.json` → `application-{profile}.*` (classpath baseline, then
-   filesystem overrides, hot-reloadable)
+   `application.json` → `application.toml` → `application-{profile}.*`
+   (classpath baseline, then filesystem overrides, hot-reloadable)
 2. Module-contributed sources (e.g. the cloud secret store, declared order 15)
 3. **The process-environment band** — the ambient, operator-provided values
    surrounding the process. Two declared tiers, one band: both are
@@ -1019,11 +1019,13 @@ Three CLI styles are supported: `--key=value`, `--key value` / `--key`
 `IllegalArgumentException` — they would otherwise produce garbage keys.
 Anything that is not a flag (a positional argument) is ignored with a WARN.
 
-An empty or whitespace-only `application.json` is treated as "no config"
-(same as a missing file or an empty `application.properties`) — not a parse
-error. Malformed non-blank JSON still fails startup. `freeway.profile` set
+An empty or whitespace-only `application.json` or `application.toml` is treated
+as "no config" (same as a missing file or an empty `application.properties`) —
+not a parse error. Malformed non-blank JSON or TOML still fails startup (TOML
+failures name the line and column, see `TomlParseException`).
+`freeway.profile` set
 inside a profile file is stripped from the merged config: profiles are
-activated from the base layers (`application.properties`/`application.json`,
+activated from the base layers (`application.properties`/`application.json`/`application.toml`,
 env, CLI) only, so a profile file cannot re-select profiles.
 
 **Environment variables and namespaces:** The `FREEWAY_` prefix maps into the

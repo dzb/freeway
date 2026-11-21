@@ -6,13 +6,15 @@
 #  Resolution order (lowest -> highest priority):
 #    1. application.properties
 #    2. application.json
-#    3. application-{profile}.properties
-#    4. application-{profile}.json
-#       (these four, packaged on the classpath; then the same names in the
+#    3. application.toml
+#    4. application-{profile}.properties
+#    5. application-{profile}.json
+#    6. application-{profile}.toml
+#       (these six, packaged on the classpath; then the same names in the
 #        working directory, then freeway.config.file extras — filesystem wins,
 #        hot-reloaded)
-#    5. Environment variables (FREEWAY_ prefix, configurable)
-#    6. CLI args (--key=value, -Dkey=value)
+#    7. Environment variables (FREEWAY_ prefix, configurable)
+#    8. CLI args (--key=value, -Dkey=value)
 #
 #  Activate profile: --freeway.profile=dev
 #  or env: FREEWAY_PROFILE=dev
@@ -293,19 +295,19 @@
 # or ext FleetModule/ConsulModule, binds explicitly).
 # freeway.cloud.discovery.type=
 # freeway.cloud.registry.type=
-# freeway.cloud.registry.service-id=
+# freeway.cloud.member.service-id=
 # service-host auto: use the HTTP server's bind address when it is a specific
 # one; on 0.0.0.0/:: prefer POD_IP, then the first routable local address.
 # Name it explicitly on a multi-homed host.
-# freeway.cloud.registry.service-host=auto
+# freeway.cloud.member.service-host=auto
 # service-scheme auto: follow the HTTP server (https when TLS is on); it also
 # decides whether the event mesh dials ws:// or wss://.
-# freeway.cloud.registry.service-scheme=auto
-# freeway.cloud.registry.service-port=
-# freeway.cloud.registry.service-instance-id=
+# freeway.cloud.member.service-scheme=auto
+# freeway.cloud.member.service-port=
+# freeway.cloud.member.service-instance-id=
 # shutdown-drain auto: the registry adapter answers the window it needs,
 # a Nacos/K8s-endpoints adapter its own propagation window).
-# freeway.cloud.registry.shutdown-drain=auto
+# freeway.cloud.member.shutdown-drain=auto
 
 
 # ================================

@@ -1,11 +1,14 @@
 package com.jujin.freeway.boot.internal;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -14,6 +17,8 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
@@ -68,9 +73,19 @@ class ConfigDocsConsistencyTest {
         }
     }
 
-    /** Every key a sample sets — parsed by the framework's own config reader. */
+    /**
+     * Every key a sample sets — parsed by the framework's own config reader.
+     * The {@code .sample} suffix is documentation only, so dispatch on the
+     * real extension: a TOML sample parses as TOML, a JSON sample as JSON.
+     */
     private static Set<String> sampleKeys(Path sample) throws IOException {
-        return new LinkedHashSet<>(ConfigFilePlan.Reader.read(sample).keySet());
+        String name = sample.getFileName().toString();
+        String parseName = name.endsWith(".sample")
+            ? name.substring(0, name.length() - ".sample".length())
+            : name;
+        try (java.io.InputStream in = Files.newInputStream(sample)) {
+            return new LinkedHashSet<>(ConfigFilePlan.Reader.read(parseName, in).keySet());
+        }
     }
 
     @Test
@@ -88,6 +103,52 @@ class ConfigDocsConsistencyTest {
                 }
             }
         }
+        assertEquals(List.of(), unknown,
+            "a sample key without a documented row is a name nothing reads");
+    }
+
+    /** A commented key line in the TOML sample: {@code # key = ...}. */
+    private static final Pattern TOML_SAMPLE_KEY =
+        Pattern.compile("^#\\s+(\"[^\"]+\"|[A-Za-z][A-Za-z0-9_.-]*)\\s*=.*");
+
+    /**
+     * The TOML sample is a reference whose keys are comments by design, so the
+     * plain sample scan sees an empty document. Activate every key line and
+     * parse it: the result must be a valid document (catches TOML-subset
+     * mistakes, duplicates and broken quoting) whose keys are all documented.
+     */
+    @Test
+    void theTomlSampleActivatesToAValidDocumentWithDocumentedKeys() throws IOException {
+        assumeTrue(DOC != null, "repository layout not present");
+        Path sample = DOCS.resolve("samples").resolve("application.toml.sample");
+        assumeTrue(Files.isRegularFile(sample), "TOML sample not present");
+        String source = Files.readString(sample);
+
+        StringBuilder activated = new StringBuilder();
+        int uncommented = 0;
+        for (String line : source.split("\n", -1)) {
+            if (TOML_SAMPLE_KEY.matcher(line.strip()).matches()) {
+                activated.append(line.replaceFirst("^\\s*#\\s*", "")).append('\n');
+                uncommented++;
+            } else {
+                activated.append(line).append('\n');
+            }
+        }
+        assertTrue(uncommented > 100,
+            "the sample must list its keys, found " + uncommented);
+
+        Map<String, String> keys;
+        try (var in = new ByteArrayInputStream(
+                activated.toString().getBytes(StandardCharsets.UTF_8))) {
+            keys = ConfigFilePlan.Reader.read("application.toml", in);
+        }
+        assertFalse(keys.isEmpty(), "the activated sample must produce keys");
+
+        String doc = Files.readString(DOC);
+        List<String> unknown = keys.keySet().stream()
+            .filter(key -> key.startsWith("freeway."))
+            .filter(key -> !doc.contains('`' + key + '`') && !isFamily(key))
+            .toList();
         assertEquals(List.of(), unknown,
             "a sample key without a documented row is a name nothing reads");
     }

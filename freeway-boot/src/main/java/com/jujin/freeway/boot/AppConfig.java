@@ -39,7 +39,8 @@ public interface AppConfig extends AutoCloseable {
      *
      * <p>Profiles are selected from the base layers only — the packaged and
      * working-directory base files ({@code application.properties} /
-     * {@code application.json}), the mapped environment and the CLI arguments.
+     * {@code application.json} / {@code application.toml}), the mapped
+     * environment and the CLI arguments.
      * A profile variant that re-declares {@code freeway.profile} is stripped,
      * so this list and the resolved value of that key cannot disagree.
      *

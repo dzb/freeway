@@ -5,6 +5,38 @@ All notable changes to Freeway will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **TOML as a third config format** (`freeway-commons`, `freeway-boot`):
+  a hand-written parser for a deliberately small, line-oriented TOML subset —
+  tables, arrays of tables, bare/quoted keys, basic strings with escapes,
+  decimal 64-bit integers, booleans and single-line string arrays. Literal
+  strings, multi-line strings, inline tables, dotted keys, floats and
+  date/time values are rejected and named as such; a duplicate key or a
+  header colliding with a value is an error (JSON's last-one-wins does not
+  apply). `application.toml` joins the application file family in the last
+  slot — properties → json → toml, later winning — so a key it declares
+  outranks the same key in the earlier formats; profile variants and
+  `freeway.config.file` extras accept it like the other formats. Parse
+  failures carry the line and column (`TomlParseException`, listed in the
+  failure catalog).
+
+### Changed
+
+- **A file named `*.toml` is parsed as TOML now** (`freeway-boot`): a path
+  listed in `freeway.config.file` (or handed to `AppConfigDefault` as an
+  override path) whose name ends with `.toml` was read as a
+  `java.util.Properties` file before this release. A misnamed properties file
+  has to be renamed; TOML syntax in such a path now decides whether startup
+  proceeds.
+- **The default size-rotation threshold is 256 MB, not 100 MB**
+  (`freeway-commons` logging): `freeway.log.file.max-size` (and the named-file
+  `.max-size`) now defaults to `268435456`. Daily rotation and the 30-day
+  retention window are unchanged, so the disk bound (daily volume × 30) is
+  unchanged; high-volume services simply keep fewer files per day.
+
 ## [2.0.1] - 2026-11-20
 
 ### Added

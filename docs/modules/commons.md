@@ -78,7 +78,7 @@ freeway.log.console.level=INFO
 # ── Default file log ──
 freeway.log.file=auto                      # logs/{app.name}.log
 # freeway.log.file=off                     # disable file logging
-freeway.log.file.max-size=104857600         # 100 MB
+freeway.log.file.max-size=268435456         # 256 MB
 freeway.log.file.max-history=30             # days
 freeway.log.file.compress=true              # GZIP
 freeway.log.file.flush-interval=250         # batch flush interval (ms); 0 = flush each log record immediately

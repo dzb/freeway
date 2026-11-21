@@ -1,0 +1,8 @@
+# The TOML member of the application file family — same cascade, one more
+# format. This baseline carries keys no other family member declares, so the
+# cascade tests can pin that the toml layer loads at all.
+[app]
+tagline = "Boot via TOML"
+
+[server]
+aliases = ["boot-a", "boot-b"]

@@ -1,0 +1,306 @@
+##################################################################
+#  Freeway configuration reference — TOML
+#  Copy to src/main/resources/application.toml
+#  or application-{profile}.toml for profile-specific values.
+#
+#  Resolution order (lowest -> highest priority):
+#    1. application.properties      (fallback)
+#    2. application.json
+#    3. application.toml            (highest of the three)
+#    4. application-{profile}.properties
+#    5. application-{profile}.json
+#    6. application-{profile}.toml
+#       (these six, packaged on the classpath; then the same names in the
+#        working directory, then freeway.config.file extras — filesystem wins,
+#        hot-reloaded)
+#    7. Environment variables (FREEWAY_ prefix, configurable)
+#    8. CLI args (--key=value, -Dkey=value)
+#
+#  Activate profile: --freeway.profile=dev
+#  or env: FREEWAY_PROFILE=dev
+#
+#  Custom env prefix: -Dfreeway.env.prefix=APP_
+#    then APP_SERVER_PORT -> server.port (passthrough)
+#
+#  TOML subset accepted by Freeway (see com.jujin.freeway.commons.toml):
+#    - tables [a.b] and arrays of tables [[a]]; bare or double-quoted keys
+#    - basic strings (\" \\ \b \t \n \f \r \uXXXX escapes), decimal 64-bit
+#      integers, booleans, and single-line string arrays
+#    - NOT accepted: floats, literal ('...') / multi-line strings, inline
+#      tables, dotted keys, date/time values, empty arrays
+#    - fractional numbers have no type here: write them as strings ("0.5")
+#    - a flat key that prefixes another key (freeway.log.file and
+#      freeway.log.file.max-size) cannot be a value and a table at once;
+#      write the children as quoted dotted keys ("file.max-size")
+#
+#  Every key below is commented out; uncomment what you need. Values shown
+#  are the documented defaults unless the comment says otherwise.
+##################################################################
+
+
+# ================================
+#  Framework / Boot
+# ================================
+
+[freeway]
+# profile = "dev"              # comma-separated: "dev,test"
+
+# Bootstrap-only (config files cannot set these):
+#   -Dfreeway.config.file=/etc/app/extra.toml   (or FREEWAY_CONFIG_FILE)
+#   -Dfreeway.env.prefix=APP_                   (or FREEWAY_ENV_PREFIX)
+
+[freeway.app]
+# name = "freeway-app"
+
+
+# ================================
+#  Logging
+# ================================
+# The dedicated freeway-logging.properties outranks these keys.
+# The class-load-time keys accept only -D / environment variables:
+#   -Dfreeway.log.system=freeway
+#   -Dfreeway.log.mdc=true
+#   -Dfreeway.log.mdc.priority=traceId,requestId
+#   -Dfreeway.log.color=auto     # preset: follows the formatter
+#   -Dfreeway.log.caller-info=true
+
+[freeway.log]
+# level = "INFO"
+# format = "auto"              # preset: Freeway formatter + ANSI
+# files = ""                   # named files, see docs/reference/logging.properties.reference
+
+# File logging: `auto` is the preset group — managed logs/{app.name}.log with
+# the rotation defaults below (256 MB, 30 days, gzip, 250 ms flush), so the
+# detail keys are not needed. "off" disables file logging; a concrete path
+# (for example "logs/app.log") replaces the managed name.
+# file = "auto"
+
+# The detail keys are read independently of `file`, so writing one below the
+# preset overrides that detail only. They are quoted dotted keys because
+# freeway.log.file itself is a value (see the header note).
+# "file.max-size" = 268435456
+# "file.max-history" = 30
+# "file.compress" = true
+# "file.flush-interval" = 250
+
+[freeway.log.console]
+# enabled = true
+# level = ""                   # empty = inherit the root level
+
+
+# ================================
+#  HTTP / Web Server
+# ================================
+
+[freeway.http]
+# max-body-size = 10485760
+
+[freeway.http.server]
+# host = "127.0.0.1"           # 0.0.0.0 behind a load balancer
+# port = 8080                  # 0 = system-assigned ephemeral port
+# backlog = 0
+# shutdown-grace = "2s"
+# read-timeout = "30s"
+# write-timeout = "30s"
+# max-connections = 0
+# receive-buffer-size = 0
+# send-buffer-size = 0
+# max-header-bytes = 16384
+
+[freeway.http.compression]
+# enabled = true
+# min-size = 256
+
+[freeway.http.access-log]
+# enabled = false
+
+[freeway.http.request-scope]
+# enabled = false
+
+[freeway.http.health]
+# enabled = true
+# path = "/healthz"
+
+[freeway.http.cors]
+# enabled = true
+# allowed-origins = ["*"]      # production: exact origins only
+# allowed-methods = ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
+# allowed-headers = ["Content-Type", "Authorization"]
+# exposed-headers = ["X-Total-Count"]   # omit for none (the subset rejects [])
+# max-age = 3600
+# allow-credentials = false
+
+[freeway.http.ssl]
+# key-store = ""
+# enabled = ""                 # presence-driven; false is the kill switch
+# key-store-password = ""
+# key-store-type = "PKCS12"
+# http2 = true
+# trust-store = ""
+# trust-store-password = ""
+# trust-store-type = "PKCS12"
+# client-auth = false          # mTLS: require client certificates
+# protocols = "TLSv1.3,TLSv1.2"
+# ciphers = ""
+# sni-directory = ""
+# reload-interval = "0s"       # e.g. "30s" with Vault-issued certificates
+
+[freeway.http.h2]
+# reset-burst-limit = 200
+# reset-window = "10s"
+
+
+# ================================
+#  Database
+# ================================
+
+[freeway.db]
+# url = "jdbc:postgresql://localhost:5432/mydb"   # required, no default
+# username = "postgres"                            # required, no default
+# password = ""                                    # prefer FREEWAY_DB_PASSWORD
+# dialect = ""                                     # postgresql | mysql | sqlite | h2; empty = detect from the URL
+# query-timeout = "15s"
+
+[freeway.db.pool]
+# max-size = 10
+# min-idle = 2
+# connection-timeout = "10s"
+# max-lifetime = "30m"
+# max-idle-time = "10m"
+# clean-interval = "2m"
+# health-check-query = ""
+# health-check-timeout = "5s"
+
+[freeway.db.schema]
+# mode = "auto"                # auto | validate | off
+# groups = ""                  # comma-separated SchemaEntity groups; empty = all
+
+[freeway.db.migration]
+# enabled = true
+# path = "db/migration/"
+# table = "_migrations"
+# lock-ttl = ""                # empty = runner default (1h); "5m".."30m" typical
+
+
+# ================================
+#  Cloud / Secret Store
+# ================================
+
+[freeway.cloud.secret]
+# type = ""                    # empty/local = env + file store
+
+# System-property-only (a config file cannot set them):
+#   -Dfreeway.cloud.secret.file=application-secrets.properties
+#   -Dfreeway.cloud.secret.keys=db.password,api.token
+
+
+# ================================
+#  Cloud / Object Storage
+# ================================
+
+[freeway.cloud.storage]
+# type = ""                    # empty/local = built-in filesystem backend
+# base-path = "cloud-storage"
+
+
+# ================================
+#  Cloud / Discovery & Membership
+# ================================
+
+[freeway.cloud.discovery]
+# type = ""                    # declaration only; the installed module selects the backend
+# local-zone = ""              # this process's zone; falls back to the full list when no local member
+
+[freeway.cloud.discovery.static]
+# services = ["orders=https://orders-1:8443", "orders=https://orders-2:8443"]
+
+[freeway.cloud.discovery.dns]
+# services = ["orders=http://orders.default.svc.cluster.local:8080"]
+# refresh = "30s"              # 0 = resolve on every call
+# family = "any"               # any | ipv4 | ipv6
+
+[freeway.cloud.registry]
+# type = ""                    # declaration only; Fleet/Consul bind explicitly
+
+[freeway.cloud.member]
+# service-id = ""              # empty -> freeway.app.name -> "freeway-app"
+# service-host = "auto"        # preset: bind address -> POD_IP -> first routable address
+# service-scheme = "auto"      # preset: follows the HTTP server's TLS
+# service-port = ""            # empty = the HTTP server's actual listening port
+# service-instance-id = ""
+# shutdown-drain = "auto"      # preset: the registry backend's propagation window
+
+
+# ================================
+#  Cloud / RPC
+# ================================
+
+[freeway.cloud.rpc]
+# connect-timeout = 3000       # milliseconds
+# request-timeout = 10000      # milliseconds
+# shutdown-grace = "5s"
+# resilience = "auto"          # preset: the fine-grained keys below govern; off = no retry/breaker/limiter/ejection
+
+[freeway.cloud.rpc.trace]
+# enabled = true
+
+[freeway.cloud.rpc.retry]
+# max-attempts = 3
+# backoff-base = 100           # milliseconds
+# backoff-max = 5000           # milliseconds
+# budget = 20                  # per-service retry tokens; 0 = unlimited
+
+[freeway.cloud.rpc.circuit-breaker]
+# enabled = true
+# failure-threshold = 5
+# failure-window = 60          # seconds
+# open-window = 30             # seconds
+
+[freeway.cloud.rpc.rate-limit]
+# enabled = false
+# per-second = 100             # Double: fractional values must be quoted, e.g. "0.5"
+
+[freeway.cloud.rpc.ejection]
+# enabled = true
+# failure-threshold = 5
+# base-window = 30             # seconds
+# max-window = 300             # seconds
+# max-percent = 50             # at most this share of the current answer is ejected
+
+[freeway.cloud.rpc.tls]
+# key-store = ""
+# key-store-password = ""
+# trust-store = ""
+# trust-store-password = ""
+# reload-interval = ""         # empty = no rotation
+
+
+# ================================
+#  Cloud / Event Mesh
+# ================================
+
+[freeway.cloud.event]
+# peers = "10.0.0.11:8080,10.0.0.12:8080"   # presence activates the mesh
+# discovery-feed-ms = 5000     # poll the bound discovery for peers instead of a static list
+# keepalive-ms = 30000
+# enabled = true               # explicit kill switch / discovery-fed mesh
+# token = ""                   # shared handshake secret; set on every node
+# connect-timeout-ms = 3000
+# handshake-timeout-ms = 10000
+# backoff-base-ms = 1000
+# backoff-max-ms = 30000
+
+
+# ================================
+#  Cloud / Auth Propagation
+# ================================
+
+[freeway.cloud.auth.extract]
+# enabled = false              # trust only inside a service mesh
+
+
+# ================================
+#  freeway-ext (optional adapters)
+# ================================
+# Adapter keys (for example the Kafka event plane) are documented in the
+# freeway-ext repository, not here.

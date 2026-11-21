@@ -6,7 +6,7 @@
 			"format": "auto",
 			"console": { "enabled": true, "level": "" },
 			"file": "auto",
-			"file.max-size": 104857600,
+			"file.max-size": 268435456,
 			"file.max-history": 30,
 			"file.compress": true,
 			"file.flush-interval": 250,
@@ -80,13 +80,13 @@
 		"cloud": {
 			"secret": { "type": "" },
 			"storage": { "type": "", "base-path": "cloud-storage" },
-			"discovery": { "type": "" },
-			"registry": {
-				"type": "",
+			"discovery": { "type": "", "local-zone": "" },
+			"registry": { "type": "" },
+			"member": {
 				"service-id": "",
 				"service-host": "auto",
 				"service-scheme": "auto",
-				"service-port": 0,
+				"service-port": "",
 				"service-instance-id": "",
 				"shutdown-drain": "auto"
 			},

@@ -20,7 +20,8 @@ public interface LogConfigSource {
 
     /** {@code freeway.log.*} keys from the application side — the boot
      *  cascade's classpath file baseline ({@code application.properties} /
-     *  {@code application.json} plus the active profile variants), already
-     *  merged in the provider's own precedence. Empty without boot. */
+     *  {@code application.json} / {@code application.toml} plus the active
+     *  profile variants), already merged in the provider's own precedence.
+     *  Empty without boot. */
     Map<String, String> values();
 }

@@ -2,6 +2,7 @@ package com.jujin.freeway.boot.internal;
 
 import com.jujin.freeway.boot.internal.BootModule.ConfigKeys;
 import com.jujin.freeway.commons.json.JsonUtils;
+import com.jujin.freeway.commons.toml.TomlUtils;
 import com.jujin.freeway.commons.util.ByteStreams;
 import com.jujin.freeway.commons.util.EnvKeys;
 import com.jujin.freeway.commons.util.Maps;
@@ -41,8 +42,9 @@ final class ConfigFilePlan {
     /** Standard base file family — one source of truth for load, override and watch. */
     static final String APPLICATION_PROPERTIES = "application.properties";
     static final String APPLICATION_JSON = "application.json";
+    static final String APPLICATION_TOML = "application.toml";
     static final List<String> APPLICATION_FILES =
-        List.of(APPLICATION_PROPERTIES, APPLICATION_JSON);
+        List.of(APPLICATION_PROPERTIES, APPLICATION_JSON, APPLICATION_TOML);
 
     /** What role a file's name plays in the cascade. */
     enum Role {
@@ -90,8 +92,8 @@ final class ConfigFilePlan {
     /**
      * The complete filesystem tier: base files, profile variants and files
      * named by {@code freeway.config.file}, in precedence order (later wins).
-     * Profile variant order is properties-per-profile then json-per-profile,
-     * matching the classpath load.
+     * Profile variant order is properties-per-profile, then json-per-profile,
+     * then toml-per-profile, matching the classpath load.
      */
     static ConfigFilePlan full(Path workDir, List<String> profiles) {
         Objects.requireNonNull(profiles, "profiles");
@@ -213,11 +215,17 @@ final class ConfigFilePlan {
 
     /**
      * The one config-file parser. A source is read as JSON when its name ends
-     * with {@code .json} (case-insensitive) and as {@code java.util.Properties}
-     * otherwise; both formats are read as UTF-8. The classpath cascade, the
+     * with {@code .json}, as TOML when it ends with {@code .toml} (both
+     * case-insensitive) and as {@code java.util.Properties} otherwise; all
+     * three formats are read as UTF-8. The classpath cascade, the
      * working-directory base files, the {@code freeway.config.file} extras and
      * the hot-reload re-read all go through this nested reader, so a file
      * parses identically no matter where it lives or when it is read.
+     *
+     * <p>Only the <em>explicitly named</em> file's extension is read this way.
+     * The standard family names are lowercase and resolved exactly, so
+     * {@code application.TOML} beside the lowercase files is a different
+     * (never loaded) path, not an alternate spelling.
      *
      * <p>Both read entries apply the same read cap, so a runaway file fails
      * identically whether it sits on the classpath or in the working directory.
@@ -249,9 +257,14 @@ final class ConfigFilePlan {
 
         /** Dispatches on the name extension; see the class javadoc. */
         private static Map<String, String> parse(String name, InputStream in) throws IOException {
-            if (name.toLowerCase(Locale.ROOT).endsWith(".json")) {
+            String lowered = name.toLowerCase(Locale.ROOT);
+            if (lowered.endsWith(".json")) {
                 return ConfigCascade.canonicalize(
                     name, json(new String(in.readAllBytes(), StandardCharsets.UTF_8), name));
+            }
+            if (lowered.endsWith(".toml")) {
+                return ConfigCascade.canonicalize(
+                    name, toml(new String(in.readAllBytes(), StandardCharsets.UTF_8), name));
             }
             Properties props = new Properties();
             props.load(new InputStreamReader(in, StandardCharsets.UTF_8));
@@ -277,6 +290,22 @@ final class ConfigFilePlan {
             }
             try {
                 return Maps.flatten(JsonUtils.parseObject(text).toMap(), ".");
+            } catch (RuntimeException e) {
+                throw new IllegalStateException("Unable to load " + name, e);
+            }
+        }
+
+        /**
+         * Parses TOML config text with the same shape as {@link #json}: the
+         * commons {@code toml} subset parses the tree (tolerating a UTF-8 BOM
+         * and yielding an empty table for a blank document), and
+         * {@link Maps#flatten} renders it as dotted keys. Malformed TOML fails
+         * with the source named in the message; the cause carries the line and
+         * column ({@code TomlParseException}).
+         */
+        private static Map<String, String> toml(String text, String name) {
+            try {
+                return Maps.flatten(TomlUtils.parse(text), ".");
             } catch (RuntimeException e) {
                 throw new IllegalStateException("Unable to load " + name, e);
             }

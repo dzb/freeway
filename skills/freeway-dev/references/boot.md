@@ -166,11 +166,12 @@ source slots in by declaring its order and never depends on module install
 order.
 
 Within the file tier: `application.properties` -> `application.json` ->
-`application-{profile}.properties` -> `application-{profile}.json`, with the
+`application.toml` -> `application-{profile}.properties` ->
+`application-{profile}.json` -> `application-{profile}.toml`, with the
 classpath baseline first, then the same names in the working directory, then
 files named by `freeway.config.file` (comma-separated). Inside the profile band
-the format outranks the profile order: `application-a.json` beats
-`application-b.properties`. The file tier is hot-reloaded; profile activation is
+the format outranks the profile order: `application-a.toml` beats
+`application-b.json`. The file tier is hot-reloaded; profile activation is
 startup-static.
 
 CLI keys are literal, with no prefix: `--app.name=foo` -> `app.name`,

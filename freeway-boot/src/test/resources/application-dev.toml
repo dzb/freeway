@@ -1,0 +1,7 @@
+# The dev profile's toml variant — the file name is the selection, so a
+# freeway.profile key here would be stripped; none is declared.
+[app]
+tagline = "Dev Boot via TOML"
+
+[server]
+aliases = ["dev-boot-a", "dev-boot-b"]

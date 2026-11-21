@@ -4,7 +4,7 @@
 		"log": {
 			"level": "INFO",
 			"file": "auto",
-			"file.max-size": 104857600,
+			"file.max-size": 268435456,
 			"file.max-history": 30,
 			"file.compress": true,
 			"file.flush-interval": 250

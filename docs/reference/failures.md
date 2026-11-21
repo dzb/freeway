@@ -10,6 +10,7 @@ choose to retry an operation it knows is idempotent.
 | `AmbiguousBindingException` | ioc | Two eligible bindings and no primary | no | yes (nothing ran) | startup / composition |
 | `MissingBindingException` | ioc | No binding for a required type | no | yes (nothing ran) | startup / composition |
 | `UnknownSymbolException` | ioc | A required configuration key has no value | no | yes (nothing ran) | startup |
+| `TomlParseException` | commons | A TOML config file did not parse (subset grammar, duplicate key, header conflict); the message names line and column | no | yes (nothing ran) | startup |
 | `ValidationException` | http | Request body or parameter validation failed | no | yes (request rejected) | HTTP 400 `validation_failed` |
 | `BodyTooLargeException` | http | Request body exceeded the configured limit | no | yes (request rejected) | HTTP 413 `payload_too_large` |
 | `MultipartException` | http | Malformed multipart request | no | yes (request rejected) | HTTP 400 `invalid_multipart` |

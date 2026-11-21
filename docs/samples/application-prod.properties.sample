@@ -144,9 +144,9 @@ freeway.db.migration.enabled=true
 # in freeway-ext; Static and Registration bind explicitly in core.
 # freeway.cloud.discovery.type=
 # freeway.cloud.registry.type=
-# freeway.cloud.registry.service-id=
-# freeway.cloud.registry.service-host=
-# freeway.cloud.registry.service-port=
+# freeway.cloud.member.service-id=
+# freeway.cloud.member.service-host=
+# freeway.cloud.member.service-port=
 
 # RPC resilience — circuit breaker prevents cascade failures.
 # freeway.cloud.rpc.connect-timeout=3000

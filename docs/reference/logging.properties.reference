@@ -4,8 +4,8 @@
 #
 # This is Freeway's dedicated logging configuration file (most log keys may
 # also live under freeway.log.* in the application's main configuration
-# application.properties / application.json; this file outranks it — the more
-# specific declaration wins).
+# application.properties / application.json / application.toml; this file
+# outranks it — the more specific declaration wins).
 # It is loaded by JULEnhancer during bootstrap and replaces JUL's standard
 # logging.properties.
 #
@@ -124,7 +124,7 @@ freeway.log.console.enabled=true
 #
 freeway.log.file=auto
 # freeway.log.file=off                          # disable file logging
-# freeway.log.file.max-size=104857600           # 100 MB triggers size rotation
+# freeway.log.file.max-size=268435456           # 256 MB triggers size rotation
 # freeway.log.file.max-history=30               # days to keep archives
 # freeway.log.file.compress=true                # GZIP after rotation
 # freeway.log.file.flush-interval=250           # batch flush interval (ms); 0 = flush every record (safest, lower throughput)
@@ -144,7 +144,7 @@ freeway.log.file=auto
 # freeway.log.file.biz.path=logs/biz.log      # (required)
 # freeway.log.file.biz.logger=com.myapp.biz   # (optional, defaults to root)
 # freeway.log.file.biz.level=INFO             # (optional, inherits parent)
-# freeway.log.file.biz.max-size=104857600
+# freeway.log.file.biz.max-size=268435456
 # freeway.log.file.biz.max-history=30
 # freeway.log.file.biz.compress=true
 # freeway.log.file.biz.flush-interval=250

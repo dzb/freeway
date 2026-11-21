@@ -156,10 +156,12 @@ The cascade runs lowest to highest:
 
 1. `application.properties`
 2. `application.json`
-3. `application-{profile}.properties`
-4. `application-{profile}.json`
-5. environment variables — `FREEWAY_DB_URL` → `freeway.db.url`
-6. CLI arguments — `--key=value`, `-Dkey=value`
+3. `application.toml`
+4. `application-{profile}.properties`
+5. `application-{profile}.json`
+6. `application-{profile}.toml`
+7. environment variables — `FREEWAY_DB_URL` → `freeway.db.url`
+8. CLI arguments — `--key=value`, `-Dkey=value`
 
 Activate a profile with `--freeway.profile=dev`. The environment prefix is
 replaceable (`-Dfreeway.env.prefix=APP_`). Every key is declared in full in its
@@ -177,7 +179,7 @@ built-in provider with `freeway-logging.properties` on the classpath root or wit
 freeway.log.level=INFO
 freeway.log.console.enabled=true
 freeway.log.file=auto
-freeway.log.file.max-size=104857600
+freeway.log.file.max-size=268435456
 freeway.log.file.max-history=30
 freeway.log.file.compress=true
 ```

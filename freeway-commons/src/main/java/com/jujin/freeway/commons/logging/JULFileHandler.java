@@ -54,7 +54,7 @@ import java.util.zip.GZIPOutputStream;
  * <pre>{@code
  * # System properties (also settable via -D flags):
  * freeway.log.file=logs/app.log
- * freeway.log.file.max-size=104857600   # 100 MB
+ * freeway.log.file.max-size=268435456   # 256 MB
  * freeway.log.file.max-history=30       # days
  * freeway.log.file.compress=true
  * freeway.log.file.flush-interval=250   # ms between background flushes; 0 = flush per record
@@ -67,7 +67,7 @@ import java.util.zip.GZIPOutputStream;
  */
 public final class JULFileHandler extends StreamHandler {
 
-    static final long DEFAULT_MAX_SIZE = 100L * 1024 * 1024; // 100 MB
+    static final long DEFAULT_MAX_SIZE = 256L * 1024 * 1024; // 256 MB
     static final int DEFAULT_MAX_HISTORY = 30; // days
     static final boolean DEFAULT_COMPRESS = true;
 

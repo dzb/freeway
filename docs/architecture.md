@@ -214,7 +214,8 @@ is `app.name`, and a framework key is written in full
 `--` / `-D` or a key containing `=` is rejected.
 
 **Files:** each source merges `application.properties` → `application.json` →
-`application-{profile}.properties` → `application-{profile}.json`, later
+`application.toml` → `application-{profile}.properties` → `application-{profile}.json` →
+`application-{profile}.toml`, later
 winning — inside the profile band the format beats the profile order. Over that
 packaged classpath baseline win the same file names in the working directory,
 then any files named by the `freeway.config.file` bootstrap key

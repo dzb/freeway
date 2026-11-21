@@ -264,7 +264,8 @@ public record ServiceHealth(boolean live, boolean ready, Instant lastSeen) {
   endpoints, etc.) go through `.primary()` (**not delivered**, §8.1).
 - serviceId resolves from `freeway.cloud.member.service-id` → `freeway.app.name`;
   instanceId is derived by default and can be pinned with `member.service-instance-id`.
-- **The two identity `auto` values** (the value cannot be written down, only derived, and one line is logged at startup stating which was chosen):
+- **`auto` is a preset configuration group, not a value to tune**: one token selects a shipped bundle of settings and the
+  concrete result is derived at startup; the membership keys log the chosen value once. The membership `auto` values:
   `member.service-scheme=auto` (default) follows whether the HTTP server has TLS enabled
   (`HttpServer.isSecure()`, which since 1.5.5 relays `HttpEngine.isSecure()`: whoever terminates TLS answers, so an
   adapter engine that ignores `freeway.http.ssl.*` will not register an https node as `http://`) —

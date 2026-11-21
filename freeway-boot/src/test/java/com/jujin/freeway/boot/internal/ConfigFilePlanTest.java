@@ -9,6 +9,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ConfigFilePlanTest {
 
@@ -26,8 +28,8 @@ class ConfigFilePlanTest {
 
         assertEquals("from-first-read", full.values().get("app.name"),
             "startup profile selection and the file tier share one base snapshot");
-        assertEquals(4, full.files().size(),
-            "the full plan carries two base files plus two profile variants");
+        assertEquals(6, full.files().size(),
+            "the full plan carries three base files plus three profile variants");
     }
 
     @Test
@@ -42,5 +44,33 @@ class ConfigFilePlanTest {
 
         assertEquals("demo", values.get("app.name"));
         assertNull(values.get("freeway.profile"));
+    }
+
+    @Test
+    void tomlFileInTheFilesystemTierIsParsedByExtension(@TempDir Path dir)
+            throws Exception {
+        Path toml = Files.writeString(dir.resolve("application.toml"),
+            """
+            [app]
+            name = "from-toml"
+            port = 8080
+            """);
+
+        Map<String, String> values = ConfigFilePlan.paths(List.of(toml)).read().values();
+
+        assertEquals("from-toml", values.get("app.name"));
+        assertEquals("8080", values.get("app.port"),
+            "an integer flattens to its decimal text");
+    }
+
+    @Test
+    void malformedTomlFileFailsWithTheSourceName(@TempDir Path dir) throws Exception {
+        Path toml = Files.writeString(dir.resolve("application.toml"), "[app\n");
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+            () -> ConfigFilePlan.paths(List.of(toml)).read());
+
+        assertTrue(ex.getMessage().contains("Unable to load application.toml"),
+            "got: " + ex.getMessage());
     }
 }

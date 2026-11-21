@@ -3,7 +3,7 @@
 > Framework configuration keys are dot-separated hierarchical keys under the
 > `freeway.*` namespace. Application-owned keys live outside that namespace
 > (for example `order.*`); the boundary is defined by the code that reads the key.
-> Configuration source precedence (low → high): `application.properties` → `application.json` → `application-{profile}.properties` → `application-{profile}.json` → **working-directory/`freeway.config.file` override files** (with the same names and order; the filesystem as a whole outranks the classpath baseline and is hot-reloadable) → **module-contributed sources** (for example a cloud secret store, `order()=15`) → environment variables (`FREEWAY_*` or the short `F2_*` / `f2_*` aliases, `order()=10`) → **JVM system properties** (`-Dkey=value` before the main class starts, keys verbatim, `order()=5`) → CLI arguments (`--key=value`, `order()=0`).
+> Configuration source precedence (low → high): `application.properties` → `application.json` → `application.toml` → `application-{profile}.properties` → `application-{profile}.json` → `application-{profile}.toml` → **working-directory/`freeway.config.file` override files** (with the same names and order; the filesystem as a whole outranks the classpath baseline and is hot-reloadable) → **module-contributed sources** (for example a cloud secret store, `order()=15`) → environment variables (`FREEWAY_*` or the short `F2_*` / `f2_*` aliases, `order()=10`) → **JVM system properties** (`-Dkey=value` before the main class starts, keys verbatim, `order()=5`) → CLI arguments (`--key=value`, `order()=0`).
 > Precedence is determined by each source's declared `SymbolProvider.order()` (ascending lookup, first match wins), independent of module installation order.
 > See the configuration cascade chapter of [architecture.md](architecture.md).
 
@@ -116,7 +116,7 @@ A **shape suffix** describes where the value comes from (it determines whether t
 
 | Suffix | Meaning | Example |
 |------|------|------|
-| `·auto` | The value must be **derived**; it cannot be written literally | `log.file=auto` (the path embeds the runtime's `app.name`), `member.service-scheme=auto` (follows whether the HTTP server has TLS enabled), `member.service-host=auto` (POD_IP → the first routable local address), `member.shutdown-drain=auto` (answered by the registry backend) |
+| `·auto` | A **preset configuration group**: one token selects a shipped bundle of settings whose concrete values are derived at startup — do not tune the details; the membership `auto` keys log their choice once at startup | `log.file=auto` (the managed `logs/{app.name}.log` + rotation cluster), `member.service-scheme=auto` (follows whether the HTTP server has TLS enabled), `member.service-host=auto` (bind address → POD_IP → the first routable local address), `member.shutdown-drain=auto` (the registry backend's propagation window) |
 | `·presence` | Only once the primary key appears do the cluster's sub-keys become meaningful | `ssl.key-store` (the path is what enables HTTPS), `event.peers`, `rpc.tls.key-store` |
 | `·sentinel` | Empty/`0` = defer to the platform, the JDK or the runtime | `dialect=""` (inferred from the JDBC URL), `member.service-port` (empty = the actual listening port), `max-connections=0` (OS default) |
 | `·aggregate switch` | One key governs a whole cluster of tuning keys | `rpc.resilience=auto\|off` (when `off`, all `retry.*`/`circuit-breaker.*`/`rate-limit.*`/`ejection.*` are ignored) |
@@ -136,11 +136,13 @@ A **shape suffix** describes where the value comes from (it determines whether t
 
 **Why the tuning class needs no "master switch"**: each cluster already has one key governing it, and adding another would only state "off" in different words — `rpc.resilience` governs the nine resilience keys, the `event.enabled` presence governs the four `event.*-ms` transport timeouts (which are meaningless when no mesh exists), the `ssl.enabled` presence governs the whole TLS cluster, and tuning keys themselves say "use the platform default" (`0` = OS/JDK default, empty = JDK default).
 
-**Why not turn every tuning key into `auto`**: `auto` holds only when the **value must be derived** (6 keys carry the `·auto` suffix: log path/format/colour, registry scheme/host, shutdown drain). Adding `auto` to a constant default yields only a second way of stating the same rule — one more branch, one more set of docs, one more test, and no information gained. **Logging** is the model: `log.file=auto` makes the whole `logs/{app.name}.log` + dual rotation + GZIP + 30-day retention cluster invisible, while constant keys such as `max-size` stay writable, merely absent from the samples.
+**Why not turn every tuning key into `auto`**: `auto` is a **preset group**, not a synonym for "a default" — it exists where the framework can ship one bundle that hides a whole cluster of coupled settings (6 keys carry the `·auto` suffix: log path/format/colour, registry scheme/host, shutdown drain). A key whose default is a single constant already is a preset of one; adding `auto` there would state the same rule twice — one more branch, one more set of docs, one more test, and no information gained. **Logging** is the model: `log.file=auto` makes the whole `logs/{app.name}.log` + dual rotation + GZIP + 30-day retention cluster invisible, while constant keys such as `max-size` stay writable — the sample shows them only as the manual alternative (a concrete path instead of `auto`).
 
 ### How configuration files are organized
 
-**One file by default**: `application.properties` (or `.json`) as the baseline plus `application-{profile}.*` as the environment axis. The reason: only the few keys in the table above need a human answer, and the production sample activates just 22 in total; profile is already the orthogonal axis for "partitioning by environment".
+**One file by default**: `application.properties` (or `.json`, or `.toml`) as the baseline plus `application-{profile}.*` as the environment axis. The reason: only the few keys in the table above need a human answer, and the production sample activates just 22 in total; profile is already the orthogonal axis for "partitioning by environment". The three formats share one cascade slot each — properties → json → toml, later winning — so `application.toml` outranks `application.json`, which outranks `application.properties`; properties is the fallback slot. The order is a compatibility ladder: existing files keep working unchanged, and a new TOML file can override them without deleting the old ones.
+
+**TOML shape**: `application.toml` uses tables rather than dotted keys — `[freeway.http.server]` plus `port = 8080`; a flat `freeway.http.server.port = 8080` line is rejected as a dotted key. It accepts a deliberately small subset (basic strings, decimal integers, booleans and single-line string arrays; no floats, literal/multi-line strings, inline tables, dotted keys or date/time values), and a key that prefixes another key is written as a quoted dotted key (`"file.max-size"`). [`application.toml.sample`](samples/application.toml.sample) lists every key in that grammar; `TomlUtils` documents the parser contract.
 
 Splitting by module is an **optional convention**, valuable only when "multiple teams/multiple ConfigMaps each own their configuration" — mechanically it requires no code change, since `freeway.config.file` already supports multiple files (comma-separated, order is precedence, all hot-reloaded). Three rules when splitting:
 
@@ -203,7 +205,7 @@ files named by the already-resolved config, not the config keys.
 `freeway.config.file` and `freeway.env.prefix` are **bootstrap-only keys**:
 they configure the configuration system itself, so they can come only from `-D<key>` or
 `FREEWAY_<key>` (for example `FREEWAY_ENV_PREFIX`, `FREEWAY_CONFIG_FILE`).
-Writing them into `application.properties`/`application.json` (classpath or working directory) has no effect,
+Writing them into `application.properties`/`application.json`/`application.toml` (classpath or working directory) has no effect,
 and neither does passing them as CLI arguments (`--freeway.config.file=...`) — startup prints a
 WARN naming the source file or "command-line arguments" rather than silently ignoring them.
 The `FREEWAY_` prefix for these two keys is fixed (otherwise `env.prefix` would have to be
@@ -211,7 +213,7 @@ read through the mapping configured by `env.prefix`); `freeway.profile` is not a
 key and goes through the normal cascade.
 
 Only the **baseline layer** activates a profile: classpath and working-directory
-`application.properties`/`application.json`, mapped environment variables (`FREEWAY_PROFILE`),
+`application.properties`/`application.json`/`application.toml`, mapped environment variables (`FREEWAY_PROFILE`),
 and CLI arguments (`--freeway.profile=dev`). A `freeway.profile` rewritten inside a profile
 variant file is stripped, so that `profiles()` and the resolved value cannot contradict each
 other; the other two channels write ordinary configuration values only and **do not activate
@@ -255,7 +257,7 @@ outranks the application files; every key in this chapter is scoped to the
    `freeway-log.properties` is **no longer read**: if it is still on the
    classpath, startup prints a one-line rename notice instead of silently
    ignoring it.
-2. **Application config** `application.properties` / `application.json`
+2. **Application config** `application.properties` / `application.json` / `application.toml`
    (classpath root and the active profile variants; working-directory files and
    hot reload never participate in logging) — only `freeway.log.*` keys are
    taken.
@@ -326,7 +328,7 @@ Three **process-level keys** (not under `freeway.*`, but read by the framework):
 | Key | Class | Type | Default | Required | Meaning |
 |-----|-------|------|---------|----------|---------|
 | `freeway.log.file` | tuning·auto | String | `auto` | no | File mode: `auto` (managed `logs/{app.name}.log`) or `off` (disabled) |
-| `freeway.log.file.max-size` | tuning | Long | `104857600` (100 MB) | no | Size-rotation threshold in bytes |
+| `freeway.log.file.max-size` | tuning | Long | `268435456` (256 MB) | no | Size-rotation threshold in bytes |
 | `freeway.log.file.max-history` | tuning | Integer | `30` | no | Days to keep archives |
 | `freeway.log.file.compress` | tuning | Boolean | `true` | no | GZIP archives after rotation |
 | `freeway.log.file.flush-interval` | tuning | Long | `250` | no | Background flush interval in milliseconds; `0` flushes every record (safest, lowest throughput) |
@@ -339,7 +341,7 @@ Three **process-level keys** (not under `freeway.*`, but read by the framework):
 | `freeway.log.file.<name>.path` | required·conditional | String | *(required)* | yes | Path of the named file (required for a named file) |
 | `freeway.log.file.<name>.logger` | decision | String | *(root)* | no | Logger bound to the named file |
 | `freeway.log.file.<name>.level` | tuning | String | *(inherits parent)* | no | Level of the named file |
-| `freeway.log.file.<name>.max-size` | tuning | Long | `104857600` | no | Size-rotation threshold of the named file |
+| `freeway.log.file.<name>.max-size` | tuning | Long | `268435456` | no | Size-rotation threshold of the named file |
 | `freeway.log.file.<name>.max-history` | tuning | Integer | `30` | no | Days to keep the named file's archives |
 | `freeway.log.file.<name>.compress` | tuning | Boolean | `true` | no | GZIP the named file's archives |
 | `freeway.log.file.<name>.flush-interval` | tuning | Long | `250` | no | Flush interval of the named file |
@@ -362,7 +364,7 @@ Three **process-level keys** (not under `freeway.*`, but read by the framework):
         "level": "INFO"
       },
       "file": "auto",
-      "file.max-size": 104857600,
+      "file.max-size": 268435456,
       "file.max-history": 30,
       "file.compress": true,
       "file.flush-interval": 250,
@@ -909,7 +911,7 @@ The IoC container provides no externalized configuration keys. All configuration
 
 Supported suffixes: `ms` (milliseconds), `s` (seconds), `m` (minutes), `h` (hours)
 
-**Two spellings for list keys**: properties/env/CLI use a comma-separated string; application.json may write a native array (flattening joins it automatically into the same comma encoding); the two are equivalent —
+**Two spellings for list keys**: properties/env/CLI use a comma-separated string; `application.json` may write a native array, and `application.toml` a string array (both flattenings join automatically into the same comma encoding); the two are equivalent —
 
 ```json
 { "freeway": { "cloud": { "event": { "peers": ["10.0.0.11:8080", "10.0.0.12:8080"] } } } }
