@@ -1,0 +1,9 @@
+[project]
+name = "freeway-commons"
+version = "2.0.2"
+
+[java]
+version = 25
+
+[deps]
+"org.slf4j:slf4j-api" = "2.0.18"

@@ -1,0 +1,16 @@
+[project]
+name = "freeway-flow"
+version = "2.0.2"
+
+[java]
+version = 25
+
+[repos]
+cascade = "local:../vendor-mj"
+
+[deps]
+"org.slf4j:slf4j-api" = "2.0.18"
+
+[deps.cascade]
+"com.jujin8.freeway:freeway-commons" = "2.0.2"
+"com.jujin8.freeway:freeway-ioc" = "2.0.2"

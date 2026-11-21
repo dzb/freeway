@@ -48,3 +48,7 @@ _script_*.bat
 
 # Bench SQLite database
 bench.db
+
+# mj build cascade (built jars + poms vendored between modules; logs)
+vendor-mj/
+build-logs/
