@@ -52,8 +52,14 @@ jobs:
       # The core's only in-repo consumers. "The compile error is the migration
       # path" only holds while something compiles against the API, and until
       # this job existed nothing did.
+      # The demos are standalone POMs, so their freeway.version is a literal.
+      # Pin it to the reactor's version here: a stale literal silently resolves
+      # a snapshot from a repository (or fails once that snapshot is gone)
+      # instead of testing the sources under review.
       - name: Build core and demos
-        run: mvn -B -ntp -Pdemos verify -Dgpg.skip=true
+        run: |
+          VERSION=$(mvn -B -ntp -q help:evaluate -Dexpression=project.version -DforceStdout)
+          mvn -B -ntp -Pdemos verify -Dgpg.skip=true -Dfreeway.version="$VERSION"
 
   ext:
     name: ext adapters against this core
