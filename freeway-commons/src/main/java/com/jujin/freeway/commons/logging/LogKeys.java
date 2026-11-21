@@ -40,6 +40,11 @@ final class LogKeys {
      *  Read at class-load time, so only {@code -D}/env can set it. */
     static final String SYSTEM = "freeway.log.system";
 
+    /** Whether the one-line {@code [Freeway] logging: ...} startup report is
+     *  printed ({@code true} when unset). Read at class-load time, so only
+     *  {@code -D}/env can set it; warnings and errors are not affected. */
+    static final String BANNER = "freeway.log.banner";
+
     /** Formatter mode: {@code auto} (Freeway formatters) or {@code simple}. */
     static final String FORMAT = "freeway.log.format";
 
@@ -84,13 +89,13 @@ final class LogKeys {
 
     /**
      * The keys read at class-load time, from {@code -D} or the environment
-     * only: the console formatter and logger adapter ask for them before any
-     * config file is parsed. A config-file declaration cannot reach them, so
-     * boot names such a declaration at startup instead of letting it look
-     * applied.
+     * only: the bootstrap, console formatter and logger adapter ask for them
+     * before any config file is parsed. A config-file declaration cannot reach
+     * them, so boot names such a declaration at startup instead of letting it
+     * look applied.
      */
     static Set<String> classLoadKeys() {
-        return Set.of(SYSTEM, COLOR, MDC, MDC_PRIORITY, CALLER_INFO);
+        return Set.of(SYSTEM, BANNER, COLOR, MDC, MDC_PRIORITY, CALLER_INFO);
     }
 
     /** The default file's rotation/compression keys, spelled out in full rather

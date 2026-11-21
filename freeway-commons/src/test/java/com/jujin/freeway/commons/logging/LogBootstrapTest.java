@@ -8,7 +8,10 @@ import org.junit.jupiter.api.io.TempDir;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
@@ -49,6 +52,28 @@ class LogBootstrapTest {
         Logger log = LoggerFactory.getLogger(LogBootstrapTest.class);
         assertNotNull(log);
         log.info("LogBootstrap idempotency check passed");
+    }
+
+    @Test
+    void bannerDefaultsOnAndAcceptsOnlyBooleanValues() {
+        assertTrue(LogBootstrap.bannerEnabled(null));
+        assertTrue(LogBootstrap.bannerEnabled("  "));
+        assertTrue(LogBootstrap.bannerEnabled("true"));
+        assertFalse(LogBootstrap.bannerEnabled("FALSE"));
+    }
+
+    @Test
+    void invalidBannerValueKeepsTheReportAndNamesIt() throws IOException {
+        PrintStream original = System.err;
+        ByteArrayOutputStream captured = new ByteArrayOutputStream();
+        System.setErr(new PrintStream(captured, true, StandardCharsets.UTF_8));
+        try {
+            assertTrue(LogBootstrap.bannerEnabled("off"));
+        } finally {
+            System.setErr(original);
+        }
+        String message = captured.toString(StandardCharsets.UTF_8);
+        assertTrue(message.contains("freeway.log.banner='off'"), message);
     }
 
     @Test

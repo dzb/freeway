@@ -269,7 +269,9 @@ restores "external provider first"; `logback` / `log4j2` / `simple`, or a
 fully-qualified provider class, selects one explicitly — if it is not on the
 classpath, startup fails and names the missing dependency. `-Dslf4j.provider`
 is SLF4J's own escape hatch and takes precedence. Every startup prints one
-report: `[Freeway] logging: freeway-logging (JUL) | provider=... | selected by ...`.
+report: `[Freeway] logging: freeway-logging (JUL) | provider=... | selected by ...`;
+`freeway.log.banner=false` silences that report while warnings and errors still
+print.
 
 With a non-JUL backend selected, Freeway pins the SLF4J binding and **leaves
 `java.util.logging` untouched**: it attaches no JUL handlers, formatters or
@@ -280,8 +282,8 @@ Freeway's JUL enhancement is configured only for its own JUL backend.
 
 Three boundaries:
 
-- **Five keys cannot live in files**: `freeway.log.system`, `freeway.log.color`,
-  `freeway.log.mdc`, `freeway.log.mdc.priority` and
+- **Six keys cannot live in files**: `freeway.log.system`, `freeway.log.banner`,
+  `freeway.log.color`, `freeway.log.mdc`, `freeway.log.mdc.priority` and
   `freeway.log.caller-info` are read at **class-load time** (before any file is
   parsed) and only honour `-D` and environment variables. A declaration in any
   config **file** never takes effect, and startup prints a WARN naming the key,
@@ -309,6 +311,7 @@ Three **process-level keys** (not under `freeway.*`, but read by the framework):
 | Key | Class | Type | Default | Required | Meaning |
 |-----|-------|------|---------|----------|---------|
 | `freeway.log.system` | mechanism·-D | String | `freeway` | no | SLF4J backend: `freeway` (default, Freeway's JUL backend), `auto` (external provider first), `logback`/`log4j2`/`simple`, or a provider class name. Read at class-load time; ignored in files. A named backend that is absent from the classpath fails startup and names the missing dependency |
+| `freeway.log.banner` | mechanism·-D | Boolean | `true` | no | Print the one-line `[Freeway] logging: ...` startup report. Read at class-load time; ignored in files. `false` silences the report (warnings and errors still print) |
 | `freeway.log.level` | decision | String | `INFO` | no | Root log level. SLF4J names (TRACE/DEBUG/INFO/WARN/ERROR/OFF) or JUL names (FINEST/FINE/INFO/WARNING/SEVERE); output always displays the SLF4J name, including JUL-origin records |
 | `freeway.log.format` | tuning·auto | String | `auto` | no | Formatter mode: `auto` (Freeway formatter + ANSI) or `simple` (JUL `SimpleFormatter`) |
 | `freeway.log.color` | tuning·auto·-D | String | `auto` | no | Colour mode: `auto` (follows format), `always`, `never`. Honours `NO_COLOR` |

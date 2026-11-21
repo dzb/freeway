@@ -30,11 +30,14 @@ import org.slf4j.LoggerFactory;
  *
  * <p>After selection a one-line report names the active backend, the provider
  * class and what selected it; a provider seen on the classpath but not selected
- * is reported with the exact switch. JUL enhancement (formatters, file
- * logging) is configured only when the JUL provider is selected. With an
- * external backend Freeway leaves JUL untouched — it does not attach handlers
- * or forward JUL records; applications that want JDK-internal JUL logging in
- * their backend add the standard {@code jul-to-slf4j} bridge themselves.
+ * is reported with the exact switch. {@code freeway.log.banner=false}
+ * ({@code -D} or {@code FREEWAY_LOG_BANNER}) suppresses that report, so a
+ * library or CLI can keep stderr clean; warnings and errors still print. JUL
+ * enhancement (formatters, file logging) is configured only when the JUL
+ * provider is selected. With an external backend Freeway leaves JUL
+ * untouched — it does not attach handlers or forward JUL records;
+ * applications that want JDK-internal JUL logging in their backend add the
+ * standard {@code jul-to-slf4j} bridge themselves.
  */
 public final class LogBootstrap {
 
@@ -105,7 +108,9 @@ public final class LogBootstrap {
                 System.setProperty(SLF4J_PROVIDER_PROPERTY, selection.provider());
             }
             providerChecked = true;
-            System.err.println(startupReport(selection));
+            if (bannerEnabled(EnvKeys.bootstrap(LogKeys.BANNER))) {
+                System.err.println(startupReport(selection));
+            }
             if (selection.conflict() != null) {
                 System.err.println("[Freeway] WARNING: " + selection.conflict());
             }
@@ -174,6 +179,27 @@ public final class LogBootstrap {
             }
         }
         return report.toString();
+    }
+
+    /**
+     * Whether the startup report is printed: on unless
+     * {@code freeway.log.banner} says {@code false}. An unparseable value keeps
+     * the report and is reported here — nothing else is configured yet.
+     * Package-visible for tests.
+     */
+    static boolean bannerEnabled(String value) {
+        if (value == null || value.isBlank()) {
+            return true;
+        }
+        String raw = value.strip();
+        try {
+            return JULEnhancer.strictBoolean(raw);
+        } catch (IllegalArgumentException e) {
+            System.err.println(
+                "[Freeway] " + LogKeys.BANNER + "='" + raw + "' is not a valid value ("
+                    + e.getMessage() + ") — using true");
+            return true;
+        }
     }
 
     private static String providerLabel(String provider) {

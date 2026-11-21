@@ -65,10 +65,10 @@
 # Typical use: put traceId/requestId into MDC at the request entry, so every
 # later record carries that context automatically.
 #
-# Note: the five keys below are read at class-load time; only -D / environment
+# Note: the six keys below are read at class-load time; only -D / environment
 # variables apply, and writing them in any configuration file has no effect:
-#   freeway.log.system / freeway.log.mdc / freeway.log.mdc.priority /
-#   freeway.log.color / freeway.log.caller-info
+#   freeway.log.system / freeway.log.banner / freeway.log.mdc /
+#   freeway.log.mdc.priority / freeway.log.color / freeway.log.caller-info
 # -Dfreeway.log.mdc=true
 # -Dfreeway.log.mdc.priority=traceId,requestId
 

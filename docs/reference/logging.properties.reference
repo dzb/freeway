@@ -18,11 +18,11 @@
 #   -D > FREEWAY_* environment > freeway-logging.properties
 #     > application.* (freeway.log.* keys) > preset > code default
 #
-# Exception: the five keys below only honour -D/env and are ineffective in any
+# Exception: the six keys below only honour -D/env and are ineffective in any
 # file (they are read at class-load time, before file parsing). They are kept
 # here only to document that they exist:
-#   freeway.log.system / freeway.log.color / freeway.log.mdc /
-#   freeway.log.mdc.priority / freeway.log.caller-info
+#   freeway.log.system / freeway.log.banner / freeway.log.color /
+#   freeway.log.mdc / freeway.log.mdc.priority / freeway.log.caller-info
 #
 # Every group also accepts environment variables:
 #   freeway.log.files           -> FREEWAY_LOG_FILES
@@ -44,6 +44,8 @@
 #                              provider class name); startup fails and names the
 #                              missing dependency when it is absent
 # -Dslf4j.provider=<class>     outranks this key (SLF4J's own escape hatch)
+# freeway.log.banner=false     silence the [Freeway] logging startup report;
+#                              warnings and errors still print
 #
 # Freeway's JUL enhancement (formatter/file/rotation) is configured only for its
 # own JUL backend. With an external backend selected, java.util.logging is left

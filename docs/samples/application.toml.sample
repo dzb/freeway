@@ -59,6 +59,7 @@
 # The dedicated freeway-logging.properties outranks these keys.
 # The class-load-time keys accept only -D / environment variables:
 #   -Dfreeway.log.system=freeway
+#   -Dfreeway.log.banner=true    # false silences the [Freeway] logging report
 #   -Dfreeway.log.mdc=true
 #   -Dfreeway.log.mdc.priority=traceId,requestId
 #   -Dfreeway.log.color=auto     # preset: follows the formatter

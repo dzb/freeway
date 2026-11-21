@@ -878,7 +878,7 @@ Logger log = container.get(LoggerSource.class).get(UserService.class);
 - `auto` — external provider first (Logback > Log4j 2 > slf4j-simple), JUL as fallback (the pre-2.0 behaviour);
 - `logback` / `log4j2` / `simple` / a provider class name — that backend explicitly; a missing one fails startup naming the dependency.
 
-`freeway.log.system` is read at class-load time (`-D` or `FREEWAY_LOG_SYSTEM`), never from a config file. A user-supplied `-Dslf4j.provider` is always respected and wins over the Freeway key. Every startup prints one `[Freeway] logging: ...` report naming the backend, provider class and selection source.
+`freeway.log.system` is read at class-load time (`-D` or `FREEWAY_LOG_SYSTEM`), never from a config file. A user-supplied `-Dslf4j.provider` is always respected and wins over the Freeway key. Every startup prints one `[Freeway] logging: ...` report naming the backend, provider class and selection source; `-Dfreeway.log.banner=false` (or `FREEWAY_LOG_BANNER=false`) silences that report without hiding warnings and errors.
 
 With a non-JUL backend selected, Freeway pins the SLF4J binding and **leaves `java.util.logging` untouched**: it attaches no JUL handlers and does not forward JUL records. JDK-internal logging (for example the JDK's own HttpClient) therefore stays on JUL's configuration; if you want it in your backend, add the standard `jul-to-slf4j` bridge yourself (the dependency plus the usual `LogManager` reset). Freeway's JUL enhancement (formatters, files, rotation) is configured only for its own JUL backend.
 

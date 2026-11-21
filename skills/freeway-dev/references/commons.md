@@ -136,13 +136,13 @@ if (result.hasErrors()) { ... }
 
 ## Logging
 
-Freeway bundles a JUL-backed SLF4J 2 provider and uses it by default, so logging works with no external backend dependency. A Logback/Log4j 2/slf4j-simple provider on the classpath does **not** take over automatically: `freeway.log.system` chooses the backend. Values are `freeway` (default), `auto` (external provider first, JUL fallback), `logback`/`log4j2`/`simple`, or a provider class name; a named backend that is absent from the classpath fails startup. The key is a class-load-time setting read from `-D` or the environment only (never a config file); `-Dslf4j.provider` is SLF4J's own escape hatch and takes precedence. Startup prints one `[Freeway] logging: ...` report naming the active provider and the selecting source.
+Freeway bundles a JUL-backed SLF4J 2 provider and uses it by default, so logging works with no external backend dependency. A Logback/Log4j 2/slf4j-simple provider on the classpath does **not** take over automatically: `freeway.log.system` chooses the backend. Values are `freeway` (default), `auto` (external provider first, JUL fallback), `logback`/`log4j2`/`simple`, or a provider class name; a named backend that is absent from the classpath fails startup. The key is a class-load-time setting read from `-D` or the environment only (never a config file); `-Dslf4j.provider` is SLF4J's own escape hatch and takes precedence. Startup prints one `[Freeway] logging: ...` report naming the active provider and the selecting source; `freeway.log.banner=false` (also `-D`/env only) silences it while warnings still print.
 
 With a non-JUL backend selected, Freeway pins the SLF4J binding and leaves `java.util.logging` untouched - no JUL handlers, formatters, files, or forwarding. JDK-internal JUL records stay on JUL; add the standard `jul-to-slf4j` bridge yourself if they should follow the selected backend. Freeway's JUL enhancement is configured only for the JUL backend.
 
 **Configuration file:** `freeway-logging.properties` on classpath root (not bundled in JAR; the pre-1.5.2 name `freeway-log.properties` is never read - a leftover file only produces a startup notice to rename it). Every logging key also works as a `-D` flag or env var (prefix from `freeway.env.prefix`, default `FREEWAY_`; the bootstrap key `freeway.log.system` always reads the fixed `FREEWAY_LOG_SYSTEM` spelling). A key containing a hyphen keeps that hyphen in its env name (`FREEWAY_LOG_FILE_MAX-SIZE`), so most shells need `-D` for those.
 
-**`-D`/env only (never from a file):** `freeway.log.system`, `freeway.log.color`, `freeway.log.mdc`, `freeway.log.mdc.priority`, and `freeway.log.caller-info` are read at class-load time, before any config file is parsed.
+**`-D`/env only (never from a file):** `freeway.log.system`, `freeway.log.banner`, `freeway.log.color`, `freeway.log.mdc`, `freeway.log.mdc.priority`, and `freeway.log.caller-info` are read at class-load time, before any config file is parsed.
 
 **Zero config:** console and file logging are on by default; `java -jar app.jar` writes `logs/{app.name}.log`.
 

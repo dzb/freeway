@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `freeway.config.file` extras accept it like the other formats. Parse
   failures carry the line and column (`TomlParseException`, listed in the
   failure catalog).
+- **`freeway.log.banner`** (`freeway-commons` logging): a class-load-time
+  switch (`-D` or `FREEWAY_LOG_BANNER`, default `true`). `false` silences the
+  one-line `[Freeway] logging: ...` startup report so libraries and CLIs can
+  keep stderr clean; warnings and errors still print.
 - **Weekly and monthly log rotation** (`freeway-commons` logging):
   `freeway.log.file.rotate` (and the named-file `.rotate`) accepts `daily`
   (default), `weekly` or `monthly`. A weekly archive is named by its week's
