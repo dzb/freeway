@@ -27,7 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (default), `weekly` or `monthly`. A weekly archive is named by its week's
   Monday and a monthly one by the first of its month; retention still counts
   days and is measured from the archive's last day (Sunday, month end), so no
-  record is dropped before `max-history` days.
+  record is dropped before `max-history` days. A restart within the same
+  period skips archive slots that already exist (raw or `.gz`) instead of
+  overwriting them.
 
 ### Changed
 

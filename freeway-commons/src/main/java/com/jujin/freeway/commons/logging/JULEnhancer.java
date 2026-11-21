@@ -844,10 +844,10 @@ final class JULEnhancer {
     ) {}
 
     /**
-     * Reads the four rotation/compression settings shared by the default
-     * file and each named file ({@code max-size}, {@code max-history},
-     * {@code compress}, {@code flush-interval}) under {@code prefix},
-     * each falling back to its built-in default.
+     * Reads the five rotation/compression settings shared by the default
+     * file and each named file ({@code rotate}, {@code max-size},
+     * {@code max-history}, {@code compress}, {@code flush-interval}) under
+     * {@code prefix}, each falling back to its built-in default.
      */
     private static FileSettings fileSettings(String prefix, Properties fileConfig) {
         return new FileSettings(

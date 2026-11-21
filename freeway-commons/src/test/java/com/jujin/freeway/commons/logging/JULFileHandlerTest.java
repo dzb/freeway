@@ -324,35 +324,38 @@ class JULFileHandlerTest {
                         + handler.currentIndex());
     }
 
-    // ── regression: REPLACE_EXISTING ───────────────────────────────
+    // ── regression: an existing archive is never overwritten ──────
 
     @Test
-    void rotationOverwritesExistingArchiveFile(@TempDir Path tempDir) throws IOException {
+    void rotationNeverOverwritesAnExistingArchiveFile(@TempDir Path tempDir) throws IOException {
         Path logFile = tempDir.resolve("overwrite.log");
         JULFileHandler handler = new JULFileHandler(
                 logFile.toString(), 150, 30, false, JULFileHandler.DEFAULT_FLUSH_INTERVAL_MS);
 
         // Pre-create an archive file with the name rotation would produce
         String today = handler.currentDate();
-        Path fakeArchive = logFile.getParent().resolve("overwrite." + today + ".log");
-        Files.writeString(fakeArchive, "stale archive content");
+        Path existingArchive = logFile.getParent().resolve("overwrite." + today + ".log");
+        Files.writeString(existingArchive, "stale archive content");
 
         LogRecord record = new LogRecord(Level.INFO,
                 "message long enough to trigger size-based rotation quickly");
         record.setMillis(System.currentTimeMillis());
         record.setLoggerName("test");
 
-        // Publish enough to force rotation — should overwrite the fake archive
+        // Publish enough to force rotation — the occupied slot is skipped
         for (int i = 0; i < 30; i++) {
             handler.publish(record);
         }
 
         handler.close();
 
-        // The archive should now contain log content, not "stale archive content"
-        String archiveContent = Files.readString(fakeArchive);
-        assertFalse(archiveContent.contains("stale archive content"),
-                "Archive should be overwritten, not append to old content");
+        assertEquals("stale archive content", Files.readString(existingArchive),
+                "an existing archive must keep its content");
+        Path rotated = logFile.getParent().resolve("overwrite." + today + ".1.log");
+        assertTrue(Files.exists(rotated),
+                "the rotated file must move into the next free slot");
+        assertTrue(Files.readString(rotated).contains("message long enough"),
+                "the rotated content must live in the new slot");
     }
 
     // ── regression: compressed file validity ──────────────────────
@@ -589,6 +592,59 @@ class JULFileHandlerTest {
             JULFileHandler.DEFAULT_FLUSH_INTERVAL_MS, JULFileHandler.RotatePeriod.MONTHLY);
         assertFalse(Files.exists(old), "a month ending before the cutoff is purged");
         assertTrue(Files.exists(recent), "a recent month is kept");
+        handler.close();
+    }
+
+    @Test
+    void sizeRotationAfterRestartUsesAFreeSlot(@TempDir Path tempDir) throws IOException {
+        Path logFile = tempDir.resolve("weekly-restart.log");
+        LocalDate monday = LocalDate.now()
+            .with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+        Path prior = tempDir.resolve("weekly-restart." + monday + ".log");
+        Path priorCompressed =
+            tempDir.resolve("weekly-restart." + monday + ".1.log.gz");
+        Files.writeString(prior, "earlier run");
+        Files.writeString(priorCompressed, "earlier compressed run");
+
+        JULFileHandler handler = new JULFileHandler(
+            logFile.toString(), 100, 30, false,
+            JULFileHandler.DEFAULT_FLUSH_INTERVAL_MS, JULFileHandler.RotatePeriod.WEEKLY);
+        LogRecord record = new LogRecord(Level.INFO,
+            "message long enough to overflow the size threshold");
+        record.setMillis(System.currentTimeMillis());
+        record.setLoggerName("test");
+        for (int i = 0; i < 50; i++) {
+            handler.publish(record);
+        }
+
+        assertEquals("earlier run", Files.readString(prior),
+            "a restart must not overwrite the earlier raw archive");
+        assertTrue(Files.exists(tempDir.resolve("weekly-restart." + monday + ".2.log")),
+            "raw and compressed slots are both skipped when looking for a free one");
+        handler.close();
+    }
+
+    @Test
+    void staleFileRotationUsesAFreeSlot(@TempDir Path tempDir) throws IOException {
+        Path logFile = tempDir.resolve("monthly-stale.log");
+        Files.writeString(logFile, "stale run");
+        LocalDate previousMonthEnd = LocalDate.now()
+            .with(TemporalAdjusters.firstDayOfMonth()).minusDays(1);
+        Files.setLastModifiedTime(logFile, FileTime.from(
+            previousMonthEnd.atTime(12, 0).atZone(ZoneId.systemDefault()).toInstant()));
+        LocalDate monthStart =
+            previousMonthEnd.with(TemporalAdjusters.firstDayOfMonth());
+        Path prior = tempDir.resolve("monthly-stale." + monthStart + ".log");
+        Files.writeString(prior, "earlier archive");
+
+        JULFileHandler handler = new JULFileHandler(
+            logFile.toString(), 10 * 1024 * 1024, 30, false,
+            JULFileHandler.DEFAULT_FLUSH_INTERVAL_MS, JULFileHandler.RotatePeriod.MONTHLY);
+
+        assertEquals("earlier archive", Files.readString(prior),
+            "the stale file must not replace an archive from the same period");
+        assertTrue(Files.exists(tempDir.resolve("monthly-stale." + monthStart + ".1.log")),
+            "the stale file moves into the next free slot");
         handler.close();
     }
 

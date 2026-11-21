@@ -22,6 +22,7 @@ import java.util.logging.Logger;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -187,6 +188,47 @@ class JULEnhancerTest {
                 "records from logger a must be written exactly once");
             assertEquals(1, occurrences(content, "from b"),
                 "records from logger b must be written exactly once");
+        } finally {
+            for (String key : keys) {
+                System.clearProperty(key);
+            }
+            JULEnhancer.resetForTest();
+        }
+    }
+
+    @Test
+    void namedFileRotateSettingIsIndependentOfTheDefaultFile(@TempDir Path tempDir)
+            throws IOException {
+        String[] keys = {
+            "freeway.log.file",
+            "freeway.log.file.rotate",
+            "freeway.log.files",
+            "freeway.log.file.audit.path",
+            "freeway.log.file.audit.logger",
+            "freeway.log.file.audit.rotate"
+        };
+        Path defaultFile = tempDir.resolve("default-rotate.log");
+        Path namedFile = tempDir.resolve("audit-rotate.log");
+        System.setProperty("freeway.log.file", defaultFile.toString());
+        System.setProperty("freeway.log.file.rotate", "weekly");
+        System.setProperty("freeway.log.files", "audit");
+        System.setProperty("freeway.log.file.audit.path", namedFile.toString());
+        System.setProperty("freeway.log.file.audit.logger", "com.example.audit");
+        System.setProperty("freeway.log.file.audit.rotate", "monthly");
+        try {
+            JULEnhancer.resetForTest();
+            JULEnhancer.configure();
+
+            JULFileHandler root =
+                firstFileHandler(Logger.getLogger(""));
+            JULFileHandler audit =
+                firstFileHandler(Logger.getLogger("com.example.audit"));
+            assertNotNull(root, "the default file handler must be attached");
+            assertNotNull(audit, "the named file handler must be attached");
+            assertEquals(JULFileHandler.RotatePeriod.WEEKLY, root.rotatePeriod(),
+                "the default file uses freeway.log.file.rotate");
+            assertEquals(JULFileHandler.RotatePeriod.MONTHLY, audit.rotatePeriod(),
+                "a named file must read its own freeway.log.file.<name>.rotate");
         } finally {
             for (String key : keys) {
                 System.clearProperty(key);

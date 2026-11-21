@@ -281,7 +281,8 @@ public final class JULFileHandler extends StreamHandler {
             );
             LocalDate filePeriod = periodStart(fileDate, rotatePeriod);
             if (filePeriod.isBefore(currentPeriodStart)) {
-                archiveIfPopulated(DATE_FMT.format(filePeriod), 0);
+                String date = DATE_FMT.format(filePeriod);
+                archiveIfPopulated(date, firstFreeArchiveIndex(date));
             }
         } catch (IOException e) {
             // best-effort — open the existing file if rotation fails
@@ -465,8 +466,14 @@ public final class JULFileHandler extends StreamHandler {
         }
 
         // Archive the current file (best-effort) under the period it belongs to.
+        // A restart resets the in-memory index, so skip slots this period
+        // already used (raw or compressed) instead of overwriting them.
+        String archiveDate = DATE_FMT.format(currentPeriodStart);
+        int archiveIndex = archiveExists(archiveDate, currentIndex)
+            ? firstFreeArchiveIndex(archiveDate)
+            : currentIndex;
         try {
-            archiveIfPopulated(DATE_FMT.format(currentPeriodStart), currentIndex);
+            archiveIfPopulated(archiveDate, archiveIndex);
         } catch (IOException e) {
             reportError(
                 "Failed to archive log file",
@@ -481,7 +488,7 @@ public final class JULFileHandler extends StreamHandler {
             nextRotationMillis = computeNextRotation(rotatePeriod);
             currentIndex = 0;
         } else {
-            currentIndex++;
+            currentIndex = archiveIndex + 1;
         }
 
         bytesWritten = 0;
@@ -521,6 +528,28 @@ public final class JULFileHandler extends StreamHandler {
         String suffix = index > 0 ? "." + index : "";
         String fileName = stem + "." + date + suffix + ".log";
         return basePath.getParent().resolve(fileName);
+    }
+
+    /**
+     * True when an archive slot is taken in either form — the raw
+     * {@code .log} or the compressed {@code .log.gz}. Compressed-only slots
+     * matter after a restart, when the raw file is already gone. A
+     * directory that happens to carry the name is not an archive; it is
+     * left for the move to fail on and be reported.
+     */
+    private boolean archiveExists(String date, int index) {
+        Path archived = archivedPath(date, index);
+        return Files.isRegularFile(archived)
+            || Files.isRegularFile(archived.resolveSibling(archived.getFileName() + ".gz"));
+    }
+
+    /** First archive slot for {@code date} that holds no archive yet. */
+    private int firstFreeArchiveIndex(String date) {
+        int index = 0;
+        while (archiveExists(date, index)) {
+            index++;
+        }
+        return index;
     }
 
     private void openCurrentFile() throws IOException {

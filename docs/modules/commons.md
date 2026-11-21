@@ -86,6 +86,8 @@ freeway.log.file.flush-interval=250         # batch flush interval (ms); 0 = flu
 # (the five file values above are the defaults for auto — omit them to keep, override to adjust)
 ```
 
+`weekly`/`monthly` suit low-volume logs where daily archives are mostly empty. Retention counts from an archive's last day (Sunday, month end), so at the 30-day default a monthly archive can stay for about two months — the price of never dropping a record before `max-history` days.
+
 ### Backend Selection
 
 Freeway ships a JUL-backed SLF4J provider and selects it by default. Use `freeway.log.system` (a class-load-time key: `-D` or `FREEWAY_LOG_SYSTEM` only) to choose another backend:

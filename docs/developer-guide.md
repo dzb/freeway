@@ -895,6 +895,8 @@ freeway.log.file.flush-interval=250      # ms; 0 = flush per record
 # (the five file values above are the auto defaults — omit to keep, override to change)
 ```
 
+`weekly`/`monthly` suit low-volume logs; retention counts from the archive's last day, so a monthly archive can stay about two months at the default 30-day window.
+
 For multi-file logging, per-logger levels, env var support, and the full config reference, see [Commons Reference](modules/commons.md#logging).
 
 ---
