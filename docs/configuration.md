@@ -328,6 +328,7 @@ Three **process-level keys** (not under `freeway.*`, but read by the framework):
 | Key | Class | Type | Default | Required | Meaning |
 |-----|-------|------|---------|----------|---------|
 | `freeway.log.file` | tuning·auto | String | `auto` | no | File mode: `auto` (managed `logs/{app.name}.log`) or `off` (disabled) |
+| `freeway.log.file.rotate` | tuning | String | `daily` | no | Time-rotation boundary: `daily` (midnight), `weekly` (ISO week, Monday 00:00) or `monthly` (1st, 00:00). An archive is named by its period's first day (the date, the Monday, the 1st); retention still counts days from the archive's last day, so no record is dropped before `max-history` days. Use `weekly`/`monthly` for low-volume logs where daily files are mostly empty |
 | `freeway.log.file.max-size` | tuning | Long | `268435456` (256 MB) | no | Size-rotation threshold in bytes |
 | `freeway.log.file.max-history` | tuning | Integer | `30` | no | Days to keep archives |
 | `freeway.log.file.compress` | tuning | Boolean | `true` | no | GZIP archives after rotation |
@@ -341,6 +342,7 @@ Three **process-level keys** (not under `freeway.*`, but read by the framework):
 | `freeway.log.file.<name>.path` | required·conditional | String | *(required)* | yes | Path of the named file (required for a named file) |
 | `freeway.log.file.<name>.logger` | decision | String | *(root)* | no | Logger bound to the named file |
 | `freeway.log.file.<name>.level` | tuning | String | *(inherits parent)* | no | Level of the named file |
+| `freeway.log.file.<name>.rotate` | tuning | String | `daily` | no | Time-rotation boundary of the named file (`daily`, `weekly` or `monthly`) |
 | `freeway.log.file.<name>.max-size` | tuning | Long | `268435456` | no | Size-rotation threshold of the named file |
 | `freeway.log.file.<name>.max-history` | tuning | Integer | `30` | no | Days to keep the named file's archives |
 | `freeway.log.file.<name>.compress` | tuning | Boolean | `true` | no | GZIP the named file's archives |

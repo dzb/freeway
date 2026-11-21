@@ -76,6 +76,7 @@ final class LogKeys {
     static final String SUFFIX_PATH = ".path";
     static final String SUFFIX_LOGGER = ".logger";
     static final String SUFFIX_LEVEL = ".level";
+    static final String SUFFIX_ROTATE = ".rotate";
     static final String SUFFIX_MAX_SIZE = ".max-size";
     static final String SUFFIX_MAX_HISTORY = ".max-history";
     static final String SUFFIX_COMPRESS = ".compress";
@@ -98,6 +99,7 @@ final class LogKeys {
      *  composed name would look like a knob that does nothing. Named files
      *  ({@code FILE_PREFIX + <name> + SUFFIX_*}) have no such literal by
      *  construction and are documented by pattern. */
+    static final String FILE_ROTATE = "freeway.log.file.rotate";
     static final String FILE_MAX_SIZE = "freeway.log.file.max-size";
     static final String FILE_MAX_HISTORY = "freeway.log.file.max-history";
     static final String FILE_COMPRESS = "freeway.log.file.compress";

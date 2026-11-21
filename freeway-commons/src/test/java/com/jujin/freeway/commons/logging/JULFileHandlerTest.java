@@ -9,10 +9,12 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
+import java.time.DayOfWeek;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -431,6 +433,198 @@ class JULFileHandlerTest {
     }
 
     // ── regression: purge never deletes an in-progress .gz.tmp ─────
+
+    // ── daily / weekly / monthly rotation modes ─────────────────
+
+    @Test
+    void rotatePeriodAcceptsDailyWeeklyAndMonthly() {
+        assertEquals(JULFileHandler.RotatePeriod.DAILY,
+            JULFileHandler.RotatePeriod.parse("daily"));
+        assertEquals(JULFileHandler.RotatePeriod.WEEKLY,
+            JULFileHandler.RotatePeriod.parse("WEEKLY"));
+        assertEquals(JULFileHandler.RotatePeriod.MONTHLY,
+            JULFileHandler.RotatePeriod.parse("Monthly"));
+        assertEquals(JULFileHandler.RotatePeriod.DAILY,
+            JULFileHandler.RotatePeriod.parse(null));
+        assertThrows(IllegalArgumentException.class,
+            () -> JULFileHandler.RotatePeriod.parse("yearly"));
+    }
+
+    @Test
+    void retentionCountsFromTheEndOfTheArchivePeriod() {
+        LocalDate monday = LocalDate.of(2026, 11, 16);
+        assertEquals(monday.plusDays(6),
+            JULFileHandler.retentionEnd(monday, JULFileHandler.RotatePeriod.WEEKLY));
+        assertEquals(monday,
+            JULFileHandler.retentionEnd(monday, JULFileHandler.RotatePeriod.DAILY));
+
+        LocalDate monthStart = LocalDate.of(2026, 11, 1);
+        assertEquals(LocalDate.of(2026, 11, 30),
+            JULFileHandler.retentionEnd(monthStart, JULFileHandler.RotatePeriod.MONTHLY));
+        assertEquals(LocalDate.of(2028, 2, 29),
+            JULFileHandler.retentionEnd(LocalDate.of(2028, 2, 1),
+                JULFileHandler.RotatePeriod.MONTHLY),
+            "a monthly archive ends on that month's last day, leap years included");
+    }
+
+    @Test
+    void weeklyRotationArchivesUnderTheWeeksMonday(@TempDir Path tempDir) throws IOException {
+        Path logFile = tempDir.resolve("weekly.log");
+        Files.writeString(logFile, "previous week");
+        LocalDate previousWeek = LocalDate.now().minusDays(8);
+        Files.setLastModifiedTime(logFile, FileTime.from(
+            previousWeek.atTime(12, 0).atZone(ZoneId.systemDefault()).toInstant()));
+
+        JULFileHandler handler = new JULFileHandler(
+            logFile.toString(), 10 * 1024 * 1024, 30, false,
+            JULFileHandler.DEFAULT_FLUSH_INTERVAL_MS, JULFileHandler.RotatePeriod.WEEKLY);
+
+        LocalDate monday = previousWeek.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+        Path archive = tempDir.resolve("weekly." + monday + ".log");
+        assertTrue(Files.exists(archive),
+            "weekly archive is named by its Monday: " + archive);
+        handler.close();
+    }
+
+    @Test
+    void weeklySizeRotationUsesTheCurrentWeeksMonday(@TempDir Path tempDir) throws IOException {
+        Path logFile = tempDir.resolve("weekly-size.log");
+        JULFileHandler handler = new JULFileHandler(
+            logFile.toString(), 100, 30, false,
+            JULFileHandler.DEFAULT_FLUSH_INTERVAL_MS, JULFileHandler.RotatePeriod.WEEKLY);
+
+        LogRecord record = new LogRecord(Level.INFO,
+            "message long enough to overflow the size threshold");
+        record.setMillis(System.currentTimeMillis());
+        record.setLoggerName("test");
+        for (int i = 0; i < 50; i++) {
+            handler.publish(record);
+        }
+        assertTrue(handler.currentIndex() > 0, "size rotation must have fired");
+
+        LocalDate monday = LocalDate.now()
+            .with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+        assertTrue(Files.exists(tempDir.resolve("weekly-size." + monday + ".log")),
+            "a size-rotated archive still carries the week's Monday");
+        handler.close();
+    }
+
+    @Test
+    void weeklyPurgeDeletesOldWeeksAndKeepsRecentOnes(@TempDir Path tempDir) throws IOException {
+        Path logFile = tempDir.resolve("weekly-purge.log");
+        LocalDate oldMonday = LocalDate.now().minusDays(40)
+            .with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+        LocalDate recentMonday = LocalDate.now().minusDays(10)
+            .with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+        Path old = tempDir.resolve("weekly-purge." + oldMonday + ".log");
+        Path recent = tempDir.resolve("weekly-purge." + recentMonday + ".log");
+        Files.writeString(old, "old");
+        Files.writeString(recent, "recent");
+
+        JULFileHandler handler = new JULFileHandler(
+            logFile.toString(), 10 * 1024 * 1024, 30, false,
+            JULFileHandler.DEFAULT_FLUSH_INTERVAL_MS, JULFileHandler.RotatePeriod.WEEKLY);
+        assertFalse(Files.exists(old), "a week ending before the cutoff is purged");
+        assertTrue(Files.exists(recent), "a recent week is kept");
+        handler.close();
+    }
+
+    @Test
+    void monthlyRotationArchivesUnderTheFirstOfTheMonth(@TempDir Path tempDir) throws IOException {
+        Path logFile = tempDir.resolve("monthly.log");
+        Files.writeString(logFile, "previous month");
+        LocalDate previousMonth = LocalDate.now().minusDays(40);
+        Files.setLastModifiedTime(logFile, FileTime.from(
+            previousMonth.atTime(12, 0).atZone(ZoneId.systemDefault()).toInstant()));
+
+        JULFileHandler handler = new JULFileHandler(
+            logFile.toString(), 10 * 1024 * 1024, 30, false,
+            JULFileHandler.DEFAULT_FLUSH_INTERVAL_MS, JULFileHandler.RotatePeriod.MONTHLY);
+
+        LocalDate monthStart = previousMonth.with(TemporalAdjusters.firstDayOfMonth());
+        Path archive = tempDir.resolve("monthly." + monthStart + ".log");
+        assertTrue(Files.exists(archive),
+            "monthly archive is named by the first of its month: " + archive);
+        handler.close();
+    }
+
+    @Test
+    void monthlySizeRotationUsesTheCurrentMonthsFirstDay(@TempDir Path tempDir) throws IOException {
+        Path logFile = tempDir.resolve("monthly-size.log");
+        JULFileHandler handler = new JULFileHandler(
+            logFile.toString(), 100, 30, false,
+            JULFileHandler.DEFAULT_FLUSH_INTERVAL_MS, JULFileHandler.RotatePeriod.MONTHLY);
+
+        LogRecord record = new LogRecord(Level.INFO,
+            "message long enough to overflow the size threshold");
+        record.setMillis(System.currentTimeMillis());
+        record.setLoggerName("test");
+        for (int i = 0; i < 50; i++) {
+            handler.publish(record);
+        }
+        assertTrue(handler.currentIndex() > 0, "size rotation must have fired");
+
+        LocalDate monthStart = LocalDate.now().with(TemporalAdjusters.firstDayOfMonth());
+        assertTrue(Files.exists(tempDir.resolve("monthly-size." + monthStart + ".log")),
+            "a size-rotated archive still carries the current month's first day");
+        handler.close();
+    }
+
+    @Test
+    void monthlyPurgeDeletesOldMonthsAndKeepsRecentOnes(@TempDir Path tempDir) throws IOException {
+        Path logFile = tempDir.resolve("monthly-purge.log");
+        // Three months back is always older than a 30-day cutoff, even when
+        // counted from that month's last day; last month never is.
+        LocalDate oldMonth = LocalDate.now().minusMonths(3)
+            .with(TemporalAdjusters.firstDayOfMonth());
+        LocalDate recentMonth = LocalDate.now().minusMonths(1)
+            .with(TemporalAdjusters.firstDayOfMonth());
+        Path old = tempDir.resolve("monthly-purge." + oldMonth + ".log");
+        Path recent = tempDir.resolve("monthly-purge." + recentMonth + ".log");
+        Files.writeString(old, "old");
+        Files.writeString(recent, "recent");
+
+        JULFileHandler handler = new JULFileHandler(
+            logFile.toString(), 10 * 1024 * 1024, 30, false,
+            JULFileHandler.DEFAULT_FLUSH_INTERVAL_MS, JULFileHandler.RotatePeriod.MONTHLY);
+        assertFalse(Files.exists(old), "a month ending before the cutoff is purged");
+        assertTrue(Files.exists(recent), "a recent month is kept");
+        handler.close();
+    }
+
+    @Test
+    void rotateConfigKeySelectsTheConfiguredPeriod(@TempDir Path tempDir) throws IOException {
+        Path logFile = tempDir.resolve("config-rotate.log");
+        System.setProperty("freeway.log.file", logFile.toString());
+        try {
+            for (String value : new String[] {"weekly", "monthly"}) {
+                System.setProperty("freeway.log.file.rotate", value);
+                JULFileHandler handler = new JULFileHandler();
+                assertEquals(JULFileHandler.RotatePeriod.parse(value), handler.rotatePeriod(),
+                    "configured period must survive the config read: " + value);
+                handler.close();
+            }
+        } finally {
+            System.clearProperty("freeway.log.file");
+            System.clearProperty("freeway.log.file.rotate");
+        }
+    }
+
+    @Test
+    void invalidRotateConfigFallsBackToDaily(@TempDir Path tempDir) throws IOException {
+        Path logFile = tempDir.resolve("config-invalid.log");
+        System.setProperty("freeway.log.file", logFile.toString());
+        System.setProperty("freeway.log.file.rotate", "yearly");
+        try {
+            JULFileHandler handler = new JULFileHandler();
+            assertEquals(JULFileHandler.RotatePeriod.DAILY, handler.rotatePeriod(),
+                "an unparseable rotate value is reported and replaced by the default");
+            handler.close();
+        } finally {
+            System.clearProperty("freeway.log.file");
+            System.clearProperty("freeway.log.file.rotate");
+        }
+    }
 
     @Test
     void purgeSkipsGzTmpStagingFile(@TempDir Path tempDir) throws IOException {

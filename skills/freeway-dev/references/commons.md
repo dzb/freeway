@@ -151,11 +151,12 @@ freeway.log.level=INFO
 freeway.log.console.enabled=true
 freeway.log.file=auto                    # logs/{app.name}.log, dual rotation + GZIP
 # freeway.log.file=off                   # disable file logging
+freeway.log.file.rotate=daily             # daily | weekly (Monday) | monthly (1st)
 freeway.log.file.max-size=268435456       # 256 MB
 freeway.log.file.max-history=30           # days
 freeway.log.file.compress=true            # GZIP
 freeway.log.file.flush-interval=250       # ms; 0 = flush per record
-# (the four values above are the auto defaults - omit to keep, override to change)
+# (the five values above are the auto defaults - omit to keep, override to change)
 ```
 
 **Multi-file logging** - named files with independent paths, loggers, and levels:

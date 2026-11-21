@@ -124,6 +124,7 @@ freeway.log.console.enabled=true
 #
 freeway.log.file=auto
 # freeway.log.file=off                          # disable file logging
+# freeway.log.file.rotate=daily                 # daily (midnight) | weekly (Monday 00:00) | monthly (1st, 00:00)
 # freeway.log.file.max-size=268435456           # 256 MB triggers size rotation
 # freeway.log.file.max-history=30               # days to keep archives
 # freeway.log.file.compress=true                # GZIP after rotation
@@ -144,6 +145,7 @@ freeway.log.file=auto
 # freeway.log.file.biz.path=logs/biz.log      # (required)
 # freeway.log.file.biz.logger=com.myapp.biz   # (optional, defaults to root)
 # freeway.log.file.biz.level=INFO             # (optional, inherits parent)
+# freeway.log.file.biz.rotate=daily           # (optional, daily | weekly | monthly)
 # freeway.log.file.biz.max-size=268435456
 # freeway.log.file.biz.max-history=30
 # freeway.log.file.biz.compress=true

@@ -179,6 +179,7 @@ built-in provider with `freeway-logging.properties` on the classpath root or wit
 freeway.log.level=INFO
 freeway.log.console.enabled=true
 freeway.log.file=auto
+freeway.log.file.rotate=daily
 freeway.log.file.max-size=268435456
 freeway.log.file.max-history=30
 freeway.log.file.compress=true

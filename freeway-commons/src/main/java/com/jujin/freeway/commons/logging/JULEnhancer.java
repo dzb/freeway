@@ -621,13 +621,14 @@ final class JULEnhancer {
         long maxSize,
         int maxHistory,
         boolean compress,
-        long flushIntervalMs
+        long flushIntervalMs,
+        JULFileHandler.RotatePeriod rotate
     ) throws IOException {
         Path key = Paths.get(path).toAbsolutePath().normalize();
         JULFileHandler handler = registeredHandler(key);
         if (handler == null) {
             handler = new JULFileHandler(
-                path, maxSize, maxHistory, compress, flushIntervalMs);
+                path, maxSize, maxHistory, compress, flushIntervalMs, rotate);
             registerHandler(key, handler);
         } else {
             logDedup(
@@ -670,6 +671,7 @@ final class JULEnhancer {
         int maxHistory,
         boolean compress,
         long flushIntervalMs,
+        JULFileHandler.RotatePeriod rotate,
         Level level,
         String loggerName
     ) {}
@@ -702,7 +704,7 @@ final class JULEnhancer {
             // with its own rotation state.
             JULFileHandler handler = obtainFileHandler(
                 cfg.path, cfg.maxSize(), cfg.maxHistory(),
-                cfg.compress(), cfg.flushIntervalMs());
+                cfg.compress(), cfg.flushIntervalMs(), cfg.rotate());
             freewayHandlers.add(handler);
             if (cfg.level != null) {
                 handler.setLevel(cfg.level);
@@ -744,6 +746,7 @@ final class JULEnhancer {
      * freeway.log.file.<name>.path=logs/name.log   (required)
      * freeway.log.file.<name>.logger=com.example   (optional; root if absent)
      * freeway.log.file.<name>.level=FINE           (optional; inherits parent)
+     * freeway.log.file.<name>.rotate=daily         (optional; daily | weekly | monthly)
      * freeway.log.file.<name>.max-size=268435456   (optional; default 256 MB)
      * freeway.log.file.<name>.max-history=30       (optional; default 30 days)
      * freeway.log.file.<name>.compress=true        (optional; default true)
@@ -765,7 +768,8 @@ final class JULEnhancer {
                     LogKeys.FILE, fileConfig);
                 JULFileHandler fh = obtainFileHandler(
                     path, settings.maxSize(), settings.maxHistory(),
-                    settings.compress(), settings.flushIntervalMs());
+                    settings.compress(), settings.flushIntervalMs(),
+                    settings.rotate());
                 freewayHandlers.add(fh);
                 Logger.getLogger("").addHandler(fh);
             } catch (IOException | RuntimeException e) {
@@ -820,6 +824,7 @@ final class JULEnhancer {
             settings.maxHistory(),
             settings.compress(),
             settings.flushIntervalMs(),
+            settings.rotate(),
             level,
             loggerName
         );
@@ -834,7 +839,8 @@ final class JULEnhancer {
         long maxSize,
         int maxHistory,
         boolean compress,
-        long flushIntervalMs
+        long flushIntervalMs,
+        JULFileHandler.RotatePeriod rotate
     ) {}
 
     /**
@@ -856,7 +862,10 @@ final class JULEnhancer {
                 JULEnhancer::strictBoolean),
             propertyValue(fileConfig,
                 prefix + LogKeys.SUFFIX_FLUSH_INTERVAL,
-                JULFileHandler.DEFAULT_FLUSH_INTERVAL_MS, Long::parseLong)
+                JULFileHandler.DEFAULT_FLUSH_INTERVAL_MS, Long::parseLong),
+            propertyValue(fileConfig,
+                prefix + LogKeys.SUFFIX_ROTATE, JULFileHandler.DEFAULT_ROTATE,
+                JULFileHandler.RotatePeriod::parse)
         );
     }
 

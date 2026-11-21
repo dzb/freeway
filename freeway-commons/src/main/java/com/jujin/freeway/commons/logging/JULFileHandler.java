@@ -11,8 +11,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.TemporalAdjusters;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -44,8 +46,12 @@ import java.util.zip.GZIPOutputStream;
  *
  * <h3>Triggers</h3>
  * <ul>
- *   <li><b>Day boundary</b> — the first write of a new day rotates
- *       yesterday's file.</li>
+ *   <li><b>Period boundary</b> — the first write of a new day (the default),
+ *       ISO week ({@code rotate=weekly}) or calendar month
+ *       ({@code rotate=monthly}) rotates the previous file. A weekly archive
+ *       is named by its week's Monday and a monthly archive by the first of
+ *       the month, so every filename still carries one plain date and the
+ *       retention purge needs no second format.</li>
  *   <li><b>Size threshold</b> — when the current file exceeds
  *       {@code maxSize}, it is rotated with an incrementing index.</li>
  * </ul>
@@ -54,6 +60,7 @@ import java.util.zip.GZIPOutputStream;
  * <pre>{@code
  * # System properties (also settable via -D flags):
  * freeway.log.file=logs/app.log
+ * freeway.log.file.rotate=daily         # daily (default) | weekly | monthly
  * freeway.log.file.max-size=268435456   # 256 MB
  * freeway.log.file.max-history=30       # days
  * freeway.log.file.compress=true
@@ -70,6 +77,32 @@ public final class JULFileHandler extends StreamHandler {
     static final long DEFAULT_MAX_SIZE = 256L * 1024 * 1024; // 256 MB
     static final int DEFAULT_MAX_HISTORY = 30; // days
     static final boolean DEFAULT_COMPRESS = true;
+    static final RotatePeriod DEFAULT_ROTATE = RotatePeriod.DAILY;
+
+    /** The time boundary that archives the current file. */
+    public enum RotatePeriod {
+        /** Rotate at local midnight; archives are named by that date. */
+        DAILY,
+        /** Rotate at the ISO-week boundary (Monday 00:00); archives are named by the week's Monday. */
+        WEEKLY,
+        /** Rotate at the calendar-month boundary; archives are named by the first of the month. */
+        MONTHLY;
+
+        /** Parses {@code daily} / {@code weekly} / {@code monthly} (case-insensitive); anything else is rejected. */
+        public static RotatePeriod parse(String value) {
+            if (value == null || value.isBlank()) {
+                return DEFAULT_ROTATE;
+            }
+            return switch (value.trim().toLowerCase(java.util.Locale.ROOT)) {
+                case "daily" -> DAILY;
+                case "weekly" -> WEEKLY;
+                case "monthly" -> MONTHLY;
+                default -> throw new IllegalArgumentException(
+                    "Invalid rotate period '" + value
+                        + "' (expected daily, weekly or monthly)");
+            };
+        }
+    }
 
     /**
      * Default interval between background flushes (milliseconds). Log records
@@ -123,9 +156,11 @@ public final class JULFileHandler extends StreamHandler {
     private final int maxHistory;
     private final boolean compress;
     private final long flushIntervalMs;
+    private final RotatePeriod rotatePeriod;
 
-    private LocalDate currentLocalDate;
-    private long nextMidnightMillis;
+    /** Start of the current archive period: today, its Monday or the first of its month. */
+    private LocalDate currentPeriodStart;
+    private long nextRotationMillis;
     private int currentIndex;
     private long bytesWritten;
 
@@ -169,12 +204,14 @@ public final class JULFileHandler extends StreamHandler {
             JULEnhancer.propertyValue(config, LogKeys.FILE_COMPRESS,
                 DEFAULT_COMPRESS, JULEnhancer::strictBoolean),
             JULEnhancer.propertyValue(config, LogKeys.FILE_FLUSH_INTERVAL,
-                DEFAULT_FLUSH_INTERVAL_MS, Long::parseLong)
+                DEFAULT_FLUSH_INTERVAL_MS, Long::parseLong),
+            JULEnhancer.propertyValue(config, LogKeys.FILE_ROTATE,
+                DEFAULT_ROTATE, RotatePeriod::parse)
         );
     }
 
     /**
-     * Programmatic constructor.
+     * Programmatic constructor with the default daily rotation.
      *
      * @param filePath        path to the log file (e.g. {@code logs/app.log})
      * @param maxSize         max bytes before size-based rotation
@@ -190,13 +227,39 @@ public final class JULFileHandler extends StreamHandler {
         boolean compress,
         long flushIntervalMs
     ) throws IOException {
+        this(filePath, maxSize, maxHistory, compress, flushIntervalMs,
+            DEFAULT_ROTATE);
+    }
+
+    /**
+     * Programmatic constructor.
+     *
+     * @param filePath        path to the log file (e.g. {@code logs/app.log})
+     * @param maxSize         max bytes before size-based rotation
+     * @param maxHistory      days to retain (counted from the end of an
+     *                        archive's period, so a record is never dropped
+     *                        before this many days)
+     * @param compress        whether to gzip rotated files
+     * @param flushIntervalMs background flush cadence in milliseconds;
+     *                        {@code <= 0} flushes after every record
+     * @param rotatePeriod    day, ISO-week or calendar-month rotation boundary
+     */
+    public JULFileHandler(
+        String filePath,
+        long maxSize,
+        int maxHistory,
+        boolean compress,
+        long flushIntervalMs,
+        RotatePeriod rotatePeriod
+    ) throws IOException {
         this.basePath = Paths.get(filePath).toAbsolutePath();
         this.maxSize = Math.max(1024, maxSize);
         this.maxHistory = Math.max(1, maxHistory);
         this.compress = compress;
         this.flushIntervalMs = flushIntervalMs;
-        this.currentLocalDate = LocalDate.now();
-        this.nextMidnightMillis = computeNextMidnight();
+        this.rotatePeriod = rotatePeriod == null ? DEFAULT_ROTATE : rotatePeriod;
+        this.currentPeriodStart = periodStart(LocalDate.now(), this.rotatePeriod);
+        this.nextRotationMillis = computeNextRotation(this.rotatePeriod);
         this.currentIndex = 0;
         this.bytesWritten = 0;
 
@@ -209,15 +272,16 @@ public final class JULFileHandler extends StreamHandler {
         this.flusher = startFlusher();
     }
 
-    /** If the log file exists and was last modified before today, archive it. */
+    /** If the log file exists and was last modified in an earlier period, archive it. */
     private void rotateStaleFileOnStartup() {
         try {
             LocalDate fileDate = LocalDate.ofInstant(
                 Files.getLastModifiedTime(basePath).toInstant(),
                 ZoneId.systemDefault()
             );
-            if (fileDate.isBefore(currentLocalDate)) {
-                archiveIfPopulated(DATE_FMT.format(fileDate), 0);
+            LocalDate filePeriod = periodStart(fileDate, rotatePeriod);
+            if (filePeriod.isBefore(currentPeriodStart)) {
+                archiveIfPopulated(DATE_FMT.format(filePeriod), 0);
             }
         } catch (IOException e) {
             // best-effort — open the existing file if rotation fails
@@ -382,12 +446,12 @@ public final class JULFileHandler extends StreamHandler {
 
     private boolean needsRotation() {
         if (bytesWritten >= maxSize) return true;
-        return System.currentTimeMillis() >= nextMidnightMillis;
+        return System.currentTimeMillis() >= nextRotationMillis;
     }
 
     private void rotate() throws IOException {
-        LocalDate today = LocalDate.now();
-        boolean dayChanged = !today.equals(currentLocalDate);
+        LocalDate currentPeriod = periodStart(LocalDate.now(), rotatePeriod);
+        boolean periodChanged = !currentPeriod.equals(currentPeriodStart);
 
         // Close current stream (best-effort — must not prevent reopening)
         try {
@@ -400,9 +464,9 @@ public final class JULFileHandler extends StreamHandler {
             );
         }
 
-        // Archive the current file (best-effort)
+        // Archive the current file (best-effort) under the period it belongs to.
         try {
-            archiveIfPopulated(DATE_FMT.format(currentLocalDate), currentIndex);
+            archiveIfPopulated(DATE_FMT.format(currentPeriodStart), currentIndex);
         } catch (IOException e) {
             reportError(
                 "Failed to archive log file",
@@ -412,9 +476,9 @@ public final class JULFileHandler extends StreamHandler {
         }
 
         // Advance counters
-        if (dayChanged) {
-            currentLocalDate = today;
-            nextMidnightMillis = computeNextMidnight();
+        if (periodChanged) {
+            currentPeriodStart = currentPeriod;
+            nextRotationMillis = computeNextRotation(rotatePeriod);
             currentIndex = 0;
         } else {
             currentIndex++;
@@ -594,7 +658,9 @@ public final class JULFileHandler extends StreamHandler {
                                 name.substring(dateStart, dateStart + 10),
                                 DATE_FMT
                             );
-                            if (fileDate.isBefore(cutoff)) {
+                            // Retention counts from the archive's last day,
+                            // so no record is dropped before maxHistory days.
+                            if (retentionEnd(fileDate, rotatePeriod).isBefore(cutoff)) {
                                 Files.delete(p);
                             }
                         } catch (Exception ignored) {
@@ -609,12 +675,39 @@ public final class JULFileHandler extends StreamHandler {
 
     // ── helpers ─────────────────────────────────────────────────────
 
-    private static long computeNextMidnight() {
-        return ZonedDateTime.now()
-            .plusDays(1)
-            .truncatedTo(java.time.temporal.ChronoUnit.DAYS)
-            .toInstant()
-            .toEpochMilli();
+    /** The next rotation boundary: next midnight, Monday 00:00 or the first of next month. */
+    private static long computeNextRotation(RotatePeriod period) {
+        ZonedDateTime now = ZonedDateTime.now();
+        LocalDate today = now.toLocalDate();
+        LocalDate next = switch (period) {
+            case WEEKLY -> today.with(TemporalAdjusters.next(DayOfWeek.MONDAY));
+            case MONTHLY -> today.with(TemporalAdjusters.firstDayOfNextMonth());
+            case DAILY -> today.plusDays(1);
+        };
+        return next.atStartOfDay(now.getZone()).toInstant().toEpochMilli();
+    }
+
+    /** The archive period a date belongs to: the date, its Monday or the first of its month. */
+    private static LocalDate periodStart(LocalDate date, RotatePeriod period) {
+        return switch (period) {
+            case WEEKLY -> date.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+            case MONTHLY -> date.with(TemporalAdjusters.firstDayOfMonth());
+            case DAILY -> date;
+        };
+    }
+
+    /**
+     * The last day an archive covers: its date (daily), its Sunday (weekly) or
+     * its month's last day (monthly). Retention counts from here, so an
+     * archive is not deleted while any record inside it is younger than
+     * {@code maxHistory} days.
+     */
+    static LocalDate retentionEnd(LocalDate archiveStart, RotatePeriod period) {
+        return switch (period) {
+            case WEEKLY -> archiveStart.plusDays(6);
+            case MONTHLY -> archiveStart.plusMonths(1).minusDays(1);
+            case DAILY -> archiveStart;
+        };
     }
 
     private static String stripExtension(String fileName) {
@@ -683,7 +776,12 @@ public final class JULFileHandler extends StreamHandler {
 
     // Visible for testing
     String currentDate() {
-        return DATE_FMT.format(currentLocalDate);
+        return DATE_FMT.format(currentPeriodStart);
+    }
+
+    /** Visible for testing: the configured rotation boundary. */
+    RotatePeriod rotatePeriod() {
+        return rotatePeriod;
     }
 
     int currentIndex() {

@@ -40,6 +40,7 @@ class LogConfigTest {
             "freeway.log.console.level",
             "freeway.log.files",
             "freeway.log.file",
+            "freeway.log.file.rotate",
             "freeway.log.file.max-size",
             "freeway.log.file.max-history",
             "freeway.log.file.compress",

@@ -70,14 +70,15 @@
 # files = ""                   # named files, see docs/reference/logging.properties.reference
 
 # File logging: `auto` is the preset group — managed logs/{app.name}.log with
-# the rotation defaults below (256 MB, 30 days, gzip, 250 ms flush), so the
-# detail keys are not needed. "off" disables file logging; a concrete path
+# the rotation defaults below (daily, 256 MB, 30 days, gzip, 250 ms flush), so
+# the detail keys are not needed. "off" disables file logging; a concrete path
 # (for example "logs/app.log") replaces the managed name.
 # file = "auto"
 
 # The detail keys are read independently of `file`, so writing one below the
 # preset overrides that detail only. They are quoted dotted keys because
 # freeway.log.file itself is a value (see the header note).
+# "file.rotate" = "daily"      # daily | weekly (Monday) | monthly (1st)
 # "file.max-size" = 268435456
 # "file.max-history" = 30
 # "file.compress" = true
