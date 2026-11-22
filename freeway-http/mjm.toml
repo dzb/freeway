@@ -1,5 +1,4 @@
 [project]
-group = "com.jujin8.freeway"
 name = "freeway-http"
 version = "2.0.2"
 
@@ -7,12 +6,12 @@ version = "2.0.2"
 version = 25
 
 [repos]
-cascade = "local:../vendor"
+cascade = "mjm:local:../vendor"
 
 [deps]
 "org.slf4j:slf4j-api" = "2.0.18"
 
 [deps.cascade]
-"com.jujin8.freeway:freeway-commons" = "2.0.2"
-"com.jujin8.freeway:freeway-ioc" = "2.0.2"
-"com.jujin8.freeway:freeway-boot" = "2.0.2"
+"freeway-commons" = "2.0.2"
+"freeway-ioc" = "2.0.2"
+"freeway-boot" = "2.0.2"

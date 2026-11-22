@@ -19,7 +19,6 @@ set -e
 FREEWAY=$(cd "$(dirname "$0")" && pwd)
 MJM="${MJM:-$HOME/.mjm/bin/mjm}"
 VENDOR="$FREEWAY/vendor"
-GROUP_PATH="com/jujin8/freeway"
 FW_VER='2.0.2'
 LOGS="$FREEWAY/build-logs"
 
@@ -27,15 +26,13 @@ RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[0;33m'; NC='\033[0m'
 
 mkdir -p "$VENDOR" "$LOGS"
 
+# Publishing into a local mjm repository is what "vendoring" means here: the
+# triple (jar, descriptor, sha256) is exactly what a consumer needs to resolve
+# the coordinate, and mjm writes it — no hand-rolled jar, no hand-written pom.
 vendor_module() {
     local module=$1
-    local classes="$FREEWAY/$module/target/classes"
-    local dir="$VENDOR/$GROUP_PATH/$module/$FW_VER"
-    mkdir -p "$dir"
-    jar --create --file "$dir/$module-$FW_VER.jar" --no-manifest -C "$classes" .
-    cat > "$dir/$module-$FW_VER.pom" << POM_EOF
-<project><modelVersion>4.0.0</modelVersion><groupId>com.jujin8.freeway</groupId><artifactId>$module</artifactId><version>$FW_VER</version><packaging>jar</packaging></project>
-POM_EOF
+    (cd "$FREEWAY/$module" && "$MJM" package)
+    (cd "$FREEWAY/$module" && "$MJM" publish "mjm:local:$VENDOR")
 }
 
 build_module() {
