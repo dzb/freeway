@@ -1,19 +1,24 @@
 #!/bin/bash
-# mj-build.sh — builds the 7 freeway modules with mj, in cascade order.
+# build.sh — the cold-start build for the 7 freeway modules.
 #
-# The modules' mj.toml/mj.lock are committed. Externals (slf4j, h2) resolve
-# straight from Maven Central; only the inter-module cascade rides through
-# vendor-mj/: this script vendors each module's built jar (with a bare pom —
-# every module declares its full freeway closure directly) so the next one
-# resolves it.
+# Why a script at all: the modules depend on each other through Maven
+# coordinates, and mjm resolves those coordinates before it ever looks at a
+# workspace. So a fresh clone needs each module's jar to exist in vendor/
+# before the next module can lock. That is what this script builds up,
+# one module at a time, in dependency order.
 #
-# MJ overrides the mj binary; default is the installed one (the CI installs
-# it from the mj-cargo releases via the one-liner).
+# For day-to-day work you do not need it: `mjm.ws.toml` (a local, uncommitted
+# file created by `mjm init --ws`) lets `mjm build` at the repo root compile
+# each module against its sibling's target/classes. Re-running this script is
+# only required when a module's *published* jar bytes must change — which is
+# not something the workspace cares about.
+#
+# MJM overrides the binary; default is the installed one.
 set -e
 
 FREEWAY=$(cd "$(dirname "$0")" && pwd)
-MJ="${MJ:-$HOME/.mj/bin/mj}"
-VENDOR="$FREEWAY/vendor-mj"
+MJM="${MJM:-$HOME/.mjm/bin/mjm}"
+VENDOR="$FREEWAY/vendor"
 GROUP_PATH="com/jujin8/freeway"
 FW_VER='2.0.2'
 LOGS="$FREEWAY/build-logs"
@@ -36,16 +41,16 @@ POM_EOF
 build_module() {
     local module=$1
     echo -e "\n${YELLOW}==== $module ====${NC}"
-    (cd "$FREEWAY/$module" && "$MJ" lock)
-    (cd "$FREEWAY/$module" && "$MJ" build)
-    (cd "$FREEWAY/$module" && "$MJ" test) > "$LOGS/mj-$module.log" 2>&1
-    grep -E "tests:" "$LOGS/mj-$module.log" | tail -1 || echo "  (no tests)"
+    (cd "$FREEWAY/$module" && "$MJM" lock)
+    (cd "$FREEWAY/$module" && "$MJM" build)
+    (cd "$FREEWAY/$module" && "$MJM" test) > "$LOGS/$module.log" 2>&1
+    grep -E "tests:" "$LOGS/$module.log" | tail -1 || echo "  (no tests)"
     vendor_module "$module"
     echo -e "${GREEN}==== $module done ====${NC}"
 }
 
 echo "========================================="
-echo " mj building freeway — 7 modules"
+echo " mjm building freeway — 7 modules"
 echo "========================================="
 
 build_module freeway-commons
@@ -58,5 +63,5 @@ build_module freeway-cloud
 
 echo ""
 echo "========================================="
-echo -e " mj build complete: ${GREEN}7/7 modules green${NC}"
+echo -e " mjm build complete: ${GREEN}7/7 modules green${NC}"
 echo "========================================="

@@ -1,4 +1,5 @@
 [project]
+group = "com.jujin8.freeway"
 name = "freeway-commons"
 version = "2.0.2"
 
