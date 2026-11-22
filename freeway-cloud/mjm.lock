@@ -4,7 +4,7 @@ id = "freeway-boot"
 version = "2.0.2"
 source = "mjm:local:../vendor"
 url = "file:///home/dzb/Projects/freeway/vendor/freeway-boot/2.0.2/freeway-boot-2.0.2.jar"
-sha256 = "b343efeef44cf092157278d9ad75ab9644a3cf896c3a21095a35a90b984530d4"
+sha256 = "8b673253355b81cf394a2206b0885e97a7bd498db104ec82ad4f03af185a8125"
 meta-sha256 = "3c7de0d9c23f63268b446d0521730242352f03d5cb561428b1e48837e3844770"
 depth = 1
 [[artifacts]]
@@ -12,7 +12,7 @@ id = "freeway-commons"
 version = "2.0.2"
 source = "mjm:local:../vendor"
 url = "file:///home/dzb/Projects/freeway/vendor/freeway-commons/2.0.2/freeway-commons-2.0.2.jar"
-sha256 = "30e88e9a97487ba9cb35f15fff7aa82005ef573cf2fcdd63f77adb0fe1faedd7"
+sha256 = "f906ec0a14c6579377d30ce31b7512c40e04aae2631de979cd7d70dded9e3c33"
 meta-sha256 = "27110e10be7bbc943e20816ced97fb240e5004cc7817ace6faa874106723b07d"
 depth = 1
 [[artifacts]]
@@ -20,7 +20,7 @@ id = "freeway-http"
 version = "2.0.2"
 source = "mjm:local:../vendor"
 url = "file:///home/dzb/Projects/freeway/vendor/freeway-http/2.0.2/freeway-http-2.0.2.jar"
-sha256 = "cac4864083a4d9fc79faacca22e2105f0527379a266f5396aacfea14a19c6497"
+sha256 = "e796f0f84cf3a835526eb3b93d29076f171fc095e8b85dea061bfbf6b092cd90"
 meta-sha256 = "2bd3243d54e13b4e0e62ac8cb3ff61a51e3705c1d49ddb0f9bca173e74930c1d"
 depth = 1
 [[artifacts]]
@@ -28,7 +28,7 @@ id = "freeway-ioc"
 version = "2.0.2"
 source = "mjm:local:../vendor"
 url = "file:///home/dzb/Projects/freeway/vendor/freeway-ioc/2.0.2/freeway-ioc-2.0.2.jar"
-sha256 = "9d081c97b2383fe12bfd110d9f9575f28201ef60b70ff6046a597713c2efc3b3"
+sha256 = "ce078f33592cba9ec4367db695dad2da8964ca61bd21e4c58d3e840cb1ec135e"
 meta-sha256 = "e91e743d5d14f1a810ddb7a2d7cef5e9bbd169ebe10de33c1ed771473070a167"
 depth = 1
 [[artifacts]]

@@ -5,8 +5,9 @@ version = "2.0.2"
 [java]
 version = 25
 
-[repos]
-cascade = "mjm:local:../vendor"
+[repos.cascade]
+type = "mjm"
+url = "../vendor"
 
 [deps]
 "org.slf4j:slf4j-api" = "2.0.18"
