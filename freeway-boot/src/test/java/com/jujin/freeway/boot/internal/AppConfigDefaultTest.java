@@ -8,9 +8,12 @@ import com.jujin.freeway.ioc.Freeway;
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 import com.jujin.freeway.ioc.symbol.SymbolSpec;
+import com.jujin.freeway.ioc.symbol.UnknownSymbolException;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -312,15 +315,34 @@ class AppConfigDefaultTest {
             try (Container container = Freeway.create(new BootModule(config))) {
                 SymbolSource symbols = container.get(SymbolSource.class);
                 assertEquals("v1", symbols.resolve(HOT_KEY));
-                Files.writeString(file, HOT_KEY + "=v2\n");
-                await(() -> "v2".equals(symbols.resolve(HOT_KEY)),
-                    "hot reload must reach the symbol chain: the file-tier provider "
+                // Publish atomically: a plain writeString truncates first, and
+                // the watcher can read that empty window as a missing symbol.
+                replaceAtomically(file, HOT_KEY + "=v2\n");
+                await(() -> {
+                    try {
+                        return "v2".equals(symbols.resolve(HOT_KEY));
+                    } catch (UnknownSymbolException transientMiss) {
+                        return false;
+                    }
+                }, "hot reload must reach the symbol chain: the file-tier provider "
                         + "reads the live snapshot on every lookup");
             } finally {
                 config.close();
             }
         } finally {
             System.clearProperty(FILE_KEY);
+        }
+    }
+
+    /** Writes a sibling temp file, then atomically replaces the watched file. */
+    private static void replaceAtomically(Path file, String content) throws IOException {
+        Path tmp = Files.createTempFile(file.getParent(), file.getFileName().toString(), ".tmp");
+        try {
+            Files.writeString(tmp, content);
+            Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING,
+                StandardCopyOption.ATOMIC_MOVE);
+        } finally {
+            Files.deleteIfExists(tmp);
         }
     }
 
