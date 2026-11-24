@@ -223,6 +223,9 @@ Each tagged release publishes the same jeno repository to GitHub Pages at
 `https://dzb.github.io/freeway/`:
 
 ```toml
+[limits]
+max-depth = 3
+
 [repos.freeway]
 type = "jeno"
 url = "https://dzb.github.io/freeway/"
@@ -230,6 +233,8 @@ url = "https://dzb.github.io/freeway/"
 [deps]
 "freeway-ioc" = "freeway:2.0.2"
 ```
+
+Raise `max-depth` for the deepest module you consume (boot 4, http 5, cloud 6).
 
 For an offline mirror, download `freeway-repo-2.0.2.tar.gz` from the release,
 extract it, and point the same repository at the directory:

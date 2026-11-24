@@ -9,7 +9,8 @@ if [ "$#" -ne 1 ] || [ -z "$1" ]; then
 fi
 version=$1
 owner=${GITHUB_REPOSITORY_OWNER:-dzb}
-repo=${GITHUB_REPOSITORY#*/}
+repo=${GITHUB_REPOSITORY:-}
+repo=${repo#*/}
 repo=${repo:-freeway}
 base=${PAGES_BASE_URL:-https://${owner}.github.io/${repo}}
 base=${base%/}
@@ -28,6 +29,7 @@ for attempt in $(seq 1 30); do
 done
 if [ "$ok" -ne 1 ]; then
     echo "Pages did not publish $descriptor" >&2
+    echo "First publish: enable Settings → Pages → Source = Deploy from a branch → gh-pages / (root)." >&2
     exit 1
 fi
 
@@ -45,6 +47,9 @@ main = "smoke.Main"
 
 [java]
 version = 25
+
+[limits]
+max-depth = 3
 
 [repos.freeway]
 type = "jeno"
