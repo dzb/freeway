@@ -1,6 +1,6 @@
 ## Freeway 2
 
-[![Version](https://img.shields.io/badge/version-2.0.1-blue)](docs/releases/release-notes-2.0.1.md) [![JDK](https://img.shields.io/badge/JDK-25%2B-orange)](https://jdk.java.net/25/) [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE) ![Runtime dependencies](https://img.shields.io/badge/runtime%20deps-0-brightgreen)
+[![Version](https://img.shields.io/badge/version-2.0.2-blue)](docs/releases/release-notes-2.0.2.md) [![JDK](https://img.shields.io/badge/JDK-25%2B-orange)](https://jdk.java.net/25/) [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE) ![Runtime dependencies](https://img.shields.io/badge/runtime%20deps-0-brightgreen)
 
 A modern, concise, compose-first Java application framework for JDK 25+.
 IoC, HTTP, DB, Flow and Cloud are one coherent stack: no classpath scanning, no
@@ -10,7 +10,7 @@ Freeway is built around one rule: **every shared fact has one owner**. APIs stat
 their intent, concepts pull their weight, and the framework stays predictable for
 both humans and coding agents.
 
-**Latest release: 2.0.1** — [release notes](docs/releases/release-notes-2.0.1.md) · [changelog](CHANGELOG.md)
+**Latest release: 2.0.2** — [release notes](docs/releases/release-notes-2.0.2.md) · [changelog](CHANGELOG.md)
 
 [Documentation](docs/README.md) · [Quick Start](#quick-start) · [Modules](#modules) · [Changelog](CHANGELOG.md) · [License](#license)
 
@@ -18,7 +18,7 @@ both humans and coding agents.
 
 ### Quick Start
 
-Add only the modules you need. The snippets use `${freeway.version}`; use `2.0.1`
+Add only the modules you need. The snippets use `${freeway.version}`; use `2.0.2`
 for the current release.
 
 ```xml
@@ -272,6 +272,16 @@ see that repository for module coordinates and versions.
 The Maven group id keeps its original `com.jujin8` spelling while Java packages
 are `com.jujin.freeway`. Renaming either would break every consumer's build for
 no design gain.
+
+### 2.0.2
+
+`2.0.2` adds TOML as a third configuration format and puts the logging layer on
+a quieter footing: provider selection only speaks when it must, `freeway.log.banner`
+turns the startup line off, weekly and monthly rotation join daily, and the
+default size-rotation threshold moves to 256 MB. A path ending in `.toml` is
+parsed as TOML now; the [release notes](docs/releases/release-notes-2.0.2.md)
+list the migration points. Releases also publish a jeno repository to
+`https://dzb.github.io/freeway/` — see [Consume a release](#consume-a-release).
 
 ### 2.0.1
 
