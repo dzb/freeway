@@ -217,6 +217,32 @@ mvn -pl freeway-http -am test      # module plus its dependencies
 mvn -Pdemos -DskipTests compile    # compile the in-repo consumers
 ```
 
+### Consume a release
+
+Each tagged release publishes the same jeno repository to GitHub Pages at
+`https://dzb.github.io/freeway/`:
+
+```toml
+[repos.freeway]
+type = "jeno"
+url = "https://dzb.github.io/freeway/"
+
+[deps]
+"freeway-ioc" = "freeway:2.0.2"
+```
+
+For an offline mirror, download `freeway-repo-2.0.2.tar.gz` from the release,
+extract it, and point the same repository at the directory:
+
+```toml
+[repos.freeway]
+type = "jeno"
+url = "/path/to/freeway-repo"
+```
+
+Central remains the Maven channel; the bytes it serves may differ from the
+Pages repository.
+
 ### Documentation
 
 The documentation index is [`docs/README.md`](docs/README.md). Highlights:

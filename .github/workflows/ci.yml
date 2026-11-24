@@ -4,11 +4,16 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to validate (for example 2.0.2); dispatch is a dry run'
+        required: true
+        type: string
 
 # One run per ref: a force-push or a new PR commit cancels the superseded run.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 permissions:
   contents: read
@@ -35,6 +40,13 @@ jobs:
           echo "$HOME/.jeno/bin" >> "$GITHUB_PATH"
       - name: Build and test (7 modules, cascade)
         run: ./build.sh
+      - name: Upload the jeno repository
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: freeway-repo
+          path: vendor/
+          retention-days: 1
       - name: Upload test reports on failure
         if: failure()
         uses: actions/upload-artifact@v4
@@ -142,3 +154,77 @@ jobs:
       - uses: actions/dependency-review-action@v4
         with:
           fail-on-severity: high
+
+  release:
+    name: release jeno repository
+    needs: [core, consumers, ext, docs]
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - name: install jeno
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/dzb/jeno-cargo/master/setup.sh | bash
+          echo "$HOME/.jeno/bin" >> "$GITHUB_PATH"
+      - name: Resolve version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+      - name: Release gate
+        run: ./ci/release-gate.sh "$VERSION"
+      - name: Download the built jeno repository
+        uses: actions/download-artifact@v4
+        with:
+          name: freeway-repo
+          path: vendor
+      - name: Package the offline repository
+        run: |
+          mkdir -p dist
+          tar -czf "dist/freeway-repo-$VERSION.tar.gz" -C vendor .
+          (cd dist && sha256sum "freeway-repo-$VERSION.tar.gz" > "freeway-repo-$VERSION.tar.gz.sha256")
+      - name: Publish gh-pages (tag only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: ./ci/publish-pages.sh "$VERSION"
+      - name: Smoke-consume from Pages (tag only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: ./ci/smoke-consume.sh "$VERSION"
+      - name: Build release notes (tag only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          PAGES="https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}"
+          {
+            cat "docs/releases/release-notes-$VERSION.md"
+            printf '\n\n## Consume this release\n\n'
+            printf 'jeno repository (GitHub Pages):\n\n```toml\n'
+            printf '[repos.freeway]\ntype = "jeno"\nurl = "%s/"\n\n' "$PAGES"
+            printf '[deps]\n"freeway-ioc" = "freeway:%s"\n```\n\n' "$VERSION"
+            printf 'Offline tarball: download `freeway-repo-%s.tar.gz`, extract it, then use:\n\n' "$VERSION"
+            printf '```toml\n[repos.freeway]\ntype = "jeno"\nurl = "/path/to/freeway-repo"\n```\n\n' 
+            printf 'Central remains the Maven channel; its bytes may differ from the Pages repository.\n'
+          } > dist/release-notes.md
+      - name: Create GitHub release (tag only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete "$GITHUB_REF_NAME" --yes || true
+          gh release create "$GITHUB_REF_NAME" \
+            --title "Freeway $VERSION" \
+            --notes-file dist/release-notes.md \
+            dist/*
