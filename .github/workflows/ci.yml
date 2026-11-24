@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   core:
-    name: core (JDK 25, mjm)
+    name: core (JDK 25, jeno)
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -24,22 +24,22 @@ jobs:
         with:
           distribution: temurin
           java-version: '25'
-      # freeway is built by mjm now. The modules carry mjm.toml/mjm.lock; the
+      # freeway is built by jeno now. The modules carry jeno.toml/jeno.lock; the
       # cascade (module N's jar must exist before module N+1 locks) is what
-      # build.sh walks, because mjm resolves coordinates before it looks at a
+      # build.sh walks, because jeno resolves coordinates before it looks at a
       # workspace. publish stays out of CI: Central is released by hand, and
-      # the gh: track is `mjm publish`.
-      - name: install mjm
+      # the gh: track is `jeno publish`.
+      - name: install jeno
         run: |
-          curl -fsSL https://raw.githubusercontent.com/dzb/mjm-cargo/master/setup.sh | bash
-          echo "$HOME/.mjm/bin" >> "$GITHUB_PATH"
+          curl -fsSL https://raw.githubusercontent.com/dzb/jeno-cargo/master/setup.sh | bash
+          echo "$HOME/.jeno/bin" >> "$GITHUB_PATH"
       - name: Build and test (7 modules, cascade)
         run: ./build.sh
       - name: Upload test reports on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: mjm-test-logs
+          name: jeno-test-logs
           path: build-logs/
           if-no-files-found: ignore
 

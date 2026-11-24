@@ -193,17 +193,17 @@ Route named files and per-logger levels with `freeway.log.files` and any
 
 Requires JDK 25+.
 
-With **mjm** (the project's own toolchain):
+With **jeno** (the project's own toolchain):
 
 ```bash
-mjm init --ws        # once: writes mjm.ws.toml / [ws] (a local file, not committed)
-mjm build            # all 7 modules in dependency order, each against its siblings' classes
-mjm test             # same order; keeps going after a failing module and summarises
+jeno init --ws        # once: writes jeno.ws.toml / [ws] (a local file, not committed)
+jeno build            # all 7 modules in dependency order, each against its siblings' classes
+jeno test             # same order; keeps going after a failing module and summarises
 ./build.sh           # cold start only: seeds vendor/ so a fresh clone can resolve the
                      # inter-module coordinates (this is what CI runs)
 ```
 
-`mjm build` compiles every module against the *local* sources of the modules it
+`jeno build` compiles every module against the *local* sources of the modules it
 depends on; nothing is published in between. `build.sh` exists because
 resolution happens before that substitution: a fresh clone has no `vendor/`,
 so the first lock of each module needs the previous module's jar on disk.

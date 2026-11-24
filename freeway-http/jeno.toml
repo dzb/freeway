@@ -1,12 +1,12 @@
 [project]
-name = "freeway-boot"
+name = "freeway-http"
 version = "2.0.2"
 
 [java]
 version = 25
 
 [repos.cascade]
-type = "mjm"
+type = "jeno"
 url = "../vendor"
 
 [deps]
@@ -15,3 +15,4 @@ url = "../vendor"
 [deps.cascade]
 "freeway-commons" = "2.0.2"
 "freeway-ioc" = "2.0.2"
+"freeway-boot" = "2.0.2"
