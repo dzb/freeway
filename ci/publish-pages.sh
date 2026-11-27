@@ -39,7 +39,7 @@ for module_dir in "$root"/vendor/*; do
     module=$(basename "$module_dir")
     source_index="$module_dir/index.jeno.toml"
     if [ ! -f "$source_index" ]; then
-        echo "missing $source_index; jeno 0.3.2 must publish an index" >&2
+        echo "missing $source_index; jeno 0.3.3 must publish an index" >&2
         exit 1
     fi
     if [ ! -d "$module_dir/$release_version" ]; then

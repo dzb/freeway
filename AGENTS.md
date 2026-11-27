@@ -1,6 +1,6 @@
 # Repository Guidelines
 
-Freeway is a JDK 25+ multi-module project. **jeno 0.3.2 is the primary build
+Freeway is a JDK 25+ multi-module project. **jeno 0.3.3 is the primary build
 and release toolchain**; the Maven reactor remains the compatibility build for
 Maven consumers and the demos. Keep changes scoped, explicit, and convention
 over configuration. This file is the single home for repo-wide conventions;
@@ -10,7 +10,7 @@ rules lives in [TASTE.md](TASTE.md).
 
 ## Build
 
-Requires JDK 25+ (JUnit 6.1.3, SLF4J 2.0.18) and jeno 0.3.2.
+Requires JDK 25+ (JUnit 6.1.3, SLF4J 2.0.18) and jeno 0.3.3.
 
 ```bash
 jeno init --ws                     # once: local workspace file, never committed
@@ -19,7 +19,7 @@ jeno test                          # all modules in dependency order
 ./build.sh                         # cold start: locks, builds, tests, publishes to vendor/
 ```
 
-`jeno.toml` uses the 0.3.2 named-repository contract: `[repos.<name>]` plus
+`jeno.toml` uses the 0.3.3 named-repository contract: `[repos.<name>]` plus
 `"<artifact>" = "<repo>:<version>"` in `[deps]`. The retired
 `[deps.cascade]` table is rejected by `ci/release-gate.sh`.
 
@@ -33,8 +33,9 @@ mvn -Pdemos -DskipTests compile
 CI runs the jeno 7-module cascade, the demos, the documentation checks and the
 cross-repository ext build. Tagged releases run the same gates, publish the
 immutable jeno repository to `gh-pages`, smoke-consume it from GitHub Pages,
-and create the GitHub Release. The jeno index and version directories are
-release artifacts: never overwrite an already published module/version.
+and create the GitHub Release. Maven Central publication is intentionally
+manual and never runs in CI. The jeno index and version directories are release
+artifacts: never overwrite an already published module/version.
 
 ### Transient CI failures
 

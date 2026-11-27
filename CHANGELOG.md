@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **jeno 0.3.2 release repository contract**: module manifests use the current
+- **jeno 0.3.3 release repository contract**: module manifests use the current
   named-repository dependency form (`[deps]` entries such as
   `"freeway-commons" = "cascade:2.0.2"`) instead of the retired
   `[deps.cascade]` table. The release publisher keeps immutable

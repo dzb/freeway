@@ -33,12 +33,13 @@ jobs:
       # cascade (module N's jar must exist before module N+1 locks) is what
       # build.sh walks, because jeno resolves coordinates before it looks at a
       # workspace. Central publishing stays out of CI; this workflow publishes
-      # the gh-pages repository.
+      # the gh-pages repository. Maven Central deployment is intentionally
+      # absent from CI; it is a manual, signing-machine operation.
       - name: install jeno
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq minisign
-          curl -fsSL https://github.com/dzb/jeno-cargo/releases/download/v0.3.2/install.sh -o /tmp/install-jeno.sh
+          curl -fsSL https://github.com/dzb/jeno-cargo/releases/download/v0.3.3/install.sh -o /tmp/install-jeno.sh
           bash /tmp/install-jeno.sh
           "$HOME/.jeno/bin/jeno" --version
           echo "$HOME/.jeno/bin" >> "$GITHUB_PATH"
@@ -175,7 +176,7 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq minisign
-          curl -fsSL https://github.com/dzb/jeno-cargo/releases/download/v0.3.2/install.sh -o /tmp/install-jeno.sh
+          curl -fsSL https://github.com/dzb/jeno-cargo/releases/download/v0.3.3/install.sh -o /tmp/install-jeno.sh
           bash /tmp/install-jeno.sh
           "$HOME/.jeno/bin/jeno" --version
           echo "$HOME/.jeno/bin" >> "$GITHUB_PATH"
@@ -221,7 +222,7 @@ jobs:
             printf 'Raise `max-depth` for the deepest module you consume (boot 4, http 5, cloud 6).\n\n' 
             printf 'Offline tarball: download `freeway-repo-%s.tar.gz`, extract it, then use:\n\n' "$VERSION"
             printf '```toml\n[repos.freeway]\ntype = "jeno"\nurl = "/path/to/freeway-repo"\n```\n\n' 
-            printf 'The jeno repository is the primary release channel. Maven Central remains optional compatibility for Maven consumers; its bytes may differ from the Pages repository.\n'
+            printf 'The jeno repository is the primary release channel. Maven Central publishing is manual and is not part of CI; its bytes may differ from the Pages repository.\n'
           } > dist/release-notes.md
       - name: Create GitHub release (tag only)
         if: startsWith(github.ref, 'refs/tags/v')
