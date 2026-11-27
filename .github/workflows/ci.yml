@@ -91,16 +91,14 @@ jobs:
           java-version: '25'
           cache: maven
       # The adapters pin exact core versions, and their parent POM is this
-      # repository's root: the clone lands inside this checkout, so
-      # `../pom.xml` is `freeway-parent`. When the two version lines differ —
-      # ext on 2.0.1 while this tree is on 2.0.1-SNAPSHOT — that relative path
-      # carries the wrong version and Maven falls back to Central, which holds
-      # only released parents. Drift is not what this job is about, so align
-      # instead of failing: install this root POM under ext's own version and
-      # point the adapter dependencies at this build. What stays verified is the
-      # thing that matters — adapter sources against the core under review —
-      # without the two repositories moving in lockstep.
-      - name: Install core snapshot
+      # repository's root. The clone is disposable, so align the cloned ext
+      # reactor to this core's version before building: its project version,
+      # parent version and freeway.version property all move together. This
+      # keeps internal ext modules in the reactor while their core dependencies
+      # resolve to the build under review. What stays verified is the thing
+      # that matters — adapter sources against this core — without requiring
+      # both repositories to move in lockstep.
+      - name: Install core artifacts
         run: mvn -B -ntp -DskipTests -Dgpg.skip=true install
       - name: Check out adapters
         run: git clone --depth 1 https://github.com/dzb/freeway-ext.git freeway-ext
@@ -112,15 +110,12 @@ jobs:
             | sed -n 's|.*<version>\(.*\)</version>.*|\1|p')
           echo "adapters on $EXT, this core is $CORE"
           if [ "$EXT" != "$CORE" ]; then
-            echo "::warning::adapters are on $EXT while core is on $CORE — building them against this core"
-            mvn -B -ntp -q install:install-file \
-              -Dfile="$HOME/.m2/repository/com/jujin8/freeway/freeway-parent/$CORE/freeway-parent-$CORE.pom" \
-              -DgroupId=com.jujin8.freeway -DartifactId=freeway-parent -Dversion="$EXT" \
-              -Dpackaging=pom -DgeneratePom=false
+            echo "::warning::adapters are on $EXT while core is on $CORE — aligning the disposable checkout"
+            find freeway-ext -name pom.xml -print0 \
+              | xargs -0 sed -i "s|$EXT|$CORE|g"
           fi
-          echo "CORE=$CORE" >> "$GITHUB_ENV"
       - name: Build and test adapters
-        run: mvn -B -ntp -Dfreeway.version="$CORE" -f freeway-ext/pom.xml clean test
+        run: mvn -B -ntp -f freeway-ext/pom.xml clean test
 
   docs:
     name: docs consistency

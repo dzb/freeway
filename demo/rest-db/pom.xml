@@ -15,7 +15,7 @@
              resolves it without an install step. -->
         <!-- CI overrides this with the reactor version; keep it aligned
              for standalone builds. -->
-        <freeway.version>2.0.2-SNAPSHOT</freeway.version>
+        <freeway.version>2.0.2</freeway.version>
         <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>

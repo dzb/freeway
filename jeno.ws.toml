@@ -1,3 +1,0 @@
-# local workspace file — not committed
-[ws]
-modules = ["freeway-commons", "freeway-ioc", "freeway-boot", "freeway-http", "freeway-db", "freeway-flow", "freeway-cloud"]

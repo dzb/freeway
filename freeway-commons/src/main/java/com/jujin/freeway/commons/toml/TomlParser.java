@@ -10,8 +10,8 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * Hand-written cursor parser for the TOML subset the configuration system
- * accepts — the same grammar mj's file-format spec freezes:
+ * Hand-written cursor parser for the deliberately small TOML subset the
+ * configuration system accepts:
  *
  * <ul>
  *   <li>tables {@code [a.b]} and arrays of tables {@code [[a]]} (dotted paths,

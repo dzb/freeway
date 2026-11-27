@@ -54,6 +54,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   retention window are unchanged, so the disk bound (daily volume × 30) is
   unchanged; high-volume services simply keep fewer files per day.
 
+### Fixed
+
+- **Log rotation never overwrites an existing archive** (`freeway-commons`
+  logging): a restart or a size-triggered rotation could reuse the current
+  archive slot and replace an earlier `.log` or `.log.gz`. The handler now
+  probes both compressed and uncompressed slots and moves to the first free
+  index; this also applies when a stale active file is rolled into its period
+  on restart.
+
 ## [2.0.1] - 2026-11-20
 
 ### Added

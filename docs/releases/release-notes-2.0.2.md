@@ -64,10 +64,23 @@ archive slots that already exist (raw or `.gz`) instead of overwriting them.
   unchanged; high-volume services simply keep fewer files per day.
 - Java: 25+. No public API was removed.
 
+## Fixed
+
+### Log rotation never overwrites an existing archive
+
+A restart or size-triggered rotation could reuse the current archive slot and
+replace an earlier `.log` or `.log.gz`. The handler now probes both compressed
+and uncompressed slots and moves to the first free index. This covers both
+in-process rotations and stale active-file rotation on restart.
+
 ## Verification
 
 - `jeno lock` and `jeno build`: 7 modules.
 - `jeno test`: **2,686 tests, 0 failures** across the 7 modules.
+- The in-repo demos build with the reactor version.
+- The freeway-ext adapter sources, aligned to `2.0.2` in the disposable CI
+  checkout, ran 291 tests with 0 failures and 7 skips (the Kafka integration
+  cases need a broker).
 - The tag pipeline runs the same core gate, then the in-repo demos, the
   freeway-ext adapters and the documentation checks before it publishes.
 - The release publishes the jeno repository to GitHub Pages
