@@ -1,0 +1,13 @@
+[project]
+name = "freeway-cloud"
+version = "2.0.2"
+
+[java]
+version = 25
+
+[deps]
+"org.slf4j:slf4j-api" = "2.0.18"
+"freeway-commons" = "2.0.2"
+"freeway-ioc" = "2.0.2"
+"freeway-boot" = "2.0.2"
+"freeway-http" = "2.0.2"
