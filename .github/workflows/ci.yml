@@ -36,7 +36,8 @@ jobs:
       # the gh-pages repository.
       - name: install jeno
         run: |
-          curl -fsSL https://raw.githubusercontent.com/dzb/jeno-cargo/master/setup.sh | bash
+          curl -fsSL https://github.com/dzb/jeno-cargo/releases/latest/download/install.sh -o /tmp/install-jeno.sh
+          bash /tmp/install-jeno.sh
           echo "$HOME/.jeno/bin" >> "$GITHUB_PATH"
       - name: Build and test (7 modules, cascade)
         run: ./build.sh
@@ -169,7 +170,8 @@ jobs:
           java-version: '25'
       - name: install jeno
         run: |
-          curl -fsSL https://raw.githubusercontent.com/dzb/jeno-cargo/master/setup.sh | bash
+          curl -fsSL https://github.com/dzb/jeno-cargo/releases/latest/download/install.sh -o /tmp/install-jeno.sh
+          bash /tmp/install-jeno.sh
           echo "$HOME/.jeno/bin" >> "$GITHUB_PATH"
       - name: Resolve version
         id: version
