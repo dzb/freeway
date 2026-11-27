@@ -1,39 +1,40 @@
 # Repository Guidelines
 
-Freeway is a JDK 25+ multi-module Maven project. Keep changes scoped, explicit,
-and convention over configuration. This file is the single home for repo-wide
-conventions; architecture and lifecycle details live in
+Freeway is a JDK 25+ multi-module project. **jeno 0.3.2 is the primary build
+and release toolchain**; the Maven reactor remains the compatibility build for
+Maven consumers and the demos. Keep changes scoped, explicit, and convention
+over configuration. This file is the single home for repo-wide conventions;
+architecture and lifecycle details live in
 [docs/architecture.md](docs/architecture.md), and the design judgment behind the
 rules lives in [TASTE.md](TASTE.md).
 
 ## Build
 
-Requires JDK 25+ (JUnit 6.1.3, SLF4J 2.0.18).
+Requires JDK 25+ (JUnit 6.1.3, SLF4J 2.0.18) and jeno 0.3.2.
 
-```
-mvn test                            # all core modules
-mvn -pl freeway-ioc test            # one module
-mvn -pl freeway-http -am test       # module + upstream deps
-mvn -pl freeway-cloud -am test
-mvn test -Dtest=CoercerDefaultTest
-```
-
-Run `mvn -pl <module> -am test`, or `clean test` after moving/deleting a type:
-a stale `target/` hides deleted classes and installed snapshots hide ABI breaks.
-
-Core must be installed before building ext:
-
-```
-mvn -o install -DskipTests
-# then, in freeway-ext:
-mvn -o clean test
+```bash
+jeno init --ws                     # once: local workspace file, never committed
+jeno build                         # all modules against sibling classes
+jeno test                          # all modules in dependency order
+./build.sh                         # cold start: locks, builds, tests, publishes to vendor/
 ```
 
-CI runs four gates: `verify` (source/javadoc JARs + tests), the demos profile,
-the docs consistency tests, and a cross-repository ext build against the core
-snapshot. CI is verification-only: it never signs, deploys or publishes, and
-holds no release credentials. Releases are manual and belong to the signing
-machine.
+`jeno.toml` uses the 0.3.2 named-repository contract: `[repos.<name>]` plus
+`"<artifact>" = "<repo>:<version>"` in `[deps]`. The retired
+`[deps.cascade]` table is rejected by `ci/release-gate.sh`.
+
+The Maven compatibility build remains available:
+
+```bash
+mvn clean test
+mvn -Pdemos -DskipTests compile
+```
+
+CI runs the jeno 7-module cascade, the demos, the documentation checks and the
+cross-repository ext build. Tagged releases run the same gates, publish the
+immutable jeno repository to `gh-pages`, smoke-consume it from GitHub Pages,
+and create the GitHub Release. The jeno index and version directories are
+release artifacts: never overwrite an already published module/version.
 
 ### Transient CI failures
 

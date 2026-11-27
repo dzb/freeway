@@ -193,7 +193,7 @@ Route named files and per-logger levels with `freeway.log.files` and any
 
 Requires JDK 25+.
 
-With **jeno** (the project's own toolchain):
+With **jeno 0.3.2** (the primary build and release toolchain):
 
 ```bash
 jeno init --ws        # once: writes jeno.ws.toml / [ws] (a local file, not committed)
@@ -203,12 +203,19 @@ jeno test             # same order; keeps going after a failing module and summa
                      # inter-module coordinates (this is what CI runs)
 ```
 
+Install the pinned toolchain from its release installer:
+
+```bash
+curl -fsSL https://github.com/dzb/jeno-cargo/releases/download/v0.3.2/install.sh -o /tmp/install-jeno.sh
+bash /tmp/install-jeno.sh
+```
+
 `jeno build` compiles every module against the *local* sources of the modules it
 depends on; nothing is published in between. `build.sh` exists because
 resolution happens before that substitution: a fresh clone has no `vendor/`,
 so the first lock of each module needs the previous module's jar on disk.
 
-With **Maven** (still how the demos and the Central release are built):
+With **Maven** (the compatibility build for Maven consumers and demos):
 
 ```bash
 mvn clean test                     # all core tests
@@ -220,7 +227,8 @@ mvn -Pdemos -DskipTests compile    # compile the in-repo consumers
 ### Consume a release
 
 Each tagged release publishes the same jeno repository to GitHub Pages at
-`https://dzb.github.io/freeway/`:
+`https://dzb.github.io/freeway/`. Releases are immutable per module/version;
+each module also has an `index.jeno.toml` for `jeno outdated`:
 
 ```toml
 [limits]
@@ -245,8 +253,9 @@ type = "jeno"
 url = "/path/to/freeway-repo"
 ```
 
-Central remains the Maven channel; the bytes it serves may differ from the
-Pages repository.
+The jeno repository is the primary release channel. Maven Central remains an
+optional compatibility channel for Maven consumers; its bytes may differ from
+the Pages repository.
 
 ### Documentation
 

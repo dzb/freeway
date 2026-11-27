@@ -19,7 +19,6 @@ set -e
 FREEWAY=$(cd "$(dirname "$0")" && pwd)
 JENO="${JENO:-$HOME/.jeno/bin/jeno}"
 VENDOR="$FREEWAY/vendor"
-FW_VER='2.0.2'
 LOGS="$FREEWAY/build-logs"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[0;33m'; NC='\033[0m'
@@ -33,6 +32,10 @@ vendor_module() {
     local module=$1
     (cd "$FREEWAY/$module" && "$JENO" package)
     (cd "$FREEWAY/$module" && "$JENO" publish "jeno:local:$VENDOR")
+    if [ ! -f "$VENDOR/$module/index.jeno.toml" ]; then
+        echo "jeno publish did not create $VENDOR/$module/index.jeno.toml" >&2
+        exit 1
+    fi
 }
 
 build_module() {
@@ -41,7 +44,7 @@ build_module() {
     (cd "$FREEWAY/$module" && "$JENO" lock)
     (cd "$FREEWAY/$module" && "$JENO" build)
     (cd "$FREEWAY/$module" && "$JENO" test) > "$LOGS/$module.log" 2>&1
-    grep -E "tests:" "$LOGS/$module.log" | tail -1 || echo "  (no tests)"
+    grep -aE "tests:" "$LOGS/$module.log" | tail -1 || echo "  (no tests)"
     vendor_module "$module"
     echo -e "${GREEN}==== $module done ====${NC}"
 }

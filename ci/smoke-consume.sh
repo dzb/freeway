@@ -15,20 +15,22 @@ repo=${repo:-freeway}
 base=${PAGES_BASE_URL:-https://${owner}.github.io/${repo}}
 base=${base%/}
 descriptor="$base/freeway-ioc/$version/freeway-ioc-$version.jeno.toml"
+index="$base/freeway-ioc/$version/index.jeno.toml"
 jeno=${JENO:-$HOME/.jeno/bin/jeno}
 
 echo "waiting for $descriptor"
 ok=0
 for attempt in $(seq 1 30); do
-    if curl -fsSI "$descriptor" >/dev/null 2>&1; then
+    if curl -fsSI "$descriptor" >/dev/null 2>&1 \
+        && curl -fsSI "$index" >/dev/null 2>&1; then
         ok=1
         break
     fi
-    echo "  attempt $attempt/30: not visible yet"
+    echo "  attempt $attempt/30: descriptor/index not visible yet"
     sleep 10
 done
 if [ "$ok" -ne 1 ]; then
-    echo "Pages did not publish $descriptor" >&2
+    echo "Pages did not publish $descriptor and $index" >&2
     echo "First publish: enable Settings → Pages → Source = Deploy from a branch → gh-pages / (root)." >&2
     exit 1
 fi

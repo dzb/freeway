@@ -26,6 +26,10 @@ for manifest in "$root"/*/jeno.toml; do
         echo "$module/jeno.toml: expected $version, found $module_version" >&2
         status=1
     fi
+    if grep -q '^\[deps\.cascade\]' "$manifest"; then
+        echo "$module/jeno.toml: retired [deps.cascade] syntax; use [deps] with '<repo>:<version>'" >&2
+        status=1
+    fi
 done
 
 notes="$root/docs/releases/release-notes-$version.md"

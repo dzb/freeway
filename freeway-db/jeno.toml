@@ -13,6 +13,5 @@ url = "../vendor"
 "org.slf4j:slf4j-api" = "2.0.18"
 "com.h2database:h2" = "2.5.250"
 
-[deps.cascade]
-"freeway-commons" = "2.0.2"
-"freeway-ioc" = "2.0.2"
+"freeway-commons" = "cascade:2.0.2"
+"freeway-ioc" = "cascade:2.0.2"

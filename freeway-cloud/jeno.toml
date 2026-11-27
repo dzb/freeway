@@ -12,8 +12,7 @@ url = "../vendor"
 [deps]
 "org.slf4j:slf4j-api" = "2.0.18"
 
-[deps.cascade]
-"freeway-commons" = "2.0.2"
-"freeway-ioc" = "2.0.2"
-"freeway-boot" = "2.0.2"
-"freeway-http" = "2.0.2"
+"freeway-commons" = "cascade:2.0.2"
+"freeway-ioc" = "cascade:2.0.2"
+"freeway-boot" = "cascade:2.0.2"
+"freeway-http" = "cascade:2.0.2"
