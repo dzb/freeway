@@ -38,8 +38,9 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq minisign
-          curl -fsSL https://github.com/dzb/jeno-cargo/releases/latest/download/install.sh -o /tmp/install-jeno.sh
+          curl -fsSL https://github.com/dzb/jeno-cargo/releases/download/v0.3.1/install.sh -o /tmp/install-jeno.sh
           bash /tmp/install-jeno.sh
+          "$HOME/.jeno/bin/jeno" --version
           echo "$HOME/.jeno/bin" >> "$GITHUB_PATH"
       - name: Build and test (7 modules, cascade)
         run: ./build.sh
@@ -174,8 +175,9 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq minisign
-          curl -fsSL https://github.com/dzb/jeno-cargo/releases/latest/download/install.sh -o /tmp/install-jeno.sh
+          curl -fsSL https://github.com/dzb/jeno-cargo/releases/download/v0.3.1/install.sh -o /tmp/install-jeno.sh
           bash /tmp/install-jeno.sh
+          "$HOME/.jeno/bin/jeno" --version
           echo "$HOME/.jeno/bin" >> "$GITHUB_PATH"
       - name: Resolve version
         id: version
