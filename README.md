@@ -193,7 +193,7 @@ Route named files and per-logger levels with `freeway.log.files` and any
 
 Requires JDK 25+.
 
-With **jeno 0.3.3** (the primary build and release toolchain):
+With **jeno 0.3.5** (the primary build and release toolchain):
 
 ```bash
 jeno init --ws        # once: writes jeno.ws.toml / [ws] (a local file, not committed)
@@ -206,7 +206,7 @@ jeno test             # same order; keeps going after a failing module and summa
 Install the pinned toolchain from its release installer:
 
 ```bash
-curl -fsSL https://github.com/dzb/jeno-cargo/releases/download/v0.3.3/install.sh -o /tmp/install-jeno.sh
+curl -fsSL https://github.com/dzb/jeno-cargo/releases/download/v0.3.5/install.sh -o /tmp/install-jeno.sh
 bash /tmp/install-jeno.sh
 ```
 

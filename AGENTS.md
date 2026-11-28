@@ -1,6 +1,6 @@
 # Repository Guidelines
 
-Freeway is a JDK 25+ multi-module project. **jeno 0.3.3 is the primary build
+Freeway is a JDK 25+ multi-module project. **jeno 0.3.5 is the primary build
 and release toolchain**; the Maven reactor remains the compatibility build for
 Maven consumers and the demos. Keep changes scoped, explicit, and convention
 over configuration. This file is the single home for repo-wide conventions;
@@ -10,7 +10,7 @@ rules lives in [TASTE.md](TASTE.md).
 
 ## Build
 
-Requires JDK 25+ (JUnit 6.1.3, SLF4J 2.0.18) and jeno 0.3.3.
+Requires JDK 25+ (JUnit 6.1.3, SLF4J 2.0.18) and jeno 0.3.5.
 
 ```bash
 jeno init --ws                     # once: local workspace file, never committed
@@ -19,7 +19,7 @@ jeno test                          # all modules in dependency order
 ./build.sh                         # cold start: locks, builds, tests, publishes to vendor/
 ```
 
-`jeno.toml` uses the 0.3.3 named-repository contract: `[repos.<name>]` plus
+`jeno.toml` uses the named-repository contract (0.3.2+): `[repos.<name>]` plus
 `"<artifact>" = "<repo>:<version>"` in `[deps]`. The retired
 `[deps.cascade]` table is rejected by `ci/release-gate.sh`.
 

@@ -31,7 +31,7 @@ mkdir -p "$VENDOR" "$LOGS"
 vendor_module() {
     local module=$1
     (cd "$FREEWAY/$module" && "$JENO" package)
-    (cd "$FREEWAY/$module" && "$JENO" publish "jeno:local:$VENDOR")
+    (cd "$FREEWAY/$module" && "$JENO" publish "local:$VENDOR")
     if [ ! -f "$VENDOR/$module/index.jeno.toml" ]; then
         echo "jeno publish did not create $VENDOR/$module/index.jeno.toml" >&2
         exit 1
